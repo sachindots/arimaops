@@ -467,7 +467,7 @@ export function CtoDrawer() {
               <div className="flex-1">
                 <Field
                   label="Repository / Project Path on Disk"
-                  hint="Any folder containing .hq/config.json is automatically tracked in ~/.hq/projects.json."
+                  hint="Adds the folder to ~/.hq/projects.json and loads it into this server (a new folder gets a fresh .hq/config.json)."
                 >
                   <input
                     className="field font-mono text-[12px]"
