@@ -45,11 +45,13 @@ async function tailscaleName(): Promise<string | null> {
   }
 }
 
+// Skip Docker/libvirt bridges and VPN-less virtual links: a tablet on the LAN can't reach those.
 const lanIps = () =>
-  Object.values(networkInterfaces())
-    .flat()
-    .filter((n) => n && n.family === "IPv4" && !n.internal)
-    .map((n) => n!.address);
+  Object.entries(networkInterfaces())
+    .filter(([name]) => !/^(docker|br-|virbr|veth|lo)/.test(name))
+    .flatMap(([, list]) => list ?? [])
+    .filter((n) => n.family === "IPv4" && !n.internal)
+    .map((n) => n.address);
 
 async function main() {
   ensurePtyHelperExecutable();
