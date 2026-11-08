@@ -1,10 +1,9 @@
 // Hover-robot sprites, recoloured per agent. The lead wears a crown.
 
-import type { Texture } from "pixi.js";
+// No Pixi at runtime here: HUD portraits use these canvases, and the office (Pixi) loads only when shown.
 import { shade } from "../../theme/tokens";
 import { C } from "../engine/palette";
 import { flipCanvas, spriteCanvas } from "../engine/pen";
-import { canvasTexture } from "../engine/textures";
 
 const HEAD_ANTENNA = [".....kk.....", "....k..k....", ".....kk....."];
 const HEAD_CROWN = ["..k..kk..k..", "..kGkGGkGk..", "..kGGGGGGk.."];
@@ -15,13 +14,7 @@ const BODY_SIDE = ["..kkkkkkkk..", ".khhBBBBBBk.", ".kBBBBBVVVk.", ".kBBBBBVVVk.
 
 export type Facing = "front" | "back" | "type" | "side" | "sideL";
 
-export interface RobotSprites {
-  canvases: Record<Facing, HTMLCanvasElement>;
-  textures: Record<Facing, Texture>;
-}
-
 const canvasCache = new Map<string, Record<Facing, HTMLCanvasElement>>();
-const spriteCache = new Map<string, RobotSprites>();
 
 /** Plain canvases for each facing (no Pixi) — also used by HUD portraits. */
 export function robotCanvases(color: string, lead: boolean): Record<Facing, HTMLCanvasElement> {
@@ -42,16 +35,6 @@ export function robotCanvases(color: string, lead: boolean): Record<Facing, HTML
   return canvases;
 }
 
-export function robotSprites(color: string, lead: boolean): RobotSprites {
-  const key = `${color}|${lead}`;
-  const hit = spriteCache.get(key);
-  if (hit) return hit;
-  const canvases = robotCanvases(color, lead);
-  const textures = Object.fromEntries(Object.entries(canvases).map(([k, c]) => [k, canvasTexture(c)])) as Record<Facing, Texture>;
-  const out = { canvases, textures };
-  spriteCache.set(key, out);
-  return out;
-}
 
 export const RABBIT = [
   "..k...k..", ".kOk.kOk.", ".kPk.kPk.", ".kPk.kPk.", ".kOkkkOk.", "kOOOOOOOk",

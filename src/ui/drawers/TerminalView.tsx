@@ -52,6 +52,11 @@ const touch = () => window.matchMedia("(pointer: coarse)").matches;
 export function TerminalView({ agentId, autoFocus = true }: { agentId: string; autoFocus?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const ctrl = useRef(false);
+  // tmux asks the terminal what it supports when it attaches; xterm.js answers through onData. Those
+  // replies aren't typing, and from a remote device each one would ask for the 6-digit code. Send
+  // input only once you've touched or typed into this terminal.
+  const touched = useRef(false);
+  const touch_ = () => void (touched.current = true);
   const [ctrlOn, setCtrlOn] = useState(false);
   const termRef = useRef<Terminal | null>(null);
 
@@ -107,6 +112,7 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       term.write(readTerminal(agentId));
       unsub = subscribeTerminal(agentId, (data) => term.write(data));
       term.onData((data) => {
+        if (!touched.current) return;
         // Sticky Ctrl from the touch key row: Ctrl+letter is the letter's control code.
         if (ctrl.current && data.length === 1) {
           const code = data.toUpperCase().charCodeAt(0);
@@ -147,10 +153,10 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
     };
   }, [agentId, autoFocus]);
 
-  if (!touch()) return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" />;
+  if (!touch()) return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" onPointerDown={touch_} onKeyDownCapture={touch_} />;
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
-      <div ref={host} className="min-h-0 w-full flex-1" />
+      <div ref={host} className="min-h-0 w-full flex-1" onPointerDown={touch_} onKeyDownCapture={touch_} />
       <div className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-t-2 border-ink p-1" aria-label="Terminal keys">
         {KEYS.map(([label, seq]) => (
           <button
@@ -160,6 +166,7 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
             // Keep the terminal (and the on-screen keyboard) focused.
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => {
+              touch_();
               if (label === "Ctrl") {
                 ctrl.current = !ctrl.current;
                 setCtrlOn(ctrl.current);

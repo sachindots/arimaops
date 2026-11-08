@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { OfficeCanvas } from "./office/OfficeCanvas";
+import { lazy, Suspense, useEffect } from "react";
 import { connectOffice, useOffice } from "./store/office";
 import { ui, useUi } from "./store/ui";
 import { DebugPanel } from "./ui/DebugPanel";
@@ -13,6 +12,9 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
+
+// The office (PixiJS, most of the bundle) loads only when it's shown, so phones and tablets skip it.
+const OfficeCanvas = lazy(() => import("./office/OfficeCanvas").then((m) => ({ default: m.OfficeCanvas })));
 
 function useKeyboard() {
   useEffect(() => {
@@ -121,7 +123,9 @@ export function App() {
 
   return (
     <>
-      <OfficeCanvas />
+      <Suspense fallback={null}>
+        <OfficeCanvas />
+      </Suspense>
       <ConnectionBanner />
       {ready && (
         <>

@@ -1,9 +1,27 @@
 // Robot agents: where they walk and what they show, derived from live status.
 
-import { Sprite, type Container } from "pixi.js";
+import { Sprite, type Container, type Texture } from "pixi.js";
 import type { AgentConfig, AgentState } from "../../data/types";
 import type { Tile } from "../engine/path";
-import { robotSprites, type Facing } from "../draw/robots";
+import { robotCanvases, type Facing } from "../draw/robots";
+import { canvasTexture } from "../engine/textures";
+
+interface RobotSprites {
+  canvases: Record<Facing, HTMLCanvasElement>;
+  textures: Record<Facing, Texture>;
+}
+const spriteCache = new Map<string, RobotSprites>();
+
+function robotSprites(color: string, lead: boolean): RobotSprites {
+  const key = `${color}|${lead}`;
+  const hit = spriteCache.get(key);
+  if (hit) return hit;
+  const canvases = robotCanvases(color, lead);
+  const textures = Object.fromEntries(Object.entries(canvases).map(([k, c]) => [k, canvasTexture(c)])) as Record<Facing, Texture>;
+  const out = { canvases, textures };
+  spriteCache.set(key, out);
+  return out;
+}
 import { tileCentre, type OfficeLayout } from "../layout/layout";
 
 export type Face = "up" | "down" | "left" | "right";

@@ -9,6 +9,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
 import { timingSafeEqual } from "node:crypto";
+import { createGzip } from "node:zlib";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { OfficeEvent } from "../src/data/source";
 import { handleHook } from "./hooks";
@@ -242,9 +243,14 @@ export function startHttp(o: Options) {
       const rel = normalize(url.pathname === "/" ? "/index.html" : url.pathname).replace(/^(\.\.[/\\])+/, "");
       let file = join(o.distDir, rel);
       if (!file.startsWith(o.distDir + sep) || !existsSync(file) || statSync(file).isDirectory()) file = join(o.distDir, "index.html");
-      res.writeHead(200, { "Content-Type": MIME[extname(file)] ?? "application/octet-stream" });
+      const type = MIME[extname(file)] ?? "application/octet-stream";
+      // Text assets gzipped (a phone on Wi-Fi loads ~4× less); hashed assets cached, the page itself never.
+      const gzip = /text|javascript|json|svg|manifest/.test(type) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
+      const cache = file.includes(`${sep}assets${sep}`) ? "public, max-age=31536000, immutable" : "no-cache";
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": cache, Vary: "Accept-Encoding", ...(gzip ? { "Content-Encoding": "gzip" } : {}) });
       if (req.method === "HEAD") return void res.end();
-      return void createReadStream(file).pipe(res);
+      const stream = createReadStream(file);
+      return void (gzip ? stream.pipe(createGzip()).pipe(res) : stream.pipe(res));
     }
     send(res, 404, "not found");
   });
