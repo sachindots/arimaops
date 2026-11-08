@@ -1,12 +1,15 @@
 // Remote control safety (tablet/phone):
 //  - Push: ntfy notification when something waits on you (action item, sandbox approval, access request).
 //  - Step-up: risky commands from a non-local client need a TOTP code (authenticator app), once a day per device.
-//  - Devices: logging in with a link token sets a cookie stored in ~/.hq/<project>/devices.json, so links survive restarts.
-//  - Audit: every UI command is appended to ~/.hq/<project>/audit.log (never terminal input or secret values).
+//  - Devices: logging in with a link token sets a cookie stored in ~/.hq/devices.json, so links survive restarts.
+//  - Audit: every UI command is appended to ~/.hq/audit.log (never terminal input or secret values).
+//  One server serves every project, so the TOTP secret, devices and audit log are server-wide (~/.hq/).
 
 import { createHmac, randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
 import type { OfficeEvent } from "../src/data/source";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
@@ -111,16 +114,17 @@ export class RemoteGuard {
   private badCodes = 0;
   private lockedUntil = 0;
 
-  constructor(
-    slug: string,
-    private projectName: string,
-  ) {
-    const file = join(projectHome(slug), "totp-secret");
+  /** `adoptFrom`: a project whose older per-project totp-secret becomes the server's, so an authenticator entry you already added keeps working. */
+  constructor(home = join(homedir(), BRAND.homeDir), adoptFrom?: string) {
+    mkdirSync(home, { recursive: true });
+    const file = join(home, "totp-secret");
+    const old = adoptFrom ? join(projectHome(adoptFrom), "totp-secret") : "";
+    if (!existsSync(file) && old && existsSync(old)) copyFileSync(old, file);
     if (!existsSync(file)) writeFileSync(file, base32Encode(randomBytes(20)), { mode: 0o600 });
     this.secretB32 = readFileSync(file, "utf8").trim();
     this.secret = base32Decode(this.secretB32);
-    this.auditFile = join(projectHome(slug), "audit.log");
-    this.devicesFile = join(projectHome(slug), "devices.json");
+    this.auditFile = join(home, "audit.log");
+    this.devicesFile = join(home, "devices.json");
     try {
       this.devices = JSON.parse(readFileSync(this.devicesFile, "utf8")) as Record<string, Device>;
     } catch {
@@ -171,7 +175,7 @@ export class RemoteGuard {
   readonly cookieMaxAge = DEVICE_MS / 1000;
 
   otpauthUrl() {
-    const label = encodeURIComponent(`dot hq:${this.projectName}`);
+    const label = encodeURIComponent("dot hq:server");
     return `otpauth://totp/${label}?secret=${this.secretB32}&issuer=dot%20hq&digits=6&period=30`;
   }
 
@@ -207,7 +211,7 @@ export class RemoteGuard {
     return Date.now() + STEP_UP_MS;
   }
 
-  audit(entry: { role: string; origin: string; remote: boolean; cmd: string; args: unknown[]; result: "ok" | "blocked" | "step-up-required" | "error" | "elevated" | "bad-code" }) {
+  audit(entry: { project?: string; role: string; origin: string; remote: boolean; cmd: string; args: unknown[]; result: "ok" | "blocked" | "step-up-required" | "error" | "elevated" | "bad-code" }) {
     if (QUIET.has(entry.cmd) && entry.result === "ok") return;
     const args = REDACT_ARGS.has(entry.cmd) ? ["[redacted]"] : QUIET.has(entry.cmd) ? [] : entry.args;
     let argStr = "";
@@ -216,7 +220,7 @@ export class RemoteGuard {
     } catch {
       argStr = "[unserializable]";
     }
-    const line = `${new Date().toISOString()}\t${entry.result}\t${entry.role}${entry.remote ? "@remote" : ""}\t${entry.origin || "-"}\t${entry.cmd}\t${argStr}\n`;
+    const line = `${new Date().toISOString()}\t${entry.result}\t${entry.role}${entry.remote ? "@remote" : ""}\t${entry.origin || "-"}\t${entry.project ?? "-"}\t${entry.cmd}\t${argStr}\n`;
     try {
       appendFileSync(this.auditFile, line, { mode: 0o600 });
     } catch (err) {

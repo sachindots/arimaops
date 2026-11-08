@@ -1,7 +1,7 @@
 // 127.0.0.1 by default (--host to expose, e.g. for Tailscale). Routes:
-//   GET  /ws?token=…            browser WebSocket (browser/viewer token, or the hq_sid device cookie)
+//   GET  /ws?project=…&token=…  browser WebSocket for one project (browser/viewer token, or the hq_sid device cookie)
 //   POST /api/login             link token → hq_sid device cookie (survives HQ restarts)
-//   POST /hook/<agent>/<event>  Claude Code hooks (that agent's own token)
+//   POST /hook/<agent>/<event>  Claude Code hooks (that agent's own token; the token tells which project)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
@@ -12,11 +12,9 @@ import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { OfficeEvent } from "../src/data/source";
 import { handleHook } from "./hooks";
-import type { Hub } from "./hub";
-import type { Inbox } from "./inbox";
 import { handleMcp } from "./mcp";
-import type { Planner } from "./planner";
-import { createCrossProjectTask, listProjectsOverview, registerProjectPath, updateCrossProjectTask } from "./projectsRegistry";
+import type { Runtime } from "./project";
+import { createCrossProjectTask, listProjectsOverview, registerProjectPath, setRegistryPaused, updateCrossProjectTask } from "./projectsRegistry";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
 import { RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
@@ -60,14 +58,16 @@ function readBody(req: IncomingMessage, limit = 256 * 1024): Promise<string> {
 }
 
 interface Options {
-  hub: Hub;
-  inbox: Inbox;
-  planner: Planner;
+  /** Every loaded project, by slug. */
+  projects: Map<string, Runtime>;
+  /** Project a browser gets when it doesn't ask for one. */
+  defaultProject: () => string;
+  /** Loads a newly registered project into the server. */
+  loadProject: (path: string) => Promise<void>;
   port: number;
   browserToken: string;
   /** Read-only + chat token for tablets/phones. Can't run shells, change settings or approve. */
   viewerToken: string;
-  agentToken: string;
   host: string;
   /** Remote mode: also accept the page's own origin (Tailscale / tunnel / LAN), token still required. */
   sameOrigin: boolean;
@@ -76,7 +76,6 @@ interface Options {
   guard: RemoteGuard;
   distDir: string | null;
   allowedOrigins: string[];
-  commands: Record<string, (...args: unknown[]) => unknown>;
 }
 
 export function startHttp(o: Options) {
@@ -85,7 +84,12 @@ export function startHttp(o: Options) {
     res.end(body);
   };
 
-  const agentAuth = (auth: string, agentId: string) => !!agentId && safeEqual(auth, `Bearer ${agentTokenFor(o.agentToken, agentId)}`);
+  /** The project whose secret signed this agent's token (agent ids repeat across projects; tokens don't). */
+  const agentProject = (auth: string, agentId: string): Runtime | null => {
+    if (!agentId) return null;
+    for (const rt of o.projects.values()) if (rt.hub.cfg(agentId) && safeEqual(auth, `Bearer ${agentTokenFor(rt.agentSecret, agentId)}`)) return rt;
+    return null;
+  };
 
   const okOrigin = (req: IncomingMessage) => {
     const origin = req.headers.origin ?? "";
@@ -132,10 +136,11 @@ export function startHttp(o: Options) {
     if (req.method === "POST" && url.pathname.startsWith("/hook/")) {
       const [, , rawAgent, event] = url.pathname.split("/");
       const agentId = decodeURIComponent(rawAgent ?? "");
-      if (!agentAuth(req.headers.authorization ?? "", agentId)) return send(res, 401, "unauthorized");
+      const rt = agentProject(req.headers.authorization ?? "", agentId);
+      if (!rt) return send(res, 401, "unauthorized");
       try {
         const body = await readBody(req);
-        const r = handleHook(o.hub, o.inbox, agentId, event ?? "", body ? JSON.parse(body) : {});
+        const r = handleHook(rt.hub, rt.inbox, agentId, event ?? "", body ? JSON.parse(body) : {});
         if (!r.ok) return send(res, 404, "");
         if (r.response) return send(res, 200, JSON.stringify(r.response), "application/json");
         res.writeHead(204);
@@ -150,11 +155,12 @@ export function startHttp(o: Options) {
       const qToken = url.searchParams.get("token");
       const auth = req.headers.authorization ?? (qToken ? `Bearer ${qToken}` : "");
       const agentId = String(req.headers["x-hq-agent"] || url.searchParams.get("agent") || "");
-      if (!agentAuth(auth, agentId) || !o.hub.cfg(agentId)) return send(res, 401, "unauthorized");
+      const rt = agentProject(auth, agentId);
+      if (!rt) return send(res, 401, "unauthorized");
       if (req.method === "GET" || req.method === "DELETE") return send(res, 405, "stateless server");
       try {
         const raw = await readBody(req, 1024 * 1024);
-        return await handleMcp(o.hub, o.planner, agentId, req, res, raw ? JSON.parse(raw) : undefined);
+        return await handleMcp(rt.hub, rt.planner, agentId, req, res, raw ? JSON.parse(raw) : undefined);
       } catch {
         return res.headersSent ? void res.end() : send(res, 400, "bad request");
       }
@@ -178,15 +184,24 @@ export function startHttp(o: Options) {
 
       try {
         if (req.method === "GET" && url.pathname === "/api/projects") {
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview(o.hub) }), "application/json");
+          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
         }
         if (req.method === "POST" && url.pathname === "/api/projects/register") {
           const body = JSON.parse((await readBody(req)) || "{}") as { path?: string };
           if (!body.path) return send(res, 400, JSON.stringify({ error: "path required" }), "application/json");
-          const project = registerProjectPath(body.path, o.hub);
-          return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview(o.hub) }), "application/json");
+          const project = registerProjectPath(body.path);
+          if (project && !o.projects.has(project.id)) await o.loadProject(project.path);
+          return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
+        if (parts.length === 4 && (parts[3] === "pause" || parts[3] === "resume") && req.method === "POST") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          if (parts[3] === "pause") rt.pause();
+          else rt.resume();
+          setRegistryPaused(rt.root, rt.paused);
+          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
+        }
         if (parts.length === 4 && parts[3] === "tasks" && req.method === "POST") {
           const projectId = decodeURIComponent(parts[2]);
           const body = JSON.parse((await readBody(req)) || "{}") as {
@@ -206,17 +221,15 @@ export function startHttp(o: Options) {
               doneWhen: body.doneWhen,
               ownerId: body.ownerId,
             },
-            o.hub,
-            o.planner,
           );
-          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview(o.hub) }), "application/json");
+          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");
         }
         if (parts.length === 5 && parts[3] === "tasks" && (req.method === "PATCH" || req.method === "POST")) {
           const projectId = decodeURIComponent(parts[2]);
           const taskId = decodeURIComponent(parts[4]);
           const body = JSON.parse((await readBody(req)) || "{}");
-          const task = updateCrossProjectTask(projectId, taskId, body, o.hub, o.planner);
-          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview(o.hub) }), "application/json");
+          const task = updateCrossProjectTask(projectId, taskId, body);
+          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");
         }
       } catch (err) {
         return send(res, 400, JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), "application/json");
@@ -240,28 +253,30 @@ export function startHttp(o: Options) {
     const origin = req.headers.origin ?? "";
     // Token or device cookie + origin: another website in your browser can't drive HQ.
     const who = whoIs(req, url.searchParams.get("token") ?? "");
-    if (url.pathname !== "/ws" || !who || !okOrigin(req)) {
+    // An unknown or removed project (e.g. a stale bookmark) falls back to the default one.
+    const rt = o.projects.get(url.searchParams.get("project") ?? "") ?? o.projects.get(o.defaultProject());
+    if (url.pathname !== "/ws" || !who || !okOrigin(req) || !rt) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       return socket.destroy();
     }
     const remote = isRemote(req);
-    log.info(`ui connected: ${who.role}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
-    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, who.role, who.deviceId, origin, remote));
+    log.info(`ui connected: ${rt.slug} ${who.role}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who.role, who.deviceId, origin, remote));
   });
 
-  function onClient(ws: WebSocket, role: Role, deviceId: string, origin: string, remote: boolean) {
+  function onClient(ws: WebSocket, rt: Runtime, role: Role, deviceId: string, origin: string, remote: boolean) {
     // A device that entered a code today stays elevated (24 h); a bare-token connection only until it closes.
     let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
     const sendEvent = (e: OfficeEvent) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(e));
-    sendEvent({ type: "snapshot", snapshot: o.hub.snap });
-    const unsub = o.hub.subscribe(sendEvent);
+    sendEvent({ type: "snapshot", snapshot: rt.hub.snap });
+    const unsub = rt.hub.subscribe(sendEvent);
     ws.on("message", async (raw) => {
       try {
         const msg = JSON.parse(String(raw)) as { cmd?: string; args?: unknown[] };
         const cmd = String(msg.cmd ?? "");
         const args = Array.isArray(msg.args) ? msg.args : [];
         const audit = (result: Parameters<RemoteGuard["audit"]>[0]["result"], c = cmd, a: unknown[] = args) =>
-          o.guard.audit({ role, origin, remote, cmd: c, args: a, result });
+          o.guard.audit({ project: rt.slug, role, origin, remote, cmd: c, args: a, result });
 
         // Step-up: { cmd: "elevate", args: [code, pendingCmd?, pendingArgs?] }
         if (cmd === "elevate") {
@@ -275,13 +290,13 @@ export function startHttp(o: Options) {
           audit("elevated", "elevate", []);
           sendEvent({ type: "remote.stepup", status: "ok", until: elevatedUntil });
           const pending = typeof args[1] === "string" ? args[1] : "";
-          if (!pending || !o.commands[pending]) return;
+          if (!pending || !rt.commands[pending]) return;
           const pArgs = Array.isArray(args[2]) ? args[2] : [];
-          await o.commands[pending](...pArgs);
+          await rt.commands[pending](...pArgs);
           return audit("ok", pending, pArgs);
         }
 
-        const fn = cmd ? o.commands[cmd] : undefined;
+        const fn = cmd ? rt.commands[cmd] : undefined;
         if (!fn) return log.warn("unknown command", cmd);
         if (role === "viewer" && !VIEWER_COMMANDS.has(cmd)) {
           audit("blocked");

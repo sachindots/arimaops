@@ -1,6 +1,6 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { isAgentCli, isDepartmentId, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { isAgentCli, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -355,6 +355,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         if (name) project.officeName = name;
         else delete project.officeName;
       }
+      if (isProjectType(p.type)) project.type = p.type;
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       hub.configChanged();

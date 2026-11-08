@@ -3,7 +3,7 @@
 
 import type { OfficeDataSource, OfficeEvent } from "../source";
 
-export function createWsSource(token: string): OfficeDataSource {
+export function createWsSource(token: string, project = ""): OfficeDataSource {
   let ws: WebSocket | null = null;
   const queue: string[] = [];
 
@@ -40,7 +40,10 @@ export function createWsSource(token: string): OfficeDataSource {
         onStatus?.(retry ? "reconnecting" : "connecting");
         const proto = location.protocol === "https:" ? "wss" : "ws";
         // No token: the hq_sid cookie from /api/login authenticates (same origin).
-        const sock = new WebSocket(`${proto}://${location.host}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`);
+        const q = new URLSearchParams();
+        if (token) q.set("token", token);
+        if (project) q.set("project", project);
+        const sock = new WebSocket(`${proto}://${location.host}/ws${q.size ? `?${q}` : ""}`);
         socket = sock;
         let opened = false;
         sock.onopen = () => {

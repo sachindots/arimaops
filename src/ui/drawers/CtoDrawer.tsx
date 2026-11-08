@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { inferDepartmentForRole } from "../../data/roles";
-import type { ProjectOverview, TaskStatus } from "../../data/types";
-import { officeActions, useOffice } from "../../store/office";
+import { PROJECT_TYPES, type ProjectOverview, type TaskStatus } from "../../data/types";
+import { isViewer, officeActions, openProject, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { DepartmentBadge, Field, Portrait, SectionTitle } from "../kit";
 import { DrawerHeader } from "./Drawer";
@@ -49,7 +49,9 @@ export function CtoDrawer() {
           repo: snap.config.project.repo,
           hqPort: snap.config.project.hqPort,
           online: true,
+          paused: false,
           isCurrent: true,
+          type: snap.config.project.type,
           workflowMode: snap.config.workflow.mode ?? "github-pr",
           officeName: snap.config.project.officeName,
           lastUpdatedAt: new Date().toISOString(),
@@ -84,7 +86,8 @@ export function CtoDrawer() {
       const res = await fetch(`/api/projects?token=${encodeURIComponent(tok)}`);
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      const list = data.projects ?? [];
+      // The server serves every project; "current" is the one this tab shows.
+      const list = (data.projects ?? []).map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id }));
       setProjects(list);
       setExpandedId((prev) => prev ?? list[0]?.id ?? null);
     } catch (err) {
@@ -128,7 +131,7 @@ export function CtoDrawer() {
       });
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects);
+      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
       setRegisterPath("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -149,7 +152,7 @@ export function CtoDrawer() {
       });
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects);
+      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
       setNewTaskTitle((prev) => ({ ...prev, [projectId]: "" }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -175,7 +178,20 @@ export function CtoDrawer() {
       );
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects);
+      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const setPaused = async (projectId: string, pause: boolean) => {
+    setError(null);
+    try {
+      const tok = getBrowserToken();
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/${pause ? "pause" : "resume"}?token=${encodeURIComponent(tok)}`, { method: "POST" });
+      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -250,12 +266,42 @@ export function CtoDrawer() {
                       <b className="text-[16px]">{p.name}</b>
                       {p.isCurrent ? (
                         <span className="border border-green bg-[rgba(0,255,102,0.14)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-green">
-                          ACTIVE WINDOW (:{p.hqPort})
+                          VIEWING
                         </span>
+                      ) : p.online ? (
+                        <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">{p.paused ? "PAUSED" : "RUNNING"}</span>
                       ) : (
                         <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                          SYNCED ON DISK (.hq/plan.json)
+                          NOT LOADED (.hq/plan.json)
                         </span>
+                      )}
+                      <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                        {PROJECT_TYPES.find((t) => t.id === p.type)?.label ?? p.type}
+                      </span>
+                      {live && !p.isCurrent && p.online && (
+                        <button
+                          type="button"
+                          className="btn px-2 py-0.5 text-[11px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProject(p.id);
+                          }}
+                        >
+                          Open
+                        </button>
+                      )}
+                      {live && !isViewer && p.online && (
+                        <button
+                          type="button"
+                          className="btn px-2 py-0.5 text-[11px]"
+                          title={p.paused ? "Resume GitHub and sandbox polling" : "Pause GitHub and sandbox polling (agents still report)"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void setPaused(p.id, !p.paused);
+                          }}
+                        >
+                          {p.paused ? "Resume" : "Pause"}
+                        </button>
                       )}
                       {p.officeName && (
                         <span className="border border-red bg-[rgba(255,23,68,0.12)] px-1.5 py-0.5 font-mono text-[10px] text-red">

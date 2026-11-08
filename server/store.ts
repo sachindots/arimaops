@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
-import { isAgentCli, isDepartmentId, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../src/data/types";
+import { isAgentCli, isDepartmentId, isProjectType, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { slugify } from "./paths";
 import type { RepoInfo } from "./repo";
@@ -61,7 +61,7 @@ export function newAgent(id: string, name: string, role: string, color: string, 
 
 function defaultConfig(repo: RepoInfo, port: number): HqConfig {
   return {
-    project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port },
+    project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port, type: "software" },
     team: [newAgent(slugify(LEAD_NAME), LEAD_NAME, "CTO", "#ff1744", true), newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "Senior Dev", "#00ff66", false)],
     workflow: {
       mode: repo.github ? "github-pr" : "deliverables",
@@ -97,9 +97,21 @@ export function loadConfig(repo: RepoInfo, port: number): { config: HqConfig; is
     // Slugified again in case the file was edited by hand: it ends up in paths and sandbox names.
     found.project.id = slugify(found.project.id ?? found.project.name);
     found.project.path = repo.root;
+    if (!isProjectType(found.project.type)) found.project.type = "software";
     return { config: found, isNew: false };
   }
   return { config: defaultConfig(repo, port), isNew: true };
+}
+
+/** The project's id (slug) as loadConfig will set it, read before anything is migrated. */
+export function slugOf(repo: RepoInfo): string {
+  try {
+    const found = readJson<HqConfig>(join(dir(repo.root), "config.json"));
+    if (found) return slugify(found.project.id ?? found.project.name);
+  } catch {
+    /* unreadable: loadConfig reports it */
+  }
+  return slugify(repo.name);
 }
 
 export function saveConfig(root: string, cfg: HqConfig) {

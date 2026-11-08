@@ -1,0 +1,140 @@
+// One project's runtime inside the shared server: its hub, agents, planner, sandbox and GitHub sync.
+// main.ts starts one per registered project; http.ts routes browsers (by ?project=) and agents (by their own token) to it.
+
+import { existsSync, renameSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
+import { ActionItems } from "./actionItems";
+import { makeCommands } from "./commands";
+import { GitHubSync } from "./githubSync";
+import { Hub } from "./hub";
+import { Inbox } from "./inbox";
+import { run } from "./lib/exec";
+import { log } from "./lib/log";
+import { agentToken } from "./paths";
+import { Planner } from "./planner";
+import { setLiveProject } from "./projectsRegistry";
+import { detectRepo } from "./repo";
+import { Sbx } from "./sbx";
+import { SbxMcp } from "./sbxMcp";
+import { Sessions } from "./sessions";
+import { runSetupChecks } from "./setup";
+import { loadConfig, loadPlan, slugOf } from "./store";
+
+export interface Runtime {
+  slug: string;
+  root: string;
+  hub: Hub;
+  inbox: Inbox;
+  planner: Planner;
+  /** Project secret; each agent's token is derived from it (paths.agentTokenFor). */
+  agentSecret: string;
+  commands: Record<string, (...args: unknown[]) => unknown>;
+  isNew: boolean;
+  paused: boolean;
+  pause(): void;
+  resume(): void;
+  shutdown(): void;
+}
+
+/**
+ * Moves legacy JSM HQ folders to .hq names, once: <repo>/.jsmhq → <repo>/.hq and ~/.jsmhq/<slug> → ~/.hq/<slug>.
+ * Skipped while that project's agents run in tmux (their folders are in use); the legacy fallbacks in paths/store still find it.
+ */
+export async function migrateLegacy(root: string, slug: string): Promise<void> {
+  const repoOld = join(root, BRAND.legacyRepoDir);
+  const repoNew = join(root, BRAND.repoDir);
+  if (existsSync(repoOld) && !existsSync(repoNew)) {
+    renameSync(repoOld, repoNew);
+    log.info(`migrated ${repoOld} → ${repoNew}`);
+  }
+  const homeOld = join(homedir(), BRAND.legacyHomeDir, slug);
+  const homeNew = join(homedir(), BRAND.homeDir, slug);
+  if (!existsSync(homeOld) || existsSync(homeNew)) return;
+  const tmux = await run("tmux", ["ls", "-F", "#{session_name}"]);
+  if (tmux.ok && tmux.stdout.split("\n").some((s) => s.startsWith(`hq-${slug}-`))) {
+    log.warn(`not migrating ${homeOld}: agents of ${slug} are running. Stop them and restart HQ to migrate.`);
+    return;
+  }
+  renameSync(homeOld, homeNew);
+  log.warn(`migrated ${homeOld} → ${homeNew}. Sandboxed agents of ${slug} need "Recreate sandbox" once (their folder moved).`);
+}
+
+export async function startProject(path: string, port: number, paused: boolean): Promise<Runtime> {
+  const repo = await detectRepo(path);
+  await migrateLegacy(repo.root, slugOf(repo));
+  const { config, isNew } = loadConfig(repo, port);
+  config.project.hqPort = port;
+  const slug = config.project.id;
+  const secret = agentToken(slug);
+
+  const setup = await runSetupChecks(repo, config.team);
+  const bad = setup.checks.filter((c) => c.status !== "ok");
+  log.info(`project ${slug}  ${repo.root}${bad.length ? `  (${bad.length} setup checks need attention)` : ""}`);
+
+  const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
+  hub.snap.welcome = isNew;
+  const sessions = new Sessions(hub, secret);
+  const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id) });
+  sessions.onSessionDown = (id) => inbox.sessionDown(id);
+  sessions.onSessionReattached = (id) => inbox.sessionReattached(id);
+  sessions.lastHookAt = (id) => inbox.lastHookAt(id);
+  const sbx = new Sbx(hub);
+  sessions.envFileFor = (id) => (existsSync(sbx.envFile(id)) ? sbx.envFile(id) : null);
+  const mcp = new SbxMcp(hub, (id, file, args, onExit) => sessions.runTerminal(id, file, args, onExit));
+  sessions.onSandboxReady = (id) => {
+    void sbx.syncRules(id);
+    void mcp.attachAll(id);
+    void sbx.refreshPorts(id);
+  };
+  sessions.onSessionDown = ((down) => (id: string) => {
+    down(id);
+    void sbx.refreshPorts(id);
+  })(sessions.onSessionDown);
+  sessions.onSandboxRemoved = (id) => {
+    mcp.forget(id);
+    void sbx.refreshPorts(id);
+  };
+  void sbx.refresh();
+  void mcp.refresh();
+  const planner = new Planner(hub, inbox);
+  planner.actions = new ActionItems(hub, planner);
+  const github = new GitHubSync(hub, planner, repo.github);
+  // Terminal polling always runs: agents left in tmux must keep reporting. Pause stops GitHub and sbx approval polling.
+  sessions.startPolling();
+
+  const rt: Runtime = {
+    slug,
+    root: repo.root,
+    hub,
+    inbox,
+    planner,
+    agentSecret: secret,
+    commands: makeCommands(hub, sessions, planner, inbox, sbx, mcp),
+    isNew,
+    paused: true,
+    pause() {
+      if (rt.paused) return;
+      github.stop();
+      sbx.stopApprovalPolling();
+      rt.paused = true;
+      setLiveProject(repo.root, rt);
+    },
+    resume() {
+      if (!rt.paused) return;
+      github.start();
+      sbx.startApprovalPolling();
+      rt.paused = false;
+      setLiveProject(repo.root, rt);
+    },
+    shutdown() {
+      rt.pause();
+      inbox.stop();
+      sessions.shutdown();
+    },
+  };
+  if (!paused) rt.resume();
+  setLiveProject(repo.root, rt);
+  return rt;
+}

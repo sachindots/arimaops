@@ -72,6 +72,22 @@ function hqToken(): string | null {
 }
 
 const token = hqToken();
+/** Which project this tab shows: ?project=… (kept in the URL so tabs can show different projects), else the last one opened. */
+export const currentProject = (() => {
+  const fromUrl = new URL(location.href).searchParams.get("project");
+  try {
+    if (fromUrl) localStorage.setItem("hq-project", fromUrl);
+    return fromUrl ?? localStorage.getItem("hq-project") ?? "";
+  } catch {
+    return fromUrl ?? "";
+  }
+})();
+/** Switches this tab to another project (reconnects to it). */
+export const openProject = (id: string) => {
+  const url = new URL(location.href);
+  url.searchParams.set("project", id);
+  location.assign(url.toString());
+};
 const loggedIn = (() => {
   try {
     return localStorage.getItem("hq-live") === "1";
@@ -87,7 +103,7 @@ export const isViewer = (() => {
     return false;
   }
 })();
-const source: OfficeDataSource = token || loggedIn ? createWsSource(token ?? "") : createMockSource();
+const source: OfficeDataSource = token || loggedIn ? createWsSource(token ?? "", currentProject) : createMockSource();
 
 export const useOffice = create<OfficeState>(() => ({
   snap: null,

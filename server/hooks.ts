@@ -29,6 +29,7 @@ export interface HookResult {
 
 export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: string, body: HookPayload): HookResult {
   const st = hub.status(agentId);
+  const turnKey = `${hub.slug}:${agentId}`; // agent ids repeat across projects in one server
   const name = hub.name(agentId);
   const isAgy = hub.cfg(agentId)?.cli === "agy";
   if (!st) return { ok: false };
@@ -48,18 +49,18 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: st
 
   switch (event) {
     case "SessionStart":
-      turnOpen.set(agentId, false);
+      turnOpen.set(turnKey, false);
       hub.setStatus(agentId, { state: "idle", note: "Ready" });
       break;
     case "UserPromptSubmit":
-      turnOpen.set(agentId, true);
+      turnOpen.set(turnKey, true);
       hub.setStatus(agentId, { state: "working", note: body.prompt ? clip(body.prompt.replace(/\s+/g, " ")) : null });
       if (st.state !== "working") hub.activity("task.started", agentId, `${name} is working`);
       if (isAgy) return { ok: true, response: {} };
       break;
     case "PreToolUse":
       // Stale: the turn already ended. (Unknown, e.g. after an HQ restart, is allowed.)
-      if (turnOpen.get(agentId) !== false) {
+      if (turnOpen.get(turnKey) !== false) {
         // Also clears "needs input" once a permission prompt is answered.
         if (st.state !== "working" || st.note?.startsWith("Asking")) hub.setStatus(agentId, { state: "working", note: toolName ? `Using ${toolName}` : null });
       }
@@ -67,7 +68,7 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: st
       break;
     case "PostToolUse":
       // A tool finished: if it was waiting on the user (a question or a permission), they answered.
-      if (turnOpen.get(agentId) !== false && st.state === "needs-input") {
+      if (turnOpen.get(turnKey) !== false && st.state === "needs-input") {
         hub.setStatus(agentId, { state: "working", note: "Continuing after your answer" });
       }
       if (isAgy) return { ok: true, response: {} };
@@ -95,18 +96,18 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: st
       // and the agent continues with them instead of stopping.
       const queued = inbox.takeForStop(agentId);
       if (queued) {
-        turnOpen.set(agentId, true); // Agent continues: same turn
+        turnOpen.set(turnKey, true); // Agent continues: same turn
         hub.setStatus(agentId, { state: "working", note: "Reading new messages" });
         return { ok: true, response: { decision: isAgy ? "continue" : "block", reason: queued } };
       }
-      turnOpen.set(agentId, false);
+      turnOpen.set(turnKey, false);
       hub.setStatus(agentId, { state: "idle", note: "Finished — ready for the next instruction" });
       hub.activity("agent.answered", agentId, `${name} finished a turn`);
       if (isAgy) return { ok: true, response: { decision: "stop" } };
       break;
     }
     case "SessionEnd":
-      turnOpen.set(agentId, false);
+      turnOpen.set(turnKey, false);
       hub.setStatus(agentId, { state: "idle", note: "Session ended" });
       break;
     default:

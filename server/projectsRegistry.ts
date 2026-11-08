@@ -1,11 +1,11 @@
 // Global Multi-Project Registry for .hq (dot hq) & CTO Overwatch.
-// Tracks all .hq projects in ~/.hq/projects.json, auto-discovers sibling .hq repos,
-// and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
+// Tracks all .hq projects in ~/.hq/projects.json (added explicitly: created, opened with --repo, or registered),
+// knows which are loaded in this server, and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
 // inspect and update tasks across every project from a single command center.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { inferDepartmentForRole } from "../src/data/roles";
 import type { Board, HqConfig, ProjectOverview, Task, TaskStatus } from "../src/data/types";
@@ -21,6 +21,21 @@ export interface RegistryEntry {
   repo: string;
   hqPort: number;
   lastUpdatedAt: string;
+  /** Loaded with GitHub/sbx polling paused. */
+  paused?: boolean;
+}
+
+/** A project loaded in this server. */
+export interface LiveProject {
+  hub: Hub;
+  planner: Planner;
+  paused: boolean;
+}
+
+const live = new Map<string, LiveProject>(); // by resolved repo path
+
+export function setLiveProject(root: string, project: LiveProject) {
+  live.set(resolve(root), project);
 }
 
 const registryFile = () => {
@@ -29,7 +44,7 @@ const registryFile = () => {
   return join(dir, "projects.json");
 };
 
-function readRegistry(): RegistryEntry[] {
+export function readRegistry(): RegistryEntry[] {
   const file = registryFile();
   if (!existsSync(file)) return [];
   try {
@@ -65,38 +80,6 @@ function readRepoConfig(repoRoot: string): HqConfig | null {
   }
 }
 
-/** Auto-discovers sibling directories next to `currentRepoRoot` that have `.hq/config.json`. */
-function discoverSiblingProjects(currentRepoRoot: string, entries: RegistryEntry[]): RegistryEntry[] {
-  const parent = dirname(resolve(currentRepoRoot));
-  if (!existsSync(parent)) return entries;
-  let changed = false;
-  const byPath = new Map(entries.map((e) => [resolve(e.path), e]));
-  try {
-    for (const dirent of readdirSync(parent, { withFileTypes: true })) {
-      if (!dirent.isDirectory()) continue;
-      const candidate = join(parent, dirent.name);
-      if (byPath.has(resolve(candidate))) continue;
-      const cfg = readRepoConfig(candidate);
-      if (!cfg?.project) continue;
-      const entry: RegistryEntry = {
-        id: slugify(cfg.project.id || cfg.project.name || dirent.name),
-        name: cfg.project.name || dirent.name,
-        path: resolve(candidate),
-        repo: cfg.project.repo || cfg.project.name || dirent.name,
-        hqPort: cfg.project.hqPort || 7420,
-        lastUpdatedAt: new Date().toISOString(),
-      };
-      entries.push(entry);
-      byPath.set(entry.path, entry);
-      changed = true;
-    }
-  } catch {
-    /* ignore permission errors on parent dir */
-  }
-  if (changed) writeRegistry(entries);
-  return entries;
-}
-
 /** Registers or updates a project in `~/.hq/projects.json`. */
 export function registerProjectInRegistry(repoRoot: string, config: HqConfig) {
   const cleanPath = resolve(repoRoot);
@@ -111,14 +94,23 @@ export function registerProjectInRegistry(repoRoot: string, config: HqConfig) {
     lastUpdatedAt: now,
   };
   const idx = entries.findIndex((e) => resolve(e.path) === cleanPath || e.id === nextEntry.id);
-  if (idx >= 0) entries[idx] = nextEntry;
+  if (idx >= 0) entries[idx] = { ...nextEntry, ...(entries[idx].paused ? { paused: true } : {}) };
   else entries.push(nextEntry);
   writeRegistry(entries);
-  discoverSiblingProjects(cleanPath, entries);
+}
+
+/** Remembers pause across restarts. */
+export function setRegistryPaused(root: string, paused: boolean) {
+  const entries = readRegistry();
+  const e = entries.find((x) => resolve(x.path) === resolve(root));
+  if (!e) return;
+  if (paused) e.paused = true;
+  else delete e.paused;
+  writeRegistry(entries);
 }
 
 /** Manually registers an existing repo path on disk; initializes `.hq/config.json` and `.hq/plan.json` if not yet present. */
-export function registerProjectPath(rawPath: string, currentHub?: Hub): ProjectOverview | null {
+export function registerProjectPath(rawPath: string): ProjectOverview | null {
   const cleanPath = resolve(rawPath.trim());
   if (!existsSync(cleanPath) || !statSync(cleanPath).isDirectory()) {
     throw new Error(`Directory not found: ${cleanPath}`);
@@ -142,7 +134,7 @@ export function registerProjectPath(rawPath: string, currentHub?: Hub): ProjectO
     savePlan(cleanPath, loadPlan(cleanPath));
   }
   registerProjectInRegistry(cleanPath, cfg);
-  const all = listProjectsOverview(currentHub);
+  const all = listProjectsOverview();
   return all.find((p) => resolve(p.path) === cleanPath) ?? null;
 }
 
@@ -159,21 +151,16 @@ function summarizeCounts(tasks: Task[]) {
 }
 
 /** Lists all known `.hq` projects with their team roster, boards, tasks, and task counts. */
-export function listProjectsOverview(currentHub?: Hub): ProjectOverview[] {
-  let entries = readRegistry();
-  if (currentHub) {
-    registerProjectInRegistry(currentHub.repo.root, currentHub.snap.config);
-    entries = readRegistry();
-  }
-  const currentPath = currentHub ? resolve(currentHub.repo.root) : null;
+export function listProjectsOverview(): ProjectOverview[] {
   const out: ProjectOverview[] = [];
 
-  for (const entry of entries) {
+  for (const entry of readRegistry()) {
     const p = resolve(entry.path);
-    if (currentHub && currentPath === p) {
-      const cfg = currentHub.snap.config;
-      const boards = currentHub.snap.boards;
-      const tasks = currentHub.snap.tasks;
+    const loaded = live.get(p);
+    if (loaded) {
+      const cfg = loaded.hub.snap.config;
+      const boards = loaded.hub.snap.boards;
+      const tasks = loaded.hub.snap.tasks;
       out.push({
         id: cfg.project.id,
         name: cfg.project.name,
@@ -181,7 +168,9 @@ export function listProjectsOverview(currentHub?: Hub): ProjectOverview[] {
         repo: cfg.project.repo,
         hqPort: cfg.project.hqPort,
         online: true,
-        isCurrent: true,
+        paused: loaded.paused,
+        isCurrent: false,
+        type: cfg.project.type ?? "software",
         workflowMode: cfg.workflow.mode ?? "github-pr",
         officeName: cfg.project.officeName,
         lastUpdatedAt: new Date().toISOString(),
@@ -211,7 +200,9 @@ export function listProjectsOverview(currentHub?: Hub): ProjectOverview[] {
       repo: cfg.project.repo || entry.repo,
       hqPort: cfg.project.hqPort || entry.hqPort,
       online: false,
+      paused: false,
       isCurrent: false,
+      type: cfg.project.type ?? "software",
       workflowMode: cfg.workflow.mode ?? "github-pr",
       officeName: cfg.project.officeName,
       lastUpdatedAt: entry.lastUpdatedAt,
@@ -230,35 +221,33 @@ export function listProjectsOverview(currentHub?: Hub): ProjectOverview[] {
     });
   }
 
-  return out.sort((a, b) => (a.isCurrent ? -1 : b.isCurrent ? 1 : a.name.localeCompare(b.name)));
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function resolveTargetProject(projectIdOrName: string, currentHub?: Hub): { isCurrent: boolean; path: string; config: HqConfig } {
+function resolveTargetProject(projectIdOrName: string): { live?: LiveProject; path: string; config: HqConfig } {
   const q = projectIdOrName.trim().toLowerCase();
-  const projects = listProjectsOverview(currentHub);
+  const projects = listProjectsOverview();
   const match = projects.find(
     (p) => p.id.toLowerCase() === q || p.name.toLowerCase() === q || p.path.toLowerCase() === q,
   );
   if (!match) {
     throw new Error(`Project "${projectIdOrName}" not found. Known projects: ${projects.map((p) => `${p.id} (${p.name})`).join(", ") || "none"}`);
   }
-  if (match.isCurrent && currentHub) {
-    return { isCurrent: true, path: currentHub.repo.root, config: currentHub.snap.config };
-  }
+  const loaded = live.get(resolve(match.path));
+  if (loaded) return { live: loaded, path: match.path, config: loaded.hub.snap.config };
   const cfg = readRepoConfig(match.path);
   if (!cfg) throw new Error(`Could not read config for project "${match.name}" at ${match.path}`);
-  return { isCurrent: false, path: match.path, config: cfg };
+  return { path: match.path, config: cfg };
 }
 
 /** Creates a task in any registered project (live via Planner if current, or directly in `<projectPath>/.hq/plan.json`). */
 export function createCrossProjectTask(
   projectId: string,
   args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; ownerId?: string },
-  currentHub?: Hub,
-  currentPlanner?: Planner,
 ): Task {
-  const target = resolveTargetProject(projectId, currentHub);
-  if (target.isCurrent && currentPlanner && currentHub) {
+  const target = resolveTargetProject(projectId);
+  if (target.live) {
+    const currentPlanner = target.live.planner;
     const task = currentPlanner.createTask(
       {
         title: args.title,
@@ -328,11 +317,10 @@ export function updateCrossProjectTask(
     ownerId?: string | null;
     note?: string | null;
   },
-  currentHub?: Hub,
-  currentPlanner?: Planner,
 ): Task {
-  const target = resolveTargetProject(projectId, currentHub);
-  if (target.isCurrent && currentPlanner && currentHub) {
+  const target = resolveTargetProject(projectId);
+  if (target.live) {
+    const { planner: currentPlanner, hub: currentHub } = target.live;
     const t = currentPlanner.updateTask(taskId, {
       title: patch.title,
       description: patch.description,

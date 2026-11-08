@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# .hq desktop launcher: pick a project folder (recent or browse), start .hq on a free port,
-# open the browser. Each project runs detached; logs in ~/.hq/logs/<folder>.log.
+# .hq desktop launcher: pick a project folder (recent or browse) and open it in the one .hq server.
+# The server (all registered projects) runs detached; log in ~/.hq/logs/server.log. If it's already
+# running, the folder is registered with it and opened; otherwise the server starts with it.
 set -euo pipefail
 
 HQ_ROOT="__HQ_ROOT__"   # filled in by install-desktop.sh
@@ -42,11 +43,20 @@ fi
 echo "$dir" > "$LAST"
 name=$(basename "$dir")
 
-# --- already running (started by this launcher)? just reopen it
-pidf="$HOME/.hq/logs/$name.pid"; log="$HOME/.hq/logs/$name.log"
+pidf="$HOME/.hq/logs/server.pid"; log="$HOME/.hq/logs/server.log"
+
+# --- server already running? register the folder with it and open that project
 if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
   url=$(grep -oP 'is running → \K\S+' "$log" | tail -1)
-  [ -n "$url" ] && xdg-open "$url" >/dev/null 2>&1 && exit 0
+  [ -n "$url" ] || die "The .hq server is running but its log has no URL: $log"
+  base="${url%%/\?*}"; token="${url##*token=}"
+  # Local Origin from loopback: the server treats this as this machine's own browser.
+  reply=$(curl -sf -X POST -H "Authorization: Bearer $token" -H "Origin: $base" -H "Content-Type: application/json" \
+    --data "$("$NODE" -e 'console.log(JSON.stringify({ path: process.argv[1] }))' "$dir")" "$base/api/projects/register") \
+    || die "Couldn't add $dir to the running .hq server. See $log"
+  id=$(printf '%s' "$reply" | "$NODE" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).project?.id ?? ""))')
+  xdg-open "$url&project=$id" >/dev/null 2>&1
+  exit 0
 fi
 
 # --- free port from 7420
@@ -64,7 +74,7 @@ echo $pid > "$pidf"
   for i in $(seq 1 60); do
     if grep -q "is running →" "$log" 2>/dev/null; then echo 100; exit 0; fi
     kill -0 $pid 2>/dev/null || exit 1
-    echo $((i * 100 / 60)); echo "# Starting .hq for $name (setup checks)…"; sleep 0.5
+    echo $((i * 100 / 60)); echo "# Starting .hq (setup checks for every project)…"; sleep 0.5
   done
 ) | zenity --progress --title=".hq" --text="Starting .hq for $name…" --auto-close --no-cancel --width=380 2>/dev/null || true
 

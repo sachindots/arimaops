@@ -36,6 +36,8 @@ export class GitHubSync {
   private timer: NodeJS.Timeout | null = null;
   private nudgeTimer: NodeJS.Timeout | null = null;
   private busy = false;
+  private running = false; // start/stop can repeat (project pause/resume)
+  private subscribed = false;
   private lastError: string | null = null;
   private lastFetch = 0;
   private interval = MIN_POLL_MS;
@@ -48,7 +50,11 @@ export class GitHubSync {
       log.warn("No GitHub remote: PRs and reviews are off.");
       return;
     }
+    if (this.running) return;
+    this.running = true;
     void this.tick();
+    if (this.subscribed) return;
+    this.subscribed = true;
     // Check sooner when an agent finishes a turn (it may have run `gh pr create`)
     // or reports a PR with set_my_status in-review.
     let reviewCfg = JSON.stringify(this.hub.snap.config.workflow.review);
@@ -66,6 +72,7 @@ export class GitHubSync {
   }
 
   stop() {
+    this.running = false;
     if (this.timer) clearTimeout(this.timer);
     if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
   }
@@ -73,13 +80,14 @@ export class GitHubSync {
   /** One poll, then schedule the next at the current interval. */
   private async tick() {
     await this.refresh();
+    if (!this.running) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.tick(), Math.max(this.interval, this.pausedUntil - Date.now()));
   }
 
   /** Refresh soon (debounced): an agent just opened a PR or finished a turn. Still respects the minimum gap and any pause. */
   nudge(delayMs = 3000) {
-    if (!this.repo) return;
+    if (!this.repo || !this.running) return;
     if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
     const wait = Math.max(delayMs, this.lastFetch + MIN_POLL_MS - Date.now(), this.pausedUntil - Date.now());
     this.nudgeTimer = setTimeout(() => void this.refresh(), wait);

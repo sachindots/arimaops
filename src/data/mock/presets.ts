@@ -65,7 +65,7 @@ const askwell: Preset = {
   id: "askwell",
   label: "Askwell · 3 agents",
   config: {
-    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420 },
+    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420, type: "software" },
     team: [
       agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -120,7 +120,7 @@ const redCell: Preset = {
   id: "red-cell",
   label: "RedCell · 5 agents (Cybersec)",
   config: {
-    project: { id: "redcell-ops", name: "RedCell Ops", repo: "dothq/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
+    project: { id: "redcell-ops", name: "RedCell Ops", repo: "dothq/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420, type: "security" },
     team: [
       agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),
@@ -166,7 +166,7 @@ const bigTeam: Preset = {
   id: "big-team",
   label: "Shipyard · 7 agents",
   config: {
-    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
+    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420, type: "software" },
     team: [
       agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -218,7 +218,7 @@ const duo: Preset = {
   id: "duo",
   label: "Notely · 2 agents",
   config: {
-    project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420 },
+    project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420, type: "software" },
     team: [
       agent("ada", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("max", "Ghost", "Developer", "#00ff66", { cli: "claude" }),

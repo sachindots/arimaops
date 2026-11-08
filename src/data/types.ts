@@ -118,6 +118,16 @@ export interface WorkflowConfig {
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
 }
 
+/** What kind of work the project is; decides its workflow (software: PRs; the others come in later phases). */
+export type ProjectType = "software" | "security" | "research" | "ops";
+export const PROJECT_TYPES: { id: ProjectType; label: string }[] = [
+  { id: "software", label: "Software" },
+  { id: "security", label: "Security engagement" },
+  { id: "research", label: "Research / docs" },
+  { id: "ops", label: "Ops / infra" },
+];
+export const isProjectType = (v: unknown): v is ProjectType => PROJECT_TYPES.some((t) => t.id === v);
+
 export interface ProjectConfig {
   /** Fixed once created: names sandboxes, tmux sessions and ~/.hq/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
@@ -127,6 +137,7 @@ export interface ProjectConfig {
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
   officeName?: string; // the sign on the office wall; empty = ".HQ"
+  type: ProjectType;
 }
 
 export interface HqConfig {
@@ -457,8 +468,13 @@ export interface ProjectOverview {
   path: string;
   repo: string;
   hqPort: number;
+  /** Loaded in this server (its agents report here). */
   online: boolean;
+  /** Loaded but GitHub/sbx polling paused. */
+  paused: boolean;
+  /** Always false from the server (it serves every project); the UI sets it for the project you're viewing. */
   isCurrent: boolean;
+  type: ProjectType;
   workflowMode: WorkflowMode;
   officeName?: string;
   lastUpdatedAt: string;

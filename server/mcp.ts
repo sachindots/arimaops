@@ -233,12 +233,13 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     },
     guard(() =>
       ok(
-        listProjectsOverview(hub).map((p) => ({
+        listProjectsOverview().map((p) => ({
           id: p.id,
           name: p.name,
           path: p.path,
           online: p.online,
-          isCurrent: p.isCurrent,
+          isCurrent: p.id === hub.snap.config.project.id,
+          type: p.type,
           workflowMode: p.workflowMode,
           counts: p.counts,
           team: p.team.map((a) => `${a.name} (${a.role}, ${a.cli}${a.model ? `:${a.model}` : ""})`),
@@ -255,7 +256,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     },
     guard(({ projectId }: { projectId: string }) => {
       const q = projectId.trim().toLowerCase();
-      const found = listProjectsOverview(hub).find(
+      const found = listProjectsOverview().find(
         (p) => p.id.toLowerCase() === q || p.name.toLowerCase() === q || p.path.toLowerCase() === q,
       );
       if (!found) throw new Error(`Project "${projectId}" not found.`);
@@ -266,7 +267,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "create_project_task",
     {
-      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if current project, or saved directly to that project's .hq/plan.json).",
+      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if loaded in HQ, or saved directly to that project's .hq/plan.json).",
       inputSchema: {
         projectId: z.string().describe("Project id or name from list_projects"),
         title: z.string(),
@@ -280,7 +281,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     guard((args: { projectId: string; title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; ownerId?: string }) => {
       leadOnly();
       const { projectId, ...rest } = args;
-      return ok(createCrossProjectTask(projectId, rest, hub, planner));
+      return ok(createCrossProjectTask(projectId, rest));
     }),
   );
 
@@ -301,7 +302,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     },
     guard(({ projectId, taskId, ...patch }: { projectId: string; taskId: string; title?: string; description?: string; doneWhen?: string; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; ownerId?: string; note?: string }) => {
       leadOnly();
-      return ok(updateCrossProjectTask(projectId, taskId, patch, hub, planner));
+      return ok(updateCrossProjectTask(projectId, taskId, patch));
     }),
   );
 
