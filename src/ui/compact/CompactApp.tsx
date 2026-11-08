@@ -13,6 +13,7 @@ import { CtoDrawer } from "../drawers/CtoDrawer";
 import { EnvironmentDrawer } from "../drawers/EnvironmentDrawer";
 import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
+import { FindingsDrawer } from "../drawers/FindingsDrawer";
 
 type Tab = "chat" | "board" | "inbox" | "agents" | "more";
 
@@ -34,6 +35,7 @@ export function CompactApp() {
     : drawer?.kind === "cto" ? <CtoDrawer />
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
     : drawer?.kind === "boards" ? <BoardsDrawer initialBoardId={drawer.boardId} />
+    : drawer?.kind === "findings" ? <FindingsDrawer />
     : null;
 
   return (
@@ -219,6 +221,8 @@ function AgentList() {
 
 function More() {
   const choice = useUi((s) => s.layoutChoice);
+  const security = useOffice((s) => s.snap?.config.project.type === "security");
+  const open = useOffice((s) => (s.snap?.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length);
   const item = (label: string, sub: string, onClick: () => void, show = true): ReactNode =>
     show && (
       <li key={label}>
@@ -236,6 +240,7 @@ function More() {
   return (
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <ul>
+        {item(`Findings${open ? ` · ${open}` : ""}`, "What agents found on in-scope targets; triage and the report", () => ui.openFindings(), security)}
         {item("Projects", "Switch project, pause or resume, add tasks anywhere", () => ui.openCto())}
         {item("Pull requests", "Reviews and what's ready to merge", () => ui.openPrs())}
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}

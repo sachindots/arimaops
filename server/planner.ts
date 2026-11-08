@@ -4,6 +4,7 @@
 import { CLI_LABEL, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
+import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 
@@ -26,6 +27,8 @@ export class Planner {
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
   actions: ActionItems | null = null;
+  /** Set by project.ts: security findings (Team MCP report_finding). */
+  findings: Findings | null = null;
 
   constructor(private hub: Hub, private inbox: Inbox) {}
 

@@ -207,6 +207,75 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     }),
   );
 
+  // ---------------------------------------------------------------- Ops: plan approval
+  server.registerTool(
+    "submit_plan",
+    {
+      description:
+        "Ops / infra projects: before changing any system, submit your plan (what you'll run, on which hosts, how to roll back). It goes to the user as Approve / Reject. Don't execute anything until HQ tells you it was approved.",
+      inputSchema: {
+        title: z.string().describe("The change, in a few words"),
+        plan: z.string().describe("Exact steps and commands, the hosts they touch, expected impact, and the rollback"),
+      },
+    },
+    guard(({ title, plan }: { title: string; plan: string }) => {
+      if (!planner.actions) throw new Error("Action items aren't available.");
+      if (!plan.trim()) throw new Error("Write the plan: steps, commands, hosts and rollback.");
+      const item = planner.actions.add(me, title, plan, true, "plan");
+      return ok(`Plan sent to the user for approval (${item.id}). Wait for HQ's message before executing anything; prepare (read-only) meanwhile.`);
+    }),
+  );
+
+  // ---------------------------------------------------------------- Security: findings
+  server.registerTool(
+    "report_finding",
+    {
+      description:
+        "Security engagements: record a vulnerability you found on an IN-SCOPE target. HQ refuses out-of-scope targets. Include reproducible evidence (requests/responses, commands and output) but never real secrets or personal data; redact them.",
+      inputSchema: {
+        title: z.string(),
+        severity: z.enum(["critical", "high", "medium", "low", "info"]),
+        target: z.string().describe("The in-scope host, IP or URL"),
+        description: z.string().describe("What's wrong and why it matters"),
+        evidence: z.string().describe("Steps to reproduce, requests/responses or command output (redacted)"),
+        remediation: z.string().describe("How to fix it"),
+      },
+    },
+    guard((args: { title: string; severity: string; target: string; description: string; evidence: string; remediation: string }) => {
+      if (!planner.findings) throw new Error("Findings aren't available.");
+      const f = planner.findings.report(me, planner.currentTask(me)?.id ?? null, args);
+      return ok(`Recorded ${f.id} (${f.severity}). It's in deliverables/security-report.md.`);
+    }),
+  );
+
+  server.registerTool(
+    "list_findings",
+    { description: "Security engagements: the findings so far (id, severity, status, target, title), so you don't report duplicates. Also returns the scope and rules of engagement." },
+    guard(() =>
+      ok({
+        scope: hub.snap.config.project.scope ?? null,
+        findings: (hub.snap.findings ?? []).map((f) => ({ id: f.id, severity: f.severity, status: f.status, target: f.target, title: f.title })),
+      }),
+    ),
+  );
+
+  server.registerTool(
+    "update_finding",
+    {
+      description: "Lead only. Triage a finding: status (open, confirmed, fixed, accepted, false-positive) or severity.",
+      inputSchema: {
+        id: z.string(),
+        status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
+        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+      },
+    },
+    guard(({ id, ...patch }: { id: string; status?: string; severity?: string }) => {
+      leadOnly();
+      if (!planner.findings) throw new Error("Findings aren't available.");
+      return ok(planner.findings.update(id, patch));
+    }),
+  );
+
   server.registerTool(
     "request_access",
     {

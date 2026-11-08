@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { ActionItems } from "./actionItems";
+import { Findings } from "./findings";
 import { makeCommands } from "./commands";
 import { GitHubSync } from "./githubSync";
 import { Hub } from "./hub";
@@ -70,7 +71,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const slug = config.project.id;
   const secret = agentToken(slug);
 
-  const setup = await runSetupChecks(repo, config.team, port);
+  const setup = await runSetupChecks(repo, config.team, port, config.project);
   const bad = setup.checks.filter((c) => c.status !== "ok");
   log.info(`project ${slug}  ${repo.root}${bad.length ? `  (${bad.length} setup checks need attention)` : ""}`);
 
@@ -101,6 +102,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   planner.actions = new ActionItems(hub, planner);
+  planner.findings = new Findings(hub);
   sessions.onLimit = (id, until) => {
     const lead = hub.snap.config.team.find((a) => a.isLead);
     const agent = hub.cfg(id);

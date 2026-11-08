@@ -12,6 +12,7 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { projectHome, sessionName } from "./paths";
 import { policyVerdict } from "./setup";
+import { outOfScopeDomains, scopeDomains } from "./scope";
 
 interface RawRule {
   id: string;
@@ -403,7 +404,12 @@ export class Sbx {
     const agent = this.hub.cfg(agentId);
     if (!agent || agent.mode !== "sandbox" || !(await this.exists(agentId))) return;
     const name = this.name(agentId);
-    const want = new Set([...agent.sandbox.allow.map((r) => key("allow", r)), ...agent.sandbox.deny.map((r) => key("deny", r))]);
+    // Security engagement: in-scope domains are allowed and out-of-scope ones denied for every sandbox.
+    const project = this.hub.snap.config.project;
+    const sec = project.type === "security";
+    const allow = [...agent.sandbox.allow, ...(sec ? scopeDomains(project.scope) : [])];
+    const deny = [...agent.sandbox.deny, ...(sec ? outOfScopeDomains(project.scope) : [])];
+    const want = new Set([...allow.map((r) => key("allow", r)), ...deny.map((r) => key("deny", r))]);
     const owned = new Set(this.owned[name] ?? []);
     const all = await this.rules();
     if (!all) {

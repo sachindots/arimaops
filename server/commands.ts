@@ -16,6 +16,7 @@ import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
 import { newAgent } from "./store";
 import { mergeByNotice } from "./githubSync";
+import { cleanEntry } from "./scope";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -79,6 +80,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
 
     // You → agent: same delivery path as the lead's assign_task / send_message.
     assignTask: (taskId, agentId) => planner.assign(str(taskId, 40), str(agentId, 80), "you"),
+    updateFinding: (id, patch) => planner.findings?.update(str(id, 20), (patch ?? {}) as Record<string, unknown>),
     setTaskRunsOn: (taskId, cli, model) =>
       planner.updateTask(str(taskId, 40), { cli: isAgentCli(cli) ? cli : null, model: typeof model === "string" && model.trim() ? str(model, 80) : null }),
     sendMessage: (toId, text) => planner.message("you", str(toId, 80), str(text, 2000)),
@@ -357,13 +359,37 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         if (name) project.officeName = name;
         else delete project.officeName;
       }
-      if (isProjectType(p.type)) project.type = p.type;
+      if (isProjectType(p.type) && p.type !== project.type) {
+        project.type = p.type;
+        // The type decides the workflow: software ships PRs, the others ship deliverables (reports, docs, runbooks).
+        const mode = p.type === "software" ? "github-pr" : "deliverables";
+        if (hub.snap.config.workflow.mode !== mode) {
+          hub.snap.config.workflow.mode = mode;
+          hub.activity("config", null, `Project type: ${p.type}. Workflow set to ${mode === "github-pr" ? "GitHub pull requests" : "deliverables"}; change it in Settings → Workflow if you need to. Restart agents to give them the new instructions.`);
+        }
+      }
+      let scopeChanged = false;
+      if (p.scope && typeof p.scope === "object") {
+        // Only valid domains / IPs / CIDRs are kept; anything else is dropped (and reported).
+        const clean = (list: unknown) => (Array.isArray(list) ? list : []).map((x) => cleanEntry(String(x))).filter((x): x is string => !!x).slice(0, 500);
+        const raw = [...(Array.isArray(p.scope.inScope) ? p.scope.inScope : []), ...(Array.isArray(p.scope.outOfScope) ? p.scope.outOfScope : [])].filter((x) => String(x).trim());
+        project.scope = { inScope: [...new Set(clean(p.scope.inScope))], outOfScope: [...new Set(clean(p.scope.outOfScope))], rules: str(p.scope.rules ?? "", 4000) };
+        const dropped = raw.length - project.scope.inScope.length - project.scope.outOfScope.length;
+        if (dropped > 0) hub.activity("config", null, `Scope: ${dropped} entr${dropped === 1 ? "y wasn't" : "ies weren't"} a domain, IP or CIDR and ${dropped === 1 ? "was" : "were"} left out.`);
+        scopeChanged = true;
+      }
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       hub.configChanged();
       if (exportOn) {
         hub.planChanged();
         hub.activity("config", null, "Plan export on: HQ writes docs/plan.md whenever the plan changes.");
+      }
+      if (scopeChanged || isProjectType(p.type)) {
+        for (const a of hub.snap.config.team) void sbx.syncRules(a.id);
+        void sessions.recheckSetup(); // the scope firewall commands depend on scope and team
+        const lead = hub.snap.config.team.find((a) => a.isLead);
+        if (scopeChanged && lead) planner.notify(lead.id, `The engagement scope changed. In scope: ${project.scope?.inScope.join(", ") || "nothing"}. Out of scope: ${project.scope?.outOfScope.join(", ") || "nothing"}. Tell the team; anything outside scope is off limits.`);
       }
     },
 

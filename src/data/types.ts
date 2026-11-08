@@ -140,6 +140,37 @@ export interface ProjectConfig {
   exportPlan?: boolean; // also write the plan to docs/plan.md
   officeName?: string; // the sign on the office wall; empty = ".HQ"
   type: ProjectType;
+  /** Security engagements: what agents may touch. */
+  scope?: Scope;
+}
+
+/** Engagement scope: domains ("example.com", "*.example.com"), IPs or IPv4 CIDRs. Out of scope always wins. */
+export interface Scope {
+  inScope: string[];
+  outOfScope: string[];
+  /** Rules of engagement, given to every agent (hours, rate limits, no DoS, contacts…). */
+  rules: string;
+}
+
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
+export type FindingStatus = "open" | "confirmed" | "fixed" | "accepted" | "false-positive";
+export const FINDING_STATUSES: FindingStatus[] = ["open", "confirmed", "fixed", "accepted", "false-positive"];
+
+/** A security finding an agent reported (Team MCP report_finding). */
+export interface Finding {
+  id: string; // "F-003"
+  title: string;
+  severity: Severity;
+  target: string; // in-scope host, IP or URL
+  description: string;
+  evidence: string; // requests/responses, commands and output (no secrets)
+  remediation: string;
+  status: FindingStatus;
+  reporterId: string;
+  taskId: string | null;
+  at: string;
+  updatedAt: string;
 }
 
 export interface HqConfig {
@@ -323,6 +354,7 @@ export type SetupCheckId =
   | "agent-image"
   | "egress-lock"
   | "hq-reach"
+  | "scope-firewall"
   | `login-${AgentCli}`;
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
@@ -421,6 +453,7 @@ export interface OfficeSnapshot {
   accessRequests?: AccessRequest[];
   mcp?: McpState;
   actionItems?: ActionItem[];
+  findings?: Finding[];
 }
 
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
@@ -432,6 +465,8 @@ export interface ActionItem {
   details: string; // steps; never secret values
   waiting: boolean; // the agent can't continue without it
   status: "open" | "done" | "dismissed";
+  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes. */
+  kind?: "request" | "plan";
   note: string | null; // the user's note when closing it
   at: string;
   closedAt: string | null;

@@ -118,6 +118,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
     <li className={`border-[3px] border-ink bg-white px-3 py-2 shadow-[0_3px_0_rgba(36,26,46,0.35)] ${item.waiting ? "outline outline-[3px] outline-orange" : ""}`}>
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
+        {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
         {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
@@ -145,10 +146,10 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
         />
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
-          Done
+          {item.kind === "plan" ? "Approve" : "Done"}
         </button>
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
-          Dismiss
+          {item.kind === "plan" ? "Reject" : "Dismiss"}
         </button>
       </div>
     </li>

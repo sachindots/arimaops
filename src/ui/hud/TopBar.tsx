@@ -35,6 +35,7 @@ export function TopBar() {
   const boards = [...snap.boards].sort((a, b) => a.order - b.order);
   const active = boards.filter((b) => b.status === "active");
   const openPrs = snap.pullRequests.filter((p) => !p.merged && !p.closed).length;
+  const openFindings = (snap.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length;
 
   return (
     <header className="hq-topbar panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
@@ -136,9 +137,15 @@ export function TopBar() {
         <button className="btn text-[14px]" onClick={() => ui.openBoards(planBoardId ?? undefined)}>
           Boards
         </button>
-        <button className="btn text-[14px]" onClick={() => ui.openPrs()}>
-          PRs{openPrs ? ` · ${openPrs}` : ""}
-        </button>
+        {snap.config.project.type === "security" ? (
+          <button className="btn text-[14px]" onClick={() => ui.openFindings()}>
+            Findings{openFindings ? ` · ${openFindings}` : ""}
+          </button>
+        ) : (
+          <button className="btn text-[14px]" onClick={() => ui.openPrs()}>
+            PRs{openPrs ? ` · ${openPrs}` : ""}
+          </button>
+        )}
         {!isViewer && <button className="btn text-[14px]" onClick={() => ui.openTerminal()} title="Your own shell on this machine: the repo, an agent's folder or any folder">
           Terminal
         </button>}

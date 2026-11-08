@@ -48,7 +48,7 @@ else {
   const requests: string[] = [];
   const cfg = { ...agent, mode: "container" };
   const hub = {
-    snap: { accessRequests: [] as unknown[] },
+    snap: { accessRequests: [] as unknown[], config: { project: { id: "ctrtest", type: "security", scope: { inScope: ["example.net"], outOfScope: ["www.iana.org"], rules: "" } } } },
     cfg: (id: string) => (id === "dwight" ? cfg : undefined),
     holdForAccess: () => {},
     emit: (e: { type: string; request?: { domain: string } }) => e.request && requests.push(e.request.domain),
@@ -75,6 +75,10 @@ else {
   check("allowed site goes through the proxy", allowed.stdout.trim() === "200", `${allowed.stdout} ${allowed.stderr}`);
   const extra = await curl("https://example.com/");
   check("the agent's own allow list works", extra.stdout.trim() === "200", `${extra.stdout} ${extra.stderr}`);
+  const scoped = await curl("https://example.net/");
+  check("security engagement: an in-scope site is allowed", scoped.stdout.trim() === "200", `${scoped.stdout} ${scoped.stderr}`);
+  const outScope = await curl("https://www.iana.org/");
+  check("security engagement: out of scope is refused", outScope.stdout.trim() !== "200", outScope.stdout);
   const blocked = await curl("https://example.org/");
   check("other sites are refused", blocked.stdout.trim() !== "200", blocked.stdout);
   check("a refused site becomes an access request", requests.includes("example.org"), requests.join(","));

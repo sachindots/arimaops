@@ -8,6 +8,7 @@ import { EnvironmentDrawer } from "./EnvironmentDrawer";
 import { PrDrawer } from "./PrDrawer";
 import { ActionItemsDrawer } from "./ActionItemsDrawer";
 import { TerminalDrawer } from "./TerminalDrawer";
+import { FindingsDrawer } from "./FindingsDrawer";
 
 export function DrawerHeader({ children }: { children: ReactNode }) {
   // Compact layout: drawers are full-screen pages, so no resize/maximize; close goes back.
@@ -138,6 +139,7 @@ export function DrawerHost() {
           {drawer.kind === "env" && <EnvironmentDrawer name={drawer.name} />}
           {drawer.kind === "terminal" && <TerminalDrawer />}
           {drawer.kind === "cto" && <CtoDrawer />}
+          {drawer.kind === "findings" && <FindingsDrawer />}
         </motion.aside>
       )}
     </AnimatePresence>

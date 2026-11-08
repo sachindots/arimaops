@@ -199,6 +199,12 @@ export function createMockSource(): OfficeDataSource {
       // Everything is installed in the mock.
     },
 
+    updateFinding(id, patch) {
+      const f = world.snap.findings?.find((x) => x.id === id);
+      if (!f) return;
+      Object.assign(f, patch);
+      world.emit({ type: "finding.updated", finding: { ...f } });
+    },
     setTaskRunsOn(taskId, cli, model) {
       const task = world.task(taskId);
       if (!task) return;

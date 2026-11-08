@@ -5,12 +5,16 @@
 //    mandatory (setup check "egress-lock"); HQ never runs sudo, so it shows the command.
 //  - Sign-in: one Docker volume per CLI (hq-auth-<cli>), shared by that CLI's containers; you sign in once.
 
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
+import { homedir } from "node:os";
 import { connect, type Socket } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentCli, AgentConfig } from "../src/data/types";
+import { BRAND } from "../src/data/brand";
 import { requestAccess } from "./access";
+import { checkScope } from "./scope";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import type { Runtime } from "./project";
@@ -65,6 +69,33 @@ export function hostAllowed(rules: string[], host: string, port: number): boolea
   });
 }
 
+/**
+ * Each container agent keeps one fixed IP on hq-agents (172.30.0.10–250), so a security engagement's
+ * firewall rules can name exactly which agent may reach which target. Saved in ~/.hq/container-ips.json.
+ */
+export function agentIp(containerName: string): string {
+  const file = join(homedir(), BRAND.homeDir, "container-ips.json");
+  let map: Record<string, string> = {};
+  try {
+    if (existsSync(file)) map = JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
+  } catch {
+    map = {};
+  }
+  if (map[containerName]) return map[containerName];
+  const used = new Set(Object.values(map));
+  for (let n = 10; n <= 250; n++) {
+    const ip = `172.30.0.${n}`;
+    if (used.has(ip)) continue;
+    map[containerName] = ip;
+    mkdirSync(dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, JSON.stringify(map, null, 2));
+    renameSync(tmp, file);
+    return ip;
+  }
+  throw new Error("No free container IPs left on hq-agents (240 agents). Remove old entries from ~/.hq/container-ips.json.");
+}
+
 /** `docker run` arguments for an agent (run in tmux like the other modes; --rm: state lives in the folder and login volume). */
 export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number): string[] {
   const authDir = AUTH_DIR[agent.cli];
@@ -75,7 +106,7 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
   const gid = process.getgid?.() ?? 1000;
   return [
     "run", "-it", "--rm", "--init", "--name", name, "--hostname", agent.id,
-    "--network", NETWORK,
+    "--network", NETWORK, "--ip", agentIp(name),
     "--user", `${uid}:${gid}`,
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--pids-limit", "1024",
     ...(cpus ? ["--cpus", String(cpus)] : []),
@@ -156,6 +187,13 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     if (!who) return { ok: false, why: "unknown container" };
     const agent = who.rt.hub.cfg(who.agent.id) ?? who.agent; // live config: allow/deny change at runtime
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
+    // Security engagement: in scope is allowed on any port; explicitly out of scope is never allowed.
+    const project = who.rt.hub.snap.config.project;
+    if (project.type === "security" && project.scope) {
+      const s = checkScope(project.scope, `${host}:${port}`);
+      if (s.ok) return { ok: true, why: "" };
+      if (s.why.includes("explicitly")) return { ok: false, why: s.why };
+    }
     if (hostAllowed([...BASE_ALLOW, ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
     const key = `${who.rt.slug}/${agent.id}/${host}`;
     if (!asked.has(key)) {

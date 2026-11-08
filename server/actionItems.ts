@@ -37,7 +37,7 @@ export class ActionItems {
     renameSync(tmp, this.file);
   }
 
-  add(fromId: string, title: string, details: string, waiting: boolean): ActionItem {
+  add(fromId: string, title: string, details: string, waiting: boolean, kind: "request" | "plan" = "request"): ActionItem {
     const clean = title.trim().replace(/\s+/g, " ").slice(0, 160);
     if (!clean) throw new Error("Give the action item a short title.");
     const item: ActionItem = {
@@ -47,6 +47,7 @@ export class ActionItems {
       title: clean,
       details: details.trim().slice(0, 4000),
       waiting,
+      kind,
       status: "open",
       note: null,
       at: new Date().toISOString(),
@@ -68,6 +69,11 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     const n = item.note ? ` Note from the user: ${item.note}` : "";
+    if (item.kind === "plan") {
+      if (decision === "done") this.planner.notify(item.fromId, `The user APPROVED your plan "${item.title}".${n} Go ahead and execute it, exactly as planned.`);
+      else this.planner.notify(item.fromId, `The user REJECTED your plan "${item.title}".${n} Don't execute it. Revise the plan and submit_plan again, or ask the lead.`);
+      return;
+    }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
   }

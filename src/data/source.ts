@@ -4,6 +4,9 @@ import type {
   AgentCli,
   AccessRequest,
   ActionItem,
+  Finding,
+  FindingStatus,
+  Severity,
   McpState,
   NewMcpServer,
   ActivityEvent,
@@ -48,6 +51,7 @@ export type OfficeEvent =
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "action.updated"; item: ActionItem }
+  | { type: "finding.updated"; finding: Finding }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
   | { type: "remote.stepup"; status: "required" | "ok" | "denied"; cmd?: string; args?: unknown[]; until?: number };
 
@@ -77,6 +81,8 @@ export interface OfficeDataSource {
   assignTask(taskId: string, agentId: string): void;
   /** Which CLI (and optionally model) a task must run on; null clears it. */
   setTaskRunsOn(taskId: string, cli: AgentCli | null, model: string | null): void;
+  /** Triage a security finding. */
+  updateFinding(id: string, patch: { status?: FindingStatus; severity?: Severity }): void;
   /** You → an agent, delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
 

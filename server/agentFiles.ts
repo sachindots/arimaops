@@ -207,14 +207,31 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   rules.push(
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
+  // Project type: what this engagement allows and how work is approved.
+  const project = cfg.project;
+  if (project.type === "security") {
+    const sc = project.scope;
+    rules.push(
+      `This is an authorized security engagement. Touch ONLY in-scope targets. In scope: ${sc?.inScope.join(", ") || "(not set yet: don't scan anything; ask the user for the scope)"}. Out of scope (never touch, even if linked from in-scope pages): ${sc?.outOfScope.join(", ") || "none listed"}.`,
+      ...(sc?.rules ? [`Rules of engagement: ${sc.rules.replace(/\s*\n\s*/g, " ")}`] : []),
+      "No denial of service, no destructive actions, no data exfiltration beyond the minimum proof; redact secrets and personal data in evidence. If something looks out of scope or risky, stop and ask the user (ask_user).",
+      "Record each vulnerability with report_finding (severity, in-scope target, reproducible evidence, remediation). Check list_findings first to avoid duplicates. HQ writes deliverables/security-report.md from them.",
+    );
+  } else if (project.type === "ops") {
+    rules.push(
+      "This is an ops / infra project: before changing any system, call submit_plan with the exact commands, hosts, impact and rollback, then WAIT. Execute only after HQ tells you the user approved it; if rejected, revise and resubmit. Read-only investigation is fine meanwhile.",
+    );
+  } else if (project.type === "research") {
+    rules.push("This is a research / docs project: deliver well-sourced documents. Cite sources with links, separate facts from your conclusions, and say what you couldn't verify.");
+  }
   // Sandboxes block most sites; the agent asks instead of working around it.
   if (agent.mode !== "local")
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
   const tools = isExecOrLead
-    ? "list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access"
-    : "get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access";
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding, update_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",

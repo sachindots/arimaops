@@ -2,12 +2,14 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { arch, cpus, platform, release, totalmem } from "node:os";
-import type { AgentConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
+import { lookup } from "node:dns/promises";
+import type { AgentConfig, ProjectConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
+import { firewallCommands, scopeDomains, scopeNetworks } from "./scope";
 import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import type { RepoInfo } from "./repo";
-import { authVolume, buildCommand, EGRESS_LOCK_CMD, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, loginCommand, NETWORK } from "./containers";
+import { agentIp, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, loginCommand, NETWORK } from "./containers";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -288,6 +290,34 @@ async function checkHqReach(imageOk: boolean, hqPort: number): Promise<Check> {
   };
 }
 
+/**
+ * Security engagement in Container mode: raw tools (nmap, nuclei…) don't go through the proxy, so the host
+ * firewall must let each agent's fixed IP reach the in-scope networks. HQ can't read iptables without root,
+ * so this stays a reminder with the exact commands (re-run them after changing the scope or the team).
+ */
+async function checkScopeFirewall(project: ProjectConfig, team: AgentConfig[]): Promise<Check | null> {
+  if (project.type !== "security") return null;
+  const agents = team.filter((a) => a.mode === "container");
+  if (!agents.length) return null;
+  const base = { id: "scope-firewall" as const, label: "Engagement targets reachable by raw tools", neededFor: "container" as const };
+  const resolved = await Promise.all(
+    scopeDomains(project.scope)
+      .filter((d) => !d.startsWith("*."))
+      .map((d) => lookup(d, { all: true, family: 4 }).then((r) => r.map((x) => x.address)).catch(() => [] as string[])),
+  );
+  const targets = [...new Set([...scopeNetworks(project.scope), ...resolved.flat()])];
+  if (!targets.length)
+    return { ...base, status: "warning", detail: "No in-scope IPs yet (wildcard domains can't be resolved ahead). Web traffic to in-scope domains goes through the proxy; add IPs or ranges for scanners.", fix: null };
+  const ips = agents.map((a) => agentIp(`hq-${project.id}-${a.id}`));
+  const cmds = firewallCommands(project.id, ips, targets, BRIDGE);
+  return {
+    ...base,
+    status: "warning",
+    detail: `Run once after changing the scope or the team: lets ${agents.map((a) => a.name).join(", ")} reach ${targets.length} in-scope address${targets.length === 1 ? "" : "es"} directly (scanners). Domains were resolved now; re-run if their IPs change.`,
+    fix: fix(cmds.join(" && \\\n"), false, null),
+  };
+}
+
 /** Whether the CLI's shared login volume has a sign-in (any file in it). */
 async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number): Promise<Check> {
   const base = { id: `login-${cli}` as const, label: `${cli} sign-in for containers`, neededFor: "container" as const };
@@ -300,7 +330,7 @@ async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hq
 }
 
 /** `team` adds CLI-specific checks for any CLI used by the team. */
-export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], hqPort = 7420): Promise<SetupState> {
+export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], hqPort = 7420, project?: ProjectConfig): Promise<SetupState> {
   const brew = os === "darwin" && (await has("brew"));
   const [osCheck, sbx, tmux, claude, gh] = await Promise.all([checkOs(), checkSbx(brew), checkTmux(brew), checkClaude(), checkGh(brew)]);
   const sbxOk = sbx.status === "ok";
@@ -328,6 +358,8 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
     const reach = await checkHqReach(imageOk, hqPort);
     const logins = await Promise.all(containerClis.map((c) => checkContainerLogin(c, imageOk, hqPort)));
     checks.push(docker, image, lock, reach, ...logins);
+    const scopeFw = project ? await checkScopeFirewall(project, team) : null;
+    if (scopeFw) checks.push(scopeFw);
     containerReady = docker.status === "ok" && imageOk && lock.status !== "missing" && reach.status === "ok" && tmux.status === "ok";
   }
 

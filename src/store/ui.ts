@@ -8,6 +8,7 @@ export type DrawerState =
   | { kind: "actions" }
   | { kind: "terminal" }
   | { kind: "cto" }
+  | { kind: "findings" }
   | null;
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
@@ -116,6 +117,9 @@ export const ui = {
   },
   openActions() {
     useUi.setState({ drawer: { kind: "actions" } });
+  },
+  openFindings() {
+    useUi.setState({ drawer: { kind: "findings" } });
   },
   openCto() {
     useUi.setState({ drawer: { kind: "cto" } });

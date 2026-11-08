@@ -32,6 +32,43 @@ function FontPicker() {
   );
 }
 
+/** Engagement scope: one entry per line. The server keeps only domains, IPs and CIDRs. */
+function ScopeEditor() {
+  const scope = useOffice((s) => s.snap?.config.project.scope);
+  const [inScope, setIn] = useState((scope?.inScope ?? []).join("\n"));
+  const [outOfScope, setOut] = useState((scope?.outOfScope ?? []).join("\n"));
+  const [rules, setRules] = useState(scope?.rules ?? "");
+  const lines = (v: string) => v.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+  const dirty = inScope !== (scope?.inScope ?? []).join("\n") || outOfScope !== (scope?.outOfScope ?? []).join("\n") || rules !== (scope?.rules ?? "");
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Scope</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Agents may only touch in-scope targets; out of scope always wins. One per line: <code>example.com</code>, <code>*.example.com</code>, <code>10.0.0.0/24</code>,{" "}
+        <code>203.0.113.7</code>, optionally <code>:port</code>. Web traffic to them is allowed through the proxy; for scanners in Container mode, the setup checklist shows the firewall commands.
+      </p>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="In scope">
+          <textarea className="field h-[120px] font-mono text-[13px]" value={inScope} onChange={(e) => setIn(e.target.value)} placeholder={"*.acme.test\n10.20.0.0/24"} />
+        </Field>
+        <Field label="Out of scope">
+          <textarea className="field h-[120px] font-mono text-[13px]" value={outOfScope} onChange={(e) => setOut(e.target.value)} placeholder={"vpn.acme.test\n10.20.0.1"} />
+        </Field>
+      </div>
+      <Field label="Rules of engagement" hint="Given to every agent: testing window, rate limits, no DoS, who to contact.">
+        <textarea className="field h-[80px] text-[13px]" value={rules} onChange={(e) => setRules(e.target.value)} />
+      </Field>
+      <button
+        className="btn mt-2"
+        disabled={!dirty}
+        onClick={() => officeActions.updateProject({ scope: { inScope: lines(inScope), outOfScope: lines(outOfScope), rules: rules.trim() } })}
+      >
+        Save scope
+      </button>
+    </section>
+  );
+}
+
 export function ProjectSettings() {
   const project = useOffice((s) => s.snap?.config.project);
   if (!project) return null;
@@ -80,6 +117,7 @@ export function ProjectSettings() {
           />
         </Field>
       </section>
+      {project.type === "security" && <ScopeEditor />}
       <section>
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />
