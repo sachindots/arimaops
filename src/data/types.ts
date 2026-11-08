@@ -23,7 +23,9 @@ export interface SandboxSettings {
   deny: string[]; // blocked domains for this sandbox (deny wins over allow)
 }
 
-export type AgentMode = "sandbox" | "local";
+/** sandbox = Docker Sandboxes (sbx microVM); container = plain Docker behind HQ's allowlist proxy (VMs); local = on the host. */
+export type AgentMode = "sandbox" | "container" | "local";
+export const isAgentMode = (v: unknown): v is AgentMode => v === "sandbox" || v === "container" || v === "local";
 
 /** Which coding or autonomous agent CLI runs in the sandbox or locally. */
 export const AGENT_CLIS = ["claude", "codex", "agy", "opencode", "gemini", "copilot"] as const;
@@ -181,6 +183,8 @@ export interface AgentStatus {
   stateSince: string; // ISO time
   note: string | null; // e.g. "Asking: max PDF size 10 MB or 20 MB?"
   session: SessionInfo;
+  /** Its subscription hit a usage limit; don't assign work until this time (ISO). */
+  limitedUntil?: string | null;
 }
 
 export type BoardStatus = "active" | "planned" | "done";
@@ -207,6 +211,10 @@ export interface Task {
   doneWhen?: string; // acceptance criteria
   note?: string | null; // e.g. why it's blocked
   deliverablePath?: string | null; // optional output file/artifact in deliverables mode
+  /** Runs on: only an agent with this CLI may take the task (null = any). */
+  cli?: AgentCli | null;
+  /** Preferred model for the task (applied when the agent next starts). */
+  model?: string | null;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -310,7 +318,12 @@ export type SetupCheckId =
   | "opencode"
   | "gemini"
   | "copilot"
-  | "google-secret";
+  | "google-secret"
+  | "docker"
+  | "agent-image"
+  | "egress-lock"
+  | "hq-reach"
+  | `login-${AgentCli}`;
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
 export interface SetupFix {
@@ -324,7 +337,7 @@ export interface SetupCheck {
   label: string;
   status: SetupStatus;
   detail: string; // version found, or what is wrong
-  neededFor: "sandbox" | "local" | "all" | "github";
+  neededFor: "sandbox" | "container" | "local" | "all" | "github";
   fix: SetupFix | null;
 }
 
@@ -388,6 +401,7 @@ export interface SetupState {
   checks: SetupCheck[];
   sandboxReady: boolean; // every sandbox check passes
   localReady: boolean; // Local mode can run
+  containerReady: boolean; // Container mode can run (Docker, image, network)
   checkedAt: string;
 }
 

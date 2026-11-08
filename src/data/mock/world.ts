@@ -53,6 +53,7 @@ export function mockSetup(): SetupState {
     ],
     sandboxReady: true,
     localReady: true,
+    containerReady: true,
     checkedAt: now(),
   };
 }

@@ -157,7 +157,7 @@ export async function ensureWorkspace(agent: AgentConfig, projectSlug: string, r
   }
   // The sandbox's git can't see the host's setting, so it would show every CRLF file as changed and
   // an agent would commit the CRLF. A sandboxed agent's clone gets its own: LF on checkout and on commit.
-  const lf = agent.mode === "sandbox" && (await hostConvertsToCrlf(projectSlug));
+  const lf = agent.mode !== "local" && (await hostConvertsToCrlf(projectSlug));
   if (!existsSync(dir)) {
     const hasCommits = (await run("git", ["rev-parse", "--verify", "HEAD"], { cwd: repo.root })).ok;
     if (hasCommits) {

@@ -96,7 +96,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
 
       {agent.mode === "local" && (
         <p className="border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
-          {agent.name} runs in Local mode, so sandbox settings don't apply until it's switched back to Sandbox. The env file still applies.
+          {agent.name} runs in Local mode, so sandbox settings don't apply until it's switched to Sandbox or Container. The env file still applies.
         </p>
       )}
 

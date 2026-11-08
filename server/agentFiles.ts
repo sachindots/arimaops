@@ -1,6 +1,7 @@
 // The files HQ writes into each agent's folder. All of them are listed in the
 // clone's .git/info/exclude, so they are never committed.
 
+import { GATEWAY as CONTAINER_GATEWAY } from "./containers";
 import { lstatSync } from "node:fs";
 import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
@@ -154,8 +155,9 @@ export function writeHookScript(dir: string) {
 const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"] as const;
 const GEMINI_HOOK_EVENTS = ["SessionStart", "BeforeAgent", "BeforeTool", "AfterTool", "Notification", "AfterAgent", "SessionEnd"] as const;
 
-/** URL agents use to reach HQ: through the sandbox proxy, or straight to localhost. */
+/** URL agents use to reach HQ: through the sandbox proxy, the container network's gateway, or straight to localhost. */
 export function hqUrl(agent: AgentConfig, port: number): string {
+  if (agent.mode === "container") return `http://${CONTAINER_GATEWAY}:${port}`;
   return agent.mode === "sandbox" ? `http://host.docker.internal:${port}` : `http://127.0.0.1:${port}`;
 }
 
@@ -206,7 +208,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
   // Sandboxes block most sites; the agent asks instead of working around it.
-  if (agent.mode === "sandbox")
+  if (agent.mode !== "local")
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );

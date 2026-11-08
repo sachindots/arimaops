@@ -36,7 +36,12 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
           {a.config.cli}:{a.config.model || "default"}
         </span>
         <span className="font-term text-[15px] text-muted">{ago(a.status.stateSince, now)}</span>
-        {a.config.mode === "local" && <span className="chip text-[10px]">local</span>}
+        {a.config.mode !== "sandbox" && <span className="chip text-[10px]">{a.config.mode}</span>}
+        {a.status.limitedUntil && Date.parse(a.status.limitedUntil) > now && (
+          <span className="chip text-[10px]" style={{ ["--c" as string]: "#ff9f1c" }} title="Its subscription hit a usage limit. HQ won't assign it work until then.">
+            limit · {new Date(a.status.limitedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
         {items > 0 && (
           <span className="chip text-[10px]" style={{ ["--c" as string]: "#ff1744" }} title="Action items from this agent. Open Action items in the top bar.">
             {items} for you

@@ -7,6 +7,7 @@ import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import type { RepoInfo } from "./repo";
+import { authVolume, buildCommand, EGRESS_LOCK_CMD, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, loginCommand, NETWORK } from "./containers";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -242,8 +243,64 @@ async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
   return { ...base, status: "missing", detail: "Codex agents can't sign in until this is set. Opens your browser to sign in with ChatGPT.", fix: fix("sbx secret set openai --oauth", true, "https://docs.docker.com/ai/sandboxes/") };
 }
 
+// ---------------------------------------------------------------- Container mode
+
+async function checkDocker(): Promise<Check> {
+  const base = { id: "docker" as const, label: "Docker (for Container mode)", neededFor: "container" as const };
+  const r = await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 });
+  if (r.ok) return { ...base, status: "ok", detail: `Docker ${r.stdout.trim()}`, fix: null };
+  return { ...base, status: "missing", detail: "Docker isn't installed, isn't running, or your user isn't in the docker group.", fix: fix("curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER", false, "https://docs.docker.com/engine/install/") };
+}
+
+async function checkAgentImage(dockerOk: boolean): Promise<Check> {
+  const base = { id: "agent-image" as const, label: "Agent image (dothq-agent)", neededFor: "container" as const };
+  if (!dockerOk) return { ...base, status: "missing", detail: "Waiting for Docker.", fix: null };
+  const r = await run("docker", ["image", "inspect", IMAGE, "--format", "{{.Created}}"], { timeoutMs: 8000 });
+  if (r.ok) return { ...base, status: "ok", detail: `Built ${r.stdout.trim().slice(0, 10)}. Rebuild to update the CLIs.`, fix: fix(buildCommand(), true, null) };
+  return { ...base, status: "missing", detail: "Not built yet. Takes a few minutes the first time (Node, git, gh and the agent CLIs).", fix: fix(buildCommand(), true, null) };
+}
+
+/** A container on hq-agents tries to reach the internet without the proxy; it must fail. */
+async function checkEgressLock(imageOk: boolean): Promise<Check> {
+  const base = { id: "egress-lock" as const, label: "Containers can only go through HQ's proxy", neededFor: "container" as const };
+  if (!imageOk || !(await ensureNetwork())) return { ...base, status: "missing", detail: "Waiting for Docker and the agent image.", fix: null };
+  const r = await run("docker", ["run", "--rm", "--network", NETWORK, IMAGE, "curl", "-s", "-o", "/dev/null", "-m", "4", "https://1.1.1.1"], { timeoutMs: 20_000 });
+  if (!r.ok) return { ...base, status: "ok", detail: "Direct internet access is blocked; sites go through the allowlist.", fix: null };
+  return {
+    ...base,
+    status: "warning",
+    detail: "Containers can skip the proxy and reach any site. Add this firewall rule once (and make it persist, e.g. with iptables-persistent).",
+    fix: fix(EGRESS_LOCK_CMD, false, null),
+  };
+}
+
+/** A container reaches HQ on the gateway (hooks, Team MCP, proxy). Before HQ listens (first check at startup) it can't pass; HQ re-checks once it's up. */
+async function checkHqReach(imageOk: boolean, hqPort: number): Promise<Check> {
+  const base = { id: "hq-reach" as const, label: "Containers can reach HQ", neededFor: "container" as const };
+  if (!imageOk) return { ...base, status: "missing", detail: "Waiting for the agent image.", fix: null };
+  const r = await run("docker", ["run", "--rm", "--network", NETWORK, IMAGE, "curl", "-sf", "-m", "4", `http://${GATEWAY}:${hqPort}/api/health`], { timeoutMs: 20_000 });
+  if (r.ok) return { ...base, status: "ok", detail: `HQ answers at ${GATEWAY}:${hqPort}.`, fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: "A container can't reach HQ: usually the host firewall (ufw drops incoming traffic by default). Allow the container network to reach HQ and its proxy:",
+    fix: fix(hostFirewallCmd(hqPort), false, null),
+  };
+}
+
+/** Whether the CLI's shared login volume has a sign-in (any file in it). */
+async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number): Promise<Check> {
+  const base = { id: `login-${cli}` as const, label: `${cli} sign-in for containers`, neededFor: "container" as const };
+  const cmd = loginCommand(cli, hqPort);
+  if (!cmd) return { ...base, status: "unsupported", detail: `${cli} can't run in Container mode yet.`, fix: null };
+  if (!imageOk) return { ...base, status: "missing", detail: "Waiting for the agent image.", fix: null };
+  const r = await run("docker", ["run", "--rm", "-v", `${authVolume(cli)}:/v`, "--entrypoint", "sh", IMAGE, "-c", "ls -A /v | head -1"], { timeoutMs: 20_000 });
+  if (r.ok && r.stdout.trim()) return { ...base, status: "ok", detail: `Saved in the ${authVolume(cli)} volume, shared by every ${cli} container.`, fix: fix(cmd, true, null) };
+  return { ...base, status: "missing", detail: "Sign in once; every container of this CLI reuses it. Opens the CLI's own login (a link and code you can use on any device).", fix: fix(cmd, true, null) };
+}
+
 /** `team` adds CLI-specific checks for any CLI used by the team. */
-export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): Promise<SetupState> {
+export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], hqPort = 7420): Promise<SetupState> {
   const brew = os === "darwin" && (await has("brew"));
   const [osCheck, sbx, tmux, claude, gh] = await Promise.all([checkOs(), checkSbx(brew), checkTmux(brew), checkClaude(), checkGh(brew)]);
   const sbxOk = sbx.status === "ok";
@@ -261,6 +318,19 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): 
   if (hasCli("gemini", "local")) checks.push(await checkGemini());
   if (hasCli("copilot", "local")) checks.push(await checkCopilot());
 
+  const containerClis = [...new Set(team.filter((a) => a.mode === "container").map((a) => a.cli))];
+  let containerReady = false;
+  if (containerClis.length) {
+    const docker = await checkDocker();
+    const image = await checkAgentImage(docker.status === "ok");
+    const imageOk = image.status === "ok";
+    const lock = await checkEgressLock(imageOk);
+    const reach = await checkHqReach(imageOk, hqPort);
+    const logins = await Promise.all(containerClis.map((c) => checkContainerLogin(c, imageOk, hqPort)));
+    checks.push(docker, image, lock, reach, ...logins);
+    containerReady = docker.status === "ok" && imageOk && lock.status !== "missing" && reach.status === "ok" && tmux.status === "ok";
+  }
+
   const ok = (c: SetupCheck) => c.status === "ok";
   const localClis = checks.filter((c) => c.neededFor === "local");
   return {
@@ -268,6 +338,7 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): 
     checks,
     sandboxReady: osCheck.status !== "unsupported" && ok(sbx) && ok(login) && ok(policy) && ok(tmux),
     localReady: ok(tmux) && (localClis.some(ok) || ok(claude)),
+    containerReady,
     checkedAt: new Date().toISOString(),
   };
 }

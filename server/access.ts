@@ -27,7 +27,7 @@ let seq = 0;
 export function requestAccess(hub: Hub, agentId: string, rawDomain: string, reason: string): string {
   const agent = hub.cfg(agentId);
   if (!agent) throw new Error("Unknown agent.");
-  if (agent.mode !== "sandbox") return "You run in Local mode, outside a sandbox: HQ doesn't restrict your network. If a request fails, it isn't a sandbox block.";
+  if (agent.mode === "local") return "You run in Local mode, outside a sandbox: HQ doesn't restrict your network. If a request fails, it isn't a sandbox block.";
   const domain = cleanDomain(rawDomain);
   if (!domain) throw new Error(`"${rawDomain}" isn't a domain. Pass just the host, like docs.example.com.`);
   if (agent.sandbox.allow.includes(domain))
@@ -74,7 +74,7 @@ async function answer(hub: Hub, sbx: Sbx, planner: Planner, requestId: string, d
     return;
   }
 
-  const ids = decision === "everyone" ? hub.snap.config.team.filter((a) => a.mode === "sandbox").map((a) => a.id) : [req.agentId];
+  const ids = decision === "everyone" ? hub.snap.config.team.filter((a) => a.mode !== "local").map((a) => a.id) : [req.agentId];
   const added: string[] = [];
   for (const id of ids) {
     const a = hub.cfg(id);

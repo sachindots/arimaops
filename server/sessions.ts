@@ -9,7 +9,9 @@ import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
 import { HOST_TERMINAL, CLI_LABEL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
-import { adapters, localBinary } from "./adapters";
+import { adapters, containerArgs, localBinary } from "./adapters";
+import { ensureNetwork, runArgs } from "./containers";
+import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
@@ -67,6 +69,10 @@ export class Sessions {
   onSessionReattached: (agentId: string) => void = () => {};
   /** When the agent's last hook arrived (from the inbox). */
   lastHookAt: (agentId: string) => number = () => 0;
+  /** An agent's CLI printed a usage-limit message (set by project.ts: tells the lead). */
+  onLimit: (agentId: string, until: Date) => void = () => {};
+  private limitLines = new Map<string, string>(); // last limit message seen per agent
+  private limitTick = 0;
   private polling: NodeJS.Timeout | null = null;
   /** Consecutive polls that saw a "working" agent's screen sitting idle. */
   private idleScreens = new Map<string, number>();
@@ -93,6 +99,8 @@ export class Sessions {
     if (!setup.checks.find((c) => c.id === "tmux" && c.status === "ok")) return fail("tmux is not installed. See the setup checklist.");
     if (agent.mode === "sandbox" && !setup.sandboxReady) return fail("Docker Sandboxes isn't ready on this machine. Finish the setup checklist, or switch this agent to Local mode.");
     const check = (cid: string) => setup.checks.find((c) => c.id === cid)?.status;
+    if (agent.mode === "container" && !setup.containerReady) return fail("Container mode isn't ready: Docker, the agent image or the proxy firewall rule is missing. See the setup checklist.");
+    if (agent.mode === "container" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
     if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")
       return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
@@ -105,7 +113,7 @@ export class Sessions {
       const dir = await ensureWorkspace(agent, hub.slug, hub.repo);
       const adapter = adapters[agent.cli];
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
-      const hasEnvFile = !!this.envFileFor(id) && (agent.mode === "sandbox" || this.backend.persistent);
+      const hasEnvFile = !!this.envFileFor(id) && (agent.mode !== "local" || this.backend.persistent);
       await adapter.writeFiles(dir, agent, hub.snap.config, agentTokenFor(this.agentToken, agent.id), { hasEnvFile });
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
@@ -134,12 +142,19 @@ export class Sessions {
           const args = sbxArgs.length ? ["--", ...sbxArgs] : [];
           spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, launch.sbxAgent, dir, ...args], envFile: null };
         }
+        if (agent.mode === "container") {
+          hub.setSession(id, { detail: "Starting container…" });
+          if (!(await ensureNetwork())) throw new Error("Couldn't create the hq-agents Docker network. See HQ's log.");
+          await run("docker", ["rm", "-f", name], { timeoutMs: 20_000 }); // a container left from a crash
+          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort), envFile: null };
+        }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }
       this.attach(id);
       hub.setSession(id, { state: "running", detail: null, workspace: dir });
-      hub.setStatus(id, { state: "idle", note: agent.mode === "sandbox" ? "Sandbox running" : "Running locally" });
-      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
+      const where = { sandbox: ["Sandbox running", "Docker Sandbox"], container: ["Container running", "Container"], local: ["Running locally", "Local mode"] }[agent.mode];
+      hub.setStatus(id, { state: "idle", note: where[0] });
+      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}, ${where[1]})`);
       if (agent.mode === "sandbox") {
         setTimeout(() => void this.refreshSandboxSizes(), 4000);
         void this.whenSandboxExists(id).then((ok) => ok && this.onSandboxReady(id));
@@ -160,6 +175,7 @@ export class Sessions {
     await this.backend.kill(name);
     // Stop (not remove) the VM so it can resume later with its state.
     if (agent.mode === "sandbox") void run("sbx", ["stop", name], { timeoutMs: 30_000 });
+    if (agent.mode === "container") void run("docker", ["rm", "-f", name], { timeoutMs: 30_000 });
     hub.setSession(id, { state: "stopped", detail: null });
     hub.setStatus(id, { state: "idle", currentTaskId: null, note: "Stopped" });
     hub.activity("session", id, `${agent.name} stopped`);
@@ -206,6 +222,7 @@ export class Sessions {
       if (rm.ok) (done.push("sandbox"), this.onSandboxRemoved(id));
       else if (!/not found|no such/i.test(rm.stderr)) log.warn(`sbx rm ${name}: ${rm.stderr.trim()}`);
     } else if (agent.mode === "sandbox") void run("sbx", ["stop", name], { timeoutMs: 30_000 });
+    if (agent.mode === "container") void run("docker", ["rm", "-f", name], { timeoutMs: 30_000 });
     if (opts.deleteFolder && !agent.workspacePath) {
       const home = resolve(projectHome(this.hub.slug));
       const dir = resolve(workspaceFor(agent, this.hub.slug));
@@ -381,6 +398,7 @@ export class Sessions {
   /** Keeps session state honest: picks up sessions from before a restart, notices crashes. */
   startPolling() {
     const tick = async () => {
+      this.limitTick++;
       if (this.hub.snap.setup.checks.find((c) => c.id === "tmux")?.status !== "ok") return;
       for (const agent of this.hub.snap.config.team) {
         const st = this.hub.status(agent.id);
@@ -409,6 +427,7 @@ export class Sessions {
           if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
           if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name, !agent.workspacePath);
           await this.reconcileFromScreen(agent.id, agent.cli, name);
+          if (this.limitTick % 5 === 0) await this.watchLimits(agent.id, name);
         } else if (st.session.state === "running") {
           this.detach(agent.id);
           this.closeShell(agent.id);
@@ -425,6 +444,18 @@ export class Sessions {
       // Sandbox sizes change rarely; check every ~30s (and right after a start).
       if (n++ % 10 === 0 && this.hub.snap.setup.sandboxReady) void this.refreshSandboxSizes();
     }, 3000);
+  }
+
+  /** Every ~15 s: a new usage-limit message on screen marks the agent limited until its reset time. */
+  private async watchLimits(agentId: string, name: string) {
+    const hit = detectLimit(await this.backend.screenText(name, 12));
+    if (!hit || this.limitLines.get(agentId) === hit.line) return; // the same message still on screen
+    this.limitLines.set(agentId, hit.line);
+    const until = hit.until.toISOString();
+    const at = hit.until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    this.hub.setStatus(agentId, { limitedUntil: until, note: `Usage limit until ${at}${hit.exact ? "" : " (estimated)"}` });
+    this.hub.activity("agent.needs-input", agentId, `${this.hub.name(agentId)} hit a usage limit${hit.exact ? ` until ${at}` : " (no reset time shown; HQ checks again in 30 min)"}`);
+    this.onLimit(agentId, hit.until);
   }
 
   /**
@@ -532,7 +563,7 @@ export class Sessions {
   // ------------------------------------------------------------ setup helper
 
   async recheckSetup() {
-    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config.team));
+    this.hub.setSetup(await runSetupChecks(this.hub.repo, this.hub.snap.config.team, this.hub.snap.config.project.hqPort));
   }
 
   /** Runs a program in a terminal the browser can watch and type into (id must start with "setup:"). */
@@ -600,6 +631,10 @@ export class Sessions {
         const env = this.envFileFor(agentId);
         ({ file, args } = await resolveCommand("sbx", ["exec", "-it", ...(env ? ["--env-file", env] : []), ...(win ? [] : ["-w", dir]), name, "sh", "-c", SANDBOX_SHELL]));
         banner = `sbx exec -it ${name} bash`;
+      } else if (agent.mode === "container") {
+        const name = this.name(agentId);
+        ({ file, args } = await resolveCommand("docker", ["exec", "-it", name, "bash", "-l"]));
+        banner = `docker exec -it ${name} bash`;
       } else {
         const sh = process.env.SHELL || "/bin/sh";
         const env = win ? null : this.envFileFor(agentId);
@@ -624,7 +659,7 @@ export class Sessions {
       if (this.closing.has(pty)) return;
       // Failing right away usually means the command itself couldn't run (e.g. sbx not installed or on PATH).
       if (exitCode && Date.now() - startedAt < 2500)
-        return this.hub.terminal(id, `\r\n\x1b[31m[couldn't start the shell (exit ${exitCode}). ${agent.mode === "sandbox" ? "Check that sbx is installed and you're signed in (sbx login)." : "Check your shell."}]\x1b[0m\r\n`);
+        return this.hub.terminal(id, `\r\n\x1b[31m[couldn't start the shell (exit ${exitCode}). ${agent.mode === "sandbox" ? "Check that sbx is installed and you're signed in (sbx login)." : agent.mode === "container" ? "Check that the agent's container is running (docker ps)." : "Check your shell."}]\x1b[0m\r\n`);
       this.hub.terminal(id, `\r\n\x1b[2m[shell closed${exitCode ? ` (exit ${exitCode})` : ""}. Press "New shell" to open another.]\x1b[0m\r\n`);
     });
   }

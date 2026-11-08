@@ -86,6 +86,7 @@ export function createWsSource(token: string, project = ""): OfficeDataSource {
     sendTerminalInput: (id, data) => send("sendTerminalInput", id, data),
     resizeTerminal: (id, cols, rows) => send("resizeTerminal", id, cols, rows),
     assignTask: (taskId, agentId) => send("assignTask", taskId, agentId),
+    setTaskRunsOn: (taskId, cli, model) => send("setTaskRunsOn", taskId, cli, model),
     sendMessage: (toId, text) => send("sendMessage", toId, text),
     startAgent: (id) => send("startAgent", id),
     stopAgent: (id) => send("stopAgent", id),

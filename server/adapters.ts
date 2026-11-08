@@ -32,6 +32,19 @@ export interface Launch {
   sbxArgs?: string[];
 }
 
+/**
+ * Container mode: the CLI's arguments plus its "don't ask before each command" flag. The container and the
+ * allowlist proxy are the boundary (as the microVM is for sbx's templates), so prompts would only stall the agent.
+ */
+const CONTAINER_YOLO: Partial<Record<AgentCli, string[]>> = {
+  claude: ["--dangerously-skip-permissions"],
+  codex: ["--dangerously-bypass-approvals-and-sandbox"],
+  gemini: ["--yolo"],
+  copilot: ["--allow-all-tools"],
+  opencode: [],
+};
+export const containerArgs = (cli: AgentCli, launch: Launch) => [...launch.args, ...(CONTAINER_YOLO[cli] ?? [])];
+
 export interface CliAdapter {
   /** Writes .hq's files into the agent's folder (all git-excluded). */
   writeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras?: RoleExtras): Promise<void>;

@@ -13,6 +13,7 @@ const ICON: Record<SetupStatus, [string, string]> = {
 
 const NEEDED: Record<SetupCheck["neededFor"], string> = {
   sandbox: "for sandboxes",
+  container: "for Container mode",
   local: "for Local mode",
   all: "required",
   github: "for PRs & reviews",
@@ -91,6 +92,11 @@ export function SetupChecklist() {
             <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#00ff66" : "#6e7b94" }}>
               Local mode {setup.localReady ? "ready" : "not ready"}
             </span>
+            {setup.checks.some((c) => c.neededFor === "container") && (
+              <span className="chip chip-dot" style={{ ["--c" as string]: setup.containerReady ? "#00ff66" : "#ff1744" }}>
+                Containers {setup.containerReady ? "ready" : "not ready"}
+              </span>
+            )}
           </div>
           <ul>
             {setup.checks.map((c) => (

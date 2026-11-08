@@ -30,7 +30,7 @@ export function TopBar() {
 
   // Live: count real running sessions. Mock: every agent counts as running.
   const runningIds = new Set(snap.agents.filter((a) => a.session.state === "running").map((a) => a.agentId));
-  const sandboxes = snap.config.team.filter((a) => a.mode === "sandbox" && runningIds.has(a.id)).length;
+  const sandboxes = snap.config.team.filter((a) => a.mode !== "local" && runningIds.has(a.id)).length;
   const local = snap.config.team.filter((a) => a.mode === "local" && runningIds.has(a.id)).length;
   const boards = [...snap.boards].sort((a, b) => a.order - b.order);
   const active = boards.filter((b) => b.status === "active");

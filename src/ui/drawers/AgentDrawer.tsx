@@ -74,11 +74,12 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               value={agent.mode}
               aria-label={`${agent.name} runtime mode`}
               onChange={(e) => {
-                officeActions.updateAgent(agent.id, { mode: e.target.value as "sandbox" | "local" });
+                officeActions.updateAgent(agent.id, { mode: e.target.value as AgentConfig["mode"] });
                 if (isRunning) setPendingRestart(true);
               }}
             >
               <option value="sandbox">Docker Sandbox</option>
+              <option value="container">Container</option>
               <option value="local">Local mode</option>
             </select>
             {pendingRestart && isRunning && (
@@ -147,12 +148,12 @@ function ShellTab({ agent, status }: { agent: AgentConfig; status: AgentStatus }
     if (running) officeActions.openShell(agent.id);
   }, [agent.id, running, n]);
   if (!running)
-    return <div className="p-4 text-[14px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "sandbox" ? "their sandbox" : "their folder"}.</div>;
+    return <div className="p-4 text-[14px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "local" ? "their folder" : agent.mode === "container" ? "their container" : "their sandbox"}.</div>;
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream-2 px-3 py-1 text-[12px] text-muted">
         <span className="min-w-0 flex-1 truncate">
-          {agent.mode === "sandbox" ? `A shell in ${agent.name}'s sandbox, beside the agent` : `Your shell in ${agent.name}'s folder`}
+          {agent.mode === "sandbox" ? `A shell in ${agent.name}'s sandbox, beside the agent` : agent.mode === "container" ? `A shell in ${agent.name}'s container, beside the agent` : `Your shell in ${agent.name}'s folder`}
         </span>
         <button
           className="btn px-2 text-[12px] text-ink"
@@ -289,7 +290,7 @@ function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus
 function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
   const s = status.session;
   const setup = useOffice((st) => st.snap?.setup);
-  const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : !setup?.localReady;
+  const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : agent.mode === "container" ? !setup?.containerReady : !setup?.localReady;
   return (
     <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6edf7]">
       <div className="max-w-[380px]">
@@ -302,7 +303,9 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
             <p className="mb-4 text-[13px] text-[#6e7b94]">
               {agent.mode === "sandbox"
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
-                : `Start runs ${CLI_LABEL[agent.cli]} locally in this agent's own copy of the repo, with permission prompts on.`}
+                : agent.mode === "container"
+                  ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker container on this agent's own copy of the repo. Websites go through HQ's allowlist.`
+                  : `Start runs ${CLI_LABEL[agent.cli]} locally in this agent's own copy of the repo, with permission prompts on.`}
             </p>
             {agent.cli === "codex" && (
               <p className="mb-4 text-[12px] text-orange">
@@ -428,7 +431,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
     <div className="scroll-thin h-full overflow-y-auto p-4">
       <SectionTitle>Sandbox</SectionTitle>
       <div className="panel mb-4 px-3 py-1">
-        {row("Mode", agent.mode === "sandbox" ? "Docker Sandbox (microVM), full access inside the VM" : "Local worktree, permission prompts on")}
+        {row("Mode", agent.mode === "sandbox" ? "Docker Sandbox (microVM), full access inside the VM" : agent.mode === "container" ? "Docker container, websites through HQ's allowlist, no permission prompts" : "Local worktree, permission prompts on")}
         {row(
           "Resources",
           <>

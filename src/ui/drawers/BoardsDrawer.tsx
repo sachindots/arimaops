@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { BoardStatus, Task, TaskStatus } from "../../data/types";
+import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { Dot } from "../kit";
@@ -86,7 +86,12 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
 function TaskCard({ task }: { task: Task }) {
   const snap = useOffice((s) => s.snap);
   const owner = snap?.config.team.find((a) => a.id === task.ownerId);
-  const workers = snap?.config.team.filter((a) => !a.isLead) ?? [];
+  const limitedUntil = (id: string) => {
+    const u = snap?.agents.find((s) => s.agentId === id)?.limitedUntil;
+    return u && Date.parse(u) > Date.now() ? new Date(u).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+  };
+  // Only agents on the task's CLI can take it; limited ones are listed but disabled.
+  const workers = snap?.config.team.filter((a) => !a.isLead && (!task.cli || a.cli === task.cli)) ?? [];
   const blockedBy = task.needs.filter((n) => snap?.tasks.find((t) => t.id === n)?.status !== "done");
   return (
     <div className={`border border-ink px-2 py-1.5 shadow-[0_3px_0_rgba(0,0,0,0.6)] ${task.status === "done" ? "bg-[#0a0d14] text-muted" : "bg-[#111520]"}`}>
@@ -112,6 +117,42 @@ function TaskCard({ task }: { task: Task }) {
         )}
       </div>
       {blockedBy.length > 0 && task.status === "todo" && <div className="text-[12px] text-red">Waits on {blockedBy.join(", ")}</div>}
+      {(task.cli || task.model) && (
+        <div className="mt-0.5 font-mono text-[11px] text-muted" title="Runs on: only an agent with this CLI can take the task">
+          runs on {task.cli ? CLI_LABEL[task.cli] : "any CLI"}
+          {task.model ? ` · ${task.model}` : ""}
+        </div>
+      )}
+      {task.status === "todo" && (
+        <select
+          className="field mt-1 py-0 text-[12px]"
+          value={task.cli ?? ""}
+          onChange={(e) => officeActions.setTaskRunsOn(task.id, (e.target.value || null) as AgentCli | null, task.model ?? null)}
+          aria-label={`${task.id} runs on`}
+        >
+          <option value="">Runs on: any CLI</option>
+          {AGENT_CLIS.map((c) => (
+            <option key={c} value={c}>
+              Runs on: {CLI_LABEL[c]}
+            </option>
+          ))}
+        </select>
+      )}
+      {task.status === "todo" && task.cli && (
+        <select
+          className="field mt-1 py-0 text-[12px]"
+          value={task.model ?? ""}
+          onChange={(e) => officeActions.setTaskRunsOn(task.id, task.cli ?? null, e.target.value || null)}
+          aria-label={`${task.id} model`}
+        >
+          <option value="">Model: agent's default</option>
+          {CLI_MODELS[task.cli].map((m) => (
+            <option key={m} value={m}>
+              Model: {m}
+            </option>
+          ))}
+        </select>
+      )}
       {task.status === "todo" && (
         <select
           className="field mt-1 py-0 text-[12px]"
@@ -120,11 +161,14 @@ function TaskCard({ task }: { task: Task }) {
           aria-label={`Assign ${task.id}`}
         >
           <option value="">Assign to…</option>
-          {workers.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} ({a.role})
-            </option>
-          ))}
+          {workers.map((a) => {
+            const limit = limitedUntil(a.id);
+            return (
+              <option key={a.id} value={a.id} disabled={!!limit}>
+                {a.name} ({a.role}, {a.cli}){limit ? ` · limited until ${limit}` : ""}
+              </option>
+            );
+          })}
         </select>
       )}
     </div>

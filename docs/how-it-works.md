@@ -63,6 +63,16 @@ Each agent in Sandbox mode runs in its own [Docker Sandbox](https://docs.docker.
 - **Allowing a website** adds a rule for that sandbox only. Your base policy is never touched, and HQ only removes rules it added.
 - **CPU and memory** are set in Settings → Sandbox. A sandbox gets its size when it's created, so after changing it press **Recreate sandbox**. Stop and Start keeps the old size. Recreating keeps the agent's folder and code but clears anything installed inside the sandbox.
 
+## Container mode (VMs without nested virtualization)
+
+Docker Sandboxes need a machine that can run VMs. On a cloud VM (for example AWS EC2) use **Container** mode instead: each agent runs in a plain Docker container built from `docker/agent.Dockerfile` (Node, git, gh and the Claude Code, Codex, Gemini, Copilot and OpenCode CLIs).
+
+- **Setup once** (the setup checklist shows each command): build the `dothq-agent` image, add the firewall rule that forces containers through HQ's proxy (`sudo iptables -I DOCKER-USER -i br-hq -j DROP`, made persistent), and sign in once per CLI. A sign-in is kept in a Docker volume (`hq-auth-<cli>`) that every container of that CLI shares, and each container only mounts its own CLI's volume.
+- **Network.** Containers sit on the `hq-agents` network and can't talk to each other. Websites go through HQ's allowlist proxy: AI services, sign-in pages, GitHub and package registries are allowed; anything else becomes an access request (Allow / Deny), and the agent's **allowed/denied domains** in Settings → Sandbox apply.
+- **No permission prompts.** The container is the boundary, so each CLI runs with its own "don't ask" flag (as Docker Sandboxes' templates do).
+- **GitHub.** Containers don't get your GitHub login. Add `GH_TOKEN` to the agent's app variables with a fine-grained token for that repo; `git push` and `gh` use it.
+- **Not yet:** Antigravity (`agy`) and extra MCP servers aren't available in Container mode. DNS lookups aren't filtered.
+
 ## Terminals, links and ports
 
 - **Resize any panel.** Drag a panel's left edge to make it wider (HQ remembers the width in this browser; double-click the edge to reset), or press the square button to fill the screen. Terminals resize with it, so full-screen tools that need more rows fit.

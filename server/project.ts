@@ -33,6 +33,7 @@ export interface Runtime {
   commands: Record<string, (...args: unknown[]) => unknown>;
   isNew: boolean;
   paused: boolean;
+  recheckSetup(): Promise<void>;
   pause(): void;
   resume(): void;
   shutdown(): void;
@@ -69,7 +70,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const slug = config.project.id;
   const secret = agentToken(slug);
 
-  const setup = await runSetupChecks(repo, config.team);
+  const setup = await runSetupChecks(repo, config.team, port);
   const bad = setup.checks.filter((c) => c.status !== "ok");
   log.info(`project ${slug}  ${repo.root}${bad.length ? `  (${bad.length} setup checks need attention)` : ""}`);
 
@@ -100,6 +101,16 @@ export async function startProject(path: string, port: number, paused: boolean):
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   planner.actions = new ActionItems(hub, planner);
+  sessions.onLimit = (id, until) => {
+    const lead = hub.snap.config.team.find((a) => a.isLead);
+    const agent = hub.cfg(id);
+    if (!lead || !agent || lead.id === id) return;
+    const task = planner.currentTask(id);
+    planner.notify(
+      lead.id,
+      `${agent.name} (${agent.cli}) hit its usage limit until ${until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.${task ? ` Its task ${task.id} is stuck: reassign it to a free agent on another CLI (update_task cli if it was pinned), or wait.` : ""} Don't assign ${agent.name} new work until then.`,
+    );
+  };
   const github = new GitHubSync(hub, planner, repo.github);
   // Terminal polling always runs: agents left in tmux must keep reporting. Pause stops GitHub and sbx approval polling.
   sessions.startPolling();
@@ -114,6 +125,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     commands: makeCommands(hub, sessions, planner, inbox, sbx, mcp),
     isNew,
     paused: true,
+    recheckSetup: () => sessions.recheckSetup(),
     pause() {
       if (rt.paused) return;
       github.stop();

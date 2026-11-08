@@ -199,6 +199,13 @@ export function createMockSource(): OfficeDataSource {
       // Everything is installed in the mock.
     },
 
+    setTaskRunsOn(taskId, cli, model) {
+      const task = world.task(taskId);
+      if (!task) return;
+      task.cli = cli;
+      task.model = model;
+      world.emit({ type: "task.updated", task: { ...task } });
+    },
     assignTask(taskId, agentId) {
       const task = world.task(taskId);
       const agent = world.cfg(agentId);

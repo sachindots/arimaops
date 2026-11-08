@@ -69,6 +69,8 @@ interface Options {
   /** Read-only + chat token for tablets/phones. Can't run shells, change settings or approve. */
   viewerToken: string;
   host: string;
+  /** Also listen here (e.g. the container network's gateway, so Container-mode agents reach hooks and the Team MCP). */
+  extraHosts?: string[];
   /** Remote mode: also accept the page's own origin (Tailscale / tunnel / LAN), token still required. */
   sameOrigin: boolean;
   /** Origins that count as "this machine". Anything else is remote and needs TOTP step-up for risky commands. */
@@ -318,6 +320,17 @@ export function startHttp(o: Options) {
       }
     });
     ws.on("close", () => unsub());
+  }
+
+  // Same handlers on each extra address; a failure there (e.g. Docker down) only disables that address.
+  for (const h of o.extraHosts ?? []) {
+    if (h === o.host || o.host === "0.0.0.0") continue;
+    const extra = createServer();
+    for (const l of server.listeners("request")) extra.on("request", l as (...a: unknown[]) => void);
+    for (const l of server.listeners("upgrade")) extra.on("upgrade", l as (...a: unknown[]) => void);
+    extra.on("error", (err) => log.warn(`couldn't listen on ${h}:${o.port}: ${err.message}`));
+    extra.listen(o.port, h);
+    server.on("close", () => extra.close());
   }
 
   return new Promise<typeof server>((resolve, reject) => {

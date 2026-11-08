@@ -14,6 +14,7 @@ import { networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BRAND } from "../src/data/brand";
+import { ensureNetwork, GATEWAY, startEgressProxy } from "./containers";
 import { startHttp } from "./http";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
@@ -102,6 +103,9 @@ async function main() {
   if (!dev && !existsSync(join(distDir, "index.html"))) log.warn("No built UI found. Run `pnpm build` first, or use `pnpm dev:hq`.");
 
   const guard = new RemoteGuard(undefined, first.slug);
+  // Container mode: the agents' network, HQ on its gateway, and the allowlist proxy. Skipped without Docker.
+  const containers = (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok && (await ensureNetwork());
+  if (containers) startEgressProxy(projects, port);
   await startHttp({
     projects,
     defaultProject,
@@ -110,12 +114,16 @@ async function main() {
     browserToken: uiToken,
     viewerToken,
     host,
+    extraHosts: containers ? [GATEWAY] : [],
     sameOrigin: remote,
     localOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`],
     guard,
     distDir: dev ? null : distDir,
     allowedOrigins: [uiOrigin, `http://127.0.0.1:${uiPort}`, `http://localhost:${port}`, `http://127.0.0.1:${port}`, ...args("origin"), ...(process.env.HQ_ORIGINS?.split(",").filter(Boolean) ?? [])],
   });
+
+  // Container checks that need HQ listening (containers reaching it) ran before it was up: run them again.
+  for (const rt of projects.values()) if (rt.hub.snap.config.team.some((a) => a.mode === "container")) void rt.recheckSetup();
 
   const url = `${uiOrigin}/?token=${uiToken}`;
   log.info(`\n\n  ${BRAND.name} (${BRAND.fullName}) is running → ${url}\n  projects: ${[...projects.values()].map((p) => `${p.slug}${p.paused ? " (paused)" : ""}`).join(", ")}\n`);

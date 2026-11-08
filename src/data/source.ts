@@ -1,6 +1,7 @@
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
+  AgentCli,
   AccessRequest,
   ActionItem,
   McpState,
@@ -74,6 +75,8 @@ export interface OfficeDataSource {
   sendTerminalInput(agentId: string, data: string): void;
   resizeTerminal(agentId: string, cols: number, rows: number): void;
   assignTask(taskId: string, agentId: string): void;
+  /** Which CLI (and optionally model) a task must run on; null clears it. */
+  setTaskRunsOn(taskId: string, cli: AgentCli | null, model: string | null): void;
   /** You → an agent, delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
 

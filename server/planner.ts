@@ -1,7 +1,7 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import type { Board, Task, TaskStatus } from "../src/data/types";
+import { CLI_LABEL, isAgentCli, type AgentCli, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Inbox } from "./inbox";
@@ -14,9 +14,11 @@ export interface NewTask {
   files?: string[];
   doneWhen?: string;
   needs?: string[];
+  cli?: AgentCli | null;
+  model?: string | null;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model">>;
 
 const now = () => new Date().toISOString();
 
@@ -92,6 +94,7 @@ export class Planner {
     const task: Task = {
       id, boardId: board.id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
+      cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
     };
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -120,6 +123,19 @@ export class Planner {
     if (!task) throw new Error(`No task ${taskId}`);
     if (!agentId) throw new Error(`No agent "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
     const agent = this.hub.cfg(agentId)!;
+    if (task.cli && agent.cli !== task.cli) {
+      const fits = this.snap.config.team.filter((a) => a.cli === task.cli && !a.isLead).map((a) => a.name);
+      throw new Error(`${task.id} runs on ${CLI_LABEL[task.cli]}, but ${agent.name} runs ${CLI_LABEL[agent.cli]}. ${fits.length ? `Agents on ${CLI_LABEL[task.cli]}: ${fits.join(", ")}.` : `No agent runs ${CLI_LABEL[task.cli]}; add one or clear the task's "runs on".`}`);
+    }
+    const limited = this.hub.status(agentId)?.limitedUntil;
+    if (limited && Date.parse(limited) > Date.now())
+      throw new Error(`${agent.name} hit its ${CLI_LABEL[agent.cli]} usage limit until ${new Date(limited).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Pick an agent on another CLI.`);
+    if (task.model && task.model !== agent.model) {
+      if (this.hub.status(agentId)?.session.state !== "running") {
+        agent.model = task.model; // takes effect when the agent starts
+        this.hub.configChanged();
+      } else this.hub.activity("config", agentId, `${task.id} prefers ${task.model}; ${agent.name} is running ${agent.model || "its default model"}. Restart ${agent.name} with that model if it matters.`);
+    }
     task.ownerId = agentId;
     if (task.status === "done") task.status = "todo";
     this.hub.emit({ type: "task.updated", task: { ...task } });

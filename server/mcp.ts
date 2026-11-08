@@ -10,6 +10,7 @@ import type { Hub } from "./hub";
 import { requestAccess } from "./access";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
+import { AGENT_CLIS, type AgentCli } from "../src/data/types";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -47,7 +48,8 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         hub.snap.config.team.map((a) => {
           const st = hub.status(a.id);
           return {
-            id: a.id, name: a.name, role: a.role, lead: a.isLead, you: a.id === me,
+            id: a.id, name: a.name, role: a.role, lead: a.isLead, you: a.id === me, cli: a.cli, model: a.model || "default",
+            limitedUntil: st?.limitedUntil && Date.parse(st.limitedUntil) > Date.now() ? st.limitedUntil : null,
             running: st?.session.state === "running", state: st?.state, task: st?.currentTaskId ?? null,
             free: st?.session.state === "running" && !a.isLead && !planner.currentTask(a.id),
           };
@@ -108,9 +110,11 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         files: z.array(z.string()).optional().describe("The only files/folders this task may edit"),
         doneWhen: z.string().optional().describe("Acceptance criteria"),
         needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
+        cli: z.enum(AGENT_CLIS).optional().describe("Runs on: only an agent with this CLI may take it (pick per task by strength and by who is under their usage limit)"),
+        model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[] }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string }) => {
       leadOnly();
       return ok(planner.createTask(args, me));
     }),
@@ -128,9 +132,11 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         doneWhen: z.string().optional(),
         needs: z.array(z.string()).optional(),
         status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
+        cli: z.enum(AGENT_CLIS).nullable().optional().describe("Runs on (null clears it)"),
+        model: z.string().nullable().optional(),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked" }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null }) => {
       leadOnly();
       return ok(planner.updateTask(taskId, patch));
     }),

@@ -1,6 +1,6 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { isAgentCli, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { isAgentCli, isAgentMode, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -79,6 +79,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
 
     // You → agent: same delivery path as the lead's assign_task / send_message.
     assignTask: (taskId, agentId) => planner.assign(str(taskId, 40), str(agentId, 80), "you"),
+    setTaskRunsOn: (taskId, cli, model) =>
+      planner.updateTask(str(taskId, 40), { cli: isAgentCli(cli) ? cli : null, model: typeof model === "string" && model.trim() ? str(model, 80) : null }),
     sendMessage: (toId, text) => planner.message("you", str(toId, 80), str(text, 2000)),
 
     addAgent: (raw) => {
@@ -93,7 +95,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       agent.department = isDepartmentId(input.department) ? input.department : inferDepartmentForRole(role, false);
       agent.cli = isAgentCli(input.cli) ? input.cli : "claude";
       agent.model = str(input.model, 60).trim();
-      agent.mode = input.mode === "local" ? "local" : "sandbox";
+      agent.mode = isAgentMode(input.mode) ? input.mode : "sandbox";
       if (Array.isArray(input.skills) && input.skills.length) {
         agent.skills = input.skills.map((s) => str(s, 80)).filter(Boolean);
       }
@@ -132,7 +134,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (p.skills === undefined && p.role !== undefined && hadDefaultSkills) {
         agent.skills = defaultSkillsForRole(agent.role, agent.isLead);
       }
-      if (p.mode === "sandbox" || p.mode === "local") agent.mode = p.mode;
+      if (isAgentMode(p.mode)) agent.mode = p.mode;
       if (isAgentCli(p.cli) && p.cli !== agent.cli) {
         agent.cli = p.cli;
         // Model names don't carry over between CLIs.
