@@ -1,10 +1,10 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import { CLI_LABEL, isAgentCli, type AgentCli, type Board, type Task, type TaskStatus } from "../src/data/types";
+import { CLI_LABEL, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
-import type { Inbox } from "./inbox";
+import { HISTORY, type Inbox } from "./inbox";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 
 export interface NewTask {
@@ -157,8 +157,8 @@ export class Planner {
     const text = isDeliverables
       ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
       : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
-    this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
-    this.inbox.push(agentId, { fromId: byId, kind: "assign", text });
+    const msg = this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
+    this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id });
     return task;
   }
 
@@ -204,23 +204,26 @@ export class Planner {
     if (!toId) throw new Error(`No agent "${toRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
     const clean = text.trim().slice(0, 2000);
     if (!clean) throw new Error("Empty message");
-    this.record(fromId, toId, clean);
+    const msg = this.record(fromId, toId, clean);
     this.hub.activity("message", fromId === "you" ? null : fromId, `${this.hub.name(fromId)} → ${this.hub.name(toId)}: ${clean.slice(0, 80)}`);
-    this.inbox.push(toId, { fromId, kind: "message", text: clean });
+    this.inbox.push(toId, { fromId, kind: "message", text: clean, msgId: msg.id });
     return toId;
   }
 
   /** A notice from HQ itself (review results, merges) to one agent. */
   notify(agentId: string, text: string) {
     if (!this.hub.cfg(agentId)) return;
-    this.record("hq", agentId, text);
-    this.inbox.push(agentId, { fromId: "hq", kind: "notice", text });
+    const msg = this.record("hq", agentId, text);
+    this.inbox.push(agentId, { fromId: "hq", kind: "notice", text, msgId: msg.id });
   }
 
-  private record(fromId: string, toId: string, text: string) {
+  /** Adds to the history (saved) and the UI; to an agent it starts as "queued" until the inbox hands it over. */
+  private record(fromId: string, toId: string, text: string): AgentMessage {
     this.seq += 1;
-    const msg = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text };
-    this.snap.messages = [msg, ...this.snap.messages].slice(0, 100);
+    const msg: AgentMessage = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text, ...(this.hub.cfg(toId) ? { delivered: "queued" as const } : {}) };
+    this.snap.messages = [msg, ...this.snap.messages].slice(0, HISTORY);
     this.hub.emit({ type: "message", message: msg });
+    this.inbox.save();
+    return msg;
   }
 }

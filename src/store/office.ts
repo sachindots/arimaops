@@ -157,7 +157,10 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
     case "env.removed":
       return { ...snap, environments: snap.environments.filter((x) => x.name !== e.name) };
     case "message":
-      return { ...snap, messages: [e.message, ...snap.messages].slice(0, 100) };
+      // A known id is a delivery update (queued → typed / on-stop): replace it in place.
+      return snap.messages.some((m) => m.id === e.message.id)
+        ? { ...snap, messages: snap.messages.map((m) => (m.id === e.message.id ? e.message : m)) }
+        : { ...snap, messages: [e.message, ...snap.messages].slice(0, 300) };
     case "activity":
       return { ...snap, activity: [e.event, ...snap.activity].slice(0, 50) };
     case "terminal.output":

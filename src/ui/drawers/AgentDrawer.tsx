@@ -517,6 +517,15 @@ function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig
                 <div className="flex items-center gap-1.5 text-[13px] text-muted">
                   {other && <Dot color={other.color} size={8} />}
                   {out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
+                  {!out && m.delivered && (
+                    <span
+                      className="font-mono text-[11px]"
+                      style={{ color: m.delivered === "queued" ? "#ff9f1c" : "#00ff66" }}
+                      title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
+                    >
+                      {m.delivered === "queued" ? "◷ queued" : "✓ delivered"}
+                    </span>
+                  )}
                   <span className="ml-auto font-term text-[15px]">{ago(m.at, now)}</span>
                 </div>
                 <div className="text-[15px]">{m.text}</div>
