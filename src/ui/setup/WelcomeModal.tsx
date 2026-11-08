@@ -121,7 +121,7 @@ export function WelcomeModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Welcome to .hq">
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Welcome to .hq">
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col">
         <div className="border-b-[3px] border-ink px-4 py-2">
           <h2 className="m-0 text-[22px] font-bold">
@@ -195,7 +195,7 @@ export function WelcomeModal() {
             <p className="mb-2 text-[13px] text-muted">
               Architects the plan, assigns tasks to department pods, and has multi-project CTO overwatch tools.
             </p>
-            <div className="grid grid-cols-[40px_1fr_1fr_150px_170px] items-end gap-2">
+            <div className="grid grid-cols-2 items-end gap-2 md:grid-cols-[40px_1fr_1fr_150px_170px]">
               <Portrait color={agentPalette[0]} lead />
               <Field label="Name">
                 <input className="field w-full" value={lead.name} maxLength={40} onChange={(e) => setLead({ ...lead, name: e.target.value })} />
@@ -236,7 +236,7 @@ export function WelcomeModal() {
             </datalist>
             <div className="flex flex-col gap-2">
               {workers.map((w, i) => (
-                <div key={i} className="grid grid-cols-[40px_1fr_1.15fr_150px_170px_auto] items-end gap-2">
+                <div key={i} className="grid grid-cols-2 items-end gap-2 md:grid-cols-[40px_1fr_1.15fr_150px_170px_auto]">
                   <Portrait color={agentPalette[(i + 1) % agentPalette.length]} lead={false} />
                   <Field label="Name">
                     <input className="field w-full" value={w.name} maxLength={40} onChange={(e) => setWorker(i, { name: e.target.value })} />

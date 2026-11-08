@@ -490,7 +490,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
   );
 }
 
-function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig }) {
+export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig }) {
   const now = useNow(1000);
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);

@@ -243,11 +243,14 @@ export function startPushNotifier(hub: Hub, topic: string, server = process.env.
   for (const [, st] of Object.entries(hub.snap.sbx?.agents ?? {})) for (const ap of st.approvals ?? []) seen.add(`sbx:${ap.id}`);
 
   const name = (id: string) => hub.cfg(id)?.name ?? id;
-  const push = (key: string, title: string, body: string, priority: "default" | "high") => {
+  // Tapping the notification opens this project on the right page (the app reads ?project= and ?open=).
+  const link = (open: string) => (openUrl ? `${openUrl.replace(/\/$/, "")}/?project=${encodeURIComponent(hub.slug)}&open=${encodeURIComponent(open)}` : null);
+  const push = (key: string, title: string, body: string, priority: "default" | "high", open = "actions") => {
     if (seen.has(key)) return;
     seen.add(key);
     const headers: Record<string, string> = { Title: `.hq ${hub.snap.config.project.name}: ${title}`.slice(0, 200), Priority: priority, Tags: "rotating_light" };
-    if (openUrl) headers.Click = openUrl;
+    const click = link(open);
+    if (click) headers.Click = click;
     fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(topic)}`, { method: "POST", headers, body: body.slice(0, 1000) }).catch((err) =>
       log.warn("ntfy push failed:", err instanceof Error ? err.message : err),
     );
@@ -257,10 +260,10 @@ export function startPushNotifier(hub: Hub, topic: string, server = process.env.
     if (e.type === "action.updated" && e.item.status === "open") {
       push(`action:${e.item.id}`, `${name(e.item.fromId)} needs you`, e.item.title, e.item.waiting ? "high" : "default");
     } else if (e.type === "access.updated" && e.request.status === "pending") {
-      push(`access:${e.request.id}`, `${name(e.request.agentId)} wants ${e.request.domain}`, e.request.reason || "Network access request", "high");
+      push(`access:${e.request.id}`, `${name(e.request.agentId)} wants ${e.request.domain}`, e.request.reason || "Network access request", "high", `agent:${e.request.agentId}`);
     } else if (e.type === "sbx.updated") {
       for (const [agentId, st] of Object.entries(e.sbx.agents ?? {}))
-        for (const ap of st.approvals ?? []) push(`sbx:${ap.id}`, `${name(agentId)} blocked: ${ap.host}`, ap.title ?? ap.detail, "high");
+        for (const ap of st.approvals ?? []) push(`sbx:${ap.id}`, `${name(agentId)} blocked: ${ap.host}`, ap.title ?? ap.detail, "high", `agent:${agentId}`);
     }
   });
   log.info(`push notifications → ${server}/${topic}`);

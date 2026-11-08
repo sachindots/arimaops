@@ -59,7 +59,6 @@ html[data-font] .font-term {
     background: var(--color-grass);
     color: var(--color-ink);
     font-family: var(--font-ui);
-    min-width: 1280px;
   }
 
   button {

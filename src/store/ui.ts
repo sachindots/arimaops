@@ -40,7 +40,25 @@ interface UiState {
   /** Side drawer width in px, remembered per browser; `maximized` fills the screen. */
   drawerWidth: number;
   drawerMaximized: boolean;
+  /** Tablet/phone layout: chat, board and inbox instead of the office (narrow screens, or chosen). */
+  compact: boolean;
+  layoutChoice: LayoutChoice;
 }
+
+/** auto = compact below 1280 px (the office needs that width). */
+export type LayoutChoice = "auto" | "compact" | "office";
+const LAYOUT_KEY = "dothq.layout";
+const NARROW = "(max-width: 1279px)";
+
+function savedLayout(): LayoutChoice {
+  try {
+    const v = localStorage.getItem(LAYOUT_KEY);
+    return v === "compact" || v === "office" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
+const isCompact = (choice: LayoutChoice) => (choice === "auto" ? window.matchMedia(NARROW).matches : choice === "compact");
 
 const WIDTH_KEY = "dothq.drawerWidth";
 const LEGACY_WIDTH_KEY = "jsmhq.drawerWidth";
@@ -72,7 +90,11 @@ export const useUi = create<UiState>(() => ({
   setupOpen: false,
   drawerWidth: savedWidth(),
   drawerMaximized: false,
+  compact: isCompact(savedLayout()),
+  layoutChoice: savedLayout(),
 }));
+
+window.matchMedia(NARROW).addEventListener("change", () => useUi.setState((s) => ({ compact: isCompact(s.layoutChoice) })));
 
 let nonce = 0;
 
@@ -143,6 +165,14 @@ export const ui = {
   },
   toggleDrawerMaximized() {
     useUi.setState((s) => ({ drawerMaximized: !s.drawerMaximized }));
+  },
+  setLayout(choice: LayoutChoice) {
+    try {
+      localStorage.setItem(LAYOUT_KEY, choice);
+    } catch {
+      /* private window */
+    }
+    useUi.setState({ layoutChoice: choice, compact: isCompact(choice), drawer: null });
   },
   toggleDebug() {
     useUi.setState((s) => ({ debugOpen: !s.debugOpen }));

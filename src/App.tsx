@@ -12,6 +12,7 @@ import { TeamPanel } from "./ui/hud/TeamPanel";
 import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
+import { CompactApp } from "./ui/compact/CompactApp";
 
 function useKeyboard() {
   useEffect(() => {
@@ -47,26 +48,76 @@ function useKeyboard() {
   }, []);
 }
 
-/** On a real HQ, open the setup checklist once (after the welcome) if anything needed is missing. */
+/**
+ * On a real HQ, open the setup checklist (after the welcome) when something needed is missing, but only
+ * when that list changed since this browser last saw it: not on every reload (phones reload a lot).
+ */
 function useSetupPrompt() {
   useEffect(() => {
     let shown = false;
     return useOffice.subscribe((s) => {
       if (shown || !s.live || !s.snap || s.snap.welcome) return;
       shown = true;
-      const needed = s.snap.setup.checks.some((c) => c.status !== "ok" && c.neededFor !== "github" && c.neededFor !== "local");
-      if (needed) ui.openSetup();
+      const missing = s.snap.setup.checks
+        .filter((c) => c.status !== "ok" && c.neededFor !== "github" && c.neededFor !== "local")
+        .map((c) => c.id)
+        .sort()
+        .join(",");
+      const key = `dothq.setupSeen.${s.snap.config.project.id}`;
+      let seen: string | null = null;
+      try {
+        seen = localStorage.getItem(key);
+        localStorage.setItem(key, missing);
+      } catch {
+        /* private window: show it */
+      }
+      if (missing && missing !== seen) ui.openSetup();
+    });
+  }, []);
+}
+
+/** `?open=actions` / `?open=agent:<id>` / `?open=board` (links from push notifications): open it once connected. */
+function useDeepLink() {
+  useEffect(() => {
+    const url = new URL(location.href);
+    const open = url.searchParams.get("open");
+    if (!open) return;
+    url.searchParams.delete("open");
+    history.replaceState(null, "", url.toString());
+    return useOffice.subscribe((s, prev) => {
+      if (!s.snap || prev.snap) return;
+      if (open === "actions") ui.openActions();
+      else if (open === "board") ui.openBoards();
+      else if (open.startsWith("agent:") && s.snap.config.team.some((a) => a.id === open.slice(6))) ui.openAgent(open.slice(6));
     });
   }, []);
 }
 
 export function App() {
   useEffect(() => connectOffice(), []);
+  useDeepLink();
   useKeyboard();
   useSetupPrompt();
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
+  const compact = useUi((s) => s.compact);
+  // The office needs 1280 px; below that (when chosen anyway) the page scrolls instead of squeezing.
+  useEffect(() => void (document.body.style.minWidth = compact ? "" : "1280px"), [compact]);
+
+  if (compact)
+    return (
+      <>
+        <ConnectionBanner />
+        {ready && (
+          <>
+            <CompactApp />
+            <SettingsModal />
+            {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
+          </>
+        )}
+      </>
+    );
 
   return (
     <>

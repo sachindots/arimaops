@@ -76,7 +76,7 @@ export function SetupChecklist() {
   if (!setup) return null;
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
+    <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col">
         <div className="flex items-center gap-3 border-b-[3px] border-ink px-4 py-2">
           <h2 className="m-0 flex-1 text-[22px] font-bold">Get .hq ready</h2>

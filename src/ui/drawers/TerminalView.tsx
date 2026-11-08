@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { officeActions } from "../../store/office";
 import { readTerminal, subscribeTerminal } from "../../store/terminal";
 import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme/fonts";
@@ -35,8 +35,25 @@ function openLink(uri: string) {
 }
 
 /** A real xterm.js terminal fed by the agent's (mock) output stream. */
+/** Keys a phone/tablet keyboard lacks. Ctrl is sticky: it applies to the next letter typed. */
+const KEYS: [string, string][] = [
+  ["Esc", "\x1b"],
+  ["Tab", "\t"],
+  ["Ctrl", ""],
+  ["↑", "\x1b[A"],
+  ["↓", "\x1b[B"],
+  ["←", "\x1b[D"],
+  ["→", "\x1b[C"],
+  ["^C", "\x03"],
+  ["⏎", "\r"],
+];
+const touch = () => window.matchMedia("(pointer: coarse)").matches;
+
 export function TerminalView({ agentId, autoFocus = true }: { agentId: string; autoFocus?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
+  const ctrl = useRef(false);
+  const [ctrlOn, setCtrlOn] = useState(false);
+  const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const el = host.current;
@@ -89,7 +106,16 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       term.onResize(({ cols, rows }) => officeActions.resizeTerminal(agentId, cols, rows));
       term.write(readTerminal(agentId));
       unsub = subscribeTerminal(agentId, (data) => term.write(data));
-      term.onData((data) => officeActions.sendTerminalInput(agentId, data));
+      term.onData((data) => {
+        // Sticky Ctrl from the touch key row: Ctrl+letter is the letter's control code.
+        if (ctrl.current && data.length === 1) {
+          const code = data.toUpperCase().charCodeAt(0);
+          if (code >= 64 && code <= 95) data = String.fromCharCode(code - 64);
+          ctrl.current = false;
+          setCtrlOn(false);
+        }
+        officeActions.sendTerminalInput(agentId, data);
+      });
       // Shift+Enter: xterm.js sends a plain Enter (\r), which submits. Send Alt+Enter (ESC \r)
       // instead, which Claude Code and Codex read as "new line".
       term.attachCustomKeyEventHandler((e) => {
@@ -106,7 +132,9 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
         }
       });
       ro.observe(el);
-      if (autoFocus) term.focus();
+      termRef.current = term;
+      // On a touch screen, focusing pops the keyboard over the output: wait for a tap instead.
+      if (autoFocus && !touch()) term.focus();
     });
 
     return () => {
@@ -114,9 +142,35 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       window.removeEventListener(FONT_EVENT, onFont);
       unsub();
       ro?.disconnect();
+      termRef.current = null;
       term.dispose();
     };
   }, [agentId, autoFocus]);
 
-  return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" />;
+  if (!touch()) return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" />;
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
+      <div ref={host} className="min-h-0 w-full flex-1" />
+      <div className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-t-2 border-ink p-1" aria-label="Terminal keys">
+        {KEYS.map(([label, seq]) => (
+          <button
+            key={label}
+            className="btn min-w-[44px] shrink-0 px-2 py-1.5 font-mono text-[14px]"
+            aria-pressed={label === "Ctrl" ? ctrlOn : undefined}
+            // Keep the terminal (and the on-screen keyboard) focused.
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (label === "Ctrl") {
+                ctrl.current = !ctrl.current;
+                setCtrlOn(ctrl.current);
+              } else officeActions.sendTerminalInput(agentId, seq);
+              termRef.current?.focus();
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }

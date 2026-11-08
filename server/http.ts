@@ -21,7 +21,7 @@ import { RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
-  ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".json": "application/json",
+  ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json",
 };
 
 function safeEqual(a: string, b: string) {
