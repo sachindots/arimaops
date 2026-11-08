@@ -114,19 +114,24 @@ export async function ensureNetwork(): Promise<boolean> {
 
 // ---------------------------------------------------------------- egress proxy
 
-/** Container IP → (project, agent), from `docker inspect`; containers are named hq-<slug>-<agent>. */
-async function whoIsIp(projects: Map<string, Runtime>, ip: string): Promise<{ rt: Runtime; agent: AgentConfig } | null> {
+/** Container IP → name on hq-agents, from `docker network inspect`; containers are named hq-<slug>-<agent>. */
+async function ipNames(): Promise<Map<string, string>> {
   const r = await run("docker", ["network", "inspect", NETWORK, "--format", "{{range $id, $c := .Containers}}{{$c.Name}} {{$c.IPv4Address}}\n{{end}}"], { timeoutMs: 5000 });
-  if (!r.ok) return null;
+  const map = new Map<string, string>();
+  if (!r.ok) return map;
   for (const line of r.stdout.split("\n")) {
     const [name, cidr] = line.trim().split(" ");
-    if (!name || cidr?.split("/")[0] !== ip) continue;
-    for (const rt of projects.values()) {
-      const prefix = `hq-${rt.slug}-`;
-      if (!name.startsWith(prefix)) continue;
-      const agent = rt.hub.cfg(name.slice(prefix.length));
-      if (agent?.mode === "container") return { rt, agent };
-    }
+    if (name && cidr) map.set(cidr.split("/")[0], name);
+  }
+  return map;
+}
+
+function agentForName(projects: Map<string, Runtime>, name: string): { rt: Runtime; agent: AgentConfig } | null {
+  for (const rt of projects.values()) {
+    const prefix = `hq-${rt.slug}-`;
+    if (!name.startsWith(prefix)) continue;
+    const agent = rt.hub.cfg(name.slice(prefix.length));
+    if (agent?.mode === "container") return { rt, agent };
   }
   return null;
 }
@@ -136,14 +141,14 @@ async function whoIsIp(projects: Map<string, Runtime>, ip: string): Promise<{ rt
  * agent's allow list, minus its deny list. A blocked domain becomes an access request (Allow/Deny in HQ).
  */
 export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number): Server {
-  const cache = new Map<string, { at: number; who: { rt: Runtime; agent: AgentConfig } | null }>();
   const asked = new Set<string>(); // one access request per agent+domain per HQ run
+  // IPs are reused as soon as a container is removed, so the map is at most 1 s old (one lookup shared by
+  // concurrent connections): a new container must never inherit the previous one's allow list.
+  let snapshot: { at: number; map: Promise<Map<string, string>> } | null = null;
   const identify = async (ip: string) => {
-    const hit = cache.get(ip);
-    if (hit && Date.now() - hit.at < 30_000) return hit.who;
-    const who = await whoIsIp(projects, ip);
-    cache.set(ip, { at: Date.now(), who });
-    return who;
+    if (!snapshot || Date.now() - snapshot.at > 1000) snapshot = { at: Date.now(), map: ipNames() };
+    const name = (await snapshot.map).get(ip);
+    return name ? agentForName(projects, name) : null;
   };
   const decide = async (req: IncomingMessage, host: string, port: number) => {
     const ip = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
@@ -165,6 +170,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
   };
 
   const server = createServer(async (req, res) => {
+    req.on("error", () => res.destroy());
     // Plain http through the proxy: the request line has the absolute URL.
     let url: URL;
     try {
@@ -191,6 +197,8 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
   });
 
   server.on("connect", async (req: IncomingMessage, client: Socket, head: Buffer) => {
+    // Before any await: a socket reset with no listener would crash HQ.
+    client.on("error", () => client.destroy());
     const [host, p] = (req.url ?? "").split(":");
     const port = Number(p || 443);
     const d = host ? await decide(req, host, port) : { ok: false, why: "bad request" };
@@ -207,8 +215,10 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     const close = () => (upstream.destroy(), client.destroy());
     upstream.on("error", close);
     client.on("error", close);
+    client.on("close", () => upstream.destroy());
   });
 
+  server.on("clientError", (_err, socket) => socket.destroy());
   server.on("error", (err) => log.warn(`egress proxy: ${err.message}`));
   server.listen(egressPort(hqPort), GATEWAY, () => log.info(`container proxy on ${GATEWAY}:${egressPort(hqPort)}`));
   return server;

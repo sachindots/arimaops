@@ -56,7 +56,7 @@ else {
     activity: () => {},
   };
   const projects = new Map([["ctrtest", { slug: "ctrtest", hub }]]);
-  const PORT = 7701;
+  const PORT = Number(process.env.HQ_TEST_PORT ?? 7701); // 7420 matches the firewall rule the setup checklist suggests
   const proxy = startEgressProxy(projects as never, PORT);
   await new Promise((r) => setTimeout(r, 300));
   // A host firewall that drops incoming traffic (ufw default) hides the proxy from containers: say so instead of failing.
