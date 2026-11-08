@@ -89,8 +89,10 @@ export function ProjectSettings() {
       <section className="text-[13px] text-muted">
         <SectionTitle>Security</SectionTitle>
         <ul className="list-disc pl-5">
-          <li>HQ binds 127.0.0.1 only.</li>
-          <li>A random token is created on every start. The browser, hooks and the Team MCP must send it.</li>
+          <li>HQ binds 127.0.0.1 unless you start it with --host or --remote.</li>
+          <li>The link token changes on every start. Opening it signs this device in for 30 days (revoke in ~/.hq/&lt;project&gt;/devices.json).</li>
+          <li>Each agent has its own token for hooks and the Team MCP, and can&apos;t act as another agent or use the projects API.</li>
+          <li>From a remote device, risky actions need an authenticator code once a day.</li>
           <li>HQ never reads .env files. Sandboxes get keys from Docker's secret store.</li>
         </ul>
       </section>

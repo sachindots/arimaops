@@ -1,12 +1,13 @@
 // 127.0.0.1 by default (--host to expose, e.g. for Tailscale). Routes:
-//   GET  /ws?token=…            browser WebSocket (browser token)
-//   POST /hook/<agent>/<event>  Claude Code hooks (agent token)
+//   GET  /ws?token=…            browser WebSocket (browser/viewer token, or the hq_sid device cookie)
+//   POST /api/login             link token → hq_sid device cookie (survives HQ restarts)
+//   POST /hook/<agent>/<event>  Claude Code hooks (that agent's own token)
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { OfficeEvent } from "../src/data/source";
@@ -17,7 +18,8 @@ import { handleMcp } from "./mcp";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, registerProjectPath, updateCrossProjectTask } from "./projectsRegistry";
 import { log } from "./lib/log";
-import { RISKY_COMMANDS, type RemoteGuard } from "./remote";
+import { agentTokenFor } from "./paths";
+import { RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
@@ -29,6 +31,16 @@ function safeEqual(a: string, b: string) {
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
 }
+
+function cookie(req: IncomingMessage, name: string): string {
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return "";
+}
+
+const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** Commands a viewer token may send. Everything else needs the operator token. */
 const VIEWER_COMMANDS = new Set(["sendMessage", "recheckSetup", "refreshSbx", "refreshMcp"]);
@@ -73,16 +85,57 @@ export function startHttp(o: Options) {
     res.end(body);
   };
 
+  const agentAuth = (auth: string, agentId: string) => !!agentId && safeEqual(auth, `Bearer ${agentTokenFor(o.agentToken, agentId)}`);
+
+  const okOrigin = (req: IncomingMessage) => {
+    const origin = req.headers.origin ?? "";
+    const host = req.headers.host ?? "";
+    return !origin || o.allowedOrigins.includes(origin) || (o.sameOrigin && (origin === `https://${host}` || origin === `http://${host}`));
+  };
+
+  /** Local = this machine's own browser: loopback socket, not via a proxy (tailscale serve, tunnel), and a local Origin.
+   *  No Origin (a script) or anything else is remote, so it can't skip TOTP step-up by leaving the header out. */
+  const isRemote = (req: IncomingMessage) => {
+    const origin = req.headers.origin ?? "";
+    const proxied = !!(req.headers["x-forwarded-for"] || req.headers["tailscale-user-login"] || req.headers["cf-connecting-ip"]);
+    return !(LOOPBACK.has(req.socket.remoteAddress ?? "") && !proxied && o.localOrigins.includes(origin));
+  };
+
+  /** Token (link or bearer) first, then the device cookie. */
+  const whoIs = (req: IncomingMessage, tok: string): { role: Role; deviceId: string } | null => {
+    if (tok && safeEqual(tok, o.browserToken)) return { role: "operator", deviceId: "" };
+    if (tok && safeEqual(tok, o.viewerToken)) return { role: "viewer", deviceId: "" };
+    const d = o.guard.device(cookie(req, "hq_sid"));
+    return d ? { role: d.role, deviceId: d.id } : null;
+  };
+
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
+    if (req.method === "POST" && url.pathname === "/api/login") {
+      if (!okOrigin(req)) return send(res, 403, "bad origin");
+      try {
+        const { token } = JSON.parse((await readBody(req, 4096)) || "{}") as { token?: string };
+        const tok = String(token ?? "");
+        const role: Role | null = tok && safeEqual(tok, o.browserToken) ? "operator" : tok && safeEqual(tok, o.viewerToken) ? "viewer" : null;
+        if (!role) return send(res, 401, JSON.stringify({ error: "invalid link" }), "application/json");
+        const id = o.guard.addDevice(role, String(req.headers["user-agent"] ?? ""));
+        const https = req.headers["x-forwarded-proto"] === "https" || (req.headers.origin ?? "").startsWith("https://");
+        res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${o.guard.cookieMaxAge}${https ? "; Secure" : ""}`);
+        o.guard.audit({ role, origin: req.headers.origin ?? "", remote: isRemote(req), cmd: "login", args: [], result: "ok" });
+        return send(res, 200, JSON.stringify({ role }), "application/json");
+      } catch {
+        return send(res, 400, "bad request");
+      }
+    }
+
     if (req.method === "POST" && url.pathname.startsWith("/hook/")) {
-      const auth = req.headers.authorization ?? "";
-      if (!safeEqual(auth, `Bearer ${o.agentToken}`)) return send(res, 401, "unauthorized");
-      const [, , agentId, event] = url.pathname.split("/");
+      const [, , rawAgent, event] = url.pathname.split("/");
+      const agentId = decodeURIComponent(rawAgent ?? "");
+      if (!agentAuth(req.headers.authorization ?? "", agentId)) return send(res, 401, "unauthorized");
       try {
         const body = await readBody(req);
-        const r = handleHook(o.hub, o.inbox, decodeURIComponent(agentId ?? ""), event ?? "", body ? JSON.parse(body) : {});
+        const r = handleHook(o.hub, o.inbox, agentId, event ?? "", body ? JSON.parse(body) : {});
         if (!r.ok) return send(res, 404, "");
         if (r.response) return send(res, 200, JSON.stringify(r.response), "application/json");
         res.writeHead(204);
@@ -92,12 +145,12 @@ export function startHttp(o: Options) {
       }
     }
 
-    // Team MCP: agent token + the agent's id (written into its MCP config by HQ).
+    // Team MCP: the agent's own token + its id (written into its MCP config by HQ).
     if (url.pathname === "/mcp") {
       const qToken = url.searchParams.get("token");
       const auth = req.headers.authorization ?? (qToken ? `Bearer ${qToken}` : "");
       const agentId = String(req.headers["x-hq-agent"] || url.searchParams.get("agent") || "");
-      if (!safeEqual(auth, `Bearer ${o.agentToken}`) || !o.hub.cfg(agentId)) return send(res, 401, "unauthorized");
+      if (!agentAuth(auth, agentId) || !o.hub.cfg(agentId)) return send(res, 401, "unauthorized");
       if (req.method === "GET" || req.method === "DELETE") return send(res, 405, "stateless server");
       try {
         const raw = await readBody(req, 1024 * 1024);
@@ -109,15 +162,19 @@ export function startHttp(o: Options) {
 
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");
 
-    // Multi-Project CTO Overwatch REST API (authenticated via browser token or agent token)
+    // Multi-Project CTO Overwatch REST API: the UI only (browser/viewer token or device cookie), never agents.
+    // Writes register folders and change other projects, so they count as risky: remote callers need a step-up'd device.
     if (url.pathname.startsWith("/api/projects")) {
       const qToken = url.searchParams.get("token") ?? "";
       const bearer = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
-      const tok = bearer || qToken;
-      const operator = safeEqual(tok, o.browserToken) || safeEqual(tok, o.agentToken);
-      const viewer = !operator && safeEqual(tok, o.viewerToken);
+      const who = whoIs(req, bearer || qToken);
+      const operator = who?.role === "operator";
+      const viewer = who?.role === "viewer";
       if (viewer && req.method !== "GET") return send(res, 403, JSON.stringify({ error: "viewer token is read-only" }), "application/json");
       if (!operator && !viewer) return send(res, 401, JSON.stringify({ error: "unauthorized" }), "application/json");
+      if (req.method !== "GET" && !okOrigin(req)) return send(res, 403, JSON.stringify({ error: "bad origin" }), "application/json");
+      if (req.method !== "GET" && isRemote(req) && !(who?.deviceId && Date.now() < o.guard.deviceElevatedUntil(who.deviceId)))
+        return send(res, 403, JSON.stringify({ error: "step-up required: enter your authenticator code in HQ first" }), "application/json");
 
       try {
         if (req.method === "GET" && url.pathname === "/api/projects") {
@@ -169,7 +226,7 @@ export function startHttp(o: Options) {
     if ((req.method === "GET" || req.method === "HEAD") && o.distDir) {
       const rel = normalize(url.pathname === "/" ? "/index.html" : url.pathname).replace(/^(\.\.[/\\])+/, "");
       let file = join(o.distDir, rel);
-      if (!file.startsWith(o.distDir) || !existsSync(file) || statSync(file).isDirectory()) file = join(o.distDir, "index.html");
+      if (!file.startsWith(o.distDir + sep) || !existsSync(file) || statSync(file).isDirectory()) file = join(o.distDir, "index.html");
       res.writeHead(200, { "Content-Type": MIME[extname(file)] ?? "application/octet-stream" });
       if (req.method === "HEAD") return void res.end();
       return void createReadStream(file).pipe(res);
@@ -181,22 +238,20 @@ export function startHttp(o: Options) {
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const origin = req.headers.origin ?? "";
-    const token = url.searchParams.get("token") ?? "";
-    // Token + origin: another website in your browser can't drive HQ.
-    const role = safeEqual(token, o.browserToken) ? "operator" : safeEqual(token, o.viewerToken) ? "viewer" : null;
-    const host = req.headers.host ?? "";
-    const okOrigin = !origin || o.allowedOrigins.includes(origin) || (o.sameOrigin && (origin === `https://${host}` || origin === `http://${host}`));
-    if (url.pathname !== "/ws" || !role || !okOrigin) {
+    // Token or device cookie + origin: another website in your browser can't drive HQ.
+    const who = whoIs(req, url.searchParams.get("token") ?? "");
+    if (url.pathname !== "/ws" || !who || !okOrigin(req)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       return socket.destroy();
     }
-    log.info(`ui connected: ${role}${origin ? ` from ${origin}` : ""}`);
-    const remote = !!origin && !o.localOrigins.includes(origin);
-    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, role, origin, remote));
+    const remote = isRemote(req);
+    log.info(`ui connected: ${who.role}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, who.role, who.deviceId, origin, remote));
   });
 
-  function onClient(ws: WebSocket, role: "operator" | "viewer", origin: string, remote: boolean) {
-    let elevatedUntil = 0;
+  function onClient(ws: WebSocket, role: Role, deviceId: string, origin: string, remote: boolean) {
+    // A device that entered a code today stays elevated (24 h); a bare-token connection only until it closes.
+    let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
     const sendEvent = (e: OfficeEvent) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(e));
     sendEvent({ type: "snapshot", snapshot: o.hub.snap });
     const unsub = o.hub.subscribe(sendEvent);
@@ -216,6 +271,7 @@ export function startHttp(o: Options) {
             return sendEvent({ type: "remote.stepup", status: "denied" });
           }
           elevatedUntil = o.guard.stepUpUntil();
+          if (deviceId) o.guard.elevateDevice(deviceId, elevatedUntil);
           audit("elevated", "elevate", []);
           sendEvent({ type: "remote.stepup", status: "ok", until: elevatedUntil });
           const pending = typeof args[1] === "string" ? args[1] : "";
@@ -231,7 +287,7 @@ export function startHttp(o: Options) {
           audit("blocked");
           return log.warn("viewer blocked:", cmd);
         }
-        if (remote && RISKY_COMMANDS.has(cmd) && Date.now() > elevatedUntil) {
+        if (remote && RISKY_COMMANDS.has(cmd) && Date.now() > Math.max(elevatedUntil, deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0)) {
           audit("step-up-required");
           return sendEvent({ type: "remote.stepup", status: "required", cmd, args });
         }

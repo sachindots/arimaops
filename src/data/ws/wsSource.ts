@@ -21,7 +21,7 @@ export function createWsSource(token: string): OfficeDataSource {
     prompting = true;
     // Defer so the socket handler returns first.
     setTimeout(() => {
-      const code = window.prompt(`"${ev.cmd}" needs confirmation from a remote device.\nEnter the 6-digit code from your authenticator app (valid 10 min):`);
+      const code = window.prompt(`"${ev.cmd}" needs confirmation from a remote device.\nEnter the 6-digit code from your authenticator app (valid 24 h on this device):`);
       prompting = false;
       if (code) send("elevate", code.trim(), ev.cmd, ev.args ?? []);
     }, 0);
@@ -39,7 +39,8 @@ export function createWsSource(token: string): OfficeDataSource {
         if (!active) return;
         onStatus?.(retry ? "reconnecting" : "connecting");
         const proto = location.protocol === "https:" ? "wss" : "ws";
-        const sock = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+        // No token: the hq_sid cookie from /api/login authenticates (same origin).
+        const sock = new WebSocket(`${proto}://${location.host}/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`);
         socket = sock;
         let opened = false;
         sock.onopen = () => {
@@ -63,7 +64,7 @@ export function createWsSource(token: string): OfficeDataSource {
         sock.onclose = () => {
           if (ws === sock) ws = null;
           if (!active) return;
-          // Never opened, several times in a row: the token was rejected (HQ restarted).
+          // Never opened, several times in a row: the token or device cookie was rejected (HQ restarted, or the device was revoked).
           onStatus?.(!opened && retry > 2 ? "unauthorized" : "reconnecting");
           retry += 1;
           timer = window.setTimeout(open, Math.min(5000, 400 * retry));

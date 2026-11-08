@@ -1,10 +1,8 @@
-# JSM HQ
+# .hq (dot hq)
 
-**Run a team of AI coding agents on your repo, and watch them work in a pixel-art office.**
+**Run a team of AI agents across your software, security and research projects, and command them from your desk, tablet or phone.**
 
-[![npm](https://img.shields.io/npm/v/@therealjsmastery/jsm-hq?color=cb3837&label=npm)](https://www.npmjs.com/package/@therealjsmastery/jsm-hq)
-[![license](https://img.shields.io/npm/l/@therealjsmastery/jsm-hq)](LICENSE)
-[![node](https://img.shields.io/node/v/@therealjsmastery/jsm-hq)](https://nodejs.org)
+> .hq is built on [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) by [JavaScript Mastery](https://github.com/jsmastery-pro), used under the MIT license. Thanks to them for the original office, sandboxes and review loop. .hq is a separate project and is not affiliated with or endorsed by JavaScript Mastery.
 
 ![The JSM HQ office: a lead and two developers at their desks, the task board on the wall, pull requests on the board and the review gate on the belt](docs/images/office.png)
 

@@ -29,9 +29,18 @@ interface OfficeState {
 }
 
 /**
- * HQ opens the UI with `?token=…`. With a token we talk to the real server;
- * without one (plain `pnpm dev`) the UI runs on the mock.
+ * HQ opens the UI with `?token=…`. The page trades it for an hq_sid device cookie (POST /api/login),
+ * so a bookmarked plain URL keeps working after HQ restarts. With a token or a past login we talk to
+ * the real server; otherwise (plain `pnpm dev`) the UI runs on the mock.
  */
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* private mode */
+  }
+}
+
 function hqToken(): string | null {
   const url = new URL(location.href);
   const fromUrl = url.searchParams.get("token");
@@ -47,6 +56,9 @@ function hqToken(): string | null {
     } catch {
       /* private mode */
     }
+    remember("hq-live", "1");
+    remember("hq-role", role);
+    void fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: fromUrl }), credentials: "same-origin" }).catch(() => {});
     url.searchParams.delete("token");
     url.searchParams.delete("role");
     history.replaceState(null, "", url.toString()); // keep the token out of history and screenshots
@@ -60,15 +72,22 @@ function hqToken(): string | null {
 }
 
 const token = hqToken();
-/** Viewer token (tablet/phone read-only link): the server rejects control commands; the UI hides them. */
-export const isViewer = (() => {
+const loggedIn = (() => {
   try {
-    return sessionStorage.getItem("hq-role") === "viewer";
+    return localStorage.getItem("hq-live") === "1";
   } catch {
     return false;
   }
 })();
-const source: OfficeDataSource = token ? createWsSource(token) : createMockSource();
+/** Viewer token (tablet/phone read-only link): the server rejects control commands; the UI hides them. */
+export const isViewer = (() => {
+  try {
+    return (sessionStorage.getItem("hq-role") ?? localStorage.getItem("hq-role")) === "viewer";
+  } catch {
+    return false;
+  }
+})();
+const source: OfficeDataSource = token || loggedIn ? createWsSource(token ?? "") : createMockSource();
 
 export const useOffice = create<OfficeState>(() => ({
   snap: null,

@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -37,6 +37,9 @@ export function agentToken(projectSlug: string): string {
   writeFileSync(file, tok, { mode: 0o600 });
   return tok;
 }
+
+/** One agent's own token: HMAC of its id under the project secret, so an agent can't act as another. */
+export const agentTokenFor = (secret: string, agentId: string) => createHmac("sha256", secret).update(`agent:${agentId}`).digest("hex");
 
 /**
  * Browser token, required by the UI's WebSocket. New on every start — except in

@@ -1,6 +1,7 @@
 // Remote control safety (tablet/phone):
 //  - Push: ntfy notification when something waits on you (action item, sandbox approval, access request).
-//  - Step-up: risky commands from a non-local client need a fresh TOTP code (authenticator app).
+//  - Step-up: risky commands from a non-local client need a TOTP code (authenticator app), once a day per device.
+//  - Devices: logging in with a link token sets a cookie stored in ~/.hq/<project>/devices.json, so links survive restarts.
 //  - Audit: every UI command is appended to ~/.hq/<project>/audit.log (never terminal input or secret values).
 
 import { createHmac, randomBytes } from "node:crypto";
@@ -40,7 +41,19 @@ export const RISKY_COMMANDS = new Set([
 const QUIET = new Set(["sendTerminalInput", "resizeTerminal"]);
 const REDACT_ARGS = new Set(["setSecret", "setProxy"]);
 
-const STEP_UP_MS = 10 * 60 * 1000;
+const STEP_UP_MS = 24 * 60 * 60 * 1000;
+const DEVICE_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_BAD_CODES = 5;
+const LOCKOUT_MS = 5 * 60 * 1000;
+
+export type Role = "operator" | "viewer";
+interface Device {
+  role: Role;
+  created: number;
+  lastSeen: number;
+  elevatedUntil: number;
+  label: string;
+}
 
 // ---------------------------------------------------------------- TOTP (RFC 6238, SHA-1, 30 s, 6 digits)
 
@@ -93,6 +106,10 @@ export class RemoteGuard {
   readonly secretB32: string;
   private usedSteps = new Set<number>(); // one-time: a code can't be replayed
   private auditFile: string;
+  private devicesFile: string;
+  private devices: Record<string, Device> = {};
+  private badCodes = 0;
+  private lockedUntil = 0;
 
   constructor(
     slug: string,
@@ -103,7 +120,55 @@ export class RemoteGuard {
     this.secretB32 = readFileSync(file, "utf8").trim();
     this.secret = base32Decode(this.secretB32);
     this.auditFile = join(projectHome(slug), "audit.log");
+    this.devicesFile = join(projectHome(slug), "devices.json");
+    try {
+      this.devices = JSON.parse(readFileSync(this.devicesFile, "utf8")) as Record<string, Device>;
+    } catch {
+      this.devices = {};
+    }
+    const now = Date.now();
+    for (const [id, d] of Object.entries(this.devices)) if (now - d.lastSeen > DEVICE_MS) delete this.devices[id];
   }
+
+  private saveDevices() {
+    try {
+      writeFileSync(this.devicesFile, JSON.stringify(this.devices, null, 2), { mode: 0o600 });
+    } catch (err) {
+      log.warn("devices write failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  /** New device session after a valid link token. Returns the cookie value. Revoke by deleting it from devices.json and restarting. */
+  addDevice(role: Role, label: string): string {
+    const id = randomBytes(32).toString("hex");
+    const now = Date.now();
+    this.devices[id] = { role, created: now, lastSeen: now, elevatedUntil: 0, label: label.slice(0, 120) };
+    this.saveDevices();
+    return id;
+  }
+
+  device(id: string): (Device & { id: string }) | null {
+    const d = id ? this.devices[id] : undefined;
+    if (!d || Date.now() - d.lastSeen > DEVICE_MS) return null;
+    const now = Date.now();
+    const stale = now - d.lastSeen > 60 * 60 * 1000;
+    d.lastSeen = now;
+    if (stale) this.saveDevices(); // persist lastSeen at most hourly
+    return { ...d, id };
+  }
+
+  elevateDevice(id: string, until: number) {
+    const d = this.devices[id];
+    if (!d) return;
+    d.elevatedUntil = until;
+    this.saveDevices();
+  }
+
+  deviceElevatedUntil(id: string): number {
+    return this.devices[id]?.elevatedUntil ?? 0;
+  }
+
+  readonly cookieMaxAge = DEVICE_MS / 1000;
 
   otpauthUrl() {
     const label = encodeURIComponent(`dot hq:${this.projectName}`);
@@ -112,6 +177,19 @@ export class RemoteGuard {
 
   /** Accepts the current code ±1 step (clock drift); each step is usable once. */
   verify(code: string): boolean {
+    // Brute-force guard: 5 wrong codes lock step-up for 5 minutes (a 6-digit code is otherwise guessable).
+    if (Date.now() < this.lockedUntil) return false;
+    const ok = this.check(code);
+    if (ok) this.badCodes = 0;
+    else if (++this.badCodes >= MAX_BAD_CODES) {
+      this.badCodes = 0;
+      this.lockedUntil = Date.now() + LOCKOUT_MS;
+      log.warn("step-up locked for 5 minutes after repeated wrong codes");
+    }
+    return ok;
+  }
+
+  private check(code: string): boolean {
     const clean = String(code ?? "").replace(/\D/g, "");
     if (clean.length !== 6) return false;
     const now = Math.floor(Date.now() / 30_000);
