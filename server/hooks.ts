@@ -7,6 +7,7 @@ import type { Inbox } from "./inbox";
 interface HookPayload {
   prompt?: string;
   tool_name?: string;
+  toolCall?: { name?: string };
   message?: string;
   notification_type?: string;
 }
@@ -22,15 +23,28 @@ const turnOpen = new Map<string, boolean>();
 
 export interface HookResult {
   ok: boolean;
-  /** JSON printed by the hook command; Claude Code acts on it (Stop: block = continue). */
+  /** JSON printed by the hook command; Claude Code / Antigravity acts on it. */
   response?: Record<string, unknown>;
 }
 
-export function handleHook(hub: Hub, inbox: Inbox, agentId: string, event: string, body: HookPayload): HookResult {
+export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: string, body: HookPayload): HookResult {
   const st = hub.status(agentId);
   const name = hub.name(agentId);
+  const isAgy = hub.cfg(agentId)?.cli === "agy";
   if (!st) return { ok: false };
+  // Normalize Antigravity (agy) / Gemini CLI hook event names to .hq's canonical lifecycle events.
+  const event =
+    rawEvent === "BeforeAgent" || rawEvent === "PreInvocation"
+      ? "UserPromptSubmit"
+      : rawEvent === "BeforeTool"
+        ? "PreToolUse"
+        : rawEvent === "AfterTool"
+          ? "PostToolUse"
+          : rawEvent === "AfterAgent"
+            ? "Stop"
+            : rawEvent;
   inbox.noteHook(agentId, event);
+  const toolName = body.tool_name ?? body.toolCall?.name;
 
   switch (event) {
     case "SessionStart":
@@ -41,21 +55,26 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, event: strin
       turnOpen.set(agentId, true);
       hub.setStatus(agentId, { state: "working", note: body.prompt ? clip(body.prompt.replace(/\s+/g, " ")) : null });
       if (st.state !== "working") hub.activity("task.started", agentId, `${name} is working`);
+      if (isAgy) return { ok: true, response: {} };
       break;
     case "PreToolUse":
       // Stale: the turn already ended. (Unknown, e.g. after an HQ restart, is allowed.)
-      if (turnOpen.get(agentId) === false) break;
-      // Also clears "needs input" once a permission prompt is answered.
-      if (st.state !== "working" || st.note?.startsWith("Asking")) hub.setStatus(agentId, { state: "working", note: body.tool_name ? `Using ${body.tool_name}` : null });
+      if (turnOpen.get(agentId) !== false) {
+        // Also clears "needs input" once a permission prompt is answered.
+        if (st.state !== "working" || st.note?.startsWith("Asking")) hub.setStatus(agentId, { state: "working", note: toolName ? `Using ${toolName}` : null });
+      }
+      if (isAgy) return { ok: true, response: { decision: "allow" } };
       break;
     case "PostToolUse":
       // A tool finished: if it was waiting on the user (a question or a permission), they answered.
-      if (turnOpen.get(agentId) === false) break;
-      if (st.state === "needs-input") hub.setStatus(agentId, { state: "working", note: "Continuing after your answer" });
+      if (turnOpen.get(agentId) !== false && st.state === "needs-input") {
+        hub.setStatus(agentId, { state: "working", note: "Continuing after your answer" });
+      }
+      if (isAgy) return { ok: true, response: {} };
       break;
     case "PermissionRequest": {
       // Codex: an approval prompt is waiting in the terminal.
-      const what = body.tool_name ? `Approve ${body.tool_name}?` : "Approval needed in the terminal";
+      const what = toolName ? `Approve ${toolName}?` : "Approval needed in the terminal";
       hub.setStatus(agentId, { state: "needs-input", note: `Asking: ${what}` });
       hub.activity("agent.needs-input", agentId, `${name} needs you: ${what}`);
       break;
@@ -73,16 +92,17 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, event: strin
     }
     case "Stop": {
       // Messages that arrived while the agent was busy: hand them over now,
-      // and Claude Code continues with them instead of stopping.
+      // and the agent continues with them instead of stopping.
       const queued = inbox.takeForStop(agentId);
       if (queued) {
-        turnOpen.set(agentId, true); // Claude continues: same turn
+        turnOpen.set(agentId, true); // Agent continues: same turn
         hub.setStatus(agentId, { state: "working", note: "Reading new messages" });
-        return { ok: true, response: { decision: "block", reason: queued } };
+        return { ok: true, response: { decision: isAgy ? "continue" : "block", reason: queued } };
       }
       turnOpen.set(agentId, false);
       hub.setStatus(agentId, { state: "idle", note: "Finished — ready for the next instruction" });
       hub.activity("agent.answered", agentId, `${name} finished a turn`);
+      if (isAgy) return { ok: true, response: { decision: "stop" } };
       break;
     }
     case "SessionEnd":

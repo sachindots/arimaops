@@ -3,6 +3,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
 import type { HqConfig, TaskStatus } from "../src/data/types";
 import type { PlanFile } from "./store";
 
@@ -13,7 +14,7 @@ const STATUS: Record<TaskStatus, string> = { todo: "", "in-progress": "in progre
 
 export function planMarkdown(config: HqConfig, plan: PlanFile): string {
   const name = (id: string | null) => (id ? (config.team.find((a) => a.id === id)?.name ?? id) : null);
-  const lines = [`# ${config.project.name} plan`, "", "_Written by JSM HQ from .jsmhq/plan.json. Edits here are overwritten; change the plan in HQ._", ""];
+  const lines = [`# ${config.project.name} plan`, "", `_Written by ${BRAND.name} from ${BRAND.repoDir}/plan.json. Edits here are overwritten; change the plan in ${BRAND.name}._`, ""];
   for (const b of [...plan.boards].sort((x, y) => x.order - y.order)) {
     lines.push(`## ${b.title} (${b.status})`, "");
     const tasks = plan.tasks.filter((t) => t.boardId === b.id);

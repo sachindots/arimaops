@@ -13,21 +13,21 @@
 @import "@xterm/xterm/css/xterm.css";
 
 @theme {
-  --color-ink: #241a2e;
-  --color-cream: #fff6e9;
-  --color-cream-2: #f0dfc2;
-  --color-cream-3: #e2cba6;
-  --color-muted: #7d6b73;
-  --color-navy: #1d2b53;
-  --color-navy-2: #16213f;
-  --color-blue: #29adff;
-  --color-red: #ff004d;
-  --color-orange: #ffa300;
-  --color-green: #00e436;
-  --color-lav: #83769c;
-  --color-yellow: #ffec27;
-  --color-pink: #ff77a8;
-  --color-grass: #4a8f3d;
+  --color-ink: #e6edf7;
+  --color-cream: #0a0c12;
+  --color-cream-2: #111520;
+  --color-cream-3: #281521;
+  --color-muted: #6e7b94;
+  --color-navy: #07090e;
+  --color-navy-2: #04060a;
+  --color-blue: #00e5ff;
+  --color-red: #ff1744;
+  --color-orange: #c04dff;
+  --color-green: #00ff66;
+  --color-lav: #6e7b94;
+  --color-yellow: #00ff66;
+  --color-pink: #ff2a85;
+  --color-grass: #050609;
   --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
   --font-term: "VT323", ui-monospace, Menlo, Consolas, monospace;
 }
@@ -69,57 +69,67 @@ html[data-font] .font-term {
 }
 
 @layer components {
-  /* Chunky game panel: ink outline, light bevel, hard drop shadow (no blur) */
+  /* Black-Ops Crimson + Hacker Terminal Cyberspace HUD panels */
   .panel {
-    background: var(--color-cream);
-    border: 3px solid var(--color-ink);
+    background: rgba(10, 12, 18, 0.94);
+    color: var(--color-ink);
+    border: 2px solid rgba(255, 23, 68, 0.58);
     box-shadow:
-      inset -3px -3px 0 var(--color-cream-2),
-      inset 3px 3px 0 #fff,
-      0 4px 0 rgba(36, 26, 46, 0.45);
+      inset 0 0 16px rgba(255, 23, 68, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 6px 22px rgba(0, 0, 0, 0.78);
   }
   .panel-dark {
-    background: rgba(29, 43, 83, 0.94);
-    color: var(--color-cream);
-    border: 3px solid var(--color-ink);
+    background: rgba(6, 8, 13, 0.96);
+    color: var(--color-ink);
+    border: 2px solid rgba(0, 255, 102, 0.45);
     box-shadow:
-      inset -3px -3px 0 rgba(0, 0, 0, 0.25),
-      inset 3px 3px 0 rgba(255, 255, 255, 0.08),
-      0 4px 0 rgba(36, 26, 46, 0.45);
+      inset 0 0 16px rgba(0, 255, 102, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 6px 22px rgba(0, 0, 0, 0.82);
   }
   .btn {
     cursor: pointer;
-    border: 3px solid var(--color-ink);
-    background: var(--color-cream);
-    padding: 1px 10px;
+    border: 1px solid rgba(255, 23, 68, 0.45);
+    background: #111520;
+    color: var(--color-ink);
+    padding: 2px 10px;
     font-weight: 600;
     box-shadow:
-      inset -2px -2px 0 var(--color-cream-3),
-      0 3px 0 var(--color-ink);
-    transition: transform 0.06s;
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 2px 0 #030407;
+    transition:
+      transform 0.06s,
+      border-color 0.12s,
+      background-color 0.12s,
+      box-shadow 0.12s;
     white-space: nowrap;
   }
   .btn:hover {
-    background: #fff;
+    background: #181f30;
+    border-color: var(--color-red);
+    box-shadow:
+      0 0 10px rgba(255, 23, 68, 0.32),
+      0 2px 0 #030407;
   }
   .btn:active,
   .btn[aria-pressed="true"] {
-    transform: translateY(3px);
-    box-shadow:
-      inset -2px -2px 0 var(--color-cream-3),
-      0 0 0 var(--color-ink);
+    transform: translateY(2px);
+    box-shadow: inset 0 0 10px rgba(0, 255, 102, 0.2);
   }
   .btn[aria-pressed="true"] {
-    background: var(--color-yellow);
+    background: rgba(0, 255, 102, 0.14);
+    border-color: var(--color-green);
+    color: var(--color-green);
   }
   .btn:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.45;
     transform: none;
   }
   .btn:focus-visible,
   .field:focus-visible {
-    outline: 3px solid var(--color-blue);
+    outline: 2px solid var(--color-green);
     outline-offset: 1px;
   }
   .chip {
@@ -129,20 +139,22 @@ html[data-font] .font-term {
     font-size: 13px;
     font-weight: 600;
     padding: 0 6px 1px;
-    border: 2px solid var(--color-ink);
-    background: var(--c, var(--color-cream-2));
-    color: var(--color-ink);
+    border: 1px solid var(--c, rgba(255, 23, 68, 0.45));
+    background: color-mix(in srgb, var(--c, #8b9bb4) 16%, #07090e);
+    color: var(--c, var(--color-ink));
     white-space: nowrap;
   }
   .chip-dot::before {
     content: "";
     width: 6px;
     height: 6px;
-    background: var(--color-ink);
+    background: var(--c, var(--color-green));
+    box-shadow: 0 0 6px var(--c, var(--color-green));
   }
   .field {
-    border: 3px solid var(--color-ink);
-    background: #fff;
+    border: 1px solid #331824;
+    background: #07090e;
+    color: var(--color-ink);
     padding: 2px 8px;
     font-size: 15px;
     width: 100%;
@@ -156,10 +168,23 @@ html[data-font] .font-term {
   .kbd {
     font-family: var(--font-term);
     font-size: 16px;
-    border: 2px solid var(--color-ink);
+    border: 1px solid rgba(255, 23, 68, 0.45);
     padding: 0 4px;
-    background: #fff;
+    background: #07090e;
+    color: var(--color-green);
   }
+}
+
+/* Keep legacy utility classes dark-theme safe */
+.border-ink {
+  border-color: #2b1520 !important;
+}
+.text-cream {
+  color: var(--color-ink) !important;
+}
+.bg-white {
+  background-color: #0e121c !important;
+  color: var(--color-ink);
 }
 
 @keyframes blink {
@@ -174,7 +199,9 @@ html[data-font] .font-term {
   width: 8px;
   height: 8px;
   background: var(--color-green);
-  box-shadow: 0 0 0 2px var(--color-ink);
+  box-shadow:
+    0 0 8px var(--color-green),
+    0 0 0 1px #040508;
   animation: blink 1s steps(1) infinite;
 }
 
@@ -187,7 +214,7 @@ html[data-font] .font-term {
 
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: #3b4a7a transparent;
+  scrollbar-color: #ff1744 transparent;
 }
 
 .xterm {
@@ -195,5 +222,20 @@ html[data-font] .font-term {
 }
 .xterm .xterm-viewport {
   scrollbar-width: thin;
-  scrollbar-color: #3b4a7a transparent;
+  scrollbar-color: #ff1744 transparent;
+}
+
+/* Tablet / phone (remote control over Tailscale). Touch-sized controls, scrollable top bar,
+   team panel becomes a bottom strip, drawers go full width. */
+@media (max-width: 1100px), (pointer: coarse) {
+  .btn, .field, select { min-height: 40px; }
+  .hq-topbar { overflow-x: auto; overflow-y: hidden; gap: 10px; scrollbar-width: none; }
+  .hq-topbar::-webkit-scrollbar { display: none; }
+  .hq-topbar > * { flex-shrink: 0; }
+}
+@media (max-width: 1100px) {
+  .hq-topbar { left: 8px; right: 8px; }
+  .hq-team { top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; max-height: 38dvh; overflow-y: auto; }
+  .hq-feed { display: none; }
+  .hq-drawer { left: 8px !important; right: 8px !important; bottom: 8px !important; width: auto !important; max-width: none !important; }
 }

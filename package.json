@@ -1,7 +1,7 @@
 {
-  "name": "@therealjsmastery/jsm-hq",
+  "name": "dothq",
   "version": "0.7.4",
-  "description": "Run a team of AI coding agents (Claude Code, Codex) on your repo in Docker Sandboxes, and watch them work in a pixel-art office.",
+  "description": "Run a team of AI agents in Docker Sandboxes, and command them from a cyberspace tactical operations center.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/jsmastery-pro/jsm-hq#readme",
@@ -19,15 +19,18 @@
     "multi-agent",
     "agent-orchestration",
     "coding-agents",
+    "antigravity",
     "claude",
     "claude-code",
     "codex",
+    "opencode",
     "docker-sandboxes",
     "mcp",
     "pixel-art",
     "developer-tools"
   ],
   "bin": {
+    "dothq": "bin/dothq.mjs",
     "jsm-hq": "bin/jsm-hq.mjs"
   },
   "publishConfig": {

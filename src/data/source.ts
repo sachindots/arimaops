@@ -46,7 +46,9 @@ export type OfficeEvent =
   | { type: "terminal.output"; agentId: string; data: string }
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
-  | { type: "action.updated"; item: ActionItem };
+  | { type: "action.updated"; item: ActionItem }
+  /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
+  | { type: "remote.stepup"; status: "required" | "ok" | "denied"; cmd?: string; args?: unknown[]; until?: number };
 
 export type SimSpeed = 1 | 2 | 4;
 

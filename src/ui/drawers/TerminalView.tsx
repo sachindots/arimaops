@@ -7,19 +7,19 @@ import { readTerminal, subscribeTerminal } from "../../store/terminal";
 import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme/fonts";
 
 const theme = {
-  background: "#16213f",
-  foreground: "#dfe6ff",
-  cursor: "#dfe6ff",
-  cursorAccent: "#16213f",
-  selectionBackground: "#2c3b6b",
-  black: "#241a2e",
-  red: "#ff5c86",
-  green: "#6cf08a",
-  yellow: "#ffc14d",
-  blue: "#29adff",
-  magenta: "#ff77a8",
+  background: "#04060a",
+  foreground: "#e6edf7",
+  cursor: "#00ff66",
+  cursorAccent: "#04060a",
+  selectionBackground: "rgba(255, 23, 68, 0.32)",
+  black: "#040508",
+  red: "#ff1744",
+  green: "#00ff66",
+  yellow: "#00ff66",
+  blue: "#00e5ff",
+  magenta: "#c04dff",
   cyan: "#3ee0d0",
-  white: "#dfe6ff",
+  white: "#e6edf7",
 };
 
 /** Opens a link from a terminal in a new tab. Only web links: a terminal's output is untrusted. */

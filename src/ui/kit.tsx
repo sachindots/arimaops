@@ -1,9 +1,40 @@
 // Small shared HUD pieces.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AgentState, ReviewState } from "../data/types";
+import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
+import type { AgentState, DepartmentId, ReviewState } from "../data/types";
 import { robotCanvases } from "../office/draw/robots";
 import { reviewStyle, stateStyle } from "../theme/tokens";
+
+export function DepartmentBadge({
+  role,
+  isLead = false,
+  department,
+  compact = false,
+}: {
+  role: string;
+  isLead?: boolean;
+  department?: DepartmentId;
+  compact?: boolean;
+}) {
+  const deptId = inferDepartmentForRole(role, isLead, department);
+  const meta = DEPARTMENT_META[deptId];
+  return (
+    <span
+      className={`inline-flex items-center border font-mono font-bold uppercase tracking-wider ${
+        compact ? "px-1 py-0 text-[9px] leading-[14px]" : "px-1.5 py-0.5 text-[10px] leading-tight"
+      }`}
+      style={{
+        color: meta.color,
+        borderColor: `${meta.color}66`,
+        backgroundColor: `${meta.color}18`,
+      }}
+      title={meta.label}
+    >
+      {meta.short}
+    </span>
+  );
+}
 
 export function StateChip({ state, blink = true }: { state: AgentState; blink?: boolean }) {
   const st = stateStyle[state];

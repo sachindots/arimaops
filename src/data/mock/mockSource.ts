@@ -1,4 +1,5 @@
 import { agentPalette } from "../../theme/tokens";
+import { defaultRoleMdFor, defaultSkillsForRole } from "../roles";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
 import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
@@ -74,7 +75,7 @@ export function createMockSource(): OfficeDataSource {
   const shellOut = (id: string, data: string) => listener?.({ type: "terminal.output", agentId: id, data });
   const DEMO_SHELL: Record<string, string> = {
     ls: "README.md  app  components  lib  package.json  pnpm-lock.yaml",
-    pwd: "/Users/you/.jsmhq/askwell/workspace",
+    pwd: "/Users/you/.hq/askwell/workspace",
     "git status": "On branch p3-t02-chat-route\r\nChanges not staged for commit:\r\n  modified:   app/api/chat/route.ts",
     "node -v": "v22.11.0",
     whoami: "agent",
@@ -218,10 +219,19 @@ export function createMockSource(): OfficeDataSource {
       const used = new Set(team.map((a) => a.color));
       const color = agentPalette.find((c) => !used.has(c)) ?? agentPalette[team.length % agentPalette.length];
       const lead = world.lead();
+      const name = input.name.trim() || "Agent";
+      const role = input.role.trim() || "Developer";
       const agent: AgentConfig = {
-        id, name: input.name.trim() || "Agent", role: input.role.trim() || "Developer", isLead: false, cli: input.cli ?? "claude",
-        model: input.model ?? "", mode: input.mode, color, skills: ["plan", "review"],
-        roleMd: `# ${input.name} — ${input.role}\n\nYou build the tasks assigned to you.`,
+        id,
+        name,
+        role,
+        isLead: false,
+        cli: input.cli ?? "claude",
+        model: input.model ?? "",
+        mode: input.mode,
+        color,
+        skills: input.skills ?? defaultSkillsForRole(role, false),
+        roleMd: input.roleMd ?? defaultRoleMdFor(name, role, false),
         sandbox: structuredClone(lead.sandbox),
         workspacePath: null,
       };
@@ -235,7 +245,7 @@ export function createMockSource(): OfficeDataSource {
       world.syncEnvironments();
       world.activity("config", null, `Added ${agent.name} (${agent.role}) — new sandbox starting`);
       world.write(id, T.banner(agent.name, agent.role, world.snap.config.project.repo, agent.mode));
-      hostCmd(id, `sbx run claude · allow host.docker.internal:${world.snap.config.project.hqPort}`);
+      hostCmd(id, `sbx run ${agent.cli} · allow host.docker.internal:${world.snap.config.project.hqPort}`);
       syncSbx();
       sim.startWorker(id, 2);
     },
@@ -390,6 +400,7 @@ export function createMockSource(): OfficeDataSource {
 
     updateWorkflow(patch: WorkflowPatch) {
       const wf = world.snap.config.workflow;
+      if (patch.mode) wf.mode = patch.mode;
       Object.assign(wf.review, patch.review);
       Object.assign(wf.merge, patch.merge);
       Object.assign(wf.deploy, patch.deploy);
@@ -485,7 +496,7 @@ export function createMockSource(): OfficeDataSource {
       const who = world.name(req.agentId);
       if (decision === "deny") {
         world.activity("config", req.agentId, `You denied ${who} access to ${req.domain}`);
-        world.write(req.agentId, [{ text: `\x1b[38;2;255;0;77mhq ▸ access to ${req.domain} denied — continuing without it\x1b[0m` }]);
+        world.write(req.agentId, [{ text: `\x1b[38;2;255;23;68mhq ▸ access to ${req.domain} denied — continuing without it\x1b[0m` }]);
       } else {
         const ids = decision === "everyone" ? world.snap.config.team.filter((a) => a.mode === "sandbox").map((a) => a.id) : [req.agentId];
         for (const id of ids) {
@@ -525,7 +536,7 @@ export function createMockSource(): OfficeDataSource {
         world.emit({ type: "access.updated", request: { ...req } });
         world.setStatus(st.agentId, { state: "needs-input", note: `Asking: access to ${domain}` });
         world.activity("agent.needs-input", st.agentId, `${world.name(st.agentId)} needs you: access to ${domain}`);
-        world.write(st.agentId, [{ text: `\x1b[38;2;255;163;0mhq ▸ request_access ${domain} — "${req.reason}" (waiting for you)\x1b[0m` }]);
+        world.write(st.agentId, [{ text: `\x1b[38;2;255;23;68mhq ▸ request_access ${domain} — "${req.reason}" (waiting for you)\x1b[0m` }]);
       },
     },
   };

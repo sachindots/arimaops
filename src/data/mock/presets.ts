@@ -1,3 +1,4 @@
+import { defaultRoleMdFor, defaultSkillsForRole } from "../roles";
 import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
 
 export interface Preset {
@@ -38,10 +39,8 @@ function agent(
     model: isLead ? "Opus" : "Sonnet",
     mode: "sandbox",
     color,
-    skills: isLead ? ["plan", "review", "honest"] : ["plan", "debug", "review"],
-    roleMd: isLead
-      ? `# ${name} — Lead\n\nYou plan and assign work. You never write app code.\nUse the HQ Team MCP: list_workers, get_status, assign_task, send_message.`
-      : `# ${name} — ${role}\n\nYou build the tasks assigned to you. One task = one branch = one PR.\nOnly edit the files your task file allows.`,
+    skills: defaultSkillsForRole(role, isLead),
+    roleMd: defaultRoleMdFor(name, role, isLead),
     sandbox: sandbox(isLead ? {} : { allow: ["registry.npmjs.org", "console.instacloud.com"] }),
     workspacePath: null,
     ...opts,
@@ -68,11 +67,12 @@ const askwell: Preset = {
   config: {
     project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
-      agent("michael", "Michael", "Lead", "#ff77a8", { isLead: true }),
-      agent("dwight", "Dwight", "Developer", "#29adff"),
-      agent("jim", "Jim", "Developer", "#ffd23a"),
+      agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
+      agent("jim", "Vortex", "Frontend", "#00e5ff", { cli: "agy", model: "gemini-3-flash" }),
     ],
     workflow: {
+      mode: "github-pr",
       review: { enabled: true, tool: "coderabbit", command: "" },
       merge: { by: "human" },
       deploy: { enabled: true, tool: "instacloud", command: "", perAgentEnvironments: true },
@@ -114,6 +114,52 @@ const askwell: Preset = {
   leadQuestions: ["Approve the Phase 4 breakdown?", "Merge #{pr} before the other open PRs?"],
 };
 
+// ---------------------------------------------------------------- Cybersec & OSINT Cell (5 agents, Deliverables mode)
+
+const redCell: Preset = {
+  id: "red-cell",
+  label: "RedCell · 5 agents (Cybersec)",
+  config: {
+    project: { id: "redcell-ops", name: "RedCell Ops", repo: "dothq/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
+    team: [
+      agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),
+      agent("vortex", "Vortex", "Red Teamer", "#00e5ff", { cli: "claude", model: "Sonnet" }),
+      agent("nyx", "Nyx", "Security", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
+      agent("pulse", "Pulse", "SOC Analyst", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+    ],
+    workflow: {
+      mode: "deliverables",
+      review: { enabled: false, tool: "human", command: "" },
+      merge: { by: "lead" },
+      deploy: { enabled: false, tool: "custom", command: "", perAgentEnvironments: false },
+    },
+  },
+  boards: [
+    { id: "REC", title: "Phase 1 — Recon & Attack Surface", status: "active", order: 0 },
+    { id: "AUD", title: "Phase 2 — Exploit Validation & Triage", status: "active", order: 1 },
+    { id: "DET", title: "Phase 3 — Detection & Hardening", status: "planned", order: 2 },
+  ],
+  tasks: [
+    { id: "REC-T01", boardId: "REC", title: "Subdomain & API footprint dossier", ownerId: "ghost", status: "done", needs: [], prNumber: null, deliverablePath: "deliverables/REC-T01-footprint.md" },
+    { id: "REC-T02", boardId: "REC", title: "STRIDE threat model for auth gateway", ownerId: "nyx", status: "todo", needs: [], prNumber: null },
+    { id: "AUD-T01", boardId: "AUD", title: "JWT token confusion & SSRF PoC", ownerId: "vortex", status: "todo", needs: ["REC-T01"], prNumber: null },
+    { id: "AUD-T02", boardId: "AUD", title: "Webhook signature bypass audit", ownerId: "nyx", status: "todo", needs: [], prNumber: null },
+    { id: "DET-T01", boardId: "DET", title: "Sigma rules for credential stuffing", ownerId: "pulse", status: "todo", needs: [], prNumber: null },
+  ],
+  mergedPrs: 1,
+  taskPool: [
+    "Dependency CVE triage", "CSP & CORS header audit", "Sandbox egress policy review",
+    "YARA rule for anomalous payloads", "Executive security briefing", "IAM privilege matrix",
+  ],
+  questions: [
+    "Include staging subdomains in passive recon scope?",
+    "Classify the SSRF vector as CRITICAL or HIGH?",
+    "Target Sigma output for Elastic or Splunk?",
+  ],
+  leadQuestions: ["Approve the Phase 3 hardening runbook?", "Sign off on the executive threat brief?"],
+};
+
 // ---------------------------------------------------------------- Big team (7 agents)
 
 const bigTeam: Preset = {
@@ -122,15 +168,16 @@ const bigTeam: Preset = {
   config: {
     project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
     team: [
-      agent("maya", "Maya", "Lead", "#ff77a8", { isLead: true }),
-      agent("dwight", "Dwight", "Developer", "#29adff"),
-      agent("jim", "Jim", "Developer", "#ffd23a"),
-      agent("kenji", "Kenji", "Developer", "#00e436", { cli: "codex", model: "" }),
-      agent("priya", "Priya", "QA", "#a98bff", { skills: ["test", "review"] }),
-      agent("leo", "Leo", "Designer", "#ff8a3d", { skills: ["frontend-design", "review"] }),
-      agent("sam", "Sam", "Docs", "#3ee0d0", { model: "Haiku", skills: ["document"] }),
+      agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
+      agent("jim", "Vortex", "Architect", "#00e5ff", { cli: "agy", model: "gemini-3.1-pro" }),
+      agent("kenji", "Nyx", "Developer", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
+      agent("priya", "Pulse", "QA", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+      agent("leo", "Zero", "Frontend", "#3ee0d0", { cli: "gemini", model: "gemini-3-flash" }),
+      agent("sam", "Hex", "Docs", "#5271ff", { cli: "copilot", model: "claude-sonnet-4.6" }),
     ],
     workflow: {
+      mode: "github-pr",
       review: { enabled: true, tool: "greptile", command: "" },
       merge: { by: "lead" },
       deploy: { enabled: true, tool: "vercel", command: "", perAgentEnvironments: false },
@@ -173,10 +220,11 @@ const duo: Preset = {
   config: {
     project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420 },
     team: [
-      agent("ada", "Ada", "Lead", "#a98bff", { isLead: true, model: "Sonnet" }),
-      agent("max", "Max", "Developer", "#29adff"),
+      agent("ada", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("max", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
     ],
     workflow: {
+      mode: "github-pr",
       review: { enabled: true, tool: "human", command: "" },
       merge: { by: "human" },
       deploy: { enabled: false, tool: "custom", command: "", perAgentEnvironments: false },
@@ -193,5 +241,5 @@ const duo: Preset = {
   leadQuestions: ["Ship the MVP with search, or cut it?"],
 };
 
-export const presets: Preset[] = [askwell, bigTeam, duo];
+export const presets: Preset[] = [askwell, redCell, bigTeam, duo];
 export const defaultPresetId = askwell.id;

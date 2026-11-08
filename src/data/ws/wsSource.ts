@@ -13,6 +13,20 @@ export function createWsSource(token: string): OfficeDataSource {
     else if (queue.length < 200) queue.push(msg);
   };
 
+  // Remote step-up: the server refused a risky command until a TOTP code is entered.
+  let prompting = false;
+  const handleStepUp = (ev: Extract<OfficeEvent, { type: "remote.stepup" }>) => {
+    if (ev.status === "denied") return void window.alert("Wrong or reused code. Try the next one from your authenticator app.");
+    if (ev.status !== "required" || prompting) return;
+    prompting = true;
+    // Defer so the socket handler returns first.
+    setTimeout(() => {
+      const code = window.prompt(`"${ev.cmd}" needs confirmation from a remote device.\nEnter the 6-digit code from your authenticator app (valid 10 min):`);
+      prompting = false;
+      if (code) send("elevate", code.trim(), ev.cmd, ev.args ?? []);
+    }, 0);
+  };
+
   const source: OfficeDataSource = {
     connect(onEvent, onStatus) {
       // Each connect() owns its socket and retry loop, so a stale one can't reconnect.
@@ -39,7 +53,9 @@ export function createWsSource(token: string): OfficeDataSource {
         sock.onmessage = (m) => {
           if (!active) return;
           try {
-            onEvent(JSON.parse(String(m.data)) as OfficeEvent);
+            const ev = JSON.parse(String(m.data)) as OfficeEvent;
+            if (ev.type === "remote.stepup") return handleStepUp(ev);
+            onEvent(ev);
           } catch {
             /* ignore malformed frames */
           }

@@ -4,6 +4,7 @@
 import type { OfficeEvent } from "../src/data/source";
 import type { ActivityType, AgentConfig, AgentStatus, HqConfig, OfficeSnapshot, SessionInfo, SetupState } from "../src/data/types";
 import { writePlanExport } from "./planExport";
+import { registerProjectInRegistry } from "./projectsRegistry";
 import { saveConfig, savePlan, type PlanFile } from "./store";
 import type { RepoInfo } from "./repo";
 
@@ -29,6 +30,11 @@ export class Hub {
       messages: [],
       activity: [],
     };
+    try {
+      registerProjectInRegistry(repo.root, config);
+    } catch {
+      /* non-fatal */
+    }
   }
 
   static freshStatus(agentId: string): AgentStatus {
@@ -124,12 +130,22 @@ export class Hub {
 
   configChanged() {
     saveConfig(this.repo.root, this.snap.config);
+    try {
+      registerProjectInRegistry(this.repo.root, this.snap.config);
+    } catch {
+      /* non-fatal */
+    }
     this.emit({ type: "config.updated", config: structuredClone(this.snap.config) });
   }
 
   planChanged() {
     const plan = { boards: this.snap.boards, tasks: this.snap.tasks };
     savePlan(this.repo.root, plan);
+    try {
+      registerProjectInRegistry(this.repo.root, this.snap.config);
+    } catch {
+      /* non-fatal */
+    }
     if (this.snap.config.project.exportPlan) writePlanExport(this.repo.root, this.snap.config, plan);
   }
 

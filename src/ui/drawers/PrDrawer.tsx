@@ -27,7 +27,7 @@ export function PrDrawer() {
             · {ago(pr.openedAt, now)} ago
             {!pr.merged && <> · {pr.openComments} open comment{pr.openComments === 1 ? "" : "s"}{pr.conflict ? " · merge conflict" : ""}</>}
           </div>
-          {pr.reviewNote && !pr.merged && <div className="text-[12px] text-[#a35d00]">{pr.reviewNote}</div>}
+          {pr.reviewNote && !pr.merged && <div className="text-[12px] text-orange">{pr.reviewNote}</div>}
         </div>
         <div className="flex flex-col items-end gap-1">
           <ReviewChip review={pr.review} merged={pr.merged} />

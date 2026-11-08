@@ -1,24 +1,49 @@
-// Per-CLI differences: which files HQ writes into the agent's folder and how
-// the agent is launched. Everything else (hooks → state, Team MCP, delivery)
-// is shared — Codex and Claude Code send the same hook payloads.
+// Per-CLI differences: which files .hq writes into the agent's folder and how
+// the agent is launched in both Local mode and Docker Sandbox mode.
+// Everything else (hooks → state, Team MCP, message delivery) is shared.
 
 import { agentWrite } from "./lib/agentFs";
+import { BRAND } from "../src/data/brand";
 import type { AgentCli, AgentConfig, HqConfig } from "../src/data/types";
-import { adoptRoleFile, excludeFromGit, HOOK_SCRIPT, type RoleExtras, hookCommand, hookScriptFor, hqUrl, MCP_CONFIG, roleMd, writeClaudeFiles, writeHookScript } from "./agentFiles";
+import {
+  adoptRoleFile,
+  excludeFromGit,
+  HOOK_SCRIPT,
+  type RoleExtras,
+  hookCommand,
+  hookScriptFor,
+  hqUrl,
+  MCP_CONFIG,
+  roleMd,
+  writeAgyFiles,
+  writeClaudeFiles,
+  writeGeminiFiles,
+  writeHookScript,
+  writeOpenCodeFiles,
+} from "./agentFiles";
 import { run } from "./lib/exec";
 
 export interface Launch {
-  sbxAgent: string; // agent name for `sbx run`
-  args: string[]; // the CLI's own arguments (not shell-quoted)
+  /** Agent template name for `sbx run` ("claude" | "codex" | "gemini" | "copilot" | "shell"). */
+  sbxAgent: string;
+  /** The CLI's own arguments in Local mode. */
+  args: string[];
+  /** Optional override arguments passed after `--` to `sbx run` when sandbox invocation differs from Local mode. */
+  sbxArgs?: string[];
 }
 
 export interface CliAdapter {
-  /** Writes HQ's files into the agent's folder (all git-excluded). */
+  /** Writes .hq's files into the agent's folder (all git-excluded). */
   writeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras?: RoleExtras): Promise<void>;
   launch(agent: AgentConfig): Launch;
 }
 
-// ---------------------------------------------------------------- Claude Code
+const cleanModel = (raw: string): string | null => {
+  const m = raw.trim();
+  return !m || /^default$/i.test(m) ? null : m;
+};
+
+// ---------------------------------------------------------------- Claude Code (`claude`)
 
 const claude: CliAdapter = {
   async writeFiles(dir, agent, cfg, token, extras = {}) {
@@ -27,15 +52,15 @@ const claude: CliAdapter = {
   },
   launch(agent) {
     // "Opus" / "Sonnet" / "Haiku" → Claude Code's aliases; anything else is passed as a full model id.
-    const m = agent.model.trim();
-    const model = !m || /^default$/i.test(m) ? null : /^(opus|sonnet|haiku)$/i.test(m) ? m.toLowerCase() : m;
-    // Relative to the agent's folder, where it starts. An absolute path would be the host's, and on
-    // Windows the folder has a different path inside the sandbox (C:\x on the host, /c/x in the sandbox).
-    return { sbxAgent: "claude", args: ["--mcp-config", MCP_CONFIG, ...(model ? ["--model", model] : [])] };
+    const m = cleanModel(agent.model);
+    const model = m && /^(opus|sonnet|haiku)$/i.test(m) ? m.toLowerCase() : m;
+    // Relative to the agent's folder, where it starts.
+    const args = ["--mcp-config", MCP_CONFIG, ...(model ? ["--model", model] : [])];
+    return { sbxAgent: "claude", args };
   },
 };
 
-// ---------------------------------------------------------------- Codex
+// ---------------------------------------------------------------- OpenAI Codex (`codex`)
 
 export const CODEX_CONFIG = ".codex/config.toml";
 const CODEX_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Stop", "SessionEnd"];
@@ -47,7 +72,7 @@ export function codexConfig(agent: AgentConfig, cfg: HqConfig, token: string, di
   const url = hqUrl(agent, cfg.project.hqPort);
   const script = hookScriptFor(agent, dir);
   const lines = [
-    "# Written by JSM HQ for this agent (git-excluded). Codex loads it once you trust this folder.",
+    `# Written by ${BRAND.name} for this agent (git-excluded). Codex loads it once you trust this folder.`,
     `developer_instructions = ${t(roleMd(agent, cfg, extras))}`,
     "",
     "[features]",
@@ -64,22 +89,123 @@ export function codexConfig(agent: AgentConfig, cfg: HqConfig, token: string, di
 
 const codex: CliAdapter = {
   async writeFiles(dir, agent, cfg, token, extras = {}) {
-    // A repo that commits its own Codex config can't take HQ's without changing a tracked file.
     const tracked = await run("git", ["ls-files", "--error-unmatch", CODEX_CONFIG], { cwd: dir });
-    if (tracked.ok) throw new Error(`This repo commits ${CODEX_CONFIG}, so HQ can't add its Codex settings without changing a tracked file. Use Claude Code for this agent, or remove that file from the repo.`);
-    // The role goes in the config (developer_instructions); the folder's own ROLE.md is included, never overwritten.
+    if (tracked.ok)
+      throw new Error(
+        `This repo commits ${CODEX_CONFIG}, so ${BRAND.name} can't add its Codex settings without changing a tracked file. Choose another CLI for this agent, or remove that file from the repo.`,
+      );
     const ownRole = await adoptRoleFile(dir);
     agentWrite(dir, CODEX_CONFIG, codexConfig(agent, cfg, token, dir, { ...extras, ownRole }), { mode: 0o600 });
     if (hookScriptFor(agent, dir)) writeHookScript(dir);
     excludeFromGit(dir, [CODEX_CONFIG, HOOK_SCRIPT]);
   },
   launch(agent) {
-    const model = agent.model.trim() && !/^default$/i.test(agent.model.trim()) ? agent.model.trim() : null;
-    return { sbxAgent: "codex", args: model ? ["-m", model] : [] };
+    const raw = cleanModel(agent.model);
+    // Older configs saved "gpt-5.4" / "gpt-5.3-codex" / "o3", which Codex v0.167+ rejects on ChatGPT OAuth accounts.
+    const model = raw && /^(gpt-5\.4|gpt-5\.3-codex|o3)$/i.test(raw) ? "gpt-6.1-sol" : raw;
+    const args = model ? ["-m", model] : [];
+    return { sbxAgent: "codex", args };
   },
 };
 
-export const adapters: Record<AgentCli, CliAdapter> = { claude, codex };
+// ---------------------------------------------------------------- Antigravity CLI (`agy`)
+
+const agy: CliAdapter = {
+  async writeFiles(dir, agent, cfg, token, extras = {}) {
+    const ownRole = await adoptRoleFile(dir);
+    writeAgyFiles(dir, agent, cfg, token, { ...extras, ownRole });
+    if (agent.mode === "local") {
+      await run("agy", ["mcp", "add", "hq", "node", `./${HOOK_SCRIPT}`, "--mcp-stdio"], { cwd: dir, timeoutMs: 5000 }).catch(() => {});
+    }
+  },
+  launch(agent) {
+    const model = cleanModel(agent.model);
+    // `agy` runs interactively at the root command; `--dangerously-skip-permissions` prevents tool confirmation hangs.
+    const args = ["--dangerously-skip-permissions", "--mode", "auto", ...(model ? ["--model", model] : [])];
+    const cmdStr = ["agy", ...args.map((a) => `'${a.replace(/'/g, "'\\''")}'`)].join(" ");
+    const sbxScript = `if command -v agy >/dev/null 2>&1; then agy mcp add hq node ./${HOOK_SCRIPT} --mcp-stdio >/dev/null 2>&1 || true; exec ${cmdStr}; elif command -v antigravity >/dev/null 2>&1; then exec antigravity ${args.join(" ")}; else echo "[.hq] Antigravity CLI (agy) is not pre-installed in this Docker Sandbox VM image. Install agy in the sandbox shell or switch this agent to Local mode."; exec bash -l; fi`;
+    return {
+      sbxAgent: "shell",
+      args,
+      sbxArgs: ["-c", sbxScript],
+    };
+  },
+};
+
+// ---------------------------------------------------------------- OpenCode (`opencode`)
+
+const opencode: CliAdapter = {
+  async writeFiles(dir, agent, cfg, token, extras = {}) {
+    const ownRole = await adoptRoleFile(dir);
+    writeOpenCodeFiles(dir, agent, cfg, token, { ...extras, ownRole });
+  },
+  launch(agent) {
+    const model = cleanModel(agent.model);
+    const args = model ? ["-m", model] : [];
+    const cmdStr = ["opencode", ...args.map((a) => `'${a.replace(/'/g, "'\\''")}'`)].join(" ");
+    const sbxScript = `if ! command -v opencode >/dev/null 2>&1; then echo "[.hq] Installing OpenCode CLI in sandbox…"; npm install -g opencode-ai >/dev/null 2>&1 || true; fi; exec ${cmdStr}`;
+    return {
+      sbxAgent: "shell",
+      args,
+      sbxArgs: ["-c", sbxScript],
+    };
+  },
+};
+
+// ---------------------------------------------------------------- Gemini CLI (`gemini`)
+
+const gemini: CliAdapter = {
+  async writeFiles(dir, agent, cfg, token, extras = {}) {
+    const ownRole = await adoptRoleFile(dir);
+    writeGeminiFiles(dir, agent, cfg, token, { ...extras, ownRole });
+  },
+  launch(agent) {
+    const model = cleanModel(agent.model);
+    const args = model ? ["-m", model] : [];
+    return { sbxAgent: "gemini", args };
+  },
+};
+
+// ---------------------------------------------------------------- GitHub Copilot CLI (`copilot`)
+
+const COPILOT_INSTRUCTIONS = ".github/copilot-instructions.md";
+
+const copilot: CliAdapter = {
+  async writeFiles(dir, agent, cfg, token, extras = {}) {
+    const ownRole = await adoptRoleFile(dir);
+    writeClaudeFiles(dir, agent, cfg, token, { ...extras, ownRole });
+    const tracked = await run("git", ["ls-files", "--error-unmatch", COPILOT_INSTRUCTIONS], { cwd: dir });
+    if (!tracked.ok) {
+      agentWrite(dir, COPILOT_INSTRUCTIONS, roleMd(agent, cfg, { ...extras, ownRole }));
+      excludeFromGit(dir, [COPILOT_INSTRUCTIONS]);
+    }
+  },
+  launch(agent) {
+    const model = cleanModel(agent.model);
+    const args = [
+      "--additional-mcp-config",
+      `@${MCP_CONFIG}`,
+      ...(model ? ["--model", model] : []),
+    ];
+    return { sbxAgent: "copilot", args };
+  },
+};
+
+export const adapters: Record<AgentCli, CliAdapter> = {
+  claude,
+  codex,
+  agy,
+  opencode,
+  gemini,
+  copilot,
+};
 
 /** The command a Local-mode agent runs on the host. */
-export const localBinary: Record<AgentCli, string> = { claude: "claude", codex: "codex" };
+export const localBinary: Record<AgentCli, string> = {
+  claude: "claude",
+  codex: "codex",
+  agy: "agy",
+  opencode: "opencode",
+  gemini: "gemini",
+  copilot: "copilot",
+};

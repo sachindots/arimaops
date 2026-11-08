@@ -1,7 +1,7 @@
-// Facts about the repo HQ was started in.
+// Facts about the repo (or project folder) .hq was started in.
 
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { run } from "./lib/exec";
 
 export interface RepoInfo {
@@ -14,9 +14,14 @@ export interface RepoInfo {
 }
 
 export async function detectRepo(start: string): Promise<RepoInfo> {
-  const top = await run("git", ["rev-parse", "--show-toplevel"], { cwd: start });
-  if (!top.ok) throw new Error(`${start} is not inside a git repository. Run HQ from your project folder or pass --repo <path>.`);
-  const root = top.stdout.trim();
+  let top = await run("git", ["rev-parse", "--show-toplevel"], { cwd: start });
+  if (!top.ok) {
+    // Allow .hq to run in any folder (e.g., OSINT, research, content, or new project): initialize a local git repo automatically.
+    const init = await run("git", ["init", "-q"], { cwd: start });
+    if (!init.ok) throw new Error(`${start} is not a git repository and could not be initialized. Pass --repo <path>.`);
+    top = await run("git", ["rev-parse", "--show-toplevel"], { cwd: start });
+  }
+  const root = top.ok ? top.stdout.trim() : resolve(start);
   const origin = await run("git", ["remote", "get-url", "origin"], { cwd: root });
   const originUrl = origin.ok ? origin.stdout.trim() : null;
   const m = originUrl?.match(/github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/);

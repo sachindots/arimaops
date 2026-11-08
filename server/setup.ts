@@ -129,8 +129,56 @@ async function checkClaude(): Promise<Check> {
   return {
     ...base,
     status: "missing",
-    detail: "Not installed. Only needed for agents in Local mode.",
+    detail: "Not installed. Only needed for Claude Code agents in Local mode.",
     fix: fix(os === "win32" ? "irm https://claude.ai/install.ps1 | iex" : "curl -fsSL https://claude.ai/install.sh | bash", false, "https://docs.claude.com/en/docs/claude-code/setup"),
+  };
+}
+
+async function checkAgy(): Promise<Check> {
+  const base = { id: "agy" as const, label: "Antigravity CLI (agy)", neededFor: "local" as const };
+  const v = await run("agy", ["--version"], { timeoutMs: 8000 });
+  if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim().split("\n")[0] || "Installed", fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: "Not found on PATH. Install the `agy` CLI from Antigravity IDE (Command Palette → Install 'agy' command in PATH).",
+    fix: fix("agy --version", false, "https://antigravity.google"),
+  };
+}
+
+async function checkOpenCode(): Promise<Check> {
+  const base = { id: "opencode" as const, label: "OpenCode CLI (opencode)", neededFor: "local" as const };
+  const v = await run("opencode", ["--version"], { timeoutMs: 8000 });
+  if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim().split("\n")[0] || "Installed", fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: "Not installed. Needed for OpenCode agents in Local mode.",
+    fix: fix("npm install -g opencode-ai", true, "https://opencode.ai/docs"),
+  };
+}
+
+async function checkGemini(): Promise<Check> {
+  const base = { id: "gemini" as const, label: "Gemini CLI (gemini)", neededFor: "local" as const };
+  const v = await run("gemini", ["--version"], { timeoutMs: 8000 });
+  if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim().split("\n")[0] || "Installed", fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: "Not installed. Needed for Gemini CLI agents in Local mode.",
+    fix: fix("npm install -g @google/gemini-cli", true, "https://github.com/google-gemini/gemini-cli"),
+  };
+}
+
+async function checkCopilot(): Promise<Check> {
+  const base = { id: "copilot" as const, label: "GitHub Copilot CLI (copilot)", neededFor: "local" as const };
+  const v = await run("copilot", ["--version"], { timeoutMs: 8000 });
+  if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim().split("\n")[0] || "Installed", fix: null };
+  return {
+    ...base,
+    status: "missing",
+    detail: "Not installed. Needed for Copilot CLI agents in Local mode.",
+    fix: fix("npm install -g @github/copilot", true, "https://docs.github.com/en/copilot"),
   };
 }
 
@@ -155,7 +203,7 @@ function checkRemote(repo: RepoInfo): Check {
   return {
     ...base,
     status: "warning",
-    detail: repo.originUrl ? `origin is ${repo.originUrl} (not GitHub)` : "No origin remote. Agents can't push or open PRs.",
+    detail: repo.originUrl ? `origin is ${repo.originUrl} (not GitHub)` : "No origin remote. Switch Workflow to Deliverables mode for non-GitHub projects, or add a remote.",
     fix: fix("gh repo create --source . --private --push", false, "https://cli.github.com/manual/gh_repo_create"),
   };
 }
@@ -194,7 +242,7 @@ async function checkOpenAiSecret(sbxOk: boolean): Promise<Check> {
   return { ...base, status: "missing", detail: "Codex agents can't sign in until this is set. Opens your browser to sign in with ChatGPT.", fix: fix("sbx secret set openai --oauth", true, "https://docs.docker.com/ai/sandboxes/") };
 }
 
-/** `team` adds the Codex checks only when the team has Codex agents. */
+/** `team` adds CLI-specific checks for any CLI used by the team. */
 export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): Promise<SetupState> {
   const brew = os === "darwin" && (await has("brew"));
   const [osCheck, sbx, tmux, claude, gh] = await Promise.all([checkOs(), checkSbx(brew), checkTmux(brew), checkClaude(), checkGh(brew)]);
@@ -202,15 +250,24 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = []): 
   const [login, secret] = await Promise.all([checkSbxLogin(sbxOk), checkGithubSecret(sbxOk)]);
   const policy = await checkSbxPolicy(login.status === "ok");
   const checks: SetupCheck[] = [osCheck, sbx, login, policy, secret, tmux, claude, gh, checkRemote(repo)];
-  const codexAgents = team.filter((a) => a.cli === "codex");
-  if (codexAgents.some((a) => a.mode === "sandbox")) checks.splice(5, 0, await checkOpenAiSecret(sbxOk));
-  if (codexAgents.some((a) => a.mode === "local")) checks.push(await checkCodex());
+
+  const hasCli = (c: AgentConfig["cli"], mode?: AgentConfig["mode"]) =>
+    team.some((a) => a.cli === c && (!mode || a.mode === mode));
+
+  if (hasCli("codex", "sandbox")) checks.splice(5, 0, await checkOpenAiSecret(sbxOk));
+  if (hasCli("codex", "local")) checks.push(await checkCodex());
+  if (hasCli("agy")) checks.push(await checkAgy());
+  if (hasCli("opencode", "local")) checks.push(await checkOpenCode());
+  if (hasCli("gemini", "local")) checks.push(await checkGemini());
+  if (hasCli("copilot", "local")) checks.push(await checkCopilot());
+
   const ok = (c: SetupCheck) => c.status === "ok";
+  const localClis = checks.filter((c) => c.neededFor === "local");
   return {
     machine: { cpus: cpus().length, memoryGb: Math.round(totalmem() / 1024 ** 3), persistentAgents: usesTmux() },
     checks,
     sandboxReady: osCheck.status !== "unsupported" && ok(sbx) && ok(login) && ok(policy) && ok(tmux),
-    localReady: ok(tmux) && ok(claude),
+    localReady: ok(tmux) && (localClis.some(ok) || ok(claude)),
     checkedAt: new Date().toISOString(),
   };
 }

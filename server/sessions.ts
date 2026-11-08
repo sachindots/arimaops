@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
-import { HOST_TERMINAL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
+import { HOST_TERMINAL, CLI_LABEL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
 import { adapters, localBinary } from "./adapters";
 import type { Hub } from "./hub";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
@@ -34,11 +34,11 @@ const SHELL_ENV = { ...TERM_ENV, FORCE_HYPERLINK: "1" };
  */
 const SANDBOX_BROWSER = "/usr/local/bin/xdg-open";
 
-// What the agents' screens show (Claude Code and Codex).
-const BUSY = /esc to interrupt/i; // the footer while a turn runs
-// A question or permission prompt (Claude Code's wording; the numbered-option line also covers Codex's).
-const DIALOG = /Enter to select|↑\/↓ to navigate|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›]\s*1\.\s/im;
-const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything/; // the input prompt is up
+// What the agents' screens show across supported CLIs.
+const BUSY = /esc to interrupt|esc to cancel/i; // the footer while a turn runs
+// A question or permission prompt.
+const DIALOG = /Enter to select|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
+const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything|Type your message|Ask Gemini|Ask Antigravity|ctrl\+p commands/i; // the input prompt is up
 const SCREEN_QUIET_MS = 4000; // only second-guess hooks after this much silence
 const STALE_WORKING_MS = 15_000; // "working" with an idle screen this long = a missed Stop
 
@@ -55,7 +55,7 @@ export class Sessions {
   private closing = new WeakSet<IPty>(); // closed on purpose: no "[shell closed]" line
   private shellGen = new Map<string, number>();
   private policyOk = false;
-  /** Called whenever an agent's Claude Code session goes away (stop, restart, crash). */
+  /** Called whenever an agent's session goes away (stop, restart, crash). */
   onSessionDown: (agentId: string) => void = () => {};
   /** Called once an agent's sandbox exists after Start (to apply its network rules). */
   onSandboxReady: (agentId: string) => void = () => {};
@@ -93,8 +93,8 @@ export class Sessions {
     if (!setup.checks.find((c) => c.id === "tmux" && c.status === "ok")) return fail("tmux is not installed. See the setup checklist.");
     if (agent.mode === "sandbox" && !setup.sandboxReady) return fail("Docker Sandboxes isn't ready on this machine. Finish the setup checklist, or switch this agent to Local mode.");
     const check = (cid: string) => setup.checks.find((c) => c.id === cid)?.status;
-    if (agent.mode === "local" && agent.cli === "claude" && check("claude") !== "ok") return fail("Claude Code isn't installed. See the setup checklist.");
-    if (agent.mode === "local" && agent.cli === "codex" && check("codex") !== "ok") return fail("Codex isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.");
+    if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")
+      return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
 
@@ -108,9 +108,9 @@ export class Sessions {
       const hasEnvFile = !!this.envFileFor(id) && (agent.mode === "sandbox" || this.backend.persistent);
       await adapter.writeFiles(dir, agent, hub.snap.config, this.agentToken, { hasEnvFile });
       const specs = stackSkills(hub.snap.config.stack);
-      if (specs.length || hasHqSkills(hub.slug, dir)) {
+      if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
-        const skills = await prepareSkills(hub.slug, dir, specs);
+        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root);
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {
@@ -130,7 +130,8 @@ export class Sessions {
           const isNew = !(await this.sandboxExists(name));
           const size = !isNew ? [] : [...(cpus ? ["--cpus", String(cpus)] : []), ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : [])];
           const env = [...(envFile ? ["--env-file", envFile] : []), "-e", `BROWSER=${SANDBOX_BROWSER}`];
-          const args = launch.args.length ? ["--", ...launch.args] : [];
+          const sbxArgs = launch.sbxArgs ?? launch.args;
+          const args = sbxArgs.length ? ["--", ...sbxArgs] : [];
           spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, launch.sbxAgent, dir, ...args], envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
@@ -138,7 +139,7 @@ export class Sessions {
       this.attach(id);
       hub.setSession(id, { state: "running", detail: null, workspace: dir });
       hub.setStatus(id, { state: "idle", note: agent.mode === "sandbox" ? "Sandbox running" : "Running locally" });
-      hub.activity("session", id, `${agent.name} started (${agent.cli === "codex" ? "Codex" : "Claude Code"}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
+      hub.activity("session", id, `${agent.name} started (${CLI_LABEL[agent.cli]}, ${agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"})`);
       if (agent.mode === "sandbox") {
         setTimeout(() => void this.refreshSandboxSizes(), 4000);
         void this.whenSandboxExists(id).then((ok) => ok && this.onSandboxReady(id));
@@ -406,6 +407,7 @@ export class Sessions {
             this.onSessionReattached(agent.id);
           }
           if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
+          if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name, !agent.workspacePath);
           await this.reconcileFromScreen(agent.id, agent.cli, name);
         } else if (st.session.state === "running") {
           this.detach(agent.id);
@@ -441,9 +443,42 @@ export class Sessions {
       }
       return;
     }
-    if (/Ask Codex to do anything/i.test(screen)) {
+    if (/Ask Codex to do anything/i.test(screen) && !DIALOG.test(screen) && !BUSY.test(screen)) {
       this.onSessionReattached(agentId); // its prompt is ready for typed messages
-      if (st.note === TRUST_NOTE || st.note === "Sandbox running" || st.note === "Running locally" || st.note === "Reattached")
+      if (
+        st.state === "needs-input" ||
+        st.note === TRUST_NOTE ||
+        st.note === "Sandbox running" ||
+        st.note === "Running locally" ||
+        st.note === "Reattached"
+      )
+        this.hub.setStatus(agentId, { state: "idle", note: "Ready" });
+    }
+  }
+
+  /**
+   * Antigravity (`agy`) asks to trust a newly cloned folder on first run and does not emit SessionStart.
+   * For HQ-managed clones (`~/.hq/<slug>/<id>`), auto-confirm the folder trust prompt so agents start hands-free.
+   */
+  private async watchAgyScreen(agentId: string, name: string, managedWorkspace: boolean) {
+    const st = this.hub.status(agentId);
+    if (!st) return;
+    const screen = await this.backend.screenText(name, 18);
+    if (/Do you trust the contents of this project\?/i.test(screen) && /Yes, I trust this folder/i.test(screen)) {
+      if (managedWorkspace) {
+        await this.backend.enter(name);
+        return;
+      }
+      const TRUST_NOTE = "Asking: approve Antigravity's workspace trust prompt in the terminal";
+      if (st.note !== TRUST_NOTE) {
+        this.hub.setStatus(agentId, { state: "needs-input", note: TRUST_NOTE });
+        this.hub.activity("agent.needs-input", agentId, `${this.hub.name(agentId)} needs you: approve Antigravity's folder trust prompt`);
+      }
+      return;
+    }
+    if (/\? for shortcuts/i.test(screen) && !BUSY.test(screen)) {
+      this.onSessionReattached(agentId);
+      if (st.note === "Sandbox running" || st.note === "Running locally" || st.note === "Reattached" || st.note?.includes("Antigravity's workspace"))
         this.hub.setStatus(agentId, { state: "idle", note: "Ready" });
     }
   }
@@ -472,15 +507,14 @@ export class Sessions {
       if (dialog || st.note?.includes("Codex's folder")) return; // still waiting (Codex trust is watched separately)
       this.idleScreens.delete(agentId);
       if (busy) return set("working", "Continuing after your answer");
-      // Idle only on a positive sign: Claude Code's normal input footer is back. An unfamiliar
-      // prompt keeps "needs you", so queued messages aren't typed into it. Codex: wait for "busy".
-      if (cli === "claude" && PROMPT_READY.test(screen)) set("idle", "Waiting for you");
+      // Idle only on a positive sign: the normal input footer is back.
+      if (PROMPT_READY.test(screen)) set("idle", "Waiting for you");
       return;
     }
     if (dialog) return set("needs-input", "Asking: answer the question in the terminal");
     // A missed UserPromptSubmit: the agent is busy, so don't type into it.
     if (st.state === "idle" && busy) return set("working", "Working");
-    if (st.state === "working" && !busy && cli === "claude") {
+    if (st.state === "working" && !busy && cli !== "codex") {
       // Twice in a row, so a gap between two steps isn't mistaken for the end of the turn.
       const n = (this.idleScreens.get(agentId) ?? 0) + 1;
       this.idleScreens.set(agentId, n);

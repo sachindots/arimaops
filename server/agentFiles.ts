@@ -5,16 +5,30 @@ import { lstatSync } from "node:fs";
 import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
 import { stackRoleMd } from "../src/data/stack";
 import type { AgentConfig, HqConfig } from "../src/data/types";
 
 /** Team MCP config, passed with `claude --mcp-config` (so the project's own .mcp.json is untouched). */
 export const MCP_CONFIG = ".claude/hq-mcp.json";
+/** Antigravity (agy) & Gemini CLI settings file. */
+export const GEMINI_SETTINGS = ".gemini/settings.json";
+/** Antigravity (agy) always-on rule file for the agent's persona and Team MCP instructions. */
+export const AGY_RULE_FILE = ".agent/rules/hq-role.md";
+export const AGYS_RULE_FILE = ".agents/rules/hq-role.md";
+export const AGY_HOOKS_FILE = ".agents/hooks.json";
+export const AGY_PLUGIN_DIR = ".agents/plugins/hq";
+/** OpenCode project config file. */
+export const OPENCODE_CONFIG = "opencode.json";
 /** Local mode on Windows: hooks run this with node (no sh or curl there). */
-export const HOOK_SCRIPT = ".jsmhq-hook.mjs";
+export const HOOK_SCRIPT = BRAND.hookScript;
 /** HQ's generated role file. Its own name, so a ROLE.md the project has is never overwritten. */
-export const ROLE_FILE = ".jsmhq-role.md";
+export const ROLE_FILE = BRAND.roleFile;
 export const HQ_FILES = [ROLE_FILE, ".claude/settings.local.json", MCP_CONFIG, HOOK_SCRIPT];
+export const AGY_FILES = [...HQ_FILES, GEMINI_SETTINGS, AGY_RULE_FILE, AGYS_RULE_FILE, AGY_HOOKS_FILE, AGY_PLUGIN_DIR];
+export const GEMINI_FILES = [ROLE_FILE, GEMINI_SETTINGS, HOOK_SCRIPT];
+export const OPENCODE_FILES = [ROLE_FILE, OPENCODE_CONFIG, HOOK_SCRIPT];
+const LEGACY_FILES = [BRAND.legacyRoleFile, BRAND.legacyHookScript];
 
 /** Extra context for the generated role: the folder's own ROLE.md, and whether app variables are set. */
 export interface RoleExtras {
@@ -22,14 +36,25 @@ export interface RoleExtras {
   hasEnvFile?: boolean;
 }
 
-/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise that so it can be cleaned up. */
-const isHqRole = (text: string) => text.includes("## Team MCP (server `hq`)") && text.includes("You are managed by JSM HQ.");
+/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise both old JSM HQ and new .hq headers so it can be cleaned up. */
+const isHqRole = (text: string) =>
+  text.includes("## Team MCP (server `hq`)") && (text.includes("You are managed by JSM HQ.") || text.includes(`You are managed by ${BRAND.name}.`));
 
 /**
  * The folder's own ROLE.md, if it has one (it's included in the generated role). A ROLE.md that an
- * older HQ generated there is removed, along with the exclude line HQ added for it.
+ * older HQ generated there is removed, along with the exclude line HQ added for it. Also cleans up
+ * legacy .jsmhq-role.md / .jsmhq-hook.mjs files.
  */
 export async function adoptRoleFile(dir: string): Promise<string | null> {
+  for (const oldFile of LEGACY_FILES) {
+    if (agentRead(dir, oldFile) !== null) {
+      const trackedOld = await run("git", ["ls-files", "--error-unmatch", oldFile], { cwd: dir });
+      if (!trackedOld.ok) {
+        agentRemove(dir, oldFile);
+        removeFromExclude(dir, [oldFile]);
+      }
+    }
+  }
   const text = agentRead(dir, "ROLE.md");
   if (text === null) return null;
   if (!isHqRole(text)) return text.slice(0, 20_000);
@@ -40,10 +65,11 @@ export async function adoptRoleFile(dir: string): Promise<string | null> {
   }
   return null;
 }
-export const MARK = "# jsmhq-hook";
+export const MARK = BRAND.hookMark;
 /** Same marker for node hook commands (cmd and PowerShell have no `#` comments). */
-const MARK_ARG = "--jsmhq-hook";
-const isOurs = (command: string) => command.includes(MARK) || command.includes(MARK_ARG);
+const MARK_ARG = BRAND.hookMarkArg;
+const isOurs = (command: string) =>
+  command.includes(MARK) || command.includes(MARK_ARG) || command.includes(BRAND.legacyHookMark) || command.includes(BRAND.legacyHookMarkArg);
 
 /**
  * Hooks run where the agent runs. Sandboxes are Linux, so they use sh + curl;
@@ -55,39 +81,69 @@ export function hookScriptFor(agent: AgentConfig, dir: string): string | null {
   return join(dir, HOOK_SCRIPT).replace(/\\/g, "/");
 }
 
-const HOOK_SCRIPT_SOURCE = `// Written by JSM HQ (git-excluded). Sends this agent's hook events to HQ.
-// Usage: node .jsmhq-hook.mjs <url> <token> [--print-reply] | --print-role
+const HOOK_SCRIPT_SOURCE = `// Written by ${BRAND.name} (git-excluded). Sends this agent's hook events to HQ and bridges stdio MCP to HQ HTTP MCP.
+// Usage: node ${HOOK_SCRIPT} <url> <token> [--print-reply] | --print-role | --mcp-stdio
 import { readFileSync } from "node:fs";
 
-const args = process.argv.slice(2).filter((a) => a !== "${MARK_ARG}");
+const args = process.argv.slice(2).filter((a) => a !== "${MARK_ARG}" && a !== "${BRAND.legacyHookMarkArg}");
 if (args[0] === "--print-role") {
   try {
     process.stdout.write(readFileSync(new URL("./${ROLE_FILE}", import.meta.url), "utf8"));
   } catch {}
   process.exit(0);
 }
-const [url, token, print] = args;
-let body = "";
-let sent = false;
-const send = async () => {
-  if (sent) return;
-  sent = true;
+if (args[0] === "--mcp-stdio") {
+  let cfg;
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: body || "{}",
-      signal: AbortSignal.timeout(4000),
-    });
-    // Stop: HQ's reply ({"decision":"block",...}) hands over queued messages.
-    if (print === "--print-reply" && res.ok) process.stdout.write(await res.text());
-  } catch {}
-  process.exit(0);
-};
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => (body += d));
-process.stdin.on("end", send);
-setTimeout(send, 2000).unref();
+    cfg = JSON.parse(readFileSync(new URL("./${MCP_CONFIG}", import.meta.url), "utf8")).mcpServers.hq;
+  } catch {
+    process.exit(1);
+  }
+  let buf = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buf += chunk;
+    let idx;
+    while ((idx = buf.indexOf("\\n")) !== -1) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      fetch(cfg.url, {
+        method: "POST",
+        headers: { ...cfg.headers, "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+        body: line,
+      })
+        .then(async (res) => {
+          const text = (await res.text()).trim();
+          if (text) process.stdout.write(text + "\\n");
+        })
+        .catch(() => {});
+    }
+  });
+} else {
+  const [url, token, print] = args;
+  let body = "";
+  let sent = false;
+  const send = async () => {
+    if (sent) return;
+    sent = true;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: body || "{}",
+        signal: AbortSignal.timeout(4000),
+      });
+      // Stop: HQ's reply ({"decision":"block",...}) hands over queued messages.
+      if (print === "--print-reply" && res.ok) process.stdout.write(await res.text());
+    } catch {}
+    process.exit(0);
+  };
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (d) => (body += d));
+  process.stdin.on("end", send);
+  setTimeout(send, 2000).unref();
+}
 `;
 
 export function writeHookScript(dir: string) {
@@ -96,6 +152,7 @@ export function writeHookScript(dir: string) {
 
 // PostToolUse: the moment a question or permission prompt is answered, the tool completes.
 const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"] as const;
+const GEMINI_HOOK_EVENTS = ["SessionStart", "BeforeAgent", "BeforeTool", "AfterTool", "Notification", "AfterAgent", "SessionEnd"] as const;
 
 /** URL agents use to reach HQ: through the sandbox proxy, or straight to localhost. */
 export function hqUrl(agent: AgentConfig, port: number): string {
@@ -103,25 +160,48 @@ export function hqUrl(agent: AgentConfig, port: number): string {
 }
 
 export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {}): string {
-  const team = cfg.team.map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`).join("\n");
-  const rules = agent.isLead
-    ? [
-        "You plan the work and assign it to the team. You never write app code.",
-        "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
-        "Assign only to agents that are running and free (check list_workers).",
-        cfg.workflow.merge.by === "lead"
-          ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
-          : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
-        "If the user changes who merges, HQ tells you. Follow the latest message.",
-      ]
-    : [
-        "Work only on the task you were given. One task = one branch = one PR.",
-        "When HQ tells you to start a task, call get_my_task first, then `git pull origin main` and create a branch.",
-        "Edit only the files the task lists. Need another file? Ask the lead with send_message.",
-        "Title PRs `[TASK-ID] Short title` and open them with `gh pr create`, then call set_my_status in-review with the PR number.",
-        "set_my_status tells the lead automatically. Don't also send_message the same news.",
-        "If you are blocked or need a decision, call set_my_status blocked with the reason.",
-      ];
+  const team = cfg.team
+    .map((a) => `- ${a.name} — [${(a.department ?? "eng").toUpperCase()}] ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`)
+    .join("\n");
+  const isDeliverables = cfg.workflow.mode === "deliverables";
+  const isExecOrLead = !!(agent.isLead || agent.department === "exec" || agent.role.toLowerCase().includes("cto"));
+
+  const rules = isExecOrLead
+    ? isDeliverables
+      ? [
+          "You plan the mission and assign tasks to the team across department pods. You coordinate and review deliverables rather than executing worker tasks yourself.",
+          "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
+          "Assign only to agents that are running and free (check `list_workers`).",
+          "When an operator marks a task `in-review`, inspect their summary or deliverable and either mark the task `done` (`update_task`) or message them with revision feedback (`send_message`).",
+          "Multi-Project CTO Overwatch: You can also inspect and update all other registered `.hq` projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+        ]
+      : [
+          "You plan the work and assign it to the team across department pods. You never write app code.",
+          "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
+          "Assign only to agents that are running and free (check list_workers).",
+          cfg.workflow.merge.by === "lead"
+            ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
+            : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
+          "If the user changes who merges, HQ tells you. Follow the latest message.",
+          "Multi-Project CTO Overwatch: You can also inspect and update all other registered `.hq` projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+        ]
+    : isDeliverables
+      ? [
+          "Work only on the task you were given (`get_my_task`).",
+          "Write your output, research report, security audit, or artifact to the files listed on the task (or `deliverables/<TASK-ID>.md` if no file path was specified).",
+          "Edit only the files or deliverable paths the task lists. Need another file or input from a teammate? Ask the lead or teammate with `send_message`.",
+          "When your deliverable satisfies `doneWhen`, call `set_my_status` with `in-review` (or `done` if no review is required) and a concise summary + deliverable path in `note` / `deliverablePath`.",
+          "`set_my_status` notifies the lead automatically. Don't also `send_message` the same news.",
+          "If you are blocked or need a decision, call `set_my_status` with `blocked` and the reason.",
+        ]
+      : [
+          "Work only on the task you were given. One task = one branch = one PR.",
+          "When HQ tells you to start a task, call get_my_task first, then `git pull origin main` and create a branch.",
+          "Edit only the files the task lists. Need another file? Ask the lead with send_message.",
+          "Title PRs `[TASK-ID] Short title` and open them with `gh pr create`, then call set_my_status in-review with the PR number.",
+          "set_my_status tells the lead automatically. Don't also send_message the same news.",
+          "If you are blocked or need a decision, call set_my_status blocked with the reason.",
+        ];
   rules.push(
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
@@ -130,9 +210,9 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
-  const tools = agent.isLead
-    ? "list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, send_message, ask_user, request_access"
-    : "get_my_task, set_my_status, list_workers, get_status, list_tasks, send_message, ask_user, request_access";
+  const tools = isExecOrLead
+    ? "list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access"
+    : "get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access";
   return [
     `# ${agent.name} — ${agent.role}`,
     "",
@@ -141,9 +221,23 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "## Team",
     team,
     "",
-    "## Rules",
+    `## Workflow Mode: ${isDeliverables ? "Deliverables (Universal Mission Mode — no GitHub PR required)" : "GitHub Pull Requests (1 task = 1 branch = 1 PR)"}`,
     ...rules.map((r) => `- ${r}`),
     "",
+    "## Engineering & Communication Protocol (Ponystack + Caveman)",
+    "- **Ponytail YAGNI (Smallest Complete Change):** The best code is code never written. Before editing, map every caller, test, fixture, and export touched. Reuse existing codebase helpers and stdlib; never add a dependency, wrapper, or config flag nobody asked for. Deletion beats addition.",
+    "- **pstack Architecture & Zero Slop (`pstack-architect` + `pstack-deslop`):** Name the domain data shape and type boundary before writing logic. Eliminate AI code slop: no narrating comments (`// Phase 1...`), no abnormal `try/catch` in trusted paths, no `any` casts, and no files pushed past 1,000 lines. Eliminate AI prose slop: no *delve, pivotal, tapestry, underscore*, no superficial `-ing` tails, no chatbot pleasantries.",
+    "- **Prove It Works (`pstack-blast-radius`):** Never trust \"it compiles\". Verify your change against the real code/artifact (run tests, typechecks, or a repro script) before calling `set_my_status`.",
+    "- **Caveman Token-Saving Mode (`caveman`):** Respond terse like smart caveman in terminal and team messages. Drop articles (a/an/the), pleasantries, hedging, and tool-call narration. Keep exact symbols, `path:line`, and error strings. Pattern: `[thing] [action] [reason]. [next step].`",
+    "- **Cavecrew 1-Line Message Contract:** Keep `send_message` and `set_my_status(note)` to 1-2 compressed lines (e.g. `server/http.ts:L98 — allow HEAD on static files. verified: curl -I 200.`). Never send a separate `send_message` repeating what `set_my_status` already sent. Write normal prose only in committed code, comments, PR bodies, and human-facing deliverables.",
+    "",
+    ...(agent.skills.length
+      ? [
+          "## Assigned Skills",
+          `Your workspace has these skills installed in \`.claude/skills/\`, \`.agents/skills/\`, and \`.agent/skills/\`: ${agent.skills.map((s) => `\`${s}\``).join(", ")}. Read and follow the relevant \`SKILL.md\` when executing tasks.`,
+          "",
+        ]
+      : []),
     ...(stackRoleMd(cfg.stack) ? [stackRoleMd(cfg.stack), ""] : []),
     ...(extras.hasEnvFile
       ? [
@@ -155,10 +249,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     ...(extras.ownRole?.trim() ? ["## From ROLE.md in this folder", extras.ownRole.trim(), ""] : []),
     "## Team MCP (server `hq`)",
     `Your tools: ${tools}.`,
-    "Messages that start with `[HQ]` come from JSM HQ: assignments from the lead, or messages from teammates. Act on them.",
+    `Messages that start with \`[HQ]\` come from ${BRAND.name}: assignments from the lead, or messages from teammates. Act on them.`,
     "Teammates work in their own sandboxes and cannot see your files or terminal. Talk to them only with send_message.",
     "",
-    `Project: ${cfg.project.name} (${cfg.project.repo}). You are managed by JSM HQ.`,
+    `Project: ${cfg.project.name} (${cfg.project.repo}). You are managed by ${BRAND.name}.`,
     "",
   ].join("\n");
 }
@@ -167,9 +261,10 @@ type HookEntry = { matcher?: string; hooks: { type: "command"; command: string; 
 type Settings = { hooks?: Record<string, HookEntry[]>; permissions?: { allow?: string[]; [k: string]: unknown }; [k: string]: unknown };
 
 export function hookCommand(url: string, token: string, agentId: string, event: string, script: string | null = null): string {
-  if (script) return `node "${script}" ${url}/hook/${agentId}/${event} ${token}${event === "Stop" ? " --print-reply" : ""} ${MARK_ARG}`;
+  const isStop = event === "Stop" || event === "AfterAgent";
+  if (script) return `node "${script}" ${url}/hook/${agentId}/${event} ${token}${isStop ? " --print-reply" : ""} ${MARK_ARG}`;
   // Stop prints HQ's reply: {"decision":"block","reason":…} hands over queued messages.
-  const out = event === "Stop" ? "2>/dev/null" : ">/dev/null 2>&1";
+  const out = isStop ? "2>/dev/null" : ">/dev/null 2>&1";
   return `curl -sf -m 4 -X POST -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' --data-binary @- '${url}/hook/${agentId}/${event}' ${out} || true ${MARK}`;
 }
 
@@ -197,7 +292,7 @@ export function writeSettings(dir: string, agent: AgentConfig, port: number, tok
       .filter((e) => e.hooks.length);
     const ours: HookEntry["hooks"] = [{ type: "command", command: hookCommand(url, token, agent.id, event, script), timeout: 5 }];
     if (event === "SessionStart")
-      ours.unshift({ type: "command", command: script ? `node "${script}" --print-role ${MARK_ARG}` : `cat "$CLAUDE_PROJECT_DIR/${ROLE_FILE}" 2>/dev/null || true ${MARK}` });
+      ours.unshift({ type: "command", command: script ? `node "${script}" --print-role ${MARK_ARG}` : `cat "${ROLE_FILE}" 2>/dev/null || true ${MARK}` });
     hooks[event] = [...kept, event === "PreToolUse" || event === "PostToolUse" ? { matcher: "*", hooks: ours } : { hooks: ours }];
   }
   // Let the agent use the Team MCP without a permission prompt for every call.
@@ -224,6 +319,165 @@ export function writeClaudeFiles(dir: string, agent: AgentConfig, cfg: HqConfig,
   excludeFromGit(dir, HQ_FILES);
 }
 
+/**
+ * Writes `.gemini/settings.json` for Antigravity (`agy`) and Gemini CLI (`gemini`),
+ * configuring `mcpServers.hq`, lifecycle hooks, and `contextFileName`.
+ */
+export function writeGeminiSettings(dir: string, agent: AgentConfig, port: number, token: string) {
+  const script = hookScriptFor(agent, dir);
+  let settings: Record<string, unknown> = {};
+  const existing = agentRead(dir, GEMINI_SETTINGS);
+  if (existing) {
+    try {
+      settings = JSON.parse(existing) as Record<string, unknown>;
+    } catch {
+      settings = {};
+    }
+  }
+  const url = hqUrl(agent, port);
+  const existingHooks = (settings.hooks as Record<string, HookEntry[]> | undefined) ?? {};
+  const hooks: Record<string, HookEntry[]> = { ...existingHooks };
+  for (const event of [...HOOK_EVENTS, ...GEMINI_HOOK_EVENTS]) {
+    const kept = (hooks[event] ?? [])
+      .map((e) => ({ ...e, hooks: e.hooks.filter((h) => !isOurs(h.command)) }))
+      .filter((e) => e.hooks.length);
+    const ours: HookEntry["hooks"] = [{ type: "command", command: hookCommand(url, token, agent.id, event, script), timeout: 5 }];
+    if (event === "SessionStart")
+      ours.unshift({ type: "command", command: script ? `node "${script}" --print-role ${MARK_ARG}` : `cat "${ROLE_FILE}" 2>/dev/null || true ${MARK}` });
+    const needsMatcher = event === "PreToolUse" || event === "PostToolUse" || event === "BeforeTool" || event === "AfterTool";
+    hooks[event] = [...kept, needsMatcher ? { matcher: "*", hooks: ours } : { hooks: ours }];
+  }
+  const mcpServers = {
+    ...((settings.mcpServers as Record<string, unknown> | undefined) ?? {}),
+    hq: {
+      httpUrl: `${url}/mcp`,
+      url: `${url}/mcp`,
+      headers: { Authorization: `Bearer ${token}`, "X-HQ-Agent": agent.id },
+      trust: true,
+    },
+  };
+  agentWrite(
+    dir,
+    GEMINI_SETTINGS,
+    JSON.stringify(
+      {
+        ...settings,
+        contextFileName: [ROLE_FILE, "GEMINI.md", "AGENTS.md"],
+        mcpServers,
+        hooks,
+      },
+      null,
+      2,
+    ) + "\n",
+    { mode: 0o600 },
+  );
+}
+
+/**
+ * Antigravity CLI (`agy`) files:
+ * - `.hq-role.md`
+ * - `.agent/rules/hq-role.md` (native Antigravity always-on rule)
+ * - `.gemini/settings.json` (MCP server `hq` + hooks)
+ * - `.claude/settings.local.json` + `.claude/hq-mcp.json` (for `--claude-config` compatibility)
+ */
+export function writeAgyFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}) {
+  const roleContent = roleMd(agent, cfg, extras);
+  const ruleWithFrontmatter = `---\ntrigger: always_on\ndescription: "${BRAND.name} role, team roster, and Team MCP instructions"\n---\n\n${roleContent}`;
+  agentWrite(dir, ROLE_FILE, roleContent);
+  agentWrite(dir, AGY_RULE_FILE, ruleWithFrontmatter);
+  agentWrite(dir, AGYS_RULE_FILE, ruleWithFrontmatter);
+
+  const url = hqUrl(agent, cfg.project.hqPort);
+  const agyHookCmd = (event: string, fallbackJson: string) =>
+    `curl -sf -m 4 -X POST -H 'Authorization: Bearer ${token}' -H 'Content-Type: application/json' --data-binary @- '${url}/hook/${agent.id}/${event}' 2>/dev/null || echo '${fallbackJson}'`;
+  const agyHooksJson =
+    JSON.stringify(
+      {
+        hq: {
+          PreInvocation: [{ type: "command", command: agyHookCmd("PreInvocation", "{}"), timeout: 5 }],
+          PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: agyHookCmd("PreToolUse", '{"decision":"allow"}'), timeout: 5 }] }],
+          PostToolUse: [{ matcher: "*", hooks: [{ type: "command", command: agyHookCmd("PostToolUse", "{}"), timeout: 5 }] }],
+          Stop: [{ type: "command", command: agyHookCmd("Stop", '{"decision":"stop"}'), timeout: 5 }],
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+  const agyMcpUrl = `${url}/mcp?agent=${encodeURIComponent(agent.id)}&token=${encodeURIComponent(token)}`;
+  const agyMcpJson =
+    JSON.stringify(
+      {
+        mcpServers: {
+          hq: {
+            disabled: false,
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "X-HQ-Agent": agent.id,
+            },
+            serverUrl: agyMcpUrl,
+          },
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+
+  agentWrite(dir, AGY_HOOKS_FILE, agyHooksJson, { mode: 0o600 });
+  for (const pluginDir of [AGY_PLUGIN_DIR, ".agent/plugins/hq"]) {
+    agentWrite(dir, `${pluginDir}/plugin.json`, JSON.stringify({ name: "hq" }, null, 2) + "\n");
+    agentWrite(dir, `${pluginDir}/mcp_config.json`, agyMcpJson, { mode: 0o600 });
+    agentWrite(dir, `${pluginDir}/hooks.json`, agyHooksJson, { mode: 0o600 });
+    agentWrite(dir, `${pluginDir}/rules/AGENTS.md`, roleContent);
+  }
+
+  writeGeminiSettings(dir, agent, cfg.project.hqPort, token);
+  writeSettings(dir, agent, cfg.project.hqPort, token);
+  writeMcpConfig(dir, agent, cfg.project.hqPort, token);
+  writeHookScript(dir);
+  excludeFromGit(dir, [...AGY_FILES, ".agent/plugins/hq"]);
+}
+
+/** Gemini CLI (`gemini`) files: `.hq-role.md` + `.gemini/settings.json`. */
+export function writeGeminiFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}) {
+  agentWrite(dir, ROLE_FILE, roleMd(agent, cfg, extras));
+  writeGeminiSettings(dir, agent, cfg.project.hqPort, token);
+  if (hookScriptFor(agent, dir)) writeHookScript(dir);
+  excludeFromGit(dir, GEMINI_FILES);
+}
+
+/** OpenCode (`opencode`) files: `.hq-role.md` + `opencode.json` (with `mcp.hq` and `instructions`). */
+export function writeOpenCodeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras: RoleExtras = {}) {
+  agentWrite(dir, ROLE_FILE, roleMd(agent, cfg, extras));
+  const url = hqUrl(agent, cfg.project.hqPort);
+  let config: Record<string, unknown> = {};
+  const existing = agentRead(dir, OPENCODE_CONFIG);
+  if (existing) {
+    try {
+      config = JSON.parse(existing) as Record<string, unknown>;
+    } catch {
+      config = {};
+    }
+  }
+  const instructions = [...new Set([...(Array.isArray(config.instructions) ? (config.instructions as string[]) : []), ROLE_FILE])];
+  const mcp = {
+    ...((config.mcp as Record<string, unknown> | undefined) ?? {}),
+    hq: {
+      type: "remote",
+      url: `${url}/mcp`,
+      headers: { Authorization: `Bearer ${token}`, "X-HQ-Agent": agent.id },
+      enabled: true,
+    },
+  };
+  agentWrite(
+    dir,
+    OPENCODE_CONFIG,
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", ...config, instructions, mcp }, null, 2) + "\n",
+    { mode: 0o600 },
+  );
+  if (hookScriptFor(agent, dir)) writeHookScript(dir);
+  excludeFromGit(dir, OPENCODE_FILES);
+}
+
 /** Removes lines HQ added to .git/info/exclude. */
 export function removeFromExclude(dir: string, paths: string[]) {
   const file = ".git/info/exclude";
@@ -244,5 +498,5 @@ export function excludeFromGit(dir: string, paths: string[]) {
   const file = ".git/info/exclude";
   const current = agentRead(dir, file) ?? "";
   const missing = paths.filter((p) => !current.split("\n").includes(p));
-  if (missing.length) agentWrite(dir, file, current + (current.endsWith("\n") || !current ? "" : "\n") + "# JSM HQ\n" + missing.join("\n") + "\n");
+  if (missing.length) agentWrite(dir, file, current + (current.endsWith("\n") || !current ? "" : "\n") + `${BRAND.excludeHeader}\n` + missing.join("\n") + "\n");
 }

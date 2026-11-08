@@ -5,7 +5,7 @@ import { ui, useUi } from "../store/ui";
 
 function JsonNode({ name, value, depth }: { name: string; value: unknown; depth: number }) {
   if (value === null || typeof value !== "object") {
-    const color = typeof value === "string" ? "#6cf08a" : typeof value === "number" ? "#ffc14d" : "#ff77a8";
+    const color = typeof value === "string" ? "#00ff66" : typeof value === "number" ? "#00e5ff" : "#ff2a85";
     return (
       <div className="truncate pl-3">
         <span className="text-[#9aa6d1]">{name}: </span>
@@ -46,6 +46,7 @@ function summary(e: OfficeEvent): string {
     case "terminal.output": return `${e.agentId} +${e.data.length}`;
     case "action.updated": return `${e.item.fromId} ${e.item.status}: ${e.item.title}`;
     case "mcp.updated": return `${e.mcp.servers.length} MCP servers`;
+    case "remote.stepup": return `step-up ${e.status}${e.cmd ? ` ${e.cmd}` : ""}`;
     case "access.updated": return `${e.request.agentId} ${e.request.domain} ${e.request.status}`;
   }
 }

@@ -74,8 +74,17 @@ export function ProjectSettings() {
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />
         <p className="mt-1 text-[13px] text-muted">
-          HQ keeps the plan in .jsmhq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
+          .hq keeps the plan in .hq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
         </p>
+      </section>
+      <section className="border-[3px] border-ink bg-white p-3 text-[13px]">
+        <SectionTitle>Multi-Project &amp; Multi-Team Operations</SectionTitle>
+        <p className="mt-1 text-muted">
+          Every project gets its own isolated team config (<code>&lt;repo&gt;/.hq/config.json</code>), agent workspaces (<code>~/.hq/{project.id}/&lt;agent&gt;</code>), and sandbox/tmux session names (<code>hq-{project.id}-&lt;agent&gt;</code>). You can run multiple teams across multiple projects simultaneously by assigning each a different port:
+        </p>
+        <pre className="mt-2 overflow-x-auto border-[2px] border-ink bg-cream-2 p-2 font-term text-[15px] text-ink">
+          {`# Project 1 (port ${project.hqPort})\nnpx dothq --repo ${project.path} --port ${project.hqPort}\n\n# Project 2 (port ${project.hqPort + 1}, runs concurrently in its own sandboxes/tmux)\nnpx dothq --repo ~/missions/second-project --port ${project.hqPort + 1}`}
+        </pre>
       </section>
       <section className="text-[13px] text-muted">
         <SectionTitle>Security</SectionTitle>

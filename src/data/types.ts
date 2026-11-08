@@ -25,15 +25,48 @@ export interface SandboxSettings {
 
 export type AgentMode = "sandbox" | "local";
 
-/** Which coding agent CLI runs in the sandbox. */
-export type AgentCli = "claude" | "codex";
+/** Which coding or autonomous agent CLI runs in the sandbox or locally. */
+export const AGENT_CLIS = ["claude", "codex", "agy", "opencode", "gemini", "copilot"] as const;
+export type AgentCli = (typeof AGENT_CLIS)[number];
 
-export const CLI_LABEL: Record<AgentCli, string> = { claude: "Claude Code", codex: "Codex" };
+export const isAgentCli = (v: unknown): v is AgentCli => typeof v === "string" && (AGENT_CLIS as readonly string[]).includes(v);
+
+export const CLI_LABEL: Record<AgentCli, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  agy: "Antigravity (agy)",
+  opencode: "OpenCode",
+  gemini: "Gemini CLI",
+  copilot: "GitHub Copilot",
+};
+
+export const CLI_MODELS: Record<AgentCli, string[]> = {
+  claude: ["claude-opus-5-5", "claude-sonnet-5-5", "opus", "sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-6"],
+  codex: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-sol"],
+  agy: [
+    "gemini-4-argon-high",
+    "gemini-4-argon-medium",
+    "gemini-3.8-flash-high",
+    "claude-opus-5-5-high",
+    "claude-sonnet-5-5-high",
+    "gpt-oss-120b-medium",
+  ],
+  opencode: ["anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6", "openai/gpt-5.4", "google/gemini-3.1-pro", "openrouter/deepseek/deepseek-r1", "ollama/qwen3-coder"],
+  gemini: ["gemini-3.1-pro", "gemini-3-flash", "gemini-2.5-pro", "gemini-2.5-flash"],
+  copilot: ["claude-opus-4.6", "claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
+};
+
+export const DEPARTMENT_IDS = ["exec", "eng", "design", "qa-ops", "marketing", "red-team"] as const;
+export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
+
+export const isDepartmentId = (v: unknown): v is DepartmentId =>
+  typeof v === "string" && (DEPARTMENT_IDS as readonly string[]).includes(v);
 
 export interface AgentConfig {
   id: string; // "john"
   name: string; // "John"
-  role: string; // "Lead" | "Developer" | "QA" | anything
+  role: string; // "Lead" | "CTO" | "Senior Dev" | "Junior Dev" | "UI/UX Designer" | "Red Teamer" | anything
+  department?: DepartmentId; // department pod ("exec", "eng", "design", "qa-ops", "marketing", "red-team")
   isLead: boolean;
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
@@ -75,22 +108,25 @@ export interface NewMcpServer {
 
 export type ReviewTool = "coderabbit" | "greptile" | "copilot" | "human" | "custom";
 export type DeployTool = "instacloud" | "vercel" | "custom";
+export type WorkflowMode = "github-pr" | "deliverables";
 
 export interface WorkflowConfig {
+  /** "github-pr" = 1 task = 1 branch = 1 PR; "deliverables" = universal non-PR task & artifact workflow for any domain. */
+  mode?: WorkflowMode;
   review: { enabled: boolean; tool: ReviewTool; command: string };
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
 }
 
 export interface ProjectConfig {
-  /** Fixed once created: names sandboxes, tmux sessions and ~/.jsmhq/<id>. Renaming the project never changes it. */
+  /** Fixed once created: names sandboxes, tmux sessions and ~/.hq/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
   name: string; // "Askwell"
   repo: string; // "jsmastery-pro/askwell"
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
-  officeName?: string; // the sign on the office wall; empty = "JSM HQ"
+  officeName?: string; // the sign on the office wall; empty = ".HQ"
 }
 
 export interface HqConfig {
@@ -159,6 +195,7 @@ export interface Task {
   files?: string[]; // the only files this task may edit
   doneWhen?: string; // acceptance criteria
   note?: string | null; // e.g. why it's blocked
+  deliverablePath?: string | null; // optional output file/artifact in deliverables mode
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -246,7 +283,23 @@ export interface RemoveAgentOptions {
 
 // ---------------------------------------------------------------- Setup
 
-export type SetupCheckId = "os" | "sbx" | "sbx-login" | "sbx-policy" | "tmux" | "gh" | "gh-remote" | "github-secret" | "claude" | "codex" | "openai-secret";
+export type SetupCheckId =
+  | "os"
+  | "sbx"
+  | "sbx-login"
+  | "sbx-policy"
+  | "tmux"
+  | "gh"
+  | "gh-remote"
+  | "github-secret"
+  | "claude"
+  | "codex"
+  | "openai-secret"
+  | "agy"
+  | "opencode"
+  | "gemini"
+  | "copilot"
+  | "google-secret";
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
 export interface SetupFix {
@@ -364,16 +417,21 @@ export interface ActionItem {
 export interface NewAgentInput {
   name: string;
   role: string;
+  department?: DepartmentId;
   cli?: AgentCli;
   model?: string;
   mode: AgentMode;
+  skills?: string[];
+  roleMd?: string;
 }
 
 /** First-run choices from the welcome screen. */
 export interface WelcomeInput {
   projectName: string;
-  lead: { name: string; cli: AgentCli };
-  workers: { name: string; role: string; cli: AgentCli }[];
+  officeName?: string;
+  lead: { name: string; role?: string; department?: DepartmentId; cli: AgentCli; model?: string };
+  workers: { name: string; role: string; department?: DepartmentId; cli: AgentCli; model?: string }[];
+  workflowMode?: WorkflowMode;
   reviewTool: ReviewTool;
   reviewEnabled: boolean;
   /** Optional: what the project is built with. */
@@ -381,11 +439,39 @@ export interface WelcomeInput {
 }
 
 export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "role" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
+  Pick<AgentConfig, "name" | "role" | "department" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
 >;
 
 export interface WorkflowPatch {
+  mode?: WorkflowMode;
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;
 }
+
+// ---------------------------------------------------------------- Multi-Project CTO Registry
+
+export interface ProjectOverview {
+  id: string;
+  name: string;
+  path: string;
+  repo: string;
+  hqPort: number;
+  online: boolean;
+  isCurrent: boolean;
+  workflowMode: WorkflowMode;
+  officeName?: string;
+  lastUpdatedAt: string;
+  team: { id: string; name: string; role: string; department?: DepartmentId; isLead: boolean; cli: AgentCli; model: string }[];
+  boards: Board[];
+  tasks: Task[];
+  counts: {
+    todo: number;
+    inProgress: number;
+    inReview: number;
+    done: number;
+    blocked: number;
+    total: number;
+  };
+}
+

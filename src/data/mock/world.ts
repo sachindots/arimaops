@@ -39,12 +39,16 @@ export function mockSetup(): SetupState {
   return {
     machine: { cpus: 8, memoryGb: 16 },
     checks: [
-      ok("os", "Supported machine", "macOS · Apple silicon (mock)", "sandbox"),
-      ok("sbx", "Docker Sandboxes (sbx)", "v0.47.0 (mock)", "sandbox"),
+      ok("os", "Supported machine", "Linux · KVM ready (mock)", "sandbox"),
+      ok("sbx", "Docker Sandboxes (sbx)", "v0.50.0 (mock)", "sandbox"),
       ok("sbx-login", "Signed in to Docker", "signed in (mock)", "sandbox"),
       ok("sbx-policy", "Sandbox network policy", "Balanced (mock)", "sandbox"),
       ok("tmux", "tmux", "3.5a (mock)", "all"),
+      ok("agy", "Antigravity CLI (agy)", "v2.0 (mock)", "local"),
       ok("claude", "Claude Code", "installed (mock)", "local"),
+      ok("codex", "Codex", "installed (mock)", "local"),
+      ok("opencode", "OpenCode CLI", "installed (mock)", "local"),
+      ok("gemini", "Gemini CLI", "installed (mock)", "local"),
       ok("gh", "GitHub CLI", "signed in (mock)", "github"),
     ],
     sandboxReady: true,
@@ -66,7 +70,7 @@ export function mockSbx(team: AgentConfig[], project: string): SbxState {
         ...a.sandbox.deny.map((r) => rule("deny", r)),
       ],
       keys: a.isLead ? [] : ["openai"],
-      envFile: { path: `~/.jsmhq/${slug(project)}/${a.id}.env`, exists: !a.isLead },
+      envFile: { path: `~/.hq/${slug(project)}/${a.id}.env`, exists: !a.isLead },
       syncError: null,
       // Demo: the first worker's sandbox blocked a few things (claude.ai connectors and a docs site).
       approvals: !a.isLead && team.filter((t) => !t.isLead)[0]?.id === a.id
@@ -78,7 +82,7 @@ export function mockSbx(team: AgentConfig[], project: string): SbxState {
 }
 
 export function mockSession(project: string, agentId: string): SessionInfo {
-  return { state: "running", detail: null, workspace: `~/.jsmhq/${slug(project)}/${agentId}`, sandbox: { cpus: 8, memoryGb: 8 } };
+  return { state: "running", detail: null, workspace: `~/.hq/${slug(project)}/${agentId}`, sandbox: { cpus: 8, memoryGb: 8 } };
 }
 
 export class World {

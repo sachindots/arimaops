@@ -3,6 +3,7 @@ import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "
 import { DRAWER_DEFAULT, ui, useUi } from "../../store/ui";
 import { AgentDrawer } from "./AgentDrawer";
 import { BoardsDrawer } from "./BoardsDrawer";
+import { CtoDrawer } from "./CtoDrawer";
 import { EnvironmentDrawer } from "./EnvironmentDrawer";
 import { PrDrawer } from "./PrDrawer";
 import { ActionItemsDrawer } from "./ActionItemsDrawer";
@@ -116,7 +117,7 @@ export function DrawerHost() {
           animate={{ x: 0 }}
           exit={reduce ? { opacity: 0 } : { x: "110%" }}
           transition={{ duration: reduce ? 0 : 0.28, ease: [0.3, 0, 0.2, 1] }}
-          className={`panel fixed bottom-4 right-4 top-[74px] z-20 flex flex-col ${maximized ? "left-4" : ""}`}
+          className={`hq-drawer panel fixed bottom-4 right-4 top-[74px] z-20 flex flex-col ${maximized ? "left-4" : ""}`}
           style={maximized ? undefined : { width: `min(${width}px, calc(100vw - 32px))` }}
           aria-label="Details"
         >
@@ -126,6 +127,7 @@ export function DrawerHost() {
           {drawer.kind === "actions" && <ActionItemsDrawer />}
           {drawer.kind === "env" && <EnvironmentDrawer name={drawer.name} />}
           {drawer.kind === "terminal" && <TerminalDrawer />}
+          {drawer.kind === "cto" && <CtoDrawer />}
         </motion.aside>
       )}
     </AnimatePresence>

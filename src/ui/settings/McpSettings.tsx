@@ -5,8 +5,8 @@ import { Field, SectionTitle } from "../kit";
 import { TerminalView } from "../drawers/TerminalView";
 
 const STATUS: Record<string, [string, string]> = {
-  ready: ["Ready", "#00e436"],
-  "needs-auth": ["Needs sign-in", "#ffa300"],
+  ready: ["Ready", "#00ff66"],
+  "needs-auth": ["Needs sign-in", "#c04dff"],
 };
 
 /** MCP servers from Docker Sandboxes' registry, and which agents get them. */
@@ -53,13 +53,13 @@ export function McpSettings() {
             Refresh
           </button>
         </div>
-        {mcp.error && <p className="mb-2 border-[3px] border-orange bg-[#fff1d6] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
+        {mcp.error && <p className="mb-2 border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
         {servers.length === 0 ? (
           <p className="text-[13px] text-muted">No MCP servers yet. Add one below.</p>
         ) : (
           <div className="border-[3px] border-ink bg-white">
             {servers.map((s) => {
-              const [label, color] = STATUS[s.status] ?? [s.status, "#83769c"];
+              const [label, color] = STATUS[s.status] ?? [s.status, "#6e7b94"];
               return (
                 <div key={s.name} className="flex items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                   <b className="font-term text-[17px]">{s.name}</b>
@@ -81,7 +81,7 @@ export function McpSettings() {
                   )}
                   {deleting === s.name ? (
                     <>
-                      <span className="text-[12px] text-red">Removes it from every sandbox on this Mac.</span>
+                      <span className="text-[12px] text-red">Removes it from every sandbox on this machine.</span>
                       <button
                         className="btn px-2 text-[12px]"
                         onClick={() => {
@@ -158,7 +158,7 @@ export function McpSettings() {
           )}
           {team.some((a) => a.mode === "local") && <p className="mt-1 text-[12px] text-muted">Local-mode agents aren't listed: MCP servers attach to sandboxes.</p>}
           {stuck.map(({ agent, name }) => (
-            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 border-[3px] border-ink bg-[#fff1d6] px-3 py-1.5 text-[13px]">
+            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 border-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
               <span className="flex-1">
                 {agent.name}'s sandbox still has <b>{name}</b>: sbx can't detach a server, so it goes when the sandbox is recreated. The folder and code are
                 kept; installed packages and the conversation are not.

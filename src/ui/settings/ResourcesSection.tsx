@@ -55,7 +55,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
               CPUs <span className="font-term text-[17px]">{draft.cpus} of {machine.cpus}</span>
             </span>
             <input
-              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#29adff]"
+              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#00ff66]"
               onChange={(e) => setDraft({ ...draft, cpus: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />
@@ -65,7 +65,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
               Memory <span className="font-term text-[17px]">{fmtGb(draft.memoryGb)} of {fmtGb(maxMem)} max</span>
             </span>
             <input
-              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#29adff]"
+              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#00ff66]"
               onChange={(e) => setDraft({ ...draft, memoryGb: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />
@@ -73,13 +73,13 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
         </div>
       )}
 
-      <div className={`mt-3 border-2 px-2.5 py-1.5 text-[13px] ${budget.overMemory ? "border-orange bg-[#fff1d6]" : "border-cream-3 bg-cream"}`}>
+      <div className={`mt-3 border-2 px-2.5 py-1.5 text-[13px] ${budget.overMemory ? "border-orange bg-[rgba(192,77,255,0.14)]" : "border-cream-3 bg-cream"}`}>
         <b>Team:</b> {budget.count} sandbox{budget.count === 1 ? "" : "es"} · {budget.cpus} CPUs · {fmtGb(budget.memoryGb)} of your {fmtGb(machine.memoryGb)} memory
-        {budget.overMemory && <div className="text-[#a35d00]">That's more memory than this machine has. Give agents less with Custom, or run fewer at once.</div>}
+        {budget.overMemory && <div className="text-orange">That's more memory than this machine has. Give agents less with Custom, or run fewer at once.</div>}
       </div>
 
       {agent.mode === "sandbox" && session?.sandbox && (
-        <div className={`mt-3 flex items-center gap-2 text-[13px] ${mismatch ? "border-2 border-orange bg-[#fff1d6] px-2.5 py-1.5" : "text-muted"}`}>
+        <div className={`mt-3 flex items-center gap-2 text-[13px] ${mismatch ? "border-2 border-orange bg-[rgba(192,77,255,0.14)] px-2.5 py-1.5" : "text-muted"}`}>
           <span className="flex-1">
             The sandbox now has {session.sandbox.cpus} CPUs · {fmtGb(session.sandbox.memoryGb)}.
             {mismatch && " Size is fixed when a sandbox is created, so recreate it to apply the new size."}

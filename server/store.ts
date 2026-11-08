@@ -1,9 +1,11 @@
-// Persistence in the repo: .jsmhq/config.json (team + workflow, safe to commit)
-// and .jsmhq/plan.json (boards + tasks, owned by HQ).
+// Persistence in the repo: .hq/config.json (team + workflow, safe to commit)
+// and .hq/plan.json (boards + tasks, owned by HQ). Falls back to .jsmhq/ if present.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../src/data/types";
+import { BRAND } from "../src/data/brand";
+import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
+import { isAgentCli, isDepartmentId, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { slugify } from "./paths";
 import type { RepoInfo } from "./repo";
@@ -13,7 +15,11 @@ export interface PlanFile {
   tasks: Task[];
 }
 
-const dir = (root: string) => join(root, ".jsmhq");
+const dir = (root: string) => {
+  const next = join(root, BRAND.repoDir);
+  const legacy = join(root, BRAND.legacyRepoDir);
+  return !existsSync(next) && existsSync(legacy) ? legacy : next;
+};
 
 function readJson<T>(file: string): T | null {
   if (!existsSync(file)) return null;
@@ -39,15 +45,14 @@ export function newAgent(id: string, name: string, role: string, color: string, 
     id,
     name,
     role,
+    department: inferDepartmentForRole(role, isLead),
     isLead,
     cli: "claude",
     model: "", // the CLI's default; users can pick with /model or "Start with model"
     mode: "sandbox",
     color,
-    skills: [],
-    roleMd: isLead
-      ? `You are ${name}, the lead. You plan and assign work. You never write app code.`
-      : `You are ${name}, a ${role.toLowerCase()} on the team. You build the tasks assigned to you.`,
+    skills: defaultSkillsForRole(role, isLead),
+    roleMd: defaultRoleMdFor(name, role, isLead),
     sandbox: defaultSandbox(),
     workspacePath: null,
     mcp: [],
@@ -57,8 +62,9 @@ export function newAgent(id: string, name: string, role: string, color: string, 
 function defaultConfig(repo: RepoInfo, port: number): HqConfig {
   return {
     project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port },
-    team: [newAgent(slugify(LEAD_NAME), LEAD_NAME, "Lead", "#ff77a8", true), newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "Developer", "#29adff", false)],
+    team: [newAgent(slugify(LEAD_NAME), LEAD_NAME, "CTO", "#ff1744", true), newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "Senior Dev", "#00ff66", false)],
     workflow: {
+      mode: repo.github ? "github-pr" : "deliverables",
       review: { enabled: true, tool: repo.hasCodeRabbit ? "coderabbit" : "human", command: "" },
       merge: { by: "human" },
       deploy: { enabled: repo.hasInsta, tool: "instacloud", command: "", perAgentEnvironments: repo.hasInsta },
@@ -75,7 +81,10 @@ export function loadConfig(repo: RepoInfo, port: number): { config: HqConfig; is
     for (const a of found.team) {
       a.workspacePath ??= null;
       a.mcp ??= [];
-      a.cli ??= "claude";
+      if (!isAgentCli(a.cli)) a.cli = "claude";
+      a.department = isDepartmentId(a.department) ? a.department : inferDepartmentForRole(a.role, a.isLead);
+      a.skills ??= defaultSkillsForRole(a.role, a.isLead);
+      if (!a.roleMd?.trim()) a.roleMd = defaultRoleMdFor(a.name, a.role, a.isLead);
       a.sandbox.resources ??= { cpus: null, memoryGb: null };
       // Phase D: policy level, proxy and secret names moved to sbx itself.
       const old = a.sandbox as unknown as Record<string, unknown>;
@@ -83,6 +92,7 @@ export function loadConfig(repo: RepoInfo, port: number): { config: HqConfig; is
       delete old.proxy;
       delete old.secrets;
     }
+    found.workflow.mode ??= repo.github ? "github-pr" : "deliverables";
     // Configs from before project.id: their resources are named after the current name.
     // Slugified again in case the file was edited by hand: it ends up in paths and sandbox names.
     found.project.id = slugify(found.project.id ?? found.project.name);

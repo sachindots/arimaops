@@ -240,7 +240,7 @@ export class OfficeScene {
     const board = snap.boards.find((b) => b.id === planId);
     if (board) live.drawPlanTitle(p, l, board.title);
     this.notes.update(snap.tasks, planId, l.plan.board, this.dt, t);
-    this.notes.draw(p, snap.tasks, (id) => (id ? this.colorOf(id) : "#ffe9a8"), t); // unassigned = plain yellow sticky
+    this.notes.draw(p, snap.tasks, (id) => (id ? this.colorOf(id) : "#384666"), t); // unassigned = steel slate note
 
     if (!this.reducedMotion) live.drawCables(p, l, (id) => states.get(id) ?? null, (id) => this.colorOf(id), t);
     for (const d of l.desks) live.drawDeskStrip(p, d, l.ox, l.oy, states.get(d.agentId) ?? "idle", this.reducedMotion ? 0 : t);

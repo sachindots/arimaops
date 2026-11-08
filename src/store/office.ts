@@ -41,7 +41,14 @@ function hqToken(): string | null {
     } catch {
       /* private mode */
     }
+    const role = url.searchParams.get("role") === "viewer" ? "viewer" : "operator";
+    try {
+      sessionStorage.setItem("hq-role", role);
+    } catch {
+      /* private mode */
+    }
     url.searchParams.delete("token");
+    url.searchParams.delete("role");
     history.replaceState(null, "", url.toString()); // keep the token out of history and screenshots
     return fromUrl;
   }
@@ -53,6 +60,14 @@ function hqToken(): string | null {
 }
 
 const token = hqToken();
+/** Viewer token (tablet/phone read-only link): the server rejects control commands; the UI hides them. */
+export const isViewer = (() => {
+  try {
+    return sessionStorage.getItem("hq-role") === "viewer";
+  } catch {
+    return false;
+  }
+})();
 const source: OfficeDataSource = token ? createWsSource(token) : createMockSource();
 
 export const useOffice = create<OfficeState>(() => ({
@@ -116,6 +131,8 @@ function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, actionItems: upsert(snap.actionItems ?? [], e.item, (i) => i.id === e.item.id) };
     case "mcp.updated":
       return { ...snap, mcp: e.mcp };
+    case "remote.stepup":
+      return snap;
     case "access.updated":
       return { ...snap, accessRequests: upsert(snap.accessRequests ?? [], e.request, (r) => r.id === e.request.id) };
   }

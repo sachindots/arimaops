@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Hub } from "./hub";
 import { requestAccess } from "./access";
 import type { Planner } from "./planner";
+import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -28,9 +29,10 @@ function guard<A>(fn: (args: A) => Result) {
 
 function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   const server = new McpServer({ name: "hq", version: "0.1.0" });
-  const isLead = !!hub.cfg(me)?.isLead;
+  const myCfg = hub.cfg(me);
+  const isLead = !!(myCfg?.isLead || myCfg?.department === "exec" || myCfg?.role.toLowerCase().includes("cto"));
   const leadOnly = () => {
-    if (!isLead) throw new Error("Only the lead can do this. Ask the lead with send_message.");
+    if (!isLead) throw new Error("Only the Lead or CTO can do this. Ask the lead with send_message.");
   };
   const taskView = (id: string) => {
     const t = planner.task(id);
@@ -155,22 +157,27 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
       if (t.status === "todo") planner.setStatus(me, "in-progress");
       const blockedBy = t.needs.filter((n) => planner.task(n)?.status !== "done");
-      return ok({ ...taskView(t.id), waitingOn: blockedBy, rules: "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number." });
+      const isDeliverables = hub.snap.config.workflow.mode === "deliverables";
+      const rules = isDeliverables
+        ? `Work only on this task. Write your deliverable or changes to the listed files (or deliverables/${t.id}.md). When complete, call set_my_status with in-review (or done) and pass a summary in note and your output file path in deliverablePath.`
+        : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
+      return ok({ ...taskView(t.id), waitingOn: blockedBy, rules });
     }),
   );
 
   server.registerTool(
     "set_my_status",
     {
-      description: "Update your current task: in-progress, blocked (say why), in-review (PR opened), or done. The lead is told automatically.",
+      description: "Update your current task: in-progress, blocked (say why), in-review (PR opened or deliverable ready), or done. The lead is told automatically.",
       inputSchema: {
         status: z.enum(["in-progress", "blocked", "in-review", "done"]),
-        note: z.string().optional().describe("Why you are blocked, or a short summary"),
+        note: z.string().optional().describe("Why you are blocked, or a short summary of your deliverable/changes"),
         prNumber: z.number().int().optional(),
+        deliverablePath: z.string().optional().describe("Path to the deliverable file/artifact produced (in deliverables mode)"),
       },
     },
-    guard(({ status, note, prNumber }: { status: "in-progress" | "blocked" | "in-review" | "done"; note?: string; prNumber?: number }) => {
-      const t = planner.setStatus(me, status, note, prNumber);
+    guard(({ status, note, prNumber, deliverablePath }: { status: "in-progress" | "blocked" | "in-review" | "done"; note?: string; prNumber?: number; deliverablePath?: string }) => {
+      const t = planner.setStatus(me, status, note, prNumber, deliverablePath);
       return ok(`${t.id} is now ${t.status}.`);
     }),
   );
@@ -215,6 +222,86 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       if (toId === me) throw new Error("That's you.");
       planner.message(me, to, text);
       return ok(`Sent to ${hub.name(toId)}.`);
+    }),
+  );
+
+  // ---------------------------------------------------------------- Multi-Project CTO Overwatch Tools
+  server.registerTool(
+    "list_projects",
+    {
+      description: "Multi-Project CTO Overwatch: Lists all registered .hq projects on this machine with their path, online status, operator roster, and task counts.",
+    },
+    guard(() =>
+      ok(
+        listProjectsOverview(hub).map((p) => ({
+          id: p.id,
+          name: p.name,
+          path: p.path,
+          online: p.online,
+          isCurrent: p.isCurrent,
+          workflowMode: p.workflowMode,
+          counts: p.counts,
+          team: p.team.map((a) => `${a.name} (${a.role}, ${a.cli}${a.model ? `:${a.model}` : ""})`),
+        })),
+      ),
+    ),
+  );
+
+  server.registerTool(
+    "get_project_status",
+    {
+      description: "Multi-Project CTO Overwatch: Returns the full boards, tasks, and operator roster for any registered .hq project by projectId or name.",
+      inputSchema: { projectId: z.string().describe("Project id or name from list_projects (e.g. 'booktabs', 'jsm-hq')") },
+    },
+    guard(({ projectId }: { projectId: string }) => {
+      const q = projectId.trim().toLowerCase();
+      const found = listProjectsOverview(hub).find(
+        (p) => p.id.toLowerCase() === q || p.name.toLowerCase() === q || p.path.toLowerCase() === q,
+      );
+      if (!found) throw new Error(`Project "${projectId}" not found.`);
+      return ok(found);
+    }),
+  );
+
+  server.registerTool(
+    "create_project_task",
+    {
+      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if current project, or saved directly to that project's .hq/plan.json).",
+      inputSchema: {
+        projectId: z.string().describe("Project id or name from list_projects"),
+        title: z.string(),
+        boardId: z.string().optional(),
+        description: z.string().optional(),
+        files: z.array(z.string()).optional(),
+        doneWhen: z.string().optional(),
+        ownerId: z.string().optional().describe("Optional agent id or name on that project"),
+      },
+    },
+    guard((args: { projectId: string; title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; ownerId?: string }) => {
+      leadOnly();
+      const { projectId, ...rest } = args;
+      return ok(createCrossProjectTask(projectId, rest, hub, planner));
+    }),
+  );
+
+  server.registerTool(
+    "update_project_task",
+    {
+      description: "CTO / Lead only. Updates a task's status, owner, title, description, or note on any registered .hq project.",
+      inputSchema: {
+        projectId: z.string().describe("Project id or name from list_projects"),
+        taskId: z.string().describe("Task id, e.g. B1-T01"),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        doneWhen: z.string().optional(),
+        status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
+        ownerId: z.string().optional().describe("Agent id or name on that project (or empty to unassign)"),
+        note: z.string().optional(),
+      },
+    },
+    guard(({ projectId, taskId, ...patch }: { projectId: string; taskId: string; title?: string; description?: string; doneWhen?: string; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; ownerId?: string; note?: string }) => {
+      leadOnly();
+      return ok(updateCrossProjectTask(projectId, taskId, patch, hub, planner));
     }),
   );
 

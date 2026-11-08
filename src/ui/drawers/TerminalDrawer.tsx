@@ -96,7 +96,7 @@ export function TerminalDrawer() {
         )}
       </div>
       {inAgent?.running && (
-        <div className="border-b-[3px] border-ink bg-[#fff3cf] px-3 py-1.5 text-[13px]">
+        <div className="border-b-[3px] border-ink bg-[rgba(255,23,68,0.16)] px-3 py-1.5 text-[13px] text-red">
           {inAgent.agent.name} is working in this folder. Switching branches or committing here can break {inAgent.agent.name}'s work.
         </div>
       )}

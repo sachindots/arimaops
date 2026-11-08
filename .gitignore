@@ -4,6 +4,7 @@ dist
 *.local
 
 # HQ state when HQ is run on this repo itself
+.hq/
 .jsmhq/
 
 # Built server for the npm package

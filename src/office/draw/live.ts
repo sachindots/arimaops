@@ -164,10 +164,10 @@ export function drawPrBoard(p: Pen, b: PxRect, prs: PullRequest[], colorOf: (id:
   prs.slice(-6).forEach((pr, i) => {
     const x = b.x + 3 + (i % 3) * 20;
     const y = b.y + 11 + Math.floor(i / 3) * 14;
-    const col = pr.merged ? "#00873a" : reviewStyle[pr.review].color;
-    p.rect(x + 1, y + 1, 18, 12, C.ink, 0.3);
-    p.rect(x, y, 18, 12, pr.merged ? "#e0dccf" : C.white);
-    text(p, `#${pr.number % 1000}`, x + 2, y + 3, C.ink);
+    const col = pr.merged ? "#00ff66" : reviewStyle[pr.review].color;
+    p.rect(x + 1, y + 1, 18, 12, C.ink, 0.45);
+    p.rect(x, y, 18, 12, pr.merged ? "#0e1522" : "#151d2e");
+    text(p, `#${pr.number % 1000}`, x + 2, y + 3, C.white);
     p.rect(x + 2, y + 9, 14, 2, col);
     p.rect(x + 8, y - 1, 3, 2, colorOf(pr.authorId));
   });
@@ -187,8 +187,8 @@ export function drawCables(
       const len = Math.abs(x1 - x0) + Math.abs(y1 - y0);
       for (let d = (14 - ((((acc - phase) % 14) + 14) % 14)) % 14; d < len; d += 14) {
         const f = d / len;
-        const col = st === "needs-input" ? C.red : st === "idle" ? colorOf(cb.agentId) : C.white;
-        p.rect(Math.round(x0 + (x1 - x0) * f) - 1, Math.round(y0 + (y1 - y0) * f) - 1, 3, 3, col, st === "idle" ? 0.5 : 0.9);
+        const col = st === "needs-input" ? C.red : st === "idle" ? colorOf(cb.agentId) : C.green;
+        p.rect(Math.round(x0 + (x1 - x0) * f) - 1, Math.round(y0 + (y1 - y0) * f) - 1, 3, 3, col, st === "idle" ? 0.5 : 0.95);
       }
       acc += len;
     }
@@ -201,23 +201,23 @@ export function drawWindowAndClock(p: Pen, l: OfficeLayout, t: number) {
   const night = hour < 7 || hour >= 19;
   p.rect(W.x, W.y, W.w, W.h, night ? C.skyN : C.sky);
   if (night) {
-    for (const [sx, sy] of [[6, 5], [19, 12], [33, 4], [47, 9], [54, 18], [12, 20]]) p.rect(W.x + sx, W.y + sy, 1, 1, Math.sin(t * 2 + sx) > -0.3 ? C.white : C.lav);
-    disc(p, W.x + 44, W.y + 8, 3, "#fff1c4");
+    for (const [sx, sy] of [[6, 5], [19, 12], [33, 4], [47, 9], [54, 18], [12, 20]]) p.rect(W.x + sx, W.y + sy, 1, 1, Math.sin(t * 2 + sx) > -0.3 ? C.green : C.red);
+    disc(p, W.x + 44, W.y + 8, 3, "#ff1744");
   } else
     for (const [off, cy, w] of [[0, 7, 14], [37, 17, 10]]) {
-      const cx = W.x + ((t * 3 + off) % (W.w - w)) ;
-      p.rect(cx, W.y + cy, w, 3, C.cloud);
-      p.rect(cx + 3, W.y + cy - 2, w - 6, 2, C.cloud);
+      const cx = W.x + ((t * 3 + off) % (W.w - w));
+      p.rect(cx, W.y + cy, w, 2, "#ff1744", 0.55);
+      p.rect(cx + 3, W.y + cy - 1, w - 6, 1, "#00ff66", 0.55);
     }
-  p.rect(W.x + W.w / 2 - 1, W.y, 2, W.h, C.white);
-  p.rect(W.x, W.y + W.h / 2 - 1, W.w, 2, C.white);
+  p.rect(W.x + W.w / 2 - 1, W.y, 2, W.h, "#1e273b");
+  p.rect(W.x, W.y + W.h / 2 - 1, W.w, 2, "#1e273b");
   const cx = l.ox + l.lounge.x0 * 16 - 8;
   const cy = l.oy + 36;
   const d = new Date();
   const m = d.getMinutes();
   const am = (m / 60) * Math.PI * 2 - Math.PI / 2;
   const ah = (((d.getHours() % 12) + m / 60) / 12) * Math.PI * 2 - Math.PI / 2;
-  line(p, cx, cy, cx + Math.cos(am) * 5, cy + Math.sin(am) * 5, C.ink);
+  line(p, cx, cy, cx + Math.cos(am) * 5, cy + Math.sin(am) * 5, C.green);
   line(p, cx, cy, cx + Math.cos(ah) * 3, cy + Math.sin(ah) * 3, C.red);
 }
 
@@ -225,11 +225,11 @@ export function drawParcel(p: Pen, cx: number, cy: number, num: number, color: s
   const x = Math.round(cx) - 4;
   const y = Math.round(cy) - 5;
   p.rect(x, y, 8, 7, C.ink);
-  p.rect(x + 1, y + 1, 6, 2, "#f0c48a");
-  p.rect(x + 1, y + 3, 6, 3, "#c98a4e");
-  p.rect(x + 3, y + 1, 2, 2, C.white);
+  p.rect(x + 1, y + 1, 6, 2, "#1c2538");
+  p.rect(x + 1, y + 3, 6, 3, "#101624");
+  p.rect(x + 3, y + 1, 2, 2, C.green);
   p.rect(x + 2, y + 4, 3, 1, color);
-  if (showTag) tag(p, `#${num}`, cx, y - 8, C.ink, C.yellow);
+  if (showTag) tag(p, `#${num}`, cx, y - 8, C.ink, C.green);
 }
 
 export function drawPlanTitle(p: Pen, l: OfficeLayout, title: string) {

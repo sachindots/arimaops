@@ -95,7 +95,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
       </div>
 
       {agent.mode === "local" && (
-        <p className="border-[3px] border-orange bg-[#fff1d6] px-3 py-2 text-[14px]">
+        <p className="border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
           {agent.name} runs in Local mode, so sandbox settings don't apply until it's switched back to Sandbox. The env file still applies.
         </p>
       )}
@@ -123,7 +123,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
             <ChipList items={sb.deny} onChange={(deny) => update({ deny })} placeholder="*.googleapis.com" validate={isDomain} />
           </Field>
         </div>
-        {state?.syncError && <p className="mt-2 border-2 border-red bg-[#ffe1ea] px-2 py-1 text-[13px] text-red">sbx: {state.syncError}</p>}
+        {state?.syncError && <p className="mt-2 border-2 border-red bg-[rgba(255,23,68,0.16)] px-2 py-1 text-[13px] text-red">sbx: {state.syncError}</p>}
         <div className="mt-3">
           <div className="mb-1 text-[13px] font-semibold">Rules in effect {live ? "(read from sbx)" : "(demo)"}</div>
           {!sandboxExists ? (
@@ -133,7 +133,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
               {state?.rules.length === 0 && <li className="text-[12px] text-muted">No sandbox-specific rules.</li>}
               {state?.rules.map((r) =>
                 r.resources.map((res) => (
-                  <li key={`${r.id}-${res}`} className="chip font-term text-[14px]" style={{ ["--c" as string]: r.decision === "allow" ? "#c8f5d2" : "#ffd0dc" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
+                  <li key={`${r.id}-${res}`} className="chip font-term text-[14px]" style={{ ["--c" as string]: r.decision === "allow" ? "#00ff66" : "#ff1744" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
                     {r.decision === "allow" ? "✓" : "✗"} {res} <span className="text-[11px] text-muted">{SOURCE[r.source]}</span>
                   </li>
                 )),
@@ -171,7 +171,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
             {state?.envFile.exists ? "Open" : "Create & open"}
           </button>
         </div>
-        <p className="mt-2 text-[12px] font-semibold text-[#a35d00]">⚠ Unlike service keys, these values do enter the VM. Use test or development credentials. Restart the agent after editing.</p>
+        <p className="mt-2 text-[12px] font-semibold text-orange">⚠ Unlike service keys, these values do enter the VM. Use test or development credentials. Restart the agent after editing.</p>
       </section>
 
       <h3 className="-mb-2 mt-2 text-[18px] font-bold">This machine — all sandboxes</h3>

@@ -1,23 +1,24 @@
 import type { AgentState, ReviewState } from "../data/types";
 
-// PICO-8-flavoured "cozy management game" palette. Shared by the office and the HUD.
+// Black-Red + Hacker Terminal Cyberspace palette. Shared by the office and the HUD.
+// Strictly zero yellow or orange: Crimson Red (#ff1744), Phosphor Green (#00ff66), Ice Cyan (#00e5ff), Neon Violet (#c04dff).
 export const colors = {
-  ink: "#241a2e",
-  cream: "#fff6e9",
-  cream2: "#f0dfc2",
-  cream3: "#e2cba6",
-  muted: "#7d6b73",
-  navy: "#1d2b53",
-  navy2: "#16213f",
-  blue: "#29adff",
-  red: "#ff004d",
-  orange: "#ffa300",
-  green: "#00e436",
-  lav: "#83769c",
-  yellow: "#ffec27",
-  pink: "#ff77a8",
-  grass: "#4a8f3d",
-  white: "#fff1e8",
+  ink: "#040508",
+  cream: "#0a0c12",
+  cream2: "#10141f",
+  cream3: "#261520",
+  muted: "#6e7b94",
+  navy: "#07090e",
+  navy2: "#04060a",
+  blue: "#00e5ff",
+  red: "#ff1744",
+  orange: "#c04dff",
+  green: "#00ff66",
+  lav: "#6e7b94",
+  yellow: "#00ff66",
+  pink: "#ff2a85",
+  grass: "#050609",
+  white: "#e6edf7",
 } as const;
 
 export interface StateStyle {
@@ -27,34 +28,34 @@ export interface StateStyle {
 }
 
 export const stateStyle: Record<AgentState, StateStyle> = {
-  working: { label: "Working", color: colors.blue, dim: "#1d6fb8" },
-  "needs-input": { label: "Needs input", color: colors.red, dim: "#7e0f33" },
-  "in-review": { label: "In review", color: colors.orange, dim: "#a86a00" },
-  "review-passed": { label: "Review passed", color: colors.green, dim: "#00873a" },
-  idle: { label: "Idle", color: colors.lav, dim: "#5a5170" },
+  working: { label: "Working", color: colors.blue, dim: "#006978" },
+  "needs-input": { label: "Needs input", color: colors.red, dim: "#7a0b24" },
+  "in-review": { label: "In review", color: colors.orange, dim: "#5e1d85" },
+  "review-passed": { label: "Review passed", color: colors.green, dim: "#007a33" },
+  idle: { label: "Idle", color: colors.lav, dim: "#384152" },
 };
 
 export const reviewStyle: Record<ReviewState, StateStyle> = {
-  pending: { label: "Queued", color: colors.lav, dim: "#5a5170" },
-  reviewing: { label: "Reviewing", color: colors.orange, dim: "#a86a00" },
-  "changes-requested": { label: "Changes", color: colors.red, dim: "#7e0f33" },
-  passed: { label: "Passed", color: colors.green, dim: "#00873a" },
+  pending: { label: "Queued", color: colors.lav, dim: "#384152" },
+  reviewing: { label: "Reviewing", color: colors.orange, dim: "#5e1d85" },
+  "changes-requested": { label: "Changes", color: colors.red, dim: "#7a0b24" },
+  passed: { label: "Passed", color: colors.green, dim: "#007a33" },
 };
 
-/** Robot body colours offered for new agents, in order. */
+/** Robot body colours offered for new agents, in order (zero yellow/orange). */
 export const agentPalette = [
-  "#ff77a8", // pink
-  "#29adff", // blue
-  "#ffd23a", // yellow
-  "#00e436", // green
-  "#ff8a3d", // orange
-  "#a98bff", // violet
-  "#3ee0d0", // teal
-  "#ff5c5c", // coral
-  "#c2c3c7", // silver
-  "#b0e04a", // lime
-  "#f0a6ff", // lilac
-  "#6fa8ff", // periwinkle
+  "#ff1744", // crimson red (lead)
+  "#00ff66", // matrix phosphor green
+  "#00e5ff", // cyber ice cyan
+  "#c04dff", // neon violet
+  "#ff2a85", // cyber magenta
+  "#3ee0d0", // plasma teal
+  "#5271ff", // electric cobalt
+  "#00b8d4", // deep cyan
+  "#ff5c8a", // neon rose
+  "#9d4edd", // dark amethyst
+  "#72efdd", // mint cyber
+  "#c2c9d6", // titanium silver
 ] as const;
 
 export const font = {

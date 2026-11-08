@@ -7,6 +7,7 @@ export type DrawerState =
   | { kind: "env"; name: string }
   | { kind: "actions" }
   | { kind: "terminal" }
+  | { kind: "cto" }
   | null;
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
@@ -41,7 +42,8 @@ interface UiState {
   drawerMaximized: boolean;
 }
 
-const WIDTH_KEY = "jsmhq.drawerWidth";
+const WIDTH_KEY = "dothq.drawerWidth";
+const LEGACY_WIDTH_KEY = "jsmhq.drawerWidth";
 export const DRAWER_MIN = 420;
 export const DRAWER_DEFAULT = 520;
 
@@ -52,7 +54,7 @@ export function drawerMax() {
 
 function savedWidth(): number {
   try {
-    const v = Number(localStorage.getItem(WIDTH_KEY));
+    const v = Number(localStorage.getItem(WIDTH_KEY) ?? localStorage.getItem(LEGACY_WIDTH_KEY));
     return Number.isFinite(v) && v >= DRAWER_MIN ? v : DRAWER_DEFAULT;
   } catch {
     return DRAWER_DEFAULT;
@@ -92,6 +94,9 @@ export const ui = {
   },
   openActions() {
     useUi.setState({ drawer: { kind: "actions" } });
+  },
+  openCto() {
+    useUi.setState({ drawer: { kind: "cto" } });
   },
   openPrs() {
     useUi.setState({ drawer: { kind: "prs" } });

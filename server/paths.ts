@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
 
 export const slugify = (s: string) =>
   s
@@ -9,9 +10,11 @@ export const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || "project";
 
-/** ~/.jsmhq/<project>/ — HQ's per-project home (agent folders, tokens). */
+/** ~/.hq/<project>/ — HQ's per-project home (agent folders, tokens). Falls back to ~/.jsmhq/<project>/ if already created there. */
 export function projectHome(projectSlug: string): string {
-  const dir = join(homedir(), ".jsmhq", projectSlug);
+  const nextDir = join(homedir(), BRAND.homeDir, projectSlug);
+  const legacyDir = join(homedir(), BRAND.legacyHomeDir, projectSlug);
+  const dir = !existsSync(nextDir) && existsSync(legacyDir) ? legacyDir : nextDir;
   mkdirSync(dir, { recursive: true });
   return dir;
 }

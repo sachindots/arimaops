@@ -6,11 +6,11 @@ import { Dot } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
-  { id: "todo", label: "To do", color: "#83769c" },
-  { id: "in-progress", label: "Doing", color: "#29adff" },
-  { id: "in-review", label: "Review", color: "#ffa300" },
-  { id: "done", label: "Done", color: "#00e436" },
-  { id: "blocked", label: "Blocked", color: "#ff004d" },
+  { id: "todo", label: "To do", color: "#6e7b94" },
+  { id: "in-progress", label: "Doing", color: "#00e5ff" },
+  { id: "in-review", label: "Review", color: "#c04dff" },
+  { id: "done", label: "Done", color: "#00ff66" },
+  { id: "blocked", label: "Blocked", color: "#ff1744" },
 ];
 
 const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "Planned", done: "Done" };
@@ -35,7 +35,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
       <div className="flex flex-wrap gap-1.5 border-b-[3px] border-ink px-3 py-2">
         {boards.map((b) => (
           <button key={b.id} className="btn px-2 text-[13px]" aria-pressed={b.id === boardId} onClick={() => setBoardId(b.id)}>
-            {b.status === "active" && <span className="mr-1 text-blue">●</span>}
+            {b.status === "active" && <span className="mr-1 text-green">●</span>}
             {b.title}
           </button>
         ))}
@@ -60,7 +60,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
           </button>
         </div>
       )}
-      <div className="scroll-thin grid min-h-0 flex-1 auto-cols-[minmax(200px,1fr)] grid-flow-col gap-2 overflow-auto bg-[#f7f3ea] p-3">
+      <div className="scroll-thin grid min-h-0 flex-1 auto-cols-[minmax(200px,1fr)] grid-flow-col gap-2 overflow-auto bg-[#07090e] p-3">
         {cols.map((c) => {
           const list = tasks.filter((t) => t.status === c.id);
           if (c.id === "done") list.reverse();
@@ -89,7 +89,7 @@ function TaskCard({ task }: { task: Task }) {
   const workers = snap?.config.team.filter((a) => !a.isLead) ?? [];
   const blockedBy = task.needs.filter((n) => snap?.tasks.find((t) => t.id === n)?.status !== "done");
   return (
-    <div className={`border-2 border-ink px-2 py-1.5 shadow-[0_3px_0_rgba(36,26,46,0.35)] ${task.status === "done" ? "bg-[#e8e1d2] text-muted" : "bg-white"}`}>
+    <div className={`border border-ink px-2 py-1.5 shadow-[0_3px_0_rgba(0,0,0,0.6)] ${task.status === "done" ? "bg-[#0a0d14] text-muted" : "bg-[#111520]"}`}>
       <div className="font-term text-[16px] leading-none text-muted">
         {task.id}
         {task.prNumber && <span className="ml-1.5">#{task.prNumber}</span>}
@@ -100,6 +100,7 @@ function TaskCard({ task }: { task: Task }) {
       >
         {task.title}
       </div>
+      {task.deliverablePath && <div className="mt-0.5 truncate font-term text-[14px] text-green">↳ {task.deliverablePath}</div>}
       {task.status === "blocked" && task.note && <div className="text-[12px] text-red">{task.note}</div>}
       <div className="mt-1 flex items-center gap-1.5 text-[12px]">
         {owner ? (

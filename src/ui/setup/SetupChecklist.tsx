@@ -5,10 +5,10 @@ import { ui } from "../../store/ui";
 import { TerminalView } from "../drawers/TerminalView";
 
 const ICON: Record<SetupStatus, [string, string]> = {
-  ok: ["✓", "#00a83a"],
-  missing: ["✗", "#ff004d"],
-  unsupported: ["✗", "#ff004d"],
-  warning: ["!", "#d48a1a"],
+  ok: ["✓", "#00ff66"],
+  missing: ["✗", "#ff1744"],
+  unsupported: ["✗", "#ff1744"],
+  warning: ["!", "#c04dff"],
 };
 
 const NEEDED: Record<SetupCheck["neededFor"], string> = {
@@ -37,7 +37,7 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               {c.fix.command && (
                 <>
-                  <code className="max-w-full truncate border-2 border-ink bg-navy-2 px-2 py-0.5 font-term text-[17px] text-[#dfe6ff]">{c.fix.command}</code>
+                  <code className="max-w-full truncate border-2 border-ink bg-navy-2 px-2 py-0.5 font-term text-[17px] text-[#e6edf7]">{c.fix.command}</code>
                   <button
                     className="btn px-2 text-[12px]"
                     onClick={() => {
@@ -68,27 +68,27 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
   );
 }
 
-/** "Get JSM HQ ready": what's missing on this machine and how to fix it. */
+/** "Get .hq ready": what's missing on this machine and how to fix it. */
 export function SetupChecklist() {
   const setup = useOffice((s) => s.snap?.setup);
   const [runningId, setRunningId] = useState<string | null>(null);
   if (!setup) return null;
 
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(36,26,46,0.55)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
+    <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col">
         <div className="flex items-center gap-3 border-b-[3px] border-ink px-4 py-2">
-          <h2 className="m-0 flex-1 text-[22px] font-bold">Get JSM HQ ready</h2>
+          <h2 className="m-0 flex-1 text-[22px] font-bold">Get .hq ready</h2>
           <button className="btn text-[14px]" onClick={() => officeActions.recheckSetup()}>
             Check again
           </button>
         </div>
         <div className="scroll-thin min-h-0 overflow-y-auto px-4 py-2">
           <div className="mb-2 flex flex-wrap gap-2 text-[14px]">
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#00e436" : "#ff004d" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#00ff66" : "#ff1744" }}>
               Sandboxes {setup.sandboxReady ? "ready" : "not ready"}
             </span>
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#00e436" : "#83769c" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#00ff66" : "#6e7b94" }}>
               Local mode {setup.localReady ? "ready" : "not ready"}
             </span>
           </div>
@@ -119,13 +119,13 @@ export function SetupChecklist() {
             </div>
           )}
           {!setup.sandboxReady && setup.localReady && (
-            <p className="mb-2 border-[3px] border-orange bg-[#fff1d6] px-3 py-2 text-[14px]">
+            <p className="mb-2 border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
               Sandboxes aren't available here, but Local mode is. Set agents to <b>Local</b> in Settings → Team. They run plain Claude Code in their own folder, with permission prompts on.
             </p>
           )}
         </div>
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
-          <span className="text-[12px] text-muted">HQ never runs sudo or install scripts for you. "Run in terminal" shows exactly what runs.</span>
+          <span className="text-[12px] text-muted">.hq never runs sudo or install scripts for you. "Run in terminal" shows exactly what runs.</span>
           <button className="btn" onClick={() => ui.closeSetup()}>
             Continue to the office
           </button>

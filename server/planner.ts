@@ -5,6 +5,7 @@ import type { Board, Task, TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Inbox } from "./inbox";
+import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 
 export interface NewTask {
   boardId?: string;
@@ -15,7 +16,7 @@ export interface NewTask {
   needs?: string[];
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath">>;
 
 const now = () => new Date().toISOString();
 
@@ -28,6 +29,14 @@ export class Planner {
 
   private get snap() {
     return this.hub.snap;
+  }
+
+  private async syncTaskDeliverables(task: Task) {
+    if (this.snap.config.workflow.mode !== "deliverables" || !task.ownerId) return;
+    const owner = this.hub.cfg(task.ownerId);
+    if (!owner) return;
+    const hints = [...(task.files ?? []), ...(task.deliverablePath ? [task.deliverablePath] : [])];
+    await syncDeliverablesFromAgent(owner, this.snap.config.team, this.hub.slug, this.hub.repo.root, hints);
   }
 
   task(id: string): Task | undefined {
@@ -82,7 +91,7 @@ export class Planner {
     while (this.task(id)) id = `${board.id}-T${String(++n).padStart(2, "0")}`;
     const task: Task = {
       id, boardId: board.id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
-      needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null,
+      needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
     };
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -98,6 +107,7 @@ export class Planner {
     if (task.status === "done") {
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
     }
+    if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     return task;
@@ -117,20 +127,35 @@ export class Planner {
     this.hub.planChanged();
     this.hub.activity("task.assigned", byId === "you" ? null : byId, `${this.hub.name(byId)} assigned ${task.id} ${task.title} to ${agent.name}`);
     const by = byId === "you" ? "The user (your human)" : this.hub.name(byId);
-    const text = `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
+    const isDeliverables = this.snap.config.workflow.mode === "deliverables";
+    if (isDeliverables) {
+      void Promise.all(
+        task.needs.map((depId) => {
+          const dep = this.task(depId);
+          return dep ? this.syncTaskDeliverables(dep) : Promise.resolve();
+        }),
+      ).then(() => {
+        syncRepoToWorkspace(agent, this.hub.slug, this.hub.repo.root, task.files);
+      });
+    }
+    const text = isDeliverables
+      ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
+      : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
     this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text });
     return task;
   }
 
-  setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number): Task {
+  setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number, deliverablePath?: string): Task {
     const task = this.currentTask(agentId);
     if (!task) throw new Error("You have no task. Ask the lead for one.");
     task.status = status;
     task.note = note?.slice(0, 300) || null;
     if (prNumber) task.prNumber = prNumber;
+    if (deliverablePath) task.deliverablePath = deliverablePath.slice(0, 300);
     if (status === "done") this.hub.setStatus(agentId, { currentTaskId: null });
     else this.hub.setStatus(agentId, { currentTaskId: task.id });
+    if (status === "in-review" || status === "done") void this.syncTaskDeliverables(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     const name = this.hub.name(agentId);
@@ -139,7 +164,11 @@ export class Planner {
     // Let the lead know when work is blocked or ready for review.
     const lead = this.snap.config.team.find((a) => a.isLead);
     if (lead && lead.id !== agentId && (status === "blocked" || status === "in-review" || status === "done"))
-      this.message(agentId, lead.id, `${task.id} ${words}${note ? `: ${note}` : ""}${prNumber ? ` (PR #${prNumber})` : ""}`);
+      this.message(
+        agentId,
+        lead.id,
+        `${task.id} ${words}${note ? `: ${note}` : ""}${prNumber ? ` (PR #${prNumber})` : ""}${deliverablePath ? ` (Deliverable: ${deliverablePath})` : ""}`,
+      );
     return task;
   }
 

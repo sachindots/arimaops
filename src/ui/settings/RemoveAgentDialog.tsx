@@ -46,7 +46,7 @@ export function RemoveAgentDialog({ agent, onClose }: { agent: AgentConfig; onCl
               </span>
             </label>
 
-            <label className={`flex items-start gap-2 border-2 p-2 ${atRisk && deleteFolder ? "border-red bg-[#ffe1ea]" : "border-ink bg-white"} ${info.managed && info.exists ? "" : "opacity-60"}`}>
+            <label className={`flex items-start gap-2 border-2 p-2 ${atRisk && deleteFolder ? "border-red bg-[rgba(255,23,68,0.16)]" : "border-ink bg-white"} ${info.managed && info.exists ? "" : "opacity-60"}`}>
               <input type="checkbox" className="mt-1" checked={deleteFolder} disabled={!info.managed || !info.exists} onChange={(e) => setDeleteFolder(e.target.checked)} />
               <span className="min-w-0">
                 <b className="text-[15px]">Delete {agent.name}'s folder</b>

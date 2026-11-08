@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CLI_LABEL, HUMAN_ID, type AccessRequest, type AgentConfig, type AgentStatus, type OfficeSnapshot } from "../../data/types";
+import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui, type AgentTab } from "../../store/ui";
-import { ago, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
+import { ago, DepartmentBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
+import { ModelSelect } from "../primitives/ModelSelect";
 import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
 import { TerminalView } from "./TerminalView";
@@ -11,6 +12,7 @@ import { TerminalView } from "./TerminalView";
 export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: AgentTab }) {
   const snap = useOffice((s) => s.snap);
   const [tab, setTab] = useState<AgentTab>(initialTab ?? "terminal");
+  const [pendingRestart, setPendingRestart] = useState(false);
   const agent = snap?.config.team.find((a) => a.id === id);
   const status = snap?.agents.find((a) => a.agentId === id);
   if (!snap || !agent || !status) {
@@ -24,18 +26,74 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
   }
   const unread = snap.messages.filter((m) => m.toId === id).length;
   const access = snap.accessRequests?.find((r) => r.agentId === id && r.status === "pending");
+  const isRunning = status.session.state === "running";
 
   return (
     <>
       <DrawerHeader>
         <Portrait color={agent.color} lead={agent.isLead} size={36} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <b className="text-[18px]">{agent.name}</b>
+            <DepartmentBadge role={agent.role} isLead={agent.isLead} department={agent.department} />
+            <span className="font-mono text-[12px] text-muted">{agent.role}</span>
             <StateChip state={status.state} />
           </div>
-          <div className="truncate font-term text-[17px] text-muted">
-            {agent.role} · {CLI_LABEL[agent.cli]}{agent.model ? ` ${agent.model}` : ""} · {agent.mode === "sandbox" ? "Docker Sandbox" : "Local mode"}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
+            <select
+              className="input py-0.5 font-mono text-[12px]"
+              value={agent.cli}
+              aria-label={`${agent.name} CLI`}
+              onChange={(e) => {
+                const nextCli = e.target.value as AgentCli;
+                const defaultModel = CLI_MODELS[nextCli]?.[0] ?? "";
+                officeActions.updateAgent(agent.id, { cli: nextCli, model: defaultModel });
+                if (isRunning) setPendingRestart(true);
+              }}
+            >
+              {AGENT_CLIS.map((c) => (
+                <option key={c} value={c}>
+                  {CLI_LABEL[c]}
+                </option>
+              ))}
+            </select>
+            <div className="min-w-[165px]">
+              <ModelSelect
+                cli={agent.cli}
+                value={agent.model}
+                compact
+                ariaLabel={`${agent.name} model`}
+                onChange={(model) => {
+                  officeActions.updateAgent(agent.id, { model });
+                  if (isRunning) setPendingRestart(true);
+                }}
+              />
+            </div>
+            <select
+              className="input py-0.5 font-mono text-[12px]"
+              value={agent.mode}
+              aria-label={`${agent.name} runtime mode`}
+              onChange={(e) => {
+                officeActions.updateAgent(agent.id, { mode: e.target.value as "sandbox" | "local" });
+                if (isRunning) setPendingRestart(true);
+              }}
+            >
+              <option value="sandbox">Docker Sandbox</option>
+              <option value="local">Local mode</option>
+            </select>
+            {pendingRestart && isRunning && (
+              <button
+                type="button"
+                className="btn border-green px-2 py-0.5 text-[11px] text-green"
+                onClick={() => {
+                  setPendingRestart(false);
+                  officeActions.stopAgent(agent.id);
+                  window.setTimeout(() => officeActions.startAgent(agent.id), 450);
+                }}
+              >
+                Apply & Restart
+              </button>
+            )}
           </div>
         </div>
       </DrawerHeader>
@@ -44,7 +102,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         <AccessCard request={access} agent={agent} />
       ) : (
         status.note && (
-          <div className={`border-b-[3px] border-ink px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[#ffe1ea] text-red" : "bg-cream-2"}`}>
+          <div className={`border-b-[3px] border-ink px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
             {status.note}
             {status.state === "needs-input" && <span className="ml-2 text-muted">— answer in the terminal and press Enter</span>}
           </div>
@@ -129,9 +187,9 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
   };
   const shown = open ? approvals : approvals.slice(0, 3);
   return (
-    <div className="border-b-[3px] border-ink bg-[#fff1d6] px-3 py-1.5 text-[13px]">
+    <div className="border-b-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
       <div className="flex items-center gap-2">
-        <b className="flex-1">
+        <b className="flex-1 text-orange">
           Blocked by the sandbox · {approvals.length}
         </b>
         <button
@@ -176,7 +234,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
 /** The agent asked (request_access) to reach a domain its sandbox blocks. */
 function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentConfig }) {
   return (
-    <div className="border-b-[3px] border-ink bg-[#ffe1ea] px-3 py-2">
+    <div className="border-b-[3px] border-ink bg-[rgba(255,23,68,0.16)] px-3 py-2">
       <div className="text-[14px] text-red">
         <b>{agent.name}</b> wants to reach <b className="font-term text-[17px]">{request.domain}</b>
       </div>
@@ -196,7 +254,7 @@ function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentCo
   );
 }
 
-const SESSION_COLOR = { running: "#00e436", starting: "#29adff", stopped: "#83769c", failed: "#ff004d" } as const;
+const SESSION_COLOR = { running: "#00ff66", starting: "#00e5ff", stopped: "#6e7b94", failed: "#ff1744" } as const;
 
 /** Session state + Start/Stop + the agent's folder. */
 function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
@@ -233,22 +291,22 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const setup = useOffice((st) => st.snap?.setup);
   const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : !setup?.localReady;
   return (
-    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#dfe6ff]">
+    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6edf7]">
       <div className="max-w-[380px]">
         {s.state === "starting" ? (
-          <p className="blink font-term text-[22px]">{s.detail ?? "Starting…"}</p>
+          <p className="blink font-term text-[22px] text-green">{s.detail ?? "Starting…"}</p>
         ) : (
           <>
             <p className="mb-2 font-term text-[22px]">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
-            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[16px] text-[#ffd0dc]">{s.detail}</pre>}
-            <p className="mb-4 text-[13px] text-[#9aa6d1]">
+            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[16px] text-[#ff5c8a]">{s.detail}</pre>}
+            <p className="mb-4 text-[13px] text-[#6e7b94]">
               {agent.mode === "sandbox"
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
                 : `Start runs ${CLI_LABEL[agent.cli]} locally in this agent's own copy of the repo, with permission prompts on.`}
             </p>
             {agent.cli === "codex" && (
-              <p className="mb-4 text-[12px] text-[#ffc14d]">
-                First start only: Codex asks you to trust this folder and HQ's hooks. Choose <b>Yes</b>, then <b>Trust all and continue</b>, in the terminal.
+              <p className="mb-4 text-[12px] text-orange">
+                First start only: Codex asks you to trust this folder and .hq's hooks. Choose <b>Yes</b>, then <b>Trust all and continue</b>, in the terminal.
               </p>
             )}
             <p className="hidden">
@@ -313,6 +371,11 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
             </div>
           )}
           {task.doneWhen && <div className="mt-1 text-[13px]"><b>Done when:</b> {task.doneWhen}</div>}
+          {task.deliverablePath && (
+            <div className="mt-1 text-[13px]">
+              <b>Deliverable:</b> <code className="bg-cream-2 px-1 font-term text-[15px] text-green">{task.deliverablePath}</code>
+            </div>
+          )}
           {task.needs.length > 0 && (
             <div className="text-[14px]">
               Needs: {task.needs.map((n) => `${n} (${snap.tasks.find((t) => t.id === n)?.status ?? "?"})`).join(", ")}
@@ -429,7 +492,7 @@ function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#ffec27" } : id === "hq" ? { name: "HQ", color: "#3ee0d0" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#00ff66" } : id === "hq" ? { name: ".hq", color: "#ff1744" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;

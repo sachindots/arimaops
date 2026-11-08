@@ -36,7 +36,7 @@ export function makeCanvas(w: number, h: number): HTMLCanvasElement {
 }
 
 /** Filled box with a 1px outline. */
-export function box(p: Pen, x: number, y: number, w: number, h: number, fill: string, outline = "#241a2e") {
+export function box(p: Pen, x: number, y: number, w: number, h: number, fill: string, outline = "#040508") {
   p.rect(x, y, w, h, outline);
   p.rect(x + 1, y + 1, w - 2, h - 2, fill);
 }

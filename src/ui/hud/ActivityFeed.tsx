@@ -4,20 +4,20 @@ import { useOffice } from "../../store/office";
 import { ago, useNow } from "../kit";
 
 const ICON: Record<ActivityType, [string, string]> = {
-  "task.assigned": ["▸", "#c9b6ff"],
-  "task.started": ["●", "#29adff"],
-  "task.created": ["+", "#c9b6ff"],
-  "agent.needs-input": ["!", "#ff5c86"],
-  "agent.answered": ["✓", "#6cf08a"],
-  message: ["✉", "#ff77a8"],
-  "pr.opened": ["⇡", "#ffec27"],
-  "review.started": ["◎", "#ffc14d"],
-  "review.passed": ["✓", "#6cf08a"],
-  "review.changes": ["✗", "#ff5c86"],
-  "pr.merged": ["⇢", "#6cf08a"],
+  "task.assigned": ["▸", "#c04dff"],
+  "task.started": ["●", "#00e5ff"],
+  "task.created": ["+", "#c04dff"],
+  "agent.needs-input": ["!", "#ff1744"],
+  "agent.answered": ["✓", "#00ff66"],
+  message: ["✉", "#ff2a85"],
+  "pr.opened": ["⇡", "#00e5ff"],
+  "review.started": ["◎", "#c04dff"],
+  "review.passed": ["✓", "#00ff66"],
+  "review.changes": ["✗", "#ff1744"],
+  "pr.merged": ["⇢", "#00ff66"],
   deploy: ["▲", "#3ee0d0"],
-  session: ["◆", "#9aa6d1"],
-  config: ["⚙", "#9aa6d1"],
+  session: ["◆", "#6e7b94"],
+  config: ["⚙", "#6e7b94"],
 };
 
 const EMPTY: ActivityEvent[] = [];
@@ -29,7 +29,7 @@ export function ActivityFeed() {
   const items = activity.slice(0, 7);
 
   return (
-    <section aria-label="Activity" className="panel-dark fixed bottom-4 left-4 z-10 h-[220px] w-[280px] overflow-hidden px-2.5 pb-1.5 pt-2">
+    <section aria-label="Activity" className="hq-feed panel-dark fixed bottom-4 left-4 z-10 h-[220px] w-[280px] overflow-hidden px-2.5 pb-1.5 pt-2">
       <div className="mb-1 flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-[#b9c3e6]">
         <i className="led" />
         Activity

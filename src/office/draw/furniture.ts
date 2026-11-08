@@ -45,13 +45,13 @@ export function monitorFrame(p: Pen, mx: number, my: number) {
 
 export function plate(p: Pen, label: string, cx: number, y: number) {
   const w = textW(label);
-  box(p, Math.round(cx - w / 2) - 3, y, w + 6, 8, C.white);
-  text(p, label, Math.round(cx - w / 2), y + 1, C.ink);
+  box(p, Math.round(cx - w / 2) - 3, y, w + 6, 8, "#070910", "#ff1744");
+  text(p, label, Math.round(cx - w / 2), y + 1, C.white);
 }
 
 /** Desk with a monitor, keyboard and mug. `dx, dy` = top-left of the desk area. */
 export function workDesk(p: Pen, dx: number, dy: number, prop: number) {
-  p.rect(dx + 1, dy + 26, 46, 4, C.shadow, 0.25);
+  p.rect(dx + 1, dy + 26, 46, 4, C.shadow, 0.35);
   box(p, dx, dy + 4, 48, 18, C.desk);
   p.rect(dx + 1, dy + 5, 46, 1, C.woodL);
   box(p, dx, dy + 20, 48, 7, C.deskD);
@@ -59,14 +59,14 @@ export function workDesk(p: Pen, dx: number, dy: number, prop: number) {
   p.rect(dx + 43, dy + 26, 3, 4, C.deskDD);
   box(p, dx + 15, dy + 14, 18, 4, C.metal);
   for (let x = dx + 17; x < dx + 31; x += 3) p.rect(x, dy + 15, 2, 1, C.metalD);
-  box(p, dx + 37, dy + 9, 5, 6, C.white);
+  box(p, dx + 37, dy + 9, 5, 6, "#1b2233");
   p.rect(dx + 42, dy + 11, 1, 2, C.ink);
   if (prop % 3 === 0) {
-    // rubber duck
-    p.rect(dx + 5, dy + 9, 5, 4, C.yellow);
-    p.rect(dx + 8, dy + 8, 3, 2, C.yellow);
-    p.rect(dx + 11, dy + 9, 2, 1, C.orange);
-    p.rect(dx + 9, dy + 8, 1, 1, C.ink);
+    // cyber duck / sentinel drone
+    p.rect(dx + 5, dy + 9, 5, 4, C.red);
+    p.rect(dx + 8, dy + 8, 3, 2, C.red);
+    p.rect(dx + 11, dy + 9, 2, 1, C.green);
+    p.rect(dx + 9, dy + 8, 1, 1, C.white);
   } else if (prop % 3 === 1) {
     // small plant
     box(p, dx + 4, dy + 11, 7, 5, C.pot);
@@ -108,28 +108,28 @@ export function partitions(p: Pen, X: number, Y: number, tiles: number) {
 }
 
 export function rackBody(p: Pen, x: number, y: number, h: number, label: string) {
-  p.rect(x + 1, y + h - 1, 30, 3, "#000000", 0.3);
-  box(p, x + 1, y, 30, h, "#2a2833");
-  p.rect(x + 2, y + 1, 1, h - 2, "#3d3a48");
-  p.rect(x + 28, y + 1, 2, h - 2, "#1f1d26");
+  p.rect(x + 1, y + h - 1, 30, 3, "#000000", 0.45);
+  box(p, x + 1, y, 30, h, "#0e121d");
+  p.rect(x + 2, y + 1, 1, h - 2, "#1f2940");
+  p.rect(x + 28, y + 1, 2, h - 2, "#070910");
   for (let i = 0; i < 8; i++) {
     const yy = y + 12 + i * 10;
-    p.rect(x + 4, yy, 23, 8, "#36333f");
-    p.rect(x + 4, yy + 8, 23, 1, "#1f1d26");
-    p.rect(x + 6, yy + 3, 8, 1, "#4c4858");
+    p.rect(x + 4, yy, 23, 8, "#151b2b");
+    p.rect(x + 4, yy + 8, 23, 1, "#070910");
+    p.rect(x + 6, yy + 3, 8, 1, "#ff1744");
   }
   const nm = label.toUpperCase().slice(0, 6);
-  box(p, x + 16 - textW(nm) / 2 - 3, y + 3, textW(nm) + 6, 8, C.white);
-  text(p, nm, x + 16 - textW(nm) / 2, y + 4, C.ink);
+  box(p, x + 16 - textW(nm) / 2 - 3, y + 3, textW(nm) + 6, 8, "#070910", "#00ff66");
+  text(p, nm, x + 16 - textW(nm) / 2, y + 4, C.green);
 }
 
 export function easel(p: Pen, x: number, y: number, w: number, h: number, title: string, seed: () => number) {
   p.rect(x + 4, y + h - 2, 3, 30, C.deskDD);
   p.rect(x + w - 7, y + h - 2, 3, 30, C.deskDD);
-  p.rect(x + 6, y + h + 26, w - 12, 2, C.shadow, 0.25);
+  p.rect(x + 6, y + h + 26, w - 12, 2, C.shadow, 0.35);
   box(p, x, y, w, h, C.corkD);
   p.rect(x + 2, y + 2, w - 4, h - 4, C.cork);
   for (let i = 0; i < 40; i++) p.rect(x + 3 + Math.floor(seed() * (w - 6)), y + 9 + Math.floor(seed() * (h - 12)), 1, 1, C.corkD);
-  p.rect(x + 2, y + 2, w - 4, 7, C.white);
-  text(p, title, x + w / 2 - textW(title) / 2, y + 3, C.ink);
+  p.rect(x + 2, y + 2, w - 4, 7, "#1a0b12");
+  text(p, title, x + w / 2 - textW(title) / 2, y + 3, C.red);
 }

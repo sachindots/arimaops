@@ -7,7 +7,8 @@
 //   │ ════════════════ PR belt ═══════════╪═ gate ══════════════╗     │
 //   └──────────────────────────────────────────────────────────╨─────┘
 
-import type { AgentConfig, Environment, HqConfig } from "../../data/types";
+import { DEPARTMENT_META, inferDepartmentForRole } from "../../data/roles";
+import { DEPARTMENT_IDS, type AgentConfig, type Environment, type HqConfig } from "../../data/types";
 import { deskCarpets } from "../engine/palette";
 import { WalkGrid, type Tile } from "../engine/path";
 
@@ -39,6 +40,8 @@ export interface DeskSpot {
   drop: Tile;
   rect: PxRect; // world px
   carpet: [string, string];
+  deptLabel: string;
+  deptColor: string;
 }
 
 export interface Rack extends PxRect {
@@ -83,7 +86,7 @@ export interface OfficeLayout {
 export function layoutKey(config: HqConfig, envs: Environment[]): string {
   const wf = config.workflow;
   return JSON.stringify([
-    config.team.map((a) => [a.id, a.name, a.color, a.isLead]),
+    config.team.map((a) => [a.id, a.name, a.role, a.department ?? "", a.color, a.isLead]),
     wf.review.enabled,
     wf.review.tool,
     wf.deploy.enabled,
@@ -99,7 +102,11 @@ export function deskColumns(n: number): number {
 
 export function generateLayout(config: HqConfig, envs: Environment[]): OfficeLayout {
   const lead: AgentConfig | undefined = config.team.find((a) => a.isLead);
-  const workers = config.team.filter((a) => !a.isLead);
+  const workers = [...config.team.filter((a) => !a.isLead)].sort((a, b) => {
+    const da = DEPARTMENT_IDS.indexOf(inferDepartmentForRole(a.role, false, a.department));
+    const db = DEPARTMENT_IDS.indexOf(inferDepartmentForRole(b.role, false, b.department));
+    return da - db;
+  });
   const review = config.workflow.review.enabled;
   const hasServer = config.workflow.deploy.enabled && envs.length > 0;
 
@@ -155,6 +162,8 @@ export function generateLayout(config: HqConfig, envs: Environment[]): OfficeLay
     grid.set(x0, y0, x0, y0 + CUB - 1, false);
     grid.set(x0 + CUB - 1, y0, x0 + CUB - 1, y0 + CUB - 1, false);
     grid.set(x0 + 2, y0 + 1, x0 + 4, y0 + 2, false);
+    const deptId = inferDepartmentForRole(a.role, false, a.department);
+    const deptMeta = DEPARTMENT_META[deptId];
     return {
       agentId: a.id,
       index: i,
@@ -163,7 +172,9 @@ export function generateLayout(config: HqConfig, envs: Environment[]): OfficeLay
       seat: [x0 + 3, y0 + 3],
       drop: [x0 + 3, yb - 1],
       rect: { x: px(x0), y: py(y0) - 4, w: CUB * TS, h: CUB * TS + 4 },
-      carpet: deskCarpets[i % deskCarpets.length],
+      carpet: deptMeta?.carpet ?? deskCarpets[i % deskCarpets.length],
+      deptLabel: deptMeta?.short ?? "ENG",
+      deptColor: deptMeta?.color ?? "#00ff66",
     };
   });
 
