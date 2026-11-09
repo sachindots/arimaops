@@ -216,7 +216,8 @@ export function buildStatic(l: OfficeLayout, config: HqConfig): HTMLCanvasElemen
     box(p, 212, 86, 6, 6, "#1b2233");
     p.rect(213, 87, 4, 2, C.green);
     const lead = config.team.find((a) => a.id === l.lead.agentId);
-    if (lead) plate(p, lead.name.toUpperCase().slice(0, 8), 249, 99);
+    // On the wall behind the desk: the seated lead's head covers the desk front (y ≈ 100–117).
+    if (lead) plate(p, lead.name.toUpperCase().slice(0, 8), 249, 58);
   }
   // stand-up corner
   plant(p, 24, 76);

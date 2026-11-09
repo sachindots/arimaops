@@ -198,7 +198,11 @@ export class Inbox {
       i.kind === "message" ? `[HQ] Message from ${this.hub.name(i.fromId)}: ${i.text}` : `[HQ] ${i.text}`,
     );
     const fromAgent = items.some((i) => i.kind === "message" && i.fromId !== "you");
+    const fromYou = items.some((i) => i.kind === "message" && i.fromId === "you");
+    const hint = fromYou
+      ? '  (Answer the human with the hq send_message tool, to "you".)'
+      : fromAgent ? "  (Reply with the hq send_message tool only if a reply is needed.)" : "";
     // Claude Code submits on newline, so everything goes on one line.
-    return (lines.join("  ·  ") + (fromAgent ? "  (Reply with the hq send_message tool only if a reply is needed.)" : "")).replace(/\s*\n\s*/g, " ");
+    return (lines.join("  ·  ") + hint).replace(/\s*\n\s*/g, " ");
   }
 }

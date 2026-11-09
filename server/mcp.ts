@@ -162,7 +162,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       const t = planner.currentTask(me);
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
       if (t.status === "todo") planner.setStatus(me, "in-progress");
-      const blockedBy = t.needs.filter((n) => planner.task(n)?.status !== "done");
+      const blockedBy = planner.waitingOn(t);
       const isDeliverables = hub.snap.config.workflow.mode === "deliverables";
       const rules = isDeliverables
         ? `Work only on this task. Write your deliverable or changes to the listed files (or deliverables/${t.id}.md). When complete, call set_my_status with in-review (or done) and pass a summary in note and your output file path in deliverablePath.`
@@ -289,13 +289,11 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "send_message",
     {
-      description: "Send a message to another agent (id, name, or \"lead\"). HQ delivers it: right away if they are idle, otherwise when their current turn ends.",
+      description: "Send a message to another agent (id, name, or \"lead\"), or to \"you\" (the human; use it to answer their direct messages). HQ delivers it: right away if they are idle, otherwise when their current turn ends.",
       inputSchema: { to: z.string(), text: z.string() },
     },
     guard(({ to, text }: { to: string; text: string }) => {
-      const toId = planner.agentId(to);
-      if (toId === me) throw new Error("That's you.");
-      planner.message(me, to, text);
+      const toId = planner.message(me, to, text);
       return ok(`Sent to ${hub.name(toId)}.`);
     }),
   );

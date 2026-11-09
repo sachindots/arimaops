@@ -2,6 +2,7 @@
 // HQ or the browser closes. HQ attaches a pty to show its terminal.
 
 import { spawn as spawnPty } from "@lydell/node-pty";
+import { SCRUB_SHELL } from "../lib/cleanEnv";
 import { run, shq } from "../lib/exec";
 import * as tmux from "./tmuxCli";
 import type { LaunchSpec, SessionBackend } from "./types";
@@ -26,7 +27,7 @@ export const loadEnvFile = (quotedPath: string) =>
 /** The shell line tmux runs. Local mode loads the env file into that shell. */
 export function shellCommand(spec: LaunchSpec): string {
   const load = spec.envFile ? `${loadEnvFile(shq(spec.envFile))} && ` : "";
-  return load + [spec.file, ...spec.args].map(q).join(" ");
+  return SCRUB_SHELL + load + [spec.file, ...spec.args].map(q).join(" ");
 }
 
 export const tmuxBackend: SessionBackend = {

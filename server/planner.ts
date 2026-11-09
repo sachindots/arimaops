@@ -1,7 +1,7 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import { CLI_LABEL, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
+import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
@@ -112,6 +112,7 @@ export class Planner {
     Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
     if (task.status === "done") {
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
+      this.startUnblocked(task);
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -142,7 +143,8 @@ export class Planner {
     task.ownerId = agentId;
     if (task.status === "done") task.status = "todo";
     this.hub.emit({ type: "task.updated", task: { ...task } });
-    this.hub.setStatus(agentId, { currentTaskId: task.id });
+    const waiting = this.waitingOn(task);
+    if (!waiting.length) this.hub.setStatus(agentId, { currentTaskId: task.id });
     this.hub.planChanged();
     this.hub.activity("task.assigned", byId === "you" ? null : byId, `${this.hub.name(byId)} assigned ${task.id} ${task.title} to ${agent.name}`);
     const by = byId === "you" ? "The user (your human)" : this.hub.name(byId);
@@ -156,6 +158,12 @@ export class Planner {
       ).then(() => {
         syncRepoToWorkspace(agent, this.hub.slug, this.hub.repo.root, task.files);
       });
+    }
+    if (waiting.length) {
+      const text = `${by} assigned you ${task.id} (${task.title}). It waits on ${waiting.join(", ")}: don't start it yet, HQ will tell you when.`;
+      const msg = this.record(byId, agentId, `Queued ${task.id}: ${task.title} (after ${waiting.join(", ")})`);
+      this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id });
+      return task;
     }
     const text = isDeliverables
       ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
@@ -177,6 +185,7 @@ export class Planner {
     if (status === "in-review" || status === "done") void this.syncTaskDeliverables(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
+    if (status === "done") this.startUnblocked(task);
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);
@@ -194,16 +203,43 @@ export class Planner {
   currentTask(agentId: string): Task | undefined {
     const st = this.hub.status(agentId);
     const byCurrent = st?.currentTaskId ? this.task(st.currentTaskId) : undefined;
-    if (byCurrent && byCurrent.ownerId === agentId) return byCurrent;
+    if (byCurrent && byCurrent.ownerId === agentId && byCurrent.status !== "done") return byCurrent;
     const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status !== "done");
-    return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo") ?? mine[0];
+    const ready = (t: Task) => !this.waitingOn(t).length;
+    return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo" && ready(t)) ?? mine.find((t) => t.status === "todo") ?? mine[0];
+  }
+
+  /** Ids of the tasks `task` still waits on. */
+  waitingOn(task: Task): string[] {
+    return task.needs.filter((n) => this.task(n)?.status !== "done");
+  }
+
+  /** `done` finished: tells each owner whose queued task no longer waits on anything to start it. */
+  private startUnblocked(done: Task) {
+    for (const t of this.snap.tasks) {
+      if (!t.ownerId || t.status !== "todo" || !t.needs.includes(done.id) || this.waitingOn(t).length) continue;
+      const busy = this.currentTask(t.ownerId);
+      const later = busy && busy.id !== t.id && busy.status === "in-progress" ? busy.id : null;
+      if (!later) this.hub.setStatus(t.ownerId, { currentTaskId: t.id }); // else get_my_task moves on once `later` is done
+      const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${done.id} is done)`);
+      const when = later ? `once you finish ${later}` : "now";
+      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
+    }
   }
 
   // ------------------------------------------------------------ messages
 
   /** Records a message, shows it in the office, and delivers it. */
   message(fromId: string, toRef: string, text: string) {
-    const toId = this.agentId(toRef);
+    const toId = /^(you|user|human)$/i.test(toRef.trim()) ? HUMAN_ID : this.agentId(toRef);
+    if (toId === fromId) throw new Error("That's you.");
+    if (toId === HUMAN_ID) {
+      const clean = text.trim().slice(0, 2000);
+      if (!clean) throw new Error("Empty message");
+      this.record(fromId, HUMAN_ID, clean); // shows in that agent's thread; nothing to deliver
+      this.hub.activity("message", fromId, `${this.hub.name(fromId)} → You: ${clean.slice(0, 80)}`);
+      return toId;
+    }
     if (!toId) throw new Error(`No agent "${toRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
     const clean = text.trim().slice(0, 2000);
     if (!clean) throw new Error("Empty message");

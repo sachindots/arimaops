@@ -94,6 +94,8 @@ export function codexConfig(agent: AgentConfig, cfg: HqConfig, token: string, di
     "[mcp_servers.hq]",
     `url = ${t(`${url}/mcp`)}`,
     `http_headers = { Authorization = ${t(`Bearer ${token}`)}, "X-HQ-Agent" = ${t(agent.id)} }`,
+    // HQ's own team tools; without this Codex asks before every call and the agent stalls unattended.
+    'default_tools_approval_mode = "approve"',
   ];
   for (const event of CODEX_EVENTS)
     lines.push("", `[[hooks.${event}]]`, `[[hooks.${event}.hooks]]`, 'type = "command"', `command = ${t(hookCommand(url, token, agent.id, event, script))}`);
@@ -116,7 +118,9 @@ const codex: CliAdapter = {
     const raw = cleanModel(agent.model);
     // Older configs saved "gpt-5.4" / "gpt-5.3-codex" / "o3", which Codex v0.167+ rejects on ChatGPT OAuth accounts.
     const model = raw && /^(gpt-5\.4|gpt-5\.3-codex|o3)$/i.test(raw) ? "gpt-6.1-sol" : raw;
-    const args = model ? ["-m", model] : [];
+    // On the command line: the folder's config.toml is read only after the trust prompt, and an update menu
+    // shown before it would stall an unattended agent.
+    const args = ["-c", "check_for_update_on_startup=false", ...(model ? ["-m", model] : [])];
     return { sbxAgent: "codex", args };
   },
 };

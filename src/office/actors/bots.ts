@@ -3,7 +3,7 @@
 import { Sprite, type Container, type Texture } from "pixi.js";
 import type { AgentConfig, AgentState } from "../../data/types";
 import type { Tile } from "../engine/path";
-import { robotCanvases, type Facing } from "../draw/robots";
+import { ROBOT_H, ROBOT_W, robotCanvases, type Facing } from "../draw/robots";
 import { canvasTexture } from "../engine/textures";
 
 interface RobotSprites {
@@ -107,10 +107,10 @@ export class Bot {
   render(t: number, state: AgentState) {
     const moving = this.path.length > 0;
     const hover = 3 + (Math.floor(t * (moving ? 6 : 2.5) + this.index) % 2);
-    const x = Math.round(this.x) - 6;
-    const y = Math.round(this.y) - 13 - hover;
+    const x = Math.round(this.x) - Math.floor(ROBOT_W / 2);
+    const y = Math.round(this.y) - (ROBOT_H - 1) - hover;
     let f: Facing = "front";
-    if (this.face === "up") f = this.seated && state === "working" && Math.floor(t * 8) % 2 ? "type" : "back";
+    if (this.face === "up") f = this.seated && state === "working" && Math.floor(t * 4 + this.index) % 2 ? "type" : "back";
     else if (this.face === "right") f = "side";
     else if (this.face === "left") f = "sideL";
     this.sprite.texture = this.sprites.textures[f];

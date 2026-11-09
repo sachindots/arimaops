@@ -8,6 +8,7 @@
 //
 // --dev: the UI is served by Vite (pnpm dev:hq); HQ prints/opens the Vite URL.
 
+import { scrubbedVars } from "./lib/scrubEnv"; // must stay the first import
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
@@ -54,6 +55,9 @@ const lanIps = () =>
     .map((n) => n.address);
 
 async function main() {
+  // scrubEnv (first import) already removed a parent agent session's variables, before anything copied process.env.
+  const scrubbed = scrubbedVars;
+  if (scrubbed.length) log.info(`started inside an agent session: not passing ${scrubbed.length} of its variables (${scrubbed.slice(0, 3).join(", ")}…) to HQ's agents`);
   ensurePtyHelperExecutable();
   const dev = flag("dev");
   const port = Number(arg("port") ?? process.env.HQ_PORT ?? 7420);

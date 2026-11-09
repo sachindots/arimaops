@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
 import type { AgentState, DepartmentId, ReviewState } from "../data/types";
-import { robotCanvases } from "../office/draw/robots";
+import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
 import { reviewStyle, stateStyle } from "../theme/tokens";
 
 export function DepartmentBadge({
@@ -55,22 +55,23 @@ export function ReviewChip({ review, merged }: { review: ReviewState; merged?: b
 }
 
 /** Pixel robot portrait drawn from the same sprite as the office. */
+const PORTRAIT = Math.max(ROBOT_W, ROBOT_H) + 2; // square, so it scales without stretching
+
 export function Portrait({ color, lead, size = 40 }: { color: string; lead: boolean; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
     const g = c?.getContext("2d");
     if (!c || !g) return;
-    const src = robotCanvases(color, lead).front;
     g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, 16, 16);
-    g.drawImage(src, 2, 1);
+    g.clearRect(0, 0, PORTRAIT, PORTRAIT);
+    g.drawImage(robotPortrait(color, lead), Math.floor((PORTRAIT - ROBOT_W) / 2), PORTRAIT - ROBOT_H - 1);
   }, [color, lead]);
   return (
     <canvas
       ref={ref}
-      width={16}
-      height={16}
+      width={PORTRAIT}
+      height={PORTRAIT}
       className="shrink-0 border-[3px] border-ink bg-navy"
       style={{ width: size, height: size, imageRendering: "pixelated" }}
       aria-hidden

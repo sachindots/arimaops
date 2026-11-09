@@ -39,7 +39,8 @@ export function TopBar() {
 
   return (
     <header className="hq-topbar panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
-      <div className="flex min-w-0 items-center gap-2.5">
+      {/* Keeps the logo and chips readable; only the project name truncates when the bar is crowded. */}
+      <div className="flex min-w-[170px] items-center gap-2.5 overflow-hidden">
         <Logo />
         <b className="whitespace-nowrap text-[22px] font-bold tracking-[0.04em]">
           <span className="text-red">.</span>hq
@@ -61,8 +62,8 @@ export function TopBar() {
       </div>
       <div className="flex-1" />
 
-      <label className="flex items-center gap-2 text-[14px]">
-        <span className="text-muted">Plan wall</span>
+      <label className="hidden items-center gap-2 text-[14px] min-[1600px]:flex">
+        <span className="whitespace-nowrap text-muted">Plan wall</span>
         <select
           className="field w-[190px] py-0 text-[14px]"
           value={planBoardId ?? ""}

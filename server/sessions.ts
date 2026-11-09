@@ -39,8 +39,12 @@ const SANDBOX_BROWSER = "/usr/local/bin/xdg-open";
 // What the agents' screens show across supported CLIs.
 const BUSY = /esc to interrupt|esc to cancel/i; // the footer while a turn runs
 // A question or permission prompt.
-const DIALOG = /Enter to select|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
+// "Enter to confirm": Claude Code's folder-trust prompt (Local mode, first start in a folder).
+const DIALOG = /Enter to select|Enter to confirm|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
 const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything|Type your message|Ask Gemini|Ask Antigravity|ctrl\+p commands/i; // the input prompt is up
+// The CLI has no login, so every message fails until you sign in (Claude Code prints this on its banner and on errors).
+const NO_LOGIN = /Not logged in · Run \/login|Login expired|Please run \/login|Invalid API key/i;
+const LOGIN_NOTE = "Not signed in: open its terminal and run /login";
 const SCREEN_QUIET_MS = 4000; // only second-guess hooks after this much silence
 const STALE_WORKING_MS = 15_000; // "working" with an idle screen this long = a missed Stop
 
@@ -534,6 +538,7 @@ export class Sessions {
       this.hub.setStatus(agentId, { state, note });
     };
 
+    if (NO_LOGIN.test(screen)) return st.note === LOGIN_NOTE ? undefined : set("needs-input", LOGIN_NOTE);
     if (st.state === "needs-input") {
       if (dialog || st.note?.includes("Codex's folder")) return; // still waiting (Codex trust is watched separately)
       this.idleScreens.delete(agentId);

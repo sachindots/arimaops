@@ -9,38 +9,40 @@ import { ellipse, type Pen } from "../engine/pen";
 import type { PxRect } from "../layout/layout";
 
 export function drawShadow(p: Pen, bot: Bot) {
-  ellipse(p, Math.round(bot.x), Math.round(bot.y) + 1, 4, 1, C.shadow, 0.3);
+  ellipse(p, Math.round(bot.x), Math.round(bot.y) + 1, 5, 1, C.shadow, 0.3);
 }
 
 export function drawFace(p: Pen, bot: Bot, state: AgentState, t: number) {
-  const x = Math.round(bot.x) - 6;
+  // Sprite-relative, matching robots.ts: antenna bulb at (6,1), visor rows 6–7 between columns 3 and 10.
+  const x = Math.round(bot.x) - 7;
   const y = bot.headY;
   const st = stateStyle[state];
   let ant: string = st.color;
   if (state === "needs-input") ant = Math.floor(t * 6) % 2 ? st.color : st.dim;
   else if (state === "working") ant = Math.floor(t * 2) % 2 ? st.color : "#9ddcff";
-  p.rect(x + 5, y + 1, 2, 1, ant);
+  if (!bot.isLead) p.rect(x + 6, y + 1, 2, 1, ant);
 
   const col = state === "needs-input" ? C.red : state === "review-passed" ? C.green : "#bff6ff";
   const blink = Math.floor(t * 10 + bot.index * 7) % 37 === 0;
   if (bot.face === "down") {
     if (state === "review-passed") {
-      for (const ex of [3, 6]) {
+      for (const ex of [4, 7]) {
         p.rect(x + ex, y + 7, 1, 1, col);
         p.rect(x + ex + 1, y + 6, 1, 1, col);
         p.rect(x + ex + 2, y + 7, 1, 1, col);
       }
     } else if (state === "idle") {
-      p.rect(x + 3, y + 7, 2, 1, C.lav);
-      p.rect(x + 7, y + 7, 2, 1, C.lav);
+      p.rect(x + 4, y + 7, 2, 1, C.lav);
+      p.rect(x + 8, y + 7, 2, 1, C.lav);
     } else {
-      p.rect(x + 4, y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
-      p.rect(x + 7, y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
+      p.rect(x + 5, y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
+      p.rect(x + 8, y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
     }
   } else if (bot.face === "right" || bot.face === "left") {
-    p.rect(x + (bot.face === "right" ? 8 : 3), y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
+    p.rect(x + (bot.face === "right" ? 10 : 3), y + (blink ? 7 : 6), 1, blink ? 1 : 2, col);
   }
-  if (bot.path.length && Math.floor(t * 12) % 2) p.rect(x + 5, y + 14, 2, 1, C.orange);
+  // Hover-jet flame while moving.
+  if (bot.path.length && Math.floor(t * 12) % 2) p.rect(x + 5, y + 16, 4, 1, C.orange);
 }
 
 function bubble(p: Pen, cx: number, y: number, fill: string = C.white) {

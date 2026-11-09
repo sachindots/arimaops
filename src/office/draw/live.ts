@@ -56,8 +56,19 @@ export function drawDeskStrip(p: Pen, d: DeskSpot, ox: number, oy: number, state
   if (state === "idle") col = st.dim;
   const X = ox + d.x0 * 16;
   const Y = oy + d.y0 * 16;
-  for (let tx = 0; tx < 7; tx++) if (tx !== 1) p.rect(X + tx * 16, Y, 16, 3, col);
-  if (state === "working") p.rect(X + (Math.floor(t * 40) % 112), Y, 8, 3, "#bfe9ff");
+  // Leave a gap for the department badge static.ts draws at X+34 (one pixel of air on each side).
+  const gap0 = X + 33;
+  const gap1 = X + 34 + textW(d.deptLabel) + 5;
+  const seg = (a: number, b: number, c: string) => {
+    if (b <= gap0 || a >= gap1) return p.rect(a, Y, b - a, 3, c);
+    if (a < gap0) p.rect(a, Y, gap0 - a, 3, c);
+    if (b > gap1) p.rect(gap1, Y, b - gap1, 3, c);
+  };
+  seg(X, X + 112, col);
+  if (state === "working") {
+    const sx = X + (Math.floor(t * 40) % 112);
+    seg(sx, Math.min(sx + 8, X + 112), "#bfe9ff");
+  }
 }
 
 export function drawLeadLamp(p: Pen, ox: number, oy: number, state: AgentState, t: number) {
