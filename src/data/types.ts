@@ -297,7 +297,7 @@ export interface AgentMessage {
   fromId: string; // agent id, or HUMAN_ID
   toId: string;
   text: string;
-  delivered?: "typed" | "on-stop" | "queued"; // how HQ handed it over
+  delivered?: "typed" | "on-stop" | "queued" | "dropped"; // how HQ handed it over; dropped = a start that no longer applied
 }
 
 export type ActivityType =

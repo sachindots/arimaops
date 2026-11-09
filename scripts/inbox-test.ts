@@ -67,5 +67,17 @@ check("Stop hook hands it over", !!reason?.includes("Also add tests"));
 check("its status becomes on-stop", hub2.snap.messages.find((m) => m.id === "m2")?.delivered === "on-stop");
 inbox2.stop();
 
+// A start that waited past a reassignment (e.g. across a reboot) is dropped, not delivered.
+const hub3 = fakeHub();
+const inbox3 = new Inbox(hub3 as never, keys);
+inbox3.isStale = (_agent, taskId) => taskId === "T-OLD";
+hub3.snap.messages.unshift({ id: "m3", at: new Date().toISOString(), fromId: "lead", toId: "dwight", text: "Start T-OLD", delivered: "queued" });
+inbox3.push("dwight", { fromId: "lead", kind: "assign", text: "Start T-OLD", msgId: "m3", taskId: "T-OLD" });
+inbox3.push("dwight", { fromId: "you", kind: "message", text: "hello" });
+const handed = inbox3.takeForStop("dwight");
+check("stale start isn't handed over", !!handed && !handed.includes("T-OLD") && handed.includes("hello"), String(handed));
+check("its status becomes dropped", hub3.snap.messages.find((m) => m.id === "m3")?.delivered === "dropped");
+inbox3.stop();
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

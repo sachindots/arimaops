@@ -181,14 +181,14 @@ export class Planner {
     if (waiting.length) {
       const text = `${by} assigned you ${task.id} (${task.title}). It waits on ${waiting.join(", ")}: don't start it yet, HQ will tell you when.`;
       const msg = this.record(byId, agentId, `Queued ${task.id}: ${task.title} (after ${waiting.join(", ")})`);
-      this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id });
+      this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id, taskId: task.id });
       return task;
     }
     const text = isDeliverables
       ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
       : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
     const msg = this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
-    this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id });
+    this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id, taskId: task.id });
     return task;
   }
 
@@ -244,7 +244,7 @@ export class Planner {
       if (!later) this.hub.setStatus(t.ownerId, { currentTaskId: t.id }); // else get_my_task moves on once `later` is done
       const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${done.id} is done)`);
       const when = later ? `once you finish ${later}` : "now";
-      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
+      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
     }
   }
 

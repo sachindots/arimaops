@@ -17,6 +17,8 @@ export interface InboxItem {
   kind: "message" | "assign" | "notice"; // notice = from HQ itself (e.g. review results)
   /** The AgentMessage this delivers (its status is updated when it's handed over). */
   msgId?: string;
+  /** For "assign": the task it starts, so a start that waited past a reassignment isn't delivered. */
+  taskId?: string;
 }
 
 export const HISTORY = 300; // messages kept (and sent to the UI)
@@ -140,11 +142,24 @@ export class Inbox {
 
   /** Called from the Stop hook: everything queued, as the reason Claude continues with. */
   takeForStop(agentId: string): string | null {
+    this.dropStale(agentId);
     const q = this.queues.get(agentId);
     if (!q?.length) return null;
     this.queues.set(agentId, []);
     this.delivered(q, "on-stop");
     return this.format(q);
+  }
+
+  /** Set by the project: true when an "assign" no longer applies (task reassigned or done). */
+  isStale: (agentId: string, taskId: string) => boolean = () => false;
+
+  private dropStale(agentId: string) {
+    const q = this.queues.get(agentId);
+    const stale = q?.filter((i) => i.kind === "assign" && i.taskId && this.isStale(agentId, i.taskId)) ?? [];
+    if (!stale.length) return;
+    this.queues.set(agentId, q!.filter((i) => !stale.includes(i)));
+    this.delivered(stale, "dropped");
+    this.save();
   }
 
   private canType(agentId: string): boolean {
@@ -166,6 +181,7 @@ export class Inbox {
 
   /** Types queued items into an idle agent. Safe to call any time. */
   async tryType(agentId: string) {
+    this.dropStale(agentId);
     const q = this.queues.get(agentId);
     if (!q?.length) return;
     if (!this.canType(agentId)) {

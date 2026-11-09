@@ -527,10 +527,10 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
                   {!out && m.delivered && (
                     <span
                       className="font-mono text-[11px]"
-                      style={{ color: m.delivered === "queued" ? "#ff9f1c" : "#00ff66" }}
-                      title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
+                      style={{ color: m.delivered === "queued" ? "#ff9f1c" : m.delivered === "dropped" ? "#6e7b94" : "#00ff66" }}
+                      title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "dropped" ? "Not sent: the task was reassigned or finished while it waited" : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
                     >
-                      {m.delivered === "queued" ? "◷ queued" : "✓ delivered"}
+                      {m.delivered === "queued" ? "◷ queued" : m.delivered === "dropped" ? "– not sent" : "✓ delivered"}
                     </span>
                   )}
                   <span className="ml-auto font-term text-[15px]">{ago(m.at, now)}</span>

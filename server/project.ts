@@ -109,6 +109,10 @@ export async function startProject(path: string, port: number, paused: boolean):
     return a ? meter.read(a.cli, workspaceFor(a, slug)) : null;
   };
   planner.usageOf = usageOf;
+  inbox.isStale = (agentId, taskId) => {
+    const t = planner.task(taskId);
+    return !t || t.ownerId !== agentId || t.status === "done";
+  };
   const refreshUsage = () => {
     for (const a of hub.snap.config.team) {
       const u = usageOf(a.id);
