@@ -114,6 +114,17 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   check("stalled worker nudged once", got.filter((p) => p.to === "nyx" && /still in progress/.test(p.text)).length === 1, JSON.stringify(got));
   check("lead told about the stall", got.some((p) => p.to === "cipher" && /idle 10 min/.test(p.text)));
   Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
+
+  // "Working" with no hooks for 20 min: lead is told, the busy agent isn't typed into.
+  const tW = planner.createTask({ title: "Hangs" } as never, "cipher");
+  planner.assign(tW.id, "nyx", "cipher");
+  planner.setStatus("nyx", "in-progress");
+  Object.assign(statuses.get("nyx")!, { state: "working", stateSince: new Date(Date.now() - 20 * 60_000).toISOString() });
+  const m = pushed.length;
+  planner.checkStalls(Date.now());
+  const got2 = pushed.slice(m);
+  check("silent working agent reported to the lead only", got2.length === 1 && got2[0].to === "cipher" && /nothing visible for 20 min/.test(got2[0].text), JSON.stringify(got2));
+  Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
 }
 
 // Repo facts: short, safe, no repeats, capped.

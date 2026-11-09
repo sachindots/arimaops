@@ -7,6 +7,7 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
+import { ESCALATION, personaFor } from "../src/data/personas";
 import { stackRoleMd } from "../src/data/stack";
 import type { AgentConfig, HqConfig } from "../src/data/types";
 
@@ -229,6 +230,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
+  const persona = personaFor(agent.role, agent.isLead);
+  const peers = cfg.team
+    .filter((a) => a.id !== agent.id)
+    .map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""}): ask about ${personaFor(a.role, a.isLead).askMeAbout}.`);
   const tools = isExecOrLead
     ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding, update_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`
     : `get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`;
@@ -243,12 +248,21 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     `## Workflow Mode: ${isDeliverables ? "Deliverables (Universal Mission Mode — no GitHub PR required)" : "GitHub Pull Requests (1 task = 1 branch = 1 PR)"}`,
     ...rules.map((r) => `- ${r}`),
     "",
-    "## Engineering & Communication Protocol (Ponystack + Caveman)",
-    "- **Ponytail YAGNI (Smallest Complete Change):** The best code is code never written. Before editing, map every caller, test, fixture, and export touched. Reuse existing codebase helpers and stdlib; never add a dependency, wrapper, or config flag nobody asked for. Deletion beats addition.",
-    "- **pstack Architecture & Zero Slop (`pstack-architect` + `pstack-deslop`):** Name the domain data shape and type boundary before writing logic. Eliminate AI code slop: no narrating comments (`// Phase 1...`), no abnormal `try/catch` in trusted paths, no `any` casts, and no files pushed past 1,000 lines. Eliminate AI prose slop: no *delve, pivotal, tapestry, underscore*, no superficial `-ing` tails, no chatbot pleasantries.",
-    "- **Prove It Works (`pstack-blast-radius`):** Never trust \"it compiles\". Verify your change against the real code/artifact (run tests, typechecks, or a repro script) before calling `set_my_status`.",
-    "- **Caveman Token-Saving Mode (`caveman`):** Respond terse like smart caveman in terminal and team messages. Drop articles (a/an/the), pleasantries, hedging, and tool-call narration. Keep exact symbols, `path:line`, and error strings. Pattern: `[thing] [action] [reason]. [next step].`",
-    "- **Cavecrew 1-Line Message Contract:** Keep `send_message` and `set_my_status(note)` to 1-2 compressed lines (e.g. `server/http.ts:L98 — allow HEAD on static files. verified: curl -I 200.`). Never send a separate `send_message` repeating what `set_my_status` already sent. Write normal prose only in committed code, comments, PR bodies, and human-facing deliverables.",
+    `## How you work (${persona.kind})`,
+    persona.trait,
+    ...persona.style.map((x) => `- ${x}`),
+    "- Smallest complete change: reuse what the codebase already has, add no dependency or option nobody asked for, and verify against the real thing (tests, a real run) before set_my_status.",
+    "- No AI slop in code or prose: no narrating comments, no filler words, no hype.",
+    "",
+    "## How you talk",
+    `${persona.voice} Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.`,
+    "",
+    "## Working with teammates",
+    "Message a teammate directly (send_message to their name) when your question is about their work; list_tasks shows who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
+    ...peers,
+    "",
+    "## When things go wrong",
+    ...ESCALATION.map((x) => `- ${x}`),
     "",
     ...(agent.skills.length
       ? [

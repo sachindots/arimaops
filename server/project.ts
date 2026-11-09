@@ -115,6 +115,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     return a ? meter.read(a.cli, workspaceFor(a, slug)) : null;
   };
   planner.usageOf = usageOf;
+  planner.lastActivityAt = (id) => inbox.lastHookAt(id);
   inbox.isStale = (agentId, taskId) => {
     const t = planner.task(taskId);
     return !t || t.ownerId !== agentId || t.status === "done";

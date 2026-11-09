@@ -112,7 +112,7 @@ export function CtoDrawer() {
     if (!ctoAgent) return;
     officeActions.sendMessage(
       ctoAgent.id,
-      "CTO Overwatch Directive: Call `list_projects` and `get_project_status` for every registered project on this machine. Audit task completion, active work, and any blockers across all projects, and reply with a concise Caveman executive summary.",
+      "CTO Overwatch Directive: Call `list_projects` and `get_project_status` for every registered project on this machine. Audit task completion, active work, and any blockers across all projects, and reply with a short executive summary.",
     );
     setAuditSent(true);
     window.setTimeout(() => setAuditSent(false), 4000);

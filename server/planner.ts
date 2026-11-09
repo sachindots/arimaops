@@ -281,21 +281,32 @@ export class Planner {
   }
 
   private stallNudged = new Set<string>(); // agent:task, so each stall is reported once
+  /** When the agent's last hook arrived (set by the project from the inbox). */
+  lastActivityAt: (agentId: string) => number = () => 0;
 
   /**
    * A worker that ended its turn with its task still in progress, and has sat idle since, is waiting on something
    * that won't wake it (a background job, a question it never sent). Nudge it once and tell the lead.
    */
-  checkStalls(now: number, idleMs = 5 * 60_000) {
+  checkStalls(now: number, idleMs = 5 * 60_000, silentMs = 15 * 60_000) {
     const lead = this.snap.config.team.find((a) => a.isLead);
     for (const a of this.snap.config.team) {
       const st = this.hub.status(a.id);
       const task = this.currentTask(a.id);
       if (a.isLead || !st || !task || task.status !== "in-progress" || st.session.state !== "running") continue;
-      if (st.state !== "idle" || now - Date.parse(st.stateSince) < idleMs || this.inbox.pending(a.id) > 0) continue;
       if (st.limitedUntil && Date.parse(st.limitedUntil) > now) continue; // the usage-limit notice covers this
       const key = `${a.id}:${task.id}`;
       if (this.stallNudged.has(key)) continue;
+      // "Working" but no hook for a long time: frozen, or one command hanging. Typing into it would interrupt, so tell the lead.
+      const quietMs = now - Math.max(this.lastActivityAt(a.id), Date.parse(st.stateSince));
+      if (st.state === "working" && quietMs >= silentMs) {
+        this.stallNudged.add(key);
+        const mins = Math.round(quietMs / 60_000);
+        if (lead) this.notify(lead.id, `${a.name} shows Working on ${task.id} but has done nothing visible for ${mins} min (a command may be hanging). Check its terminal in HQ, or ask the user to.`);
+        this.hub.activity("agent.needs-input", a.id, `${a.name} silent for ${mins} min while working on ${task.id}`);
+        continue;
+      }
+      if (st.state !== "idle" || now - Date.parse(st.stateSince) < idleMs || this.inbox.pending(a.id) > 0) continue;
       this.stallNudged.add(key);
       const mins = Math.round((now - Date.parse(st.stateSince)) / 60_000);
       this.notify(a.id, `HQ: you've been idle ${mins} min but ${task.id} is still in progress. If you were waiting on a background command or job, it won't wake you: check it now and continue in the foreground. If you're blocked, call set_my_status blocked with the reason.`);

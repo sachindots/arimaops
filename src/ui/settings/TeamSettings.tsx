@@ -77,11 +77,11 @@ export function TeamSettings() {
 
   const defaultMode: AgentMode = snap.setup.sandboxReady ? "sandbox" : "local";
 
-  const syncAllPonystackCaveman = () => {
+  const resetRolesToTemplates = () => {
     for (const a of team) {
       const roleMd = defaultRoleMdFor(a.name, a.role, a.isLead);
       const defaultSkills = defaultSkillsForRole(a.role, a.isLead);
-      const mergedSkills = [...new Set([...defaultSkills, ...a.skills])];
+      const mergedSkills = [...new Set([...defaultSkills, ...a.skills])].filter((s) => s !== "caveman"); // personas set the voice now
       const department = inferDepartmentForRole(a.role, a.isLead, a.department);
       officeActions.updateAgent(a.id, { roleMd, skills: mergedSkills, department });
     }
@@ -160,10 +160,10 @@ export function TeamSettings() {
           <button
             type="button"
             className="btn px-2.5 py-1 text-[12px]"
-            title="Apply pstack (Architect + Deslop + Blast-Radius), Ponytail (YAGNI), and Caveman (Token-Saving) defaults to all operators"
-            onClick={syncAllPonystackCaveman}
+            title="Replace every agent's role text with HQ's template for its role (adds the role's default skills). Personas, peer rules and escalation habits are added automatically."
+            onClick={resetRolesToTemplates}
           >
-            ⚡ Sync All to Ponystack + Caveman
+            ↺ Reset roles to templates
           </button>
         </div>
 

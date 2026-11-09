@@ -227,7 +227,7 @@ export function WelcomeModal() {
           <section>
             <h3 className="mb-1 text-[16px] font-bold">Department Operators · {workers.length}</h3>
             <p className="mb-2 text-[13px] text-muted">
-              Each operator gets its own color-coded department pod desk, isolated workspace, Ponystack + Caveman instructions, and selected model.
+              Each operator gets its own color-coded department pod desk, isolated workspace, role and persona instructions, and selected model.
             </p>
             <datalist id="welcome-roles">
               {ROLE_SUGGESTIONS.map((r) => (
