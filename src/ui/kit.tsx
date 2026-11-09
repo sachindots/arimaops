@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
-import type { AgentState, DepartmentId, ReviewState, Tokens } from "../data/types";
+import type { AgentState, DepartmentId, ReviewState, SessionState, Tokens } from "../data/types";
 import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
 import { reviewStyle, stateStyle } from "../theme/tokens";
 
@@ -36,7 +36,16 @@ export function DepartmentBadge({
   );
 }
 
-export function StateChip({ state, blink = true }: { state: AgentState; blink?: boolean }) {
+const SESSION_LABEL: Record<Exclude<SessionState, "running">, string> = { stopped: "Stopped", starting: "Starting…", failed: "Failed" };
+
+/** The agent's state; when its session isn't running, that instead (a stopped agent isn't "Idle"). */
+export function StateChip({ state, session, blink = true }: { state: AgentState; session?: SessionState; blink?: boolean }) {
+  if (session && session !== "running")
+    return (
+      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ff1744" : "#6e7b94" }}>
+        {SESSION_LABEL[session]}
+      </span>
+    );
   const st = stateStyle[state];
   return (
     <span className={`chip chip-dot ${blink && state === "needs-input" ? "blink" : ""}`} style={{ ["--c" as string]: st.color }}>

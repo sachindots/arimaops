@@ -44,7 +44,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             <b className="text-[18px]">{agent.name}</b>
             <DepartmentBadge role={agent.role} isLead={agent.isLead} department={agent.department} />
             <span className="font-mono text-[12px] text-muted">{agent.role}</span>
-            <StateChip state={status.state} />
+            <StateChip state={status.state} session={status.session.state} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
             <select

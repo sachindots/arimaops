@@ -31,7 +31,7 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
         <span className="kbd ml-auto px-1 text-[12px] leading-none">{n}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <StateChip state={a.status.state} />
+        <StateChip state={a.status.state} session={a.status.session.state} />
         <span className="truncate font-mono text-[10px] text-muted" title={`${CLI_LABEL[a.config.cli]} ${a.config.model || "(default)"}`}>
           {a.config.cli}:{a.config.model || "default"}
         </span>

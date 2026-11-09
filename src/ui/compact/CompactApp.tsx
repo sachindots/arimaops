@@ -135,7 +135,7 @@ function ChatList({ onOpen }: { onOpen: (agentId: string) => void }) {
                   {last && <span className="ml-auto shrink-0 font-term text-[14px] text-muted">{ago(last.at, now)}</span>}
                 </div>
                 <div className="flex items-center gap-2 text-[13px] text-muted">
-                  {st && <StateChip state={st.state} blink={false} />}
+                  {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
                   <span className="truncate">{last ? `${last.fromId === HUMAN_ID ? "You: " : ""}${last.text}` : "No messages yet"}</span>
                   {queued > 0 && <span className="shrink-0 font-mono text-[11px] text-orange">◷ {queued}</span>}
                 </div>
@@ -161,7 +161,7 @@ function Thread({ agentId, onBack }: { agentId: string; onBack: () => void }) {
         </button>
         <Portrait color={agent.color} lead={agent.isLead} size={28} />
         <b className="text-[16px]">{agent.name}</b>
-        {st && <StateChip state={st.state} />}
+        {st && <StateChip state={st.state} session={st.session.state} />}
         <button className="btn ml-auto px-2 text-[13px]" onClick={() => ui.openAgent(agentId, "terminal")}>
           Terminal
         </button>
@@ -187,7 +187,7 @@ function AgentList() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <b>{a.name}</b>
-              {st && <StateChip state={st.state} blink={false} />}
+              {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
             </div>
             <div className="truncate text-[12px] text-muted">
               {CLI_LABEL[a.cli]} · {a.model || "default"} · {a.mode}
