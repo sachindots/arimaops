@@ -42,6 +42,10 @@ export const CLI_LABEL: Record<AgentCli, string> = {
   copilot: "GitHub Copilot",
 };
 
+/** CLIs not yet run end to end with a real team; shown as experimental in pickers. */
+export const EXPERIMENTAL_CLIS: ReadonlySet<AgentCli> = new Set<AgentCli>(["opencode", "gemini", "copilot"]);
+export const cliPickerLabel = (c: AgentCli) => `${CLI_LABEL[c]}${EXPERIMENTAL_CLIS.has(c) ? " (experimental)" : ""}`;
+
 export const CLI_MODELS: Record<AgentCli, string[]> = {
   claude: ["claude-opus-5-5", "claude-sonnet-5-5", "opus", "sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-6"],
   codex: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-sol"],

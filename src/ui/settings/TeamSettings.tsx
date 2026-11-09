@@ -16,13 +16,13 @@ import {
 import { BUILTIN_SKILLS } from "../../data/skillCatalog";
 import {
   AGENT_CLIS,
-  CLI_LABEL,
   CLI_MODELS,
   DEPARTMENT_IDS,
   type AgentCli,
   type AgentConfig,
   type AgentMode,
   type DepartmentId,
+  cliPickerLabel,
 } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
@@ -36,7 +36,7 @@ export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: 
     <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentCli)} aria-label="Agent CLI">
       {AGENT_CLIS.map((c) => (
         <option key={c} value={c}>
-          {CLI_LABEL[c]}
+          {cliPickerLabel(c)}
         </option>
       ))}
     </select>

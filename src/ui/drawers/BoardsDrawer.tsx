@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus } from "../../data/types";
+import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { Dot, TokensChip } from "../kit";
@@ -134,7 +134,7 @@ function TaskCard({ task }: { task: Task }) {
           <option value="">Runs on: any CLI</option>
           {AGENT_CLIS.map((c) => (
             <option key={c} value={c}>
-              Runs on: {CLI_LABEL[c]}
+              Runs on: {cliPickerLabel(c)}
             </option>
           ))}
         </select>

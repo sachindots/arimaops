@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot } from "../../data/types";
+import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui, type AgentTab } from "../../store/ui";
 import { ago, DepartmentBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
@@ -60,7 +60,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             >
               {AGENT_CLIS.map((c) => (
                 <option key={c} value={c}>
-                  {CLI_LABEL[c]}
+                  {cliPickerLabel(c)}
                 </option>
               ))}
             </select>
