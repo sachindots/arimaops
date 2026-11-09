@@ -118,6 +118,7 @@ export const PERSONAS: Record<PersonaKind, Persona> = {
 
 /** How everyone handles trouble. These habits prevent the stalls HQ has seen. */
 export const ESCALATION: string[] = [
+  "Never stop, restart, remove or reconfigure services, containers or processes you didn't start yourself; they belong to the user. If a port or resource is taken, use another one.",
   "Never wait on a background job or a long command and end your turn; nothing wakes you when it finishes. Run it in the foreground with a timeout, or check on it yourself.",
   "If a command takes over two minutes, stop and find out why (a download, a prompt, a port in use) before trying again.",
   "Stuck for 10 minutes on the same problem: tell the lead what you tried and what you need, with set_my_status blocked.",

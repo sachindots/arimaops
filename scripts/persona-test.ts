@@ -24,6 +24,7 @@ const md = roleMd(team[1] as never, cfg as never);
 check("role file has persona, voice, peers and escalation", ["## How you work (writer)", "## How you talk", "## Working with teammates", "## When things go wrong"].every((h) => md.includes(h)));
 check("peers name teammates, not yourself", md.includes("- Ghost (Go Developer): ask about how the code works") && md.includes("- Cipher (Tech Lead, lead)") && !md.includes("- Lyra (Docs Writer)"));
 check("background-job habit present", /Never wait on a background job/.test(md));
+check("hands off the user's services", /Never stop, restart, remove or reconfigure services/.test(md));
 check("no caveman in the role file", !/caveman/i.test(md));
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
