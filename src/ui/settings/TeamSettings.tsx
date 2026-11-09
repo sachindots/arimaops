@@ -233,6 +233,7 @@ export function TeamSettings() {
 }
 
 function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig; expanded: boolean; onToggle: () => void; onRemove: () => void }) {
+  const snapSkills = useOffice((s) => s.snap?.customSkills);
   const set = (patch: Parameters<typeof officeActions.updateAgent>[1]) => officeActions.updateAgent(agent.id, patch);
   const matchedTemplate = findRoleTemplate(agent.role);
   const domainBadge = matchedTemplate ? PERSONA_DOMAINS.find((d) => d.id === matchedTemplate.domain)?.badge : "USR";
@@ -367,7 +368,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
                 onCommit={(v) => set({ skills: v.split(",").map((s) => s.trim()).filter(Boolean) })}
               />
               <div className="flex flex-wrap gap-1">
-                {BUILTIN_SKILLS.map((sk) => {
+                {[...(snapSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.hq/skills or .hq/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
                   const on = agent.skills.includes(sk.id);
                   return (
                     <button

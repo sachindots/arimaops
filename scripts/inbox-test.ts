@@ -79,5 +79,23 @@ check("stale start isn't handed over", !!handed && !handed.includes("T-OLD") && 
 check("its status becomes dropped", hub3.snap.messages.find((m) => m.id === "m3")?.delivered === "dropped");
 inbox3.stop();
 
+// A reset is typed on its own; messages after it wait for the fresh conversation.
+const hub4 = fakeHub();
+hub4.statusRef.session.state = "running";
+hub4.statusRef.state = "working"; // mid-turn while things are queued
+const inbox4 = new Inbox(hub4 as never, keys);
+inbox4.sessionReattached("dwight");
+inbox4.push("dwight", { fromId: "hq", kind: "reset", text: "/clear" });
+inbox4.push("dwight", { fromId: "lead", kind: "assign", text: "Start T9" });
+check("a queued reset isn't folded into a Stop handover", inbox4.takeForStop("dwight") === null);
+typed.length = 0;
+hub4.statusRef.state = "idle"; // the turn ended
+await wait(1300);
+const t0 = Date.now();
+await inbox4.tryType("dwight"); // types the reset, waits for the CLI to start over, then delivers the rest
+check("reset typed alone, first", typed[0] === "/clear", JSON.stringify(typed));
+check("the next message is typed separately, after the settle time", typed[1]?.includes("Start T9") === true && Date.now() - t0 >= 5000, JSON.stringify(typed));
+inbox4.stop();
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

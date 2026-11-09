@@ -6,6 +6,9 @@ import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
+import { CLEAR_COMMAND } from "./adapters";
+import { FACTS_PROMPT, mergeFacts, readFacts, writeFacts } from "./facts";
+import { askHaiku } from "./lib/haiku";
 import { diff } from "./usage";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 
@@ -127,10 +130,12 @@ export class Planner {
   updateTask(id: string, patch: TaskPatch): Task {
     const task = this.task(id);
     if (!task) throw new Error(`No task ${id}`);
+    const wasDone = task.status === "done";
     Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
-    if (task.status === "done") {
+    if (task.status === "done" && !wasDone) {
       this.meterEnd(task);
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
+      this.afterDone(task);
       this.startUnblocked(task);
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
@@ -206,7 +211,10 @@ export class Planner {
     if (status === "in-review" || status === "done") void this.syncTaskDeliverables(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
-    if (status === "done") this.startUnblocked(task);
+    if (status === "done") {
+      this.afterDone(task);
+      this.startUnblocked(task);
+    }
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);
@@ -228,6 +236,48 @@ export class Planner {
     const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status !== "done");
     const ready = (t: Task) => !this.waitingOn(t).length;
     return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo" && ready(t)) ?? mine.find((t) => t.status === "todo") ?? mine[0];
+  }
+
+  /** Haiku by default; tests swap it out. */
+  ask: typeof askHaiku = askHaiku;
+
+  private lean = () => this.snap.config.workflow.lean?.clearBetweenTasks !== false;
+
+  /** Lean mode, once a task is done: its owner starts the next one in a fresh conversation, and the repo facts learn from it. */
+  private afterDone(done: Task) {
+    if (!this.lean()) return;
+    void this.learnFacts(done);
+    const id = done.ownerId;
+    const agent = id ? this.hub.cfg(id) : undefined;
+    const cmd = agent && CLEAR_COMMAND[agent.cli];
+    if (!id || !agent || agent.isLead || !cmd || this.hub.status(id)?.session.state !== "running") return;
+    const next = this.currentTask(id);
+    // Mid-way through another task, or the next one builds on this one: keep the conversation.
+    if (next && next.id !== done.id && (next.status === "in-progress" || next.needs.includes(done.id))) return;
+    this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
+  }
+
+  private async learnFacts(done: Task) {
+    const root = this.hub.repo.root;
+    const existing = readFacts(root);
+    const a = await this.ask<{ facts?: unknown }>(FACTS_PROMPT(done.title, done.note ?? "", done.files ?? [], existing));
+    const proposed = Array.isArray(a?.json.facts) ? a.json.facts.filter((f): f is string => typeof f === "string").slice(0, 2) : [];
+    const current = readFacts(root); // re-read: another task may have added some meanwhile
+    const merged = mergeFacts(current, proposed);
+    const added = merged.filter((f) => !current.includes(f)).length;
+    if (!added) return;
+    writeFacts(root, merged);
+    this.hub.activity("config", null, `Repo facts: ${added} new from ${done.id} (.hq/facts.md)`);
+  }
+
+  /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */
+  brief(agentId: string, task: Task) {
+    const handoffs = task.needs
+      .map((n) => this.task(n))
+      .filter((d): d is Task => !!d?.note)
+      .map((d) => ({ task: d.id, by: d.ownerId ? this.hub.name(d.ownerId) : null, note: d.note }));
+    const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id);
+    return { handoffs, yourLastNote: mine.at(-1)?.note ?? null, repoFacts: readFacts(this.hub.repo.root) };
   }
 
   /** Ids of the tasks `task` still waits on. */

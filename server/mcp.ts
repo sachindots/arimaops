@@ -167,7 +167,8 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       const rules = isDeliverables
         ? `Work only on this task. Write your deliverable or changes to the listed files (or deliverables/${t.id}.md). When complete, call set_my_status with in-review (or done) and pass a summary in note and your output file path in deliverablePath.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
-      return ok({ ...taskView(t.id), waitingOn: blockedBy, rules });
+      const start = "Start from `brief`: the handoff notes of the tasks you build on, your own last note, and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
+      return ok({ ...taskView(t.id), waitingOn: blockedBy, brief: planner.brief(me, t), rules: start + rules });
     }),
   );
 

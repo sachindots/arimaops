@@ -116,7 +116,7 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
     "-w", WORKDIR,
     ...(envFile ? ["--env-file", envFile] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
-    "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`,
+    "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`, "-e", "TE_DISABLE=1",
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     IMAGE,
     agent.cli,

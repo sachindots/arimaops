@@ -233,3 +233,6 @@ export const localBinary: Record<AgentCli, string> = {
   gemini: "gemini",
   copilot: "copilot",
 };
+
+/** Starts a new conversation in the CLI (its role comes back from the session-start hook / config). */
+export const CLEAR_COMMAND: Partial<Record<AgentCli, string>> = { claude: "/clear", codex: "/new", agy: "/clear", opencode: "/new" };

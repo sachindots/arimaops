@@ -14,7 +14,7 @@ import { projectHome } from "./paths";
 export interface InboxItem {
   fromId: string; // agent id or "you"
   text: string;
-  kind: "message" | "assign" | "notice"; // notice = from HQ itself (e.g. review results)
+  kind: "message" | "assign" | "notice" | "reset"; // notice = from HQ itself; reset = text is the CLI's new-conversation command
   /** The AgentMessage this delivers (its status is updated when it's handed over). */
   msgId?: string;
   /** For "assign": the task it starts, so a start that waited past a reassignment isn't delivered. */
@@ -30,6 +30,7 @@ export interface Keyboard {
 
 const QUIET_MS = 1000; // no hooks for this long = the prompt has settled
 const SUBMIT_CHECK_MS = 3000; // typed text should produce UserPromptSubmit by then
+const RESET_SETTLE_MS = 5000; // a CLI clearing its conversation reloads its context before taking input
 
 export class Inbox {
   private queues = new Map<string, InboxItem[]>();
@@ -144,7 +145,7 @@ export class Inbox {
   takeForStop(agentId: string): string | null {
     this.dropStale(agentId);
     const q = this.queues.get(agentId);
-    if (!q?.length) return null;
+    if (!q?.length || q.some((i) => i.kind === "reset")) return null; // a reset has to be typed at the idle prompt
     this.queues.set(agentId, []);
     this.delivered(q, "on-stop");
     return this.format(q);
@@ -188,7 +189,9 @@ export class Inbox {
       if (process.env.HQ_DEBUG) log.info(`inbox ${agentId}: holding ${q.length} — ${this.whyNot(agentId)}`);
       return;
     }
-    const items = q.splice(0);
+    if (q[0].kind === "reset") return this.typeReset(agentId, q.splice(0, 1)[0]);
+    const nextReset = q.findIndex((i) => i.kind === "reset");
+    const items = q.splice(0, nextReset === -1 ? q.length : nextReset);
     this.typing.add(agentId);
     const typedAt = Date.now();
     try {
@@ -207,6 +210,22 @@ export class Inbox {
     } finally {
       this.typing.delete(agentId);
     }
+  }
+
+  /** Types a new-conversation command alone, then holds deliveries until the CLI has started over. */
+  private async typeReset(agentId: string, item: InboxItem) {
+    this.typing.add(agentId);
+    try {
+      if (!(await this.keys.type(agentId, item.text))) {
+        this.queues.set(agentId, [item, ...(this.queues.get(agentId) ?? [])]);
+        return;
+      }
+      this.save();
+      await new Promise((r) => setTimeout(r, RESET_SETTLE_MS));
+    } finally {
+      this.typing.delete(agentId);
+    }
+    void this.tryType(agentId);
   }
 
   private format(items: InboxItem[]): string {

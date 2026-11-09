@@ -118,6 +118,8 @@ export interface WorkflowConfig {
   review: { enabled: boolean; tool: ReviewTool; command: string };
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
+  /** Token saving. clearBetweenTasks (default on): a worker starts each task in a fresh conversation. */
+  lean?: { clearBetweenTasks: boolean };
 }
 
 /** What kind of work the project is; decides its workflow (software: PRs; the others come in later phases). */
@@ -450,6 +452,8 @@ export interface SetupState {
 export interface OfficeSnapshot {
   /** True until the first-run welcome is finished for this repo (real HQ only). */
   welcome?: boolean;
+  /** Your own skills found in ~/.hq/skills and the repo's .hq/skills (folders with a SKILL.md). */
+  customSkills?: string[];
   setup: SetupState;
   sbx: SbxState;
   config: HqConfig;
@@ -517,6 +521,7 @@ export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;
+  lean?: { clearBetweenTasks?: boolean };
 }
 
 // ---------------------------------------------------------------- Multi-Project CTO Registry

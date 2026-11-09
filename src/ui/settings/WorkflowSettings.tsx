@@ -139,6 +139,22 @@ export function WorkflowSettings() {
             <p className="mt-2 text-[12px] text-muted">The lead always sets the merge order and handles conflicts between PRs.</p>
           </section>
 
+          <section className="border-[3px] border-ink bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <SectionTitle>Token saving</SectionTitle>
+              <Toggle
+                checked={wf.lean?.clearBetweenTasks !== false}
+                onChange={(v) => officeActions.updateWorkflow({ lean: { clearBetweenTasks: v } })}
+                label={wf.lean?.clearBetweenTasks !== false ? "On" : "Off"}
+              />
+            </div>
+            <p className="m-0 text-[13px] text-muted">
+              When a worker finishes a task, its next task starts in a fresh conversation instead of rereading everything before it. The task brief brings
+              back what matters: the handoff notes it builds on and the repo facts in <code>.hq/facts.md</code>. The lead keeps its conversation. HQ also asks
+              Claude Haiku (your Claude plan) whether an agent that keeps hitting the same error is stuck, and nudges it once.
+            </p>
+          </section>
+
           {live ? (
             <section className="border-[3px] border-dashed border-ink bg-cream-2 p-3">
               <div className="mb-1 flex items-center justify-between">

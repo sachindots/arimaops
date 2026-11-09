@@ -340,6 +340,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;
       Object.assign(wf.deploy, p.deploy ?? {});
+      if (typeof p.lean?.clearBetweenTasks === "boolean") wf.lean = { clearBetweenTasks: p.lean.clearBetweenTasks };
       hub.configChanged();
       // The lead was told the old rule; tell it the new one now, so no restart is needed.
       const lead = hub.snap.config.team.find((a) => a.isLead);

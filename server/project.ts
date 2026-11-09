@@ -24,6 +24,7 @@ import { runSetupChecks } from "./setup";
 import { loadConfig, loadPlan, slugOf } from "./store";
 import { askHaiku } from "./lib/haiku";
 import { JUDGE_PROMPT, LoopGuard, toolEvent, type Verdict } from "./loopguard";
+import { resolveUserSkillFolders } from "./skills";
 import { UsageMeter } from "./usage";
 import { workspaceFor } from "./workspace";
 
@@ -83,6 +84,7 @@ export async function startProject(path: string, port: number, paused: boolean):
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
   hub.snap.welcome = isNew;
+  hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
   const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id) });
   sessions.onSessionDown = (id) => inbox.sessionDown(id);
