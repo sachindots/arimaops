@@ -42,6 +42,8 @@ jobs:
         run: npx tsx scripts/planner-test.ts
       - name: Agents don't inherit a parent agent session
         run: npx tsx scripts/env-test.ts
+      - name: Token usage from CLI logs
+        run: npx tsx scripts/usage-test.ts
       - name: Container mode (rules and flags; live proxy when Docker has the image)
         run: npx tsx scripts/container-test.ts
       - name: Pack

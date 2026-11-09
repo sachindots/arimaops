@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
-import type { AgentState, DepartmentId, ReviewState } from "../data/types";
+import type { AgentState, DepartmentId, ReviewState, Tokens } from "../data/types";
 import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
 import { reviewStyle, stateStyle } from "../theme/tokens";
 
@@ -126,4 +126,16 @@ export function ago(iso: string, now: number): string {
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+}
+
+const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+
+/** Tokens read from the CLI's own logs: total, with the split in the tooltip. */
+export function TokensChip({ usage }: { usage: Tokens }) {
+  const total = usage.input + usage.cached + usage.output;
+  return (
+    <span className="chip text-[10px]" title={`${short(usage.input)} fresh input · ${short(usage.cached)} from cache · ${short(usage.output)} output`}>
+      {short(total)} tok
+    </span>
+  );
 }

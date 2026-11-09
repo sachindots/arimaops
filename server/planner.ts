@@ -1,11 +1,12 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
+import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus, type Tokens } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
+import { diff } from "./usage";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 
 export interface NewTask {
@@ -30,7 +31,24 @@ export class Planner {
   /** Set by project.ts: security findings (Team MCP report_finding). */
   findings: Findings | null = null;
 
+  /** An agent's token total right now (set by the project; null when its CLI's logs can't be read). */
+  usageOf: (agentId: string) => Tokens | null = () => null;
+  // shortcut: start totals live in memory, so a task running across an HQ restart gets no usage figure.
+  private usageAtStart = new Map<string, Tokens>();
+
   constructor(private hub: Hub, private inbox: Inbox) {}
+
+  private meterStart(task: Task) {
+    const now = task.ownerId ? this.usageOf(task.ownerId) : null;
+    if (now && !this.usageAtStart.has(task.id)) this.usageAtStart.set(task.id, now);
+  }
+
+  private meterEnd(task: Task) {
+    const start = this.usageAtStart.get(task.id);
+    const now = task.ownerId ? this.usageOf(task.ownerId) : null;
+    if (start && now) task.usage = diff(now, start);
+    this.usageAtStart.delete(task.id);
+  }
 
   private get snap() {
     return this.hub.snap;
@@ -111,6 +129,7 @@ export class Planner {
     if (!task) throw new Error(`No task ${id}`);
     Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
     if (task.status === "done") {
+      this.meterEnd(task);
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
       this.startUnblocked(task);
     }
@@ -180,6 +199,8 @@ export class Planner {
     task.note = note?.slice(0, 300) || null;
     if (prNumber) task.prNumber = prNumber;
     if (deliverablePath) task.deliverablePath = deliverablePath.slice(0, 300);
+    if (status === "in-progress") this.meterStart(task);
+    if (status === "done") this.meterEnd(task);
     if (status === "done") this.hub.setStatus(agentId, { currentTaskId: null });
     else this.hub.setStatus(agentId, { currentTaskId: task.id });
     if (status === "in-review" || status === "done") void this.syncTaskDeliverables(task);

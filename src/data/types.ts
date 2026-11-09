@@ -216,6 +216,14 @@ export interface AgentStatus {
   session: SessionInfo;
   /** Its subscription hit a usage limit; don't assign work until this time (ISO). */
   limitedUntil?: string | null;
+  /** Tokens its CLI has used in this agent's folder, from the CLI's own logs (null: HQ can't read that CLI's logs). */
+  usage?: Tokens | null;
+}
+
+export interface Tokens {
+  input: number; // fresh input, incl. cache writes
+  cached: number; // input read from the prompt cache
+  output: number;
 }
 
 export type BoardStatus = "active" | "planned" | "done";
@@ -246,6 +254,8 @@ export interface Task {
   cli?: AgentCli | null;
   /** Preferred model for the task (applied when the agent next starts). */
   model?: string | null;
+  /** Tokens its owner used between starting and finishing it. */
+  usage?: Tokens | null;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";

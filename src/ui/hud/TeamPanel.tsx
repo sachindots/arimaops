@@ -4,7 +4,7 @@ import { CLI_LABEL, DEPARTMENT_IDS, type DepartmentId } from "../../data/types";
 import { selectTeam, useOffice, type AgentView } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { stateStyle } from "../../theme/tokens";
-import { ago, DepartmentBadge, Portrait, StateChip, useNow } from "../kit";
+import { ago, DepartmentBadge, Portrait, StateChip, TokensChip, useNow } from "../kit";
 
 function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: number; now: number }) {
   const snap = useOffice((s) => s.snap);
@@ -37,6 +37,7 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
         </span>
         <span className="font-term text-[15px] text-muted">{ago(a.status.stateSince, now)}</span>
         {a.config.mode !== "sandbox" && <span className="chip text-[10px]">{a.config.mode}</span>}
+        {a.status.usage && <TokensChip usage={a.status.usage} />}
         {a.status.limitedUntil && Date.parse(a.status.limitedUntil) > now && (
           <span className="chip text-[10px]" style={{ ["--c" as string]: "#ff9f1c" }} title="Its subscription hit a usage limit. HQ won't assign it work until then.">
             limit · {new Date(a.status.limitedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

@@ -22,6 +22,8 @@ import { SbxMcp } from "./sbxMcp";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
 import { loadConfig, loadPlan, slugOf } from "./store";
+import { UsageMeter } from "./usage";
+import { workspaceFor } from "./workspace";
 
 export interface Runtime {
   slug: string;
@@ -101,6 +103,20 @@ export async function startProject(path: string, port: number, paused: boolean):
   void sbx.refresh();
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
+  const meter = new UsageMeter();
+  const usageOf = (id: string) => {
+    const a = hub.cfg(id);
+    return a ? meter.read(a.cli, workspaceFor(a, slug)) : null;
+  };
+  planner.usageOf = usageOf;
+  const refreshUsage = () => {
+    for (const a of hub.snap.config.team) {
+      const u = usageOf(a.id);
+      if (JSON.stringify(u) !== JSON.stringify(hub.status(a.id)?.usage ?? null)) hub.setStatus(a.id, { usage: u });
+    }
+  };
+  refreshUsage();
+  const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
   planner.findings = new Findings(hub);
   sessions.onLimit = (id, until) => {
@@ -145,6 +161,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     shutdown() {
       rt.pause();
       inbox.stop();
+      clearInterval(usageTimer);
       sessions.shutdown();
     },
   };

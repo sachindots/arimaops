@@ -2,7 +2,7 @@ import { useState } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
-import { Dot } from "../kit";
+import { Dot, TokensChip } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
@@ -98,6 +98,7 @@ function TaskCard({ task }: { task: Task }) {
       <div className="font-term text-[16px] leading-none text-muted">
         {task.id}
         {task.prNumber && <span className="ml-1.5">#{task.prNumber}</span>}
+        {task.usage && <span className="ml-1.5"><TokensChip usage={task.usage} /></span>}
       </div>
       <div
         className={`text-[14px] font-semibold leading-tight ${task.status === "done" ? "line-through" : ""}`}
