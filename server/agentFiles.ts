@@ -341,7 +341,9 @@ export function writeSettings(dir: string, agent: AgentConfig, port: number, tok
   }
   // Let the agent use the Team MCP without a permission prompt for every call.
   const allow = new Set([...(settings.permissions?.allow ?? []), "mcp__hq"]);
-  agentWrite(dir, file, JSON.stringify({ ...settings, hooks, permissions: { ...(settings.permissions ?? {}), allow: [...allow] } }, null, 2) + "\n");
+  // No "Co-Authored-By: Claude" / "Generated with Claude Code" in agents' commits and PRs: the work is the user's.
+  const attribution = { commit: "", pr: "" };
+  agentWrite(dir, file, JSON.stringify({ ...settings, attribution, hooks, permissions: { ...(settings.permissions ?? {}), allow: [...allow] } }, null, 2) + "\n");
 }
 
 /** Team MCP config: HQ's URL plus this agent's identity and token. */

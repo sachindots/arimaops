@@ -30,5 +30,17 @@ const leadMd = roleMd(team[0] as never, cfg as never);
 check("lead is told it's in charge and when to ask the user", /in charge of this team day to day/.test(leadMd) && /hasn't answered after 30 minutes/.test(leadMd));
 check("workers take scope questions to the lead", /go to the lead \(send_message\), not the user/.test(md) && !/in charge of this team/.test(md));
 
+// Claude agents' commits and PRs carry no Claude attribution.
+{
+  const { mkdtempSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { writeClaudeFiles } = await import("../server/agentFiles");
+  const dir = mkdtempSync(join(tmpdir(), "hq-attr-"));
+  writeClaudeFiles(dir, team[2] as never, cfg as never, "tok");
+  const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.local.json"), "utf8"));
+  check("claude agents: attribution hidden in commits and PRs", settings.attribution?.commit === "" && settings.attribution?.pr === "", JSON.stringify(settings.attribution));
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);
