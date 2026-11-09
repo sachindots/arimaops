@@ -59,6 +59,8 @@ check("messaging yourself is refused", threw);
 // No review tool: the lead must review, not be told the PR "passed review".
 const { unreviewedNotice } = await import("../server/githubSync");
 const note = unreviewedNotice({ number: 1, title: "x" }, "Nyx", "human");
+const { mergeByNotice } = await import("../server/githubSync");
+check("handing merges to the lead without a review tool doesn't claim PRs passed review", !/passed review/.test(mergeByNotice("lead", [1], false)) && /Review each/.test(mergeByNotice("lead", [1], false)));
 check("unreviewed PR asks the lead to review, not merge", /review it yourself/.test(note) && !/passed review/.test(note) && /Don't merge/.test(note), note);
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

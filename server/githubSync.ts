@@ -26,9 +26,14 @@ export function unreviewedNotice(pr: Pick<PullRequest, "number" | "title">, auth
 }
 
 /** What the lead is told when the user changes who merges, with the PRs already waiting. */
-export function mergeByNotice(by: "human" | "lead", waiting: number[]): string {
+export function mergeByNotice(by: "human" | "lead", waiting: number[], reviewed = true): string {
   if (by === "human") return "The user changed the workflow: the user merges PRs now. Don't merge PRs yourself.";
-  const list = waiting.length ? ` These passed review and are waiting: ${waiting.map((n) => `#${n}`).join(", ")}. Merge each with \`${MERGE_CMD("<number>")}\`.` : "";
+  const prs = waiting.map((n) => `#${n}`).join(", ");
+  if (!reviewed) {
+    const list = waiting.length ? ` Open now: ${prs}. Review each (\`gh pr diff <number>\`), then merge with \`${MERGE_CMD("<number>")}\`.` : "";
+    return `The user changed the workflow: no review tool runs, so you review PRs and merge the good ones.${list}`;
+  }
+  const list = waiting.length ? ` These passed review and are waiting: ${prs}. Merge each with \`${MERGE_CMD("<number>")}\`.` : "";
   return `The user changed the workflow: you now merge PRs once they pass review.${list}`;
 }
 
