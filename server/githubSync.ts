@@ -17,6 +17,14 @@ export function passedNotice(pr: Pick<PullRequest, "number" | "title">, author: 
     : `${head} It's ready for the user to merge. Don't merge it yourself.`;
 }
 
+/** With no review tool, "passed" only means the PR opened: the lead is the reviewer. */
+export function unreviewedNotice(pr: Pick<PullRequest, "number" | "title">, author: string, by: "human" | "lead"): string {
+  const head = `PR #${pr.number} (${pr.title}) by ${author} is open. No review tool runs on this project, so review it yourself (\`gh pr diff ${pr.number}\`). If it needs changes, tell ${author}.`;
+  return by === "lead"
+    ? `${head} If it's good, merge it: \`${MERGE_CMD(pr.number)}\`.`
+    : `${head} If it's good, tell the user it's ready to merge. Don't merge it yourself.`;
+}
+
 /** What the lead is told when the user changes who merges, with the PRs already waiting. */
 export function mergeByNotice(by: "human" | "lead", waiting: number[]): string {
   if (by === "human") return "The user changed the workflow: the user merges PRs now. Don't merge PRs yourself.";
@@ -200,8 +208,10 @@ export class GitHubSync {
     }
 
     if (pr.review === "passed" && old?.review !== "passed") {
-      hub.activity("review.passed", who, `${tool} approved #${pr.number}`);
-      if (lead) this.planner.notify(lead.id, passedNotice(pr, hub.name(who), hub.snap.config.workflow.merge.by));
+      const reviewed = hub.snap.config.workflow.review.enabled;
+      const by = hub.snap.config.workflow.merge.by;
+      hub.activity("review.passed", who, reviewed ? `${tool} approved #${pr.number}` : `${hub.name(who)} opened #${pr.number}`);
+      if (lead) this.planner.notify(lead.id, reviewed ? passedNotice(pr, hub.name(who), by) : unreviewedNotice(pr, hub.name(who), by));
     }
 
     if (pr.conflict && !old?.conflict && who)

@@ -56,5 +56,10 @@ try {
 }
 check("messaging yourself is refused", threw);
 
+// No review tool: the lead must review, not be told the PR "passed review".
+const { unreviewedNotice } = await import("../server/githubSync");
+const note = unreviewedNotice({ number: 1, title: "x" }, "Nyx", "human");
+check("unreviewed PR asks the lead to review, not merge", /review it yourself/.test(note) && !/passed review/.test(note) && /Don't merge/.test(note), note);
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);
