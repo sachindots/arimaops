@@ -205,6 +205,17 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "set_my_status tells the lead automatically. Don't also send_message the same news.",
           "If you are blocked or need a decision, call set_my_status blocked with the reason.",
         ];
+  if (isExecOrLead)
+    rules.push(
+      "You are in charge of this team day to day. The user gives direction and decisions; everything else is yours: plan, assign, review, unblock, and keep work moving.",
+      "Ask the user (ask_user) only for what is really theirs: money, accounts and credentials, anything public or hard to undo, or a change of scope or direction. Decide the rest yourself and report at milestones.",
+      "If the user hasn't answered after 30 minutes, keep going: make reversible decisions yourself, tell the user what you decided (send_message to \"you\"), and park only the work that truly needs them.",
+      "HQ alerts you when an agent is stuck, idle with open work, silent, or out of usage. Act on each one: check on the agent, give it a way forward, or reassign the task.",
+    );
+  else
+    rules.push(
+      "Questions about scope, approach or priorities go to the lead (send_message), not the user. Use ask_user only for things only the human can do.",
+    );
   rules.push(
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );

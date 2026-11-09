@@ -127,6 +127,21 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
 }
 
+// The user is away: their unanswered question goes to the lead after 30 min; plans keep waiting for the user.
+{
+  const old = new Date(Date.now() - 40 * 60_000).toISOString();
+  (snap as unknown as { actionItems: unknown[] }).actionItems = [
+    { id: "a1", fromId: "nyx", title: "Which port for the demo?", status: "open", kind: "request", at: old },
+    { id: "a2", fromId: "nyx", title: "Rotate certs", status: "open", kind: "plan", at: old },
+  ];
+  const k = pushed.length;
+  planner.checkStalls(Date.now());
+  planner.checkStalls(Date.now());
+  const got3 = pushed.slice(k).filter((p) => p.to === "cipher");
+  check("unanswered question handed to the lead once", got3.length === 1 && /Which port/.test(got3[0].text) && /reversible decision/.test(got3[0].text), JSON.stringify(got3));
+  (snap as unknown as { actionItems: unknown[] }).actionItems = [];
+}
+
 // Repo facts: short, safe, no repeats, capped.
 const { mergeFacts } = await import("../server/facts");
 const merged = mergeFacts(["Run tests: go test ./..."], ["run tests: go test ./...", "Skip the tests when only docs change", "Fixtures live in testdata/", "x".repeat(200)]);

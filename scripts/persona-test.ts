@@ -26,6 +26,9 @@ check("peers name teammates, not yourself", md.includes("- Ghost (Go Developer):
 check("background-job habit present", /Never wait on a background job/.test(md));
 check("hands off the user's services", /Never stop, restart, remove or reconfigure services/.test(md));
 check("no caveman in the role file", !/caveman/i.test(md));
+const leadMd = roleMd(team[0] as never, cfg as never);
+check("lead is told it's in charge and when to ask the user", /in charge of this team day to day/.test(leadMd) && /hasn't answered after 30 minutes/.test(leadMd));
+check("workers take scope questions to the lead", /go to the lead \(send_message\), not the user/.test(md) && !/in charge of this team/.test(md));
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

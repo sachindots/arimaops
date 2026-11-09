@@ -57,6 +57,9 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} added an action item${waiting ? " (waiting)" : ""}: ${clean}`);
+    const lead = this.hub.snap.config.team.find((a) => a.isLead);
+    if (lead && lead.id !== fromId && kind === "request") // plans need the user's own approval
+      this.planner.notify(lead.id, `${this.hub.name(fromId)} asked the user: "${clean}". If it's something you can decide, answer ${this.hub.name(fromId)} yourself (send_message); only the user can create accounts, keys or settings.`);
     return item;
   }
 

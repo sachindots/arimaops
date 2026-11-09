@@ -288,8 +288,17 @@ export class Planner {
    * A worker that ended its turn with its task still in progress, and has sat idle since, is waiting on something
    * that won't wake it (a background job, a question it never sent). Nudge it once and tell the lead.
    */
-  checkStalls(now: number, idleMs = 5 * 60_000, silentMs = 15 * 60_000) {
+  checkStalls(now: number, idleMs = 5 * 60_000, silentMs = 15 * 60_000, unansweredMs = 30 * 60_000) {
     const lead = this.snap.config.team.find((a) => a.isLead);
+    // The user is away: hand questions they haven't answered to the lead (plans still wait for the user).
+    for (const item of this.snap.actionItems ?? []) {
+      if (!lead || item.status !== "open" || item.kind === "plan" || now - Date.parse(item.at) < unansweredMs) continue;
+      const key = `ask:${item.id}`;
+      if (this.stallNudged.has(key)) continue;
+      this.stallNudged.add(key);
+      const who = item.fromId === lead.id ? "You" : this.hub.name(item.fromId);
+      this.notify(lead.id, `The user hasn't answered "${item.title}" (from ${who}) for ${Math.round((now - Date.parse(item.at)) / 60_000)} min. If it's a reversible decision, make it, tell ${item.fromId === lead.id ? "the team" : who}, and tell the user what you decided. If only the user can do it, keep the team on other work.`);
+    }
     for (const a of this.snap.config.team) {
       const st = this.hub.status(a.id);
       const task = this.currentTask(a.id);
