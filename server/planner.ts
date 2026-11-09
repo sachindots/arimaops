@@ -280,6 +280,30 @@ export class Planner {
     return { handoffs, yourLastNote: mine.at(-1)?.note ?? null, repoFacts: readFacts(this.hub.repo.root) };
   }
 
+  private stallNudged = new Set<string>(); // agent:task, so each stall is reported once
+
+  /**
+   * A worker that ended its turn with its task still in progress, and has sat idle since, is waiting on something
+   * that won't wake it (a background job, a question it never sent). Nudge it once and tell the lead.
+   */
+  checkStalls(now: number, idleMs = 5 * 60_000) {
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    for (const a of this.snap.config.team) {
+      const st = this.hub.status(a.id);
+      const task = this.currentTask(a.id);
+      if (a.isLead || !st || !task || task.status !== "in-progress" || st.session.state !== "running") continue;
+      if (st.state !== "idle" || now - Date.parse(st.stateSince) < idleMs || this.inbox.pending(a.id) > 0) continue;
+      if (st.limitedUntil && Date.parse(st.limitedUntil) > now) continue; // the usage-limit notice covers this
+      const key = `${a.id}:${task.id}`;
+      if (this.stallNudged.has(key)) continue;
+      this.stallNudged.add(key);
+      const mins = Math.round((now - Date.parse(st.stateSince)) / 60_000);
+      this.notify(a.id, `HQ: you've been idle ${mins} min but ${task.id} is still in progress. If you were waiting on a background command or job, it won't wake you: check it now and continue in the foreground. If you're blocked, call set_my_status blocked with the reason.`);
+      if (lead) this.notify(lead.id, `${a.name} has been idle ${mins} min with ${task.id} still in progress. HQ nudged it; check on it if it doesn't move.`);
+      this.hub.activity("agent.needs-input", a.id, `${a.name} stalled on ${task.id} (idle ${mins} min)`);
+    }
+  }
+
   /** Ids of the tasks `task` still waits on. */
   waitingOn(task: Task): string[] {
     return task.needs.filter((n) => this.task(n)?.status !== "done");

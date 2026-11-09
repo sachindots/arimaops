@@ -100,6 +100,22 @@ const { mergeByNotice } = await import("../server/githubSync");
 check("handing merges to the lead without a review tool doesn't claim PRs passed review", !/passed review/.test(mergeByNotice("lead", [1], false)) && /Review each/.test(mergeByNotice("lead", [1], false)));
 check("unreviewed PR asks the lead to review, not merge", /review it yourself/.test(note) && !/passed review/.test(note) && /Don't merge/.test(note), note);
 
+// Stall: a worker idle with its task in progress is nudged once, and the lead told.
+{
+  const tS = planner.createTask({ title: "Showcase" } as never, "cipher");
+  planner.assign(tS.id, "nyx", "cipher");
+  planner.setStatus("nyx", "in-progress");
+  Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date(Date.now() - 10 * 60_000).toISOString() });
+  (inbox as unknown as { pending: () => number }).pending = () => 0;
+  const n = pushed.length;
+  planner.checkStalls(Date.now());
+  planner.checkStalls(Date.now());
+  const got = pushed.slice(n);
+  check("stalled worker nudged once", got.filter((p) => p.to === "nyx" && /still in progress/.test(p.text)).length === 1, JSON.stringify(got));
+  check("lead told about the stall", got.some((p) => p.to === "cipher" && /idle 10 min/.test(p.text)));
+  Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
+}
+
 // Repo facts: short, safe, no repeats, capped.
 const { mergeFacts } = await import("../server/facts");
 const merged = mergeFacts(["Run tests: go test ./..."], ["run tests: go test ./...", "Skip the tests when only docs change", "Fixtures live in testdata/", "x".repeat(200)]);

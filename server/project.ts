@@ -120,6 +120,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     return !t || t.ownerId !== agentId || t.status === "done";
   };
   const refreshUsage = () => {
+    planner.checkStalls(Date.now());
     for (const a of hub.snap.config.team) {
       const u = usageOf(a.id);
       if (JSON.stringify(u) !== JSON.stringify(hub.status(a.id)?.usage ?? null)) hub.setStatus(a.id, { usage: u });
