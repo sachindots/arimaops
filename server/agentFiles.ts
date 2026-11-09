@@ -152,7 +152,7 @@ export function writeHookScript(dir: string) {
 }
 
 // PostToolUse: the moment a question or permission prompt is answered, the tool completes.
-const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Notification", "Stop", "SessionEnd"] as const;
+const HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "Stop", "SessionEnd"] as const;
 const GEMINI_HOOK_EVENTS = ["SessionStart", "BeforeAgent", "BeforeTool", "AfterTool", "Notification", "AfterAgent", "SessionEnd"] as const;
 
 /** URL agents use to reach HQ: through the sandbox proxy, the container network's gateway, or straight to localhost. */

@@ -143,7 +143,9 @@ export function startHttp(o: Options) {
       if (!rt) return send(res, 401, "unauthorized");
       try {
         const body = await readBody(req);
-        const r = handleHook(rt.hub, rt.inbox, agentId, event ?? "", body ? JSON.parse(body) : {});
+        const payload = body ? JSON.parse(body) : {};
+        const r = handleHook(rt.hub, rt.inbox, agentId, event ?? "", payload);
+        if (event === "PostToolUse" || event === "PostToolUseFailure" || event === "AfterTool") rt.onToolDone(agentId, event, payload);
         if (!r.ok) return send(res, 404, "");
         if (r.response) return send(res, 200, JSON.stringify(r.response), "application/json");
         res.writeHead(204);

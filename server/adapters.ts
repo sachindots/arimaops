@@ -76,7 +76,7 @@ const claude: CliAdapter = {
 // ---------------------------------------------------------------- OpenAI Codex (`codex`)
 
 export const CODEX_CONFIG = ".codex/config.toml";
-const CODEX_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Stop", "SessionEnd"];
+const CODEX_EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"];
 
 /** TOML basic string (JSON's escaping is valid TOML for these characters). */
 const t = (s: string) => JSON.stringify(s);

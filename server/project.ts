@@ -22,6 +22,8 @@ import { SbxMcp } from "./sbxMcp";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
 import { loadConfig, loadPlan, slugOf } from "./store";
+import { askHaiku } from "./lib/haiku";
+import { JUDGE_PROMPT, LoopGuard, toolEvent, type Verdict } from "./loopguard";
 import { UsageMeter } from "./usage";
 import { workspaceFor } from "./workspace";
 
@@ -31,6 +33,8 @@ export interface Runtime {
   hub: Hub;
   inbox: Inbox;
   planner: Planner;
+  /** Sees every finished tool call (hook route) to spot an agent stuck in a loop. */
+  onToolDone(agentId: string, event: string, body: Record<string, unknown>): void;
   /** Project secret; each agent's token is derived from it (paths.agentTokenFor). */
   agentSecret: string;
   commands: Record<string, (...args: unknown[]) => unknown>;
@@ -119,6 +123,19 @@ export async function startProject(path: string, port: number, paused: boolean):
       if (JSON.stringify(u) !== JSON.stringify(hub.status(a.id)?.usage ?? null)) hub.setStatus(a.id, { usage: u });
     }
   };
+  const guard = new LoopGuard(
+    async (digest) => {
+      const a = await askHaiku<Verdict>(JUDGE_PROMPT + digest);
+      if (a) hub.activity("config", null, `Loop check (Claude Haiku, ${a.tokens.input + a.tokens.cached + a.tokens.output} tokens): ${a.json.stuck ? "stuck" : "making progress"}`);
+      return a?.json ?? null;
+    },
+    (agentId, taskId, nudge, reason) => {
+      planner.notify(agentId, nudge);
+      const lead = hub.snap.config.team.find((a) => a.isLead);
+      if (lead && lead.id !== agentId) planner.notify(lead.id, `${hub.name(agentId)} looks stuck on ${taskId} (${reason}). HQ nudged it once; step in if it doesn't recover.`);
+      hub.activity("agent.needs-input", agentId, `${hub.name(agentId)} looks stuck on ${taskId}: ${reason}`);
+    },
+  );
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
@@ -138,6 +155,11 @@ export async function startProject(path: string, port: number, paused: boolean):
   sessions.startPolling();
 
   const rt: Runtime = {
+    onToolDone(agentId, event, body) {
+      const ev = toolEvent(event, body);
+      const task = planner.currentTask(agentId);
+      if (ev && task?.status === "in-progress") guard.record(agentId, task.id, task.title, ev);
+    },
     slug,
     root: repo.root,
     hub,

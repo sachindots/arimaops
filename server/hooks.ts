@@ -67,6 +67,7 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: st
       if (isAgy) return { ok: true, response: { decision: "allow" } };
       break;
     case "PostToolUse":
+    case "PostToolUseFailure":
       // A tool finished: if it was waiting on the user (a question or a permission), they answered.
       if (turnOpen.get(turnKey) !== false && st.state === "needs-input") {
         hub.setStatus(agentId, { state: "working", note: "Continuing after your answer" });
