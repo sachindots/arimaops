@@ -10,7 +10,7 @@ import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
 import { HOST_TERMINAL, CLI_LABEL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
 import { adapters, containerArgs, localBinary } from "./adapters";
-import { ensureNetwork, runArgs } from "./containers";
+import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
@@ -150,7 +150,8 @@ export class Sessions {
           hub.setSession(id, { detail: "Starting container…" });
           if (!(await ensureNetwork())) throw new Error("Couldn't create the hq-agents Docker network. See HQ's log.");
           await run("docker", ["rm", "-f", name], { timeoutMs: 20_000 }); // a container left from a crash
-          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort), envFile: null };
+          const gitEnv = await gitIdentityEnv(hub.repo.root);
+          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort, gitEnv), envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }

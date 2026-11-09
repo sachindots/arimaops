@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-ctr-"));
-const { hostAllowed, runArgs, ensureNetwork, startEgressProxy, hostFirewallCmd, IMAGE, NETWORK, GATEWAY, egressPort, BASE_ALLOW } = await import("../server/containers");
+const { hostAllowed, loginCommand, runArgs, ensureNetwork, startEgressProxy, hostFirewallCmd, IMAGE, NETWORK, GATEWAY, egressPort, BASE_ALLOW } = await import("../server/containers");
 const { run } = await import("../server/lib/exec");
 
 let fails = 0;
@@ -32,6 +32,9 @@ check("on the agents network", has("--network", NETWORK));
 check("resources applied", has("--cpus", "2") && has("--memory", "4096m"));
 check("only its own CLI's login volume", args.includes("hq-auth-claude:/auth/claude") && !args.some((a) => a.startsWith("hq-auth-codex")));
 check("proxy env set, HQ not proxied", args.includes(`HTTPS_PROXY=http://${GATEWAY}:${egressPort(7420)}`) && args.includes(`NO_PROXY=${GATEWAY}`));
+const withGit = runArgs(agent as never, "hq-t-dwight", "/tmp/w", [], null, 7420, { GIT_AUTHOR_NAME: "Ada" });
+check("extra env (git identity) passed before the image", withGit.indexOf("GIT_AUTHOR_NAME=Ada") > 0 && withGit.indexOf("GIT_AUTHOR_NAME=Ada") < withGit.indexOf(IMAGE));
+check("sign-in container is named so the proxy lets it reach the CLI's sites", loginCommand("codex", 7420).includes("--name hq-login-codex"));
 check("runs the CLI with its args", args.slice(-4).join(" ") === `${IMAGE} claude --model opus`);
 let threw = false;
 try {

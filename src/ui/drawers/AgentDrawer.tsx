@@ -8,6 +8,13 @@ import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
 import { TerminalView } from "./TerminalView";
 
+/** How each CLI handles permission prompts in Local mode (see server/adapters.ts). */
+const LOCAL_PERMISSIONS: Partial<Record<AgentCli, string>> = {
+  claude: "Claude's auto mode checks risky commands instead of asking you.",
+  codex: "Codex's auto-review checks risky commands instead of asking you.",
+  agy: "Antigravity runs commands without asking.",
+};
+
 
 export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: AgentTab }) {
   const snap = useOffice((s) => s.snap);
@@ -305,7 +312,7 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
                 : agent.mode === "container"
                   ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker container on this agent's own copy of the repo. Websites go through HQ's allowlist.`
-                  : `Start runs ${CLI_LABEL[agent.cli]} locally in this agent's own copy of the repo, with permission prompts on.`}
+                  : `Start runs ${CLI_LABEL[agent.cli]} locally in this agent's own copy of the repo. ${LOCAL_PERMISSIONS[agent.cli] ?? "It may ask you before running commands."}`}
             </p>
             {agent.cli === "codex" && (
               <p className="mb-4 text-[12px] text-orange">

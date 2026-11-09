@@ -120,7 +120,14 @@ const codex: CliAdapter = {
     const model = raw && /^(gpt-5\.4|gpt-5\.3-codex|o3)$/i.test(raw) ? "gpt-6.1-sol" : raw;
     // On the command line: the folder's config.toml is read only after the trust prompt, and an update menu
     // shown before it would stall an unattended agent.
-    const args = ["-c", "check_for_update_on_startup=false", ...(model ? ["-m", model] : [])];
+    const args = [
+      "-c", "check_for_update_on_startup=false",
+      // Unattended agents can't answer prompts (Codex asks before every git command, since .git is read-only in its
+      // sandbox). Local: Codex's auto-review approves safe requests, like Claude's auto mode. Container: the
+      // container and its egress allowlist are the sandbox.
+      agent.mode === "container" ? "--dangerously-bypass-approvals-and-sandbox" : "--approve-for-me",
+      ...(model ? ["-m", model] : []),
+    ];
     return { sbxAgent: "codex", args };
   },
 };

@@ -97,7 +97,7 @@ export function agentIp(containerName: string): string {
 }
 
 /** `docker run` arguments for an agent (run in tmux like the other modes; --rm: state lives in the folder and login volume). */
-export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number): string[] {
+export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number, env: Record<string, string> = {}): string[] {
   const authDir = AUTH_DIR[agent.cli];
   if (!authDir) throw new Error(`${agent.cli} can't run in Container mode yet. Use Sandbox or Local mode for this agent.`);
   const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
@@ -117,6 +117,7 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
     ...(envFile ? ["--env-file", envFile] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
     "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`,
+    ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     IMAGE,
     agent.cli,
     ...cliArgs,
@@ -124,13 +125,15 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
 }
 
 /** One-time sign-in for a CLI: its normal login flow in a throwaway container that saves into the shared volume. */
+const LOGIN_PREFIX = "hq-login-";
+
 export function loginCommand(cli: AgentCli, hqPort: number): string {
   const authDir = AUTH_DIR[cli];
   if (!authDir) return "";
   const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
   const env = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].map((k) => `-e ${k}=${proxy}`).join(" ");
   const login: Record<string, string> = { claude: "claude", codex: "codex login --device-auth", gemini: "gemini", copilot: "copilot", opencode: "opencode auth login" };
-  return `docker run -it --rm --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli)}:${authDir} ${IMAGE} ${login[cli]}`;
+  return `docker run -it --rm --name ${LOGIN_PREFIX}${cli} --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli)}:${authDir} ${IMAGE} ${login[cli]}`;
 }
 
 export async function ensureNetwork(): Promise<boolean> {
@@ -178,12 +181,14 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
   let snapshot: { at: number; map: Promise<Map<string, string>> } | null = null;
   const identify = async (ip: string) => {
     if (!snapshot || Date.now() - snapshot.at > 1000) snapshot = { at: Date.now(), map: ipNames() };
-    const name = (await snapshot.map).get(ip);
-    return name ? agentForName(projects, name) : null;
+    return (await snapshot.map).get(ip) ?? null;
   };
   const decide = async (req: IncomingMessage, host: string, port: number) => {
     const ip = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
-    const who = await identify(ip);
+    const name = await identify(ip);
+    // A sign-in container (loginCommand) only needs the CLIs' own sites.
+    if (name?.startsWith(LOGIN_PREFIX)) return hostAllowed(BASE_ALLOW, host, port) ? { ok: true, why: "" } : { ok: false, why: "sign-in container" };
+    const who = name ? agentForName(projects, name) : null;
     if (!who) return { ok: false, why: "unknown container" };
     const agent = who.rt.hub.cfg(who.agent.id) ?? who.agent; // live config: allow/deny change at runtime
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
@@ -260,4 +265,14 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
   server.on("error", (err) => log.warn(`egress proxy: ${err.message}`));
   server.listen(egressPort(hqPort), GATEWAY, () => log.info(`container proxy on ${GATEWAY}:${egressPort(hqPort)}`));
   return server;
+}
+
+/** Your git name and email, so commits made in a container are yours (the container has no git config). */
+export async function gitIdentityEnv(cwd: string): Promise<Record<string, string>> {
+  const get = async (key: string) => (await run("git", ["config", "--get", key], { cwd, timeoutMs: 5000 })).stdout.trim();
+  const [name, email] = await Promise.all([get("user.name"), get("user.email")]);
+  const env: Record<string, string> = {};
+  if (name) env.GIT_AUTHOR_NAME = env.GIT_COMMITTER_NAME = name;
+  if (email) env.GIT_AUTHOR_EMAIL = env.GIT_COMMITTER_EMAIL = email;
+  return env;
 }
