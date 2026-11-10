@@ -255,7 +255,7 @@ async function checkDocker(): Promise<Check> {
 }
 
 async function checkAgentImage(dockerOk: boolean): Promise<Check> {
-  const base = { id: "agent-image" as const, label: "Agent image (dothq-agent)", neededFor: "container" as const };
+  const base = { id: "agent-image" as const, label: `Agent image (${IMAGE})`, neededFor: "container" as const };
   if (!dockerOk) return { ...base, status: "missing", detail: "Waiting for Docker.", fix: null };
   const r = await run("docker", ["image", "inspect", IMAGE, "--format", "{{.Created}}"], { timeoutMs: 8000 });
   if (r.ok) return { ...base, status: "ok", detail: `Built ${r.stdout.trim().slice(0, 10)}. Rebuild to update the CLIs.`, fix: fix(buildCommand(), true, null) };

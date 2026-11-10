@@ -1,5 +1,5 @@
 # .hq agent image for Container mode (plain Docker). Built once on the host:
-#   docker build -t dothq-agent --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f docker/agent.Dockerfile docker
+#   docker build -t arimaops-agent --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f docker/agent.Dockerfile docker
 # Runs as your user id, so files in the agent's folder stay yours.
 FROM node:22-bookworm-slim
 

@@ -47,7 +47,7 @@ arimaops --repo <path>   the repo to manage (default: current folder)
          --version, --help
 ```
 
-`dothq` still works as an alias. Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
+Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
 
 ## Requirements
 

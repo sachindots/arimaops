@@ -33,7 +33,7 @@ src/
   office/    The PixiJS pixel office: layout, sprites, agents, belt
   ui/        Top bar, team panel, activity, drawers, settings, setup checklist, welcome
 server/      Local HQ server: setup checks, workspaces, sessions (tmux, or HQ-run on Windows), sbx, hooks, Team MCP, GitHub
-bin/         The arimaops command (dothq is an alias)
+bin/         The arimaops command
 docs/        User guides, and the product spec (jsmhq-context.md)
 context/     Implementation plans
 ```

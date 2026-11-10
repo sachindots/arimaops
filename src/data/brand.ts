@@ -10,9 +10,8 @@ export const BRAND = {
   fullName: "ArimaOps · அரிமா",
   /** The lobby sign in the office (fits up to 19 characters). */
   officeSign: "ARIMAOPS",
-  /** CLI command; `dothq` stays as an alias for existing scripts. */
+  /** CLI command. */
   bin: "arimaops",
-  aliasBins: ["dothq"],
   /** Per-repo folder (config.json, plan.json, facts.md, skills/). */
   repoDir: ".arima",
   legacyRepoDirs: [".hq", ".jsmhq"],

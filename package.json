@@ -32,8 +32,7 @@
     "pixel-art"
   ],
   "bin": {
-    "arimaops": "bin/arimaops.mjs",
-    "dothq": "bin/dothq.mjs"
+    "arimaops": "bin/arimaops.mjs"
   },
   "publishConfig": {
     "access": "public"

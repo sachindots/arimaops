@@ -19,7 +19,7 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import type { Runtime } from "./project";
 
-export const IMAGE = "dothq-agent";
+export const IMAGE = "arimaops-agent";
 export const NETWORK = "hq-agents";
 export const BRIDGE = "br-hq";
 export const SUBNET = "172.30.0.0/24";

@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack
       - name: CLI smoke test
-        run: node bin/arimaops.mjs --version && node bin/arimaops.mjs --help && node bin/dothq.mjs --version
+        run: node bin/arimaops.mjs --version && node bin/arimaops.mjs --help
       - name: Install and run like a new user
         shell: bash
         run: node scripts/smoke-test.mjs pack/*.tgz 7431

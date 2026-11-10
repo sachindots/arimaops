@@ -1,4 +1,4 @@
-// Container mode: allowlist rules, docker run flags, and (when Docker and the dothq-agent image exist)
+// Container mode: allowlist rules, docker run flags, and (when Docker and the arimaops-agent image exist)
 // a real container going through HQ's egress proxy. Run: npx tsx scripts/container-test.ts
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,7 +46,7 @@ check("agy is refused in Container mode", threw);
 
 // ---------------------------------------------------------------- live proxy
 const docker = (await run("docker", ["image", "inspect", IMAGE], { timeoutMs: 8000 })).ok && (await ensureNetwork());
-if (!docker) console.log("- skipped live proxy test (needs Docker and the dothq-agent image)");
+if (!docker) console.log("- skipped live proxy test (needs Docker and the arimaops-agent image)");
 else {
   const requests: string[] = [];
   const cfg = { ...agent, mode: "container" };

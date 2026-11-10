@@ -13,7 +13,7 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`ArimaOps ${pkg.version}: run your own software company and security operations with a team of AI agents.
 
 Usage:
-  arimaops [options]       run inside a git repo (dothq still works)
+  arimaops [options]       run inside a git repo
 
 Options:
   --repo <path>   the git repo to manage (default: current folder)
