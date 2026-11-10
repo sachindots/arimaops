@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
 import type { AgentState, DepartmentId, ReviewState, SessionState, Tokens } from "../data/types";
 import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
-import { reviewStyle, stateStyle } from "../theme/tokens";
+import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 
 export function DepartmentBadge({
   role,
@@ -36,14 +36,12 @@ export function DepartmentBadge({
   );
 }
 
-const SESSION_LABEL: Record<Exclude<SessionState, "running">, string> = { stopped: "Stopped", starting: "Starting…", failed: "Failed" };
-
 /** The agent's state; when its session isn't running, that instead (a stopped agent isn't "Idle"). */
 export function StateChip({ state, session, blink = true }: { state: AgentState; session?: SessionState; blink?: boolean }) {
   if (session && session !== "running")
     return (
       <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ff1744" : "#6e7b94" }}>
-        {SESSION_LABEL[session]}
+        {sessionLabel[session]}
       </span>
     );
   const st = stateStyle[state];

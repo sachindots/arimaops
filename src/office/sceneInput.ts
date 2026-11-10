@@ -3,7 +3,7 @@
 import type { Application } from "pixi.js";
 import { reviewToolLabel, useOffice } from "../store/office";
 import { ui, useUi } from "../store/ui";
-import { stateStyle } from "../theme/tokens";
+import { sessionLabel, stateStyle } from "../theme/tokens";
 import type { Camera } from "./engine/camera";
 import type { Hit, PxRect } from "./layout/layout";
 
@@ -28,7 +28,7 @@ function describe(hit: Hit): { title: string; sub?: string } {
     const task = st?.currentTaskId ? snap.tasks.find((t) => t.id === st.currentTaskId) : null;
     return {
       title: `${a?.name ?? hit.id} · ${a?.role ?? ""}`,
-      sub: [st ? stateStyle[st.state].label : "", task ? `${task.id} ${task.title}` : st?.note ?? ""].filter(Boolean).join(" — "),
+      sub: [st ? (st.session.state === "running" ? stateStyle[st.state].label : sessionLabel[st.session.state]) : "", task ? `${task.id} ${task.title}` : st?.note ?? ""].filter(Boolean).join(" — "),
     };
   }
   if (hit.kind === "plan") {

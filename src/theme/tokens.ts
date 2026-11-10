@@ -1,4 +1,4 @@
-import type { AgentState, ReviewState } from "../data/types";
+import type { AgentState, ReviewState, SessionState } from "../data/types";
 
 // Black-Red + Hacker Terminal Cyberspace palette. Shared by the office and the HUD.
 // Strictly zero yellow or orange: Crimson Red (#ff1744), Phosphor Green (#00ff66), Ice Cyan (#00e5ff), Neon Violet (#c04dff).
@@ -39,6 +39,9 @@ export const stateStyle: Record<AgentState, StateStyle> = {
   "review-passed": { label: "Review passed", color: colors.green, dim: "#007a33" },
   idle: { label: "Idle", color: colors.lav, dim: "#384152" },
 };
+
+/** Label for an agent whose session isn't running (a stopped agent isn't "Idle"). */
+export const sessionLabel: Record<Exclude<SessionState, "running">, string> = { stopped: "Stopped", starting: "Starting…", failed: "Failed" };
 
 export const reviewStyle: Record<ReviewState, StateStyle> = {
   pending: { label: "Queued", color: colors.lav, dim: "#384152" },
