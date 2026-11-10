@@ -18,7 +18,7 @@ import { C } from "./engine/palette";
 import { GfxPen } from "./engine/pen";
 import { canvasTexture } from "./engine/textures";
 import type { OfficeLayout, PxRect } from "./layout/layout";
-import { attachInput } from "./sceneInput";
+import { attachInput, inside, type Target } from "./sceneInput";
 import { syncScene } from "./sceneSync";
 
 TextureStyle.defaultOptions.scaleMode = "nearest";
@@ -128,6 +128,19 @@ export class OfficeScene {
 
   botRect(b: Bot): PxRect {
     return { x: Math.round(b.x) - 7, y: b.headY - 1, w: 14, h: Math.round(b.y) - b.headY + 3 };
+  }
+
+  hitTest(sx: number, sy: number): Target | null {
+    const l = this.layout;
+    if (!l) return null;
+    const { x, y } = this.camera.screenToWorld(sx, sy);
+    const bots = [...this.bots.values()].sort((a, b) => b.y - a.y);
+    for (const b of bots) {
+      const rect = this.botRect(b);
+      if (inside(rect, x, y)) return { hit: { kind: "agent", id: b.config.id, rect }, rect };
+    }
+    for (const h of l.hits) if (inside(h.rect, x, y)) return { hit: h, rect: h.rect };
+    return null;
   }
 
   focusOn(target: FocusTarget) {

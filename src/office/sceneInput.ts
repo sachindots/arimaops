@@ -1,27 +1,23 @@
 // Pointer input for the office: drag to pan, wheel to zoom, hover + click on things.
 
+import type { Application } from "pixi.js";
 import { reviewToolLabel, useOffice } from "../store/office";
 import { ui, useUi } from "../store/ui";
 import { stateStyle } from "../theme/tokens";
+import type { Camera } from "./engine/camera";
 import type { Hit, PxRect } from "./layout/layout";
-import type { OfficeScene } from "./OfficeScene";
 
-type Target = { hit: Hit; rect: PxRect };
+export type Target = { hit: Hit; rect: PxRect };
 
-const inside = (r: PxRect, x: number, y: number) => x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
-
-function hitTest(s: OfficeScene, sx: number, sy: number): Target | null {
-  const l = s.layout;
-  if (!l) return null;
-  const { x, y } = s.camera.screenToWorld(sx, sy);
-  const bots = [...s.bots.values()].sort((a, b) => b.y - a.y);
-  for (const b of bots) {
-    const rect = s.botRect(b);
-    if (inside(rect, x, y)) return { hit: { kind: "agent", id: b.config.id, rect }, rect };
-  }
-  for (const h of l.hits) if (inside(h.rect, x, y)) return { hit: h, rect: h.rect };
-  return null;
+/** What a scene must offer for pointer input (the top-down and the iso office both do). */
+export interface InputHost {
+  app: Application;
+  camera: Camera;
+  hover: { rect: PxRect; agentId: string | null } | null;
+  hitTest(sx: number, sy: number): Target | null;
 }
+
+export const inside = (r: PxRect, x: number, y: number) => x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
 
 function describe(hit: Hit): { title: string; sub?: string } {
   const snap = useOffice.getState().snap;
@@ -56,7 +52,7 @@ function activate(hit: Hit) {
   else ui.openEnv(hit.id);
 }
 
-export function attachInput(s: OfficeScene): () => void {
+export function attachInput(s: InputHost): () => void {
   const el = s.app.canvas;
   let down: { x: number; y: number; lastX: number; lastY: number; dragging: boolean } | null = null;
 
@@ -67,7 +63,7 @@ export function attachInput(s: OfficeScene): () => void {
 
   const updateHover = (e: PointerEvent) => {
     const p = local(e);
-    const target = hitTest(s, p.x, p.y);
+    const target = s.hitTest(p.x, p.y);
     s.hover = target ? { rect: target.rect, agentId: target.hit.kind === "agent" ? target.hit.id : null } : null;
     el.style.cursor = down?.dragging ? "grabbing" : target ? "pointer" : "grab";
     ui.setHover(target ? { ...describe(target.hit), x: e.clientX, y: e.clientY } : null);
@@ -99,7 +95,7 @@ export function attachInput(s: OfficeScene): () => void {
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
     if (wasDrag) return updateHover(e);
     const p = local(e);
-    const target = hitTest(s, p.x, p.y);
+    const target = s.hitTest(p.x, p.y);
     if (target) activate(target.hit);
   };
   const onLeave = () => {
