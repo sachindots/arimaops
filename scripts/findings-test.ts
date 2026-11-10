@@ -23,6 +23,7 @@ const throws = (fn: () => unknown, re: RegExp) => {
 };
 
 const events: { type: string }[] = [];
+const acts: string[] = [];
 const hub = {
   slug: "acme",
   repo: { root: repo },
@@ -33,7 +34,7 @@ const hub = {
   },
   name: (id: string) => ({ ghost: "Ghost", you: "You" })[id] ?? id,
   emit: (e: { type: string }) => events.push(e),
-  activity: () => {},
+  activity: (type: string) => acts.push(type),
 };
 const findings = new Findings(hub as never);
 const good = { title: "SQL injection in login", severity: "high", target: "https://app.acme.test/login", description: "id param", evidence: "' OR 1=1 --", remediation: "Use prepared statements" };
@@ -41,6 +42,7 @@ const good = { title: "SQL injection in login", severity: "high", target: "https
 const f1 = findings.report("ghost", "B1-T01", good);
 check("in-scope finding is recorded with an id", f1.id === "F-001" && f1.status === "open" && f1.severity === "high");
 check("out-of-scope target refused", throws(() => findings.report("ghost", null, { ...good, target: "vpn.acme.test" }), /out of scope/));
+check("refusal shows in the activity feed", acts.includes("scope.refused"));
 check("unlisted target refused", throws(() => findings.report("ghost", null, { ...good, target: "google.com" }), /isn't in scope/));
 check("IP in range accepted", findings.report("ghost", null, { ...good, title: "Open Redis", severity: "critical", target: "10.20.0.9:6379" }).id === "F-002");
 check("unknown severity becomes info", findings.report("ghost", null, { ...good, title: "Banner", severity: "spicy", target: "x.acme.test" }).severity === "info");

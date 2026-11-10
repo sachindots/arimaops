@@ -25,7 +25,7 @@ export function modeOf(st: AgentStatus | undefined, now = Date.now()): Mode {
 
 /** Screen direction the sprite faces. +x is down-right (se), +y is down-left (sw). */
 export type Facing = "ne" | "nw" | "se" | "sw";
-export type Errand = "seat" | "wander" | "coffee" | "visit" | null;
+export type Errand = "seat" | "wander" | "coffee" | "visit" | "huddle" | null;
 
 const SPEED = 2.4; // tiles per second
 
@@ -38,6 +38,9 @@ export class IsoBot {
   pause = 0;
   /** Lead only: agent it is walking over to (set by the scene, cleared on the way back). */
   visit: string | null = null;
+  /** Scrum-board spot to gather at while the lead plans (set by the scene), and how long to stay. */
+  huddle: Tile | null = null;
+  huddleFor = 4;
   mode: Mode = "stopped";
 
   constructor(public id: string, public isLead: boolean, start: Tile) {
@@ -72,6 +75,9 @@ export class IsoBot {
   }
 }
 
+/** Only agents that are up and not waiting on someone join a huddle. */
+export const canHuddle = (mode: Mode) => mode === "working" || mode === "idle" || mode === "cheer";
+
 export const seatOf = (l: IsoLayout, id: string): Tile | undefined => l.seats.find((s) => s.agentId === id)?.tile;
 
 /** A walkable tile beside an agent's seat, for the lead to stand on. */
@@ -89,6 +95,7 @@ export function targetFor(bot: IsoBot, l: IsoLayout, mode: Mode, rand: () => num
     const t = besideSeat(l, bot.visit);
     if (t) return { tile: t, errand: "visit" };
   }
+  if (bot.huddle && canHuddle(mode)) return { tile: bot.huddle, errand: "huddle" };
   if (mode === "idle" && !bot.isLead) {
     const { coffee, wander } = l.spots;
     if (rand() < 0.4 && coffee.length) return { tile: coffee[Math.floor(rand() * coffee.length)], errand: "coffee" };
@@ -109,6 +116,10 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
   if (mode !== "idle" && (bot.errand === "wander" || bot.errand === "coffee")) {
     bot.errand = null;
     bot.pause = 0;
+  }
+  if (bot.huddle && !canHuddle(mode)) {
+    bot.huddle = null;
+    if (bot.errand === "huddle") (bot.errand = null), (bot.pause = 0), (bot.path = []);
   }
   bot.pause = Math.max(0, bot.pause - dt);
 
@@ -134,6 +145,10 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
       bot.pause = 2.5;
       const target = bot.visit ? seatOf(l, bot.visit) : undefined;
       if (target) bot.facing = target[0] > bot.tile()[0] ? "se" : target[0] < bot.tile()[0] ? "nw" : "sw";
+    } else if (bot.errand === "huddle") {
+      bot.pause = still ? 0 : bot.huddleFor;
+      bot.facing = "ne"; // facing the board
+      if (still) (bot.huddle = null), (bot.errand = null);
     } else if (bot.errand === "wander" || bot.errand === "coffee") {
       bot.pause = (bot.errand === "coffee" ? 2 : 1.5) + rand() * 3;
       if (bot.errand === "coffee") bot.facing = "ne";
@@ -146,6 +161,7 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
 
   if (bot.pause > 0) return;
   if (bot.errand === "visit") bot.visit = null; // visit over: go home
+  if (bot.errand === "huddle") bot.huddle = null; // huddle over: back to work
   if (bot.errand === "wander" || bot.errand === "coffee") bot.errand = null;
 
   const want = targetFor(bot, l, still && mode === "idle" ? "working" : mode, rand);

@@ -18,6 +18,7 @@ const ICON: Record<ActivityType, [string, string]> = {
   deploy: ["▲", "#3ee0d0"],
   session: ["◆", "#6e7b94"],
   config: ["⚙", "#6e7b94"],
+  "scope.refused": ["⛔", "#ff3b3b"],
 };
 
 const EMPTY: ActivityEvent[] = [];

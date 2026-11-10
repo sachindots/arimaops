@@ -320,7 +320,8 @@ export type ActivityType =
   | "pr.merged"
   | "deploy"
   | "session"
-  | "config";
+  | "config"
+  | "scope.refused";
 
 export interface ActivityEvent {
   id: string;

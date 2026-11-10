@@ -104,7 +104,10 @@ export class Findings {
     if (project.type !== "security") throw new Error("This project isn't a security engagement, so findings aren't tracked here. Write it as a deliverable instead.");
     const target = clip(input.target, 300);
     const s = checkScope(project.scope, target);
-    if (!s.ok) throw new Error(`Not recorded: ${s.why} Only report findings on in-scope targets.`);
+    if (!s.ok) {
+      this.hub.activity("scope.refused", reporterId, `${this.hub.name(reporterId)} tried to report on ${target || "an unnamed target"}: refused, ${s.why}`);
+      throw new Error(`Not recorded: ${s.why} Only report findings on in-scope targets.`);
+    }
     const title = clip(input.title, 160);
     if (!title) throw new Error("Give the finding a short title.");
     const severity = SEVERITIES.includes(input.severity as Severity) ? (input.severity as Severity) : "info";

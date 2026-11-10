@@ -1,6 +1,7 @@
 // Isometric office: projection, building layout and robot behaviour. Run: npx tsx scripts/office-test.ts
 import type { AgentStatus } from "../src/data/types";
 import { besideSeat, IsoBot, modeOf, seatOf, targetFor, update, type Mode } from "../src/office/iso/behaviour";
+import { EventDiff } from "../src/office/iso/events";
 import { generateIsoLayout, hasSoc, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
 
@@ -134,9 +135,65 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   }
   check("lead: walks to the alerted agent's desk, then home", arrived && left && lead.at(home) && lead.visit === null && lead.facing === "ne");
 
+  // Huddle: an up agent walks to its scrum spot, stays a while, then returns; a stopped one never joins.
+  {
+    const spot = l.spots.scrum[0];
+    const h = new IsoBot("nyx", false, seat);
+    run(h, "working", 1);
+    h.huddle = spot;
+    h.huddleFor = 3;
+    let reached = false;
+    for (let i = 0; i < 30 * 60; i++) {
+      update(h, l, "working", 1 / 60, rand);
+      if (h.at(spot) && h.errand === "huddle") reached = true;
+    }
+    check("huddle: goes to the scrum board, then back to its desk", reached && h.at(seat) && h.huddle === null);
+    const s2 = new IsoBot("lyra", false, seatOf(l, "lyra") as [number, number]);
+    run(s2, "stopped", 1);
+    s2.huddle = spot;
+    run(s2, "stopped", 5);
+    check("huddle: a stopped agent stays put and drops the huddle", s2.at(seatOf(l, "lyra") as [number, number]) && s2.huddle === null);
+  }
+
   const still = new IsoBot("nyx", false, seat);
   run(still, "idle", 5, true);
   check("reduced motion: idle agents stay seated", still.at(seat) && !still.moving);
+}
+
+// ---------------------------------------------------------------- events
+{
+  const base = {
+    config: { team: [{ id: "cipher", isLead: true }, { id: "nyx", isLead: false }, { id: "lyra", isLead: false }], project: { type: "security" } },
+    activity: [{ id: "a1", type: "pr.merged", agentId: "nyx", at: "", text: "" }],
+    messages: [{ id: "m1", fromId: "cipher", toId: "nyx" }],
+    pullRequests: [{ number: 3, authorId: "nyx", merged: false }],
+    findings: [{ id: "F-001", severity: "high", reporterId: "nyx" }],
+    tasks: [{ id: "t1", title: "Write report", status: "done" }],
+  };
+  const d = new EventDiff();
+  check("events: the first snapshot replays no history", d.next(base as never).length === 0);
+  const next = {
+    ...base,
+    activity: [
+      { id: "a4", type: "scope.refused", agentId: "nyx", at: "", text: "" },
+      { id: "a3", type: "task.created", agentId: "cipher", at: "", text: "" },
+      { id: "a2", type: "task.created", agentId: "cipher", at: "", text: "" },
+      { id: "a5", type: "pr.merged", agentId: "lyra", at: "", text: "" },
+      ...base.activity,
+    ],
+    messages: [{ id: "m3", fromId: "nyx", toId: "nyx" }, { id: "m2", fromId: "nyx", toId: "lyra" }, ...base.messages],
+    pullRequests: [{ number: 4, authorId: "lyra", merged: false }, { number: 5, authorId: "cipher", merged: false }, ...base.pullRequests],
+    findings: [...base.findings, { id: "F-002", severity: "critical", reporterId: "lyra" }],
+    tasks: [...base.tasks, { id: "t2", title: "Final report", status: "done" }, { id: "t3", title: "Recon", status: "done" }],
+  };
+  const evs = d.next(next as never);
+  const kinds = evs.map((e) => e.kind).join(",");
+  check("events: two new tasks are one huddle, first", evs[0]?.kind === "huddle" && evs.filter((e) => e.kind === "huddle").length === 1, kinds);
+  check("events: merge cheers, refusal flashes", evs.some((e) => e.kind === "cheer" && e.agentId === "lyra") && evs.some((e) => e.kind === "refused"), kinds);
+  check("events: worker-to-worker message is a chat plane; self-messages ignored", evs.filter((e) => e.kind === "plane").length === 1 && evs.some((e) => e.kind === "plane" && e.chat), kinds);
+  check("events: a worker's new PR flies to the lead; the lead's own doesn't", evs.filter((e) => e.kind === "parcel").length === 1 && evs.some((e) => e.kind === "parcel" && e.num === 4), kinds);
+  check("events: new finding and finished report", evs.some((e) => e.kind === "finding" && e.id === "F-002" && e.severity === "critical") && evs.filter((e) => e.kind === "report").length === 1, kinds);
+  check("events: nothing repeats", d.next(next as never).length === 0);
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
