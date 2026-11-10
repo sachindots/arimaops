@@ -10,12 +10,13 @@ export interface Insets {
   bottom: number;
 }
 
-const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
 // Zoom moves in steps of 1/devicePixelRatio, so zoom × dpr is always a whole
 // number and every art pixel covers whole device pixels (1.5x is crisp on Retina).
 const DPR = Math.max(1, Math.round(window.devicePixelRatio || 1));
 const STEP = 1 / DPR;
+// Down to one device pixel per art pixel: still crisp, and on a tablet or phone twice as far out as 1×.
+const MIN_ZOOM = STEP;
 const snapZoom = (z: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(z / STEP) * STEP));
 const snapPx = (v: number) => Math.round(v * DPR) / DPR;
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);

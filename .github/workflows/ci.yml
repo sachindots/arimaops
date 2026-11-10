@@ -52,6 +52,8 @@ jobs:
         run: npx tsx scripts/container-test.ts
       - name: Isometric office (projection and building layout)
         run: npx tsx scripts/office-test.ts
+      - name: Account limits test
+        run: npx tsx scripts/accounts-test.ts
       - name: Pack
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack

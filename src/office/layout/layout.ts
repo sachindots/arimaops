@@ -49,7 +49,7 @@ export interface Rack extends PxRect {
   agentId: string | null;
 }
 
-export type HitKind = "agent" | "plan" | "prs" | "gate" | "env";
+export type HitKind = "agent" | "plan" | "prs" | "gate" | "env" | "wing"; // wing: a project in the iso building (id = project)
 
 export interface Hit {
   kind: HitKind;

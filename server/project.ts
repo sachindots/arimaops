@@ -16,6 +16,7 @@ import { log } from "./lib/log";
 import { agentToken } from "./paths";
 import { Planner } from "./planner";
 import { setLiveProject } from "./projectsRegistry";
+import { markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -144,7 +145,19 @@ export async function startProject(path: string, port: number, paused: boolean):
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
   planner.findings = new Findings(hub);
+  // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
+  const stopListening = onAccountLimit((cli, until, from) => {
+    const marked = markLimited(hub, cli, until, from);
+    if (!marked.length) return;
+    const at = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    hub.activity("agent.needs-input", null, `${marked.join(", ")} paused until ${at}: the ${cli} account hit its usage limit (${from.name}${from.project === slug ? "" : ` in ${from.project}`}).`);
+    const lead = hub.snap.config.team.find((a) => a.isLead);
+    if (lead && !marked.includes(lead.name))
+      planner.notify(lead.id, `The ${cli} subscription hit its usage limit until ${at}, so ${marked.join(", ")} can't work until then. Move urgent tasks to agents on another CLI, or wait.`);
+  });
   sessions.onLimit = (id, until) => {
+    const agentCfg = hub.cfg(id);
+    if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name });
     const lead = hub.snap.config.team.find((a) => a.isLead);
     const agent = hub.cfg(id);
     if (!lead || !agent || lead.id === id) return;
@@ -192,6 +205,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       rt.pause();
       inbox.stop();
       clearInterval(usageTimer);
+      stopListening();
       sessions.shutdown();
     },
   };

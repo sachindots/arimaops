@@ -20,6 +20,7 @@ export type FocusTarget =
   | { kind: "plan" }
   | { kind: "prs" }
   | { kind: "env"; name: string }
+  | { kind: "wing"; project: string }
   | { kind: "home" };
 
 export interface HoverInfo {

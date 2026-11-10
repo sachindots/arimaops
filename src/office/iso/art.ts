@@ -129,36 +129,52 @@ function textRows(str: string, scale = 1): string[] {
 
 // ------------------------------------------------------------------ floor
 
-export function buildFloor(l: IsoLayout): HTMLCanvasElement {
+/** Tile block (exclusive end) the floor is drawn on; a building passes one per wing. */
+export interface Block {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** Walkway between rows of wings: a dark street with a faint centre line. */
+const STREET = ["#0d121e", "#0b101b"];
+
+export function buildFloor(l: IsoLayout, blocks: Block[] = [{ x0: 0, y0: 0, x1: l.W, y1: l.H }], streets: Block[] = []): HTMLCanvasElement {
   const canvas = makeCanvas(l.worldW, l.worldH);
   const p = new CanvasPen(canvas.getContext("2d") as CanvasRenderingContext2D);
   const c: Ctx = { p, ox: l.origin.x, oy: l.origin.y };
   p.rect(0, 0, l.worldW, l.worldH, "#070910");
-  // Ground shadow and the slab the building stands on.
-  faceZ(c, -14, 0.6, 0.6, l.W + 0.6, l.H + 0.6, "#04050a", 0.6);
-  faceY(c, l.H, 0, l.W, -10, 0, "#161b2a");
-  faceX(c, l.W, 0, l.H, -10, 0, "#0f131f");
-  for (let y = 0; y < l.H; y++)
-    for (let x = 0; x < l.W; x++) {
-      const zone = zoneAt(l, x, y)?.kind ?? "floor";
-      const [a, b] = FLOOR[zone];
-      faceZ(c, 0, x, y, x + 1, y + 1, (x + y) % 2 ? a : b);
-      if (zone === "soc") {
-        // Faint cyan grid on the SOC floor.
-        seg(c, S(c, x, y), S(c, x + 1, y), "#0f2238");
-        seg(c, S(c, x, y), S(c, x, y + 1), "#0f2238");
-      } else if (zone === "lead" && (x + y) % 2) {
-        const m = S(c, x + 0.5, y + 0.5);
-        p.rect(m.x, m.y, 1, 1, GOLD_D, 0.7);
+  // Ground shadow and the slab each block stands on.
+  for (const b of [...blocks, ...streets]) faceZ(c, -14, b.x0 + 0.6, b.y0 + 0.6, b.x1 + 0.6, b.y1 + 0.6, "#04050a", 0.6);
+  for (const b of streets)
+    for (let y = b.y0; y < b.y1; y++)
+      for (let x = b.x0; x < b.x1; x++) faceZ(c, -2, x, y, x + 1, y + 1, STREET[(x + y) % 2]);
+  for (const b of blocks) {
+    faceY(c, b.y1, b.x0, b.x1, -10, 0, "#161b2a");
+    faceX(c, b.x1, b.y0, b.y1, -10, 0, "#0f131f");
+    for (let y = b.y0; y < b.y1; y++)
+      for (let x = b.x0; x < b.x1; x++) {
+        const zone = zoneAt(l, x, y)?.kind ?? "floor";
+        const [a, bb] = FLOOR[zone];
+        faceZ(c, 0, x, y, x + 1, y + 1, (x + y) % 2 ? a : bb);
+        if (zone === "soc") {
+          // Faint cyan grid on the SOC floor.
+          seg(c, S(c, x, y), S(c, x + 1, y), "#0f2238");
+          seg(c, S(c, x, y), S(c, x, y + 1), "#0f2238");
+        } else if (zone === "lead" && (x + y) % 2) {
+          const m = S(c, x + 0.5, y + 0.5);
+          p.rect(m.x, m.y, 1, 1, GOLD_D, 0.7);
+        }
       }
-    }
-  seg(c, S(c, 0, l.H), S(c, l.W, l.H));
-  seg(c, S(c, l.W, l.H), S(c, l.W, 0));
-  seg(c, S(c, 0, l.H, -10), S(c, l.W, l.H, -10));
-  seg(c, S(c, l.W, l.H, -10), S(c, l.W, 0, -10));
-  seg(c, S(c, l.W, l.H), S(c, l.W, l.H, -10));
-  seg(c, S(c, 0, l.H), S(c, 0, l.H, -10));
-  seg(c, S(c, l.W, 0), S(c, l.W, 0, -10));
+    seg(c, S(c, b.x0, b.y1), S(c, b.x1, b.y1));
+    seg(c, S(c, b.x1, b.y1), S(c, b.x1, b.y0));
+    seg(c, S(c, b.x0, b.y1, -10), S(c, b.x1, b.y1, -10));
+    seg(c, S(c, b.x1, b.y1, -10), S(c, b.x1, b.y0, -10));
+    seg(c, S(c, b.x1, b.y1), S(c, b.x1, b.y1, -10));
+    seg(c, S(c, b.x0, b.y1), S(c, b.x0, b.y1, -10));
+    seg(c, S(c, b.x1, b.y0), S(c, b.x1, b.y0, -10));
+  }
   return canvas;
 }
 

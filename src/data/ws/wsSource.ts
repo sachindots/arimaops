@@ -3,7 +3,8 @@
 
 import type { OfficeDataSource, OfficeEvent } from "../source";
 
-export function createWsSource(token: string, project = ""): OfficeDataSource {
+/** `watch`: a read-only feed for the one-building office (no terminal output; the server ignores commands). */
+export function createWsSource(token: string, project = "", opts: { watch?: boolean } = {}): OfficeDataSource {
   let ws: WebSocket | null = null;
   const queue: string[] = [];
 
@@ -43,6 +44,7 @@ export function createWsSource(token: string, project = ""): OfficeDataSource {
         const q = new URLSearchParams();
         if (token) q.set("token", token);
         if (project) q.set("project", project);
+        if (opts.watch) q.set("watch", "1");
         const sock = new WebSocket(`${proto}://${location.host}/ws${q.size ? `?${q}` : ""}`);
         socket = sock;
         let opened = false;

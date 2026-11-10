@@ -69,7 +69,7 @@ export function followBuilding(): () => void {
     for (const p of want) {
       set(p.id, { name: p.officeName || p.name });
       if (sockets.has(p.id)) continue;
-      const src = createWsSource(token(), p.id);
+      const src = createWsSource(token(), p.id, { watch: true });
       sockets.set(
         p.id,
         src.connect((e) => {

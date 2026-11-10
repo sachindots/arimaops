@@ -43,3 +43,52 @@ export function demoSnapshot(snap: OfficeSnapshot): OfficeSnapshot {
   last = { from: snap, to };
   return to;
 }
+
+/** `?officeDemo=1&officeWings=N`: N-1 made-up projects around yours, to test a big building. Scene-only. */
+export const demoWingCount = () => {
+  try {
+    return Math.min(60, Math.max(0, Number(new URLSearchParams(location.search).get("officeWings")) || 0));
+  } catch {
+    return 0;
+  }
+};
+
+const NAMES = ["Atlas", "Beacon", "Cinder", "Delta", "Ember", "Fjord", "Garnet", "Harbor", "Indigo", "Juniper", "Kestrel", "Lumen", "Mosaic", "Nimbus", "Onyx", "Pylon", "Quartz", "Raven", "Sable", "Tundra"];
+const ROLES = ["Developer", "Reviewer", "Docs Writer", "Frontend", "Red Teamer"];
+const COLORS = ["#c9b6ff", "#ff9f1c", "#ff2a85", "#00e5ff", "#00ff66", "#ffd166"];
+
+let fakes: { key: string; list: { id: string; name: string; snap: OfficeSnapshot }[] } | null = null;
+
+export function demoOthers(base: OfficeSnapshot, n: number): { id: string; name: string; snap: OfficeSnapshot }[] {
+  const key = `${n}|${base.config.project.id}`;
+  if (fakes?.key === key) return fakes.list;
+  const template = base.config.team.find((a) => !a.isLead) ?? base.config.team[0];
+  const now = new Date().toISOString();
+  const list = Array.from({ length: Math.max(0, n - 1) }, (_, p) => {
+    const security = p % 5 === 3;
+    const size = 2 + (p % 4);
+    const team: AgentConfig[] = Array.from({ length: size }, (_, i) => ({
+      ...template,
+      id: `a${i}`,
+      name: `${NAMES[p % NAMES.length].slice(0, 3)}${i}`,
+      role: i === 0 ? (security ? "Red Team Commander" : "Tech Lead") : security ? "Red Teamer" : ROLES[(p + i) % 4],
+      department: i === 0 ? "exec" : security ? "red-team" : "eng",
+      isLead: i === 0,
+      color: COLORS[(p + i) % COLORS.length],
+    }));
+    const agents: AgentStatus[] = team.map((a, i) => {
+      const [state, session] = STATES[(p + i) % STATES.length];
+      return { agentId: a.id, state, currentTaskId: null, stateSince: now, note: null, session: { state: (p + i) % 3 === 0 ? "stopped" : session, detail: null, workspace: null, sandbox: null } };
+    });
+    const id = `demo-${NAMES[p % NAMES.length].toLowerCase()}${p >= NAMES.length ? p : ""}`;
+    const name = `${NAMES[p % NAMES.length]}${p >= NAMES.length ? ` ${p}` : ""}`;
+    const snap: OfficeSnapshot = {
+      ...base,
+      config: { ...base.config, team, project: { ...base.config.project, id, name, officeName: name, type: security ? "security" : "software" } },
+      agents, messages: [], activity: [], pullRequests: [], findings: [], tasks: [],
+    };
+    return { id, name, snap };
+  });
+  fakes = { key, list };
+  return list;
+}

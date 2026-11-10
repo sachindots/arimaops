@@ -13,6 +13,8 @@ import { adapters, containerArgs, localBinary } from "./adapters";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
+import { maxAgents, runningAgents } from "./accounts";
+import { liveHubs } from "./projectsRegistry";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
@@ -109,6 +111,12 @@ export class Sessions {
       return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
+
+    // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
+    const hubs = liveHubs().includes(hub) ? liveHubs() : [...liveHubs(), hub];
+    const cap = maxAgents();
+    if (runningAgents(hubs) >= cap)
+      return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);
 
     const name = this.name(id);
     this.onSessionDown(id);

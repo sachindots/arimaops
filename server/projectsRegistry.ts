@@ -38,6 +38,9 @@ export function setLiveProject(root: string, project: LiveProject) {
   live.set(resolve(root), project);
 }
 
+/** Hubs of every project loaded in this HQ (for machine-wide limits). */
+export const liveHubs = (): Hub[] => [...live.values()].map((p) => p.hub);
+
 const registryFile = () => {
   const dir = join(homedir(), BRAND.homeDir);
   mkdirSync(dir, { recursive: true });

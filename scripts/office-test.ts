@@ -1,7 +1,7 @@
 // Isometric office: projection, building layout and robot behaviour. Run: npx tsx scripts/office-test.ts
 import type { AgentStatus } from "../src/data/types";
 import { besideSeat, IsoBot, modeOf, seatOf, targetFor, update, type Mode } from "../src/office/iso/behaviour";
-import { generateBuilding, remoteId, splitRemoteId } from "../src/office/iso/building";
+import { arrange, generateBuilding, remoteId, ROW_GAP, splitRemoteId } from "../src/office/iso/building";
 import { EventDiff } from "../src/office/iso/events";
 import { generateIsoLayout, hasSoc, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
@@ -188,6 +188,33 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   check("building: the wall between wings is cut away", b.items.filter((it) => it.kind === "wall" && it.x === b.wings[1].x0 && it.y > 0).every((it) => it.low));
   check("building: signs carry the project names", b.items.some((it) => it.decal === "sign" && it.label === "Lab Engagement") && !one.items.some((it) => it.label));
   check("remote ids round-trip", JSON.stringify(splitRemoteId(remoteId("lab", "rook"))) === JSON.stringify({ project: "lab", agentId: "rook" }) && splitRemoteId("rook") === null);
+}
+
+// ---------------------------------------------------------------- a big building (20 projects)
+{
+  const teams = Array.from({ length: 20 }, (_, p) => {
+    const sec = p % 5 === 3;
+    const team: TeamMember[] = Array.from({ length: 2 + (p % 4) }, (_, i) => ({
+      id: remoteId(`p${p}`, `a${i}`),
+      role: i === 0 ? "Tech Lead" : sec ? "Red Teamer" : "Developer",
+      isLead: i === 0,
+      department: i === 0 ? "exec" : sec ? "red-team" : "eng",
+    }));
+    return { project: `p${p}`, name: `P${p}`, type: (sec ? "security" : "software") as "security" | "software", team };
+  });
+  const b = generateBuilding(teams);
+  const rows = new Set(b.wings.map((w) => w.y0)).size;
+  const cols = Math.max(...[...new Set(b.wings.map((w) => w.y0))].map((y) => b.wings.filter((w) => w.y0 === y).length));
+  check("20 projects: a grid, not a strip", rows >= 3 && cols <= 6 && b.W + b.H < 200, `${cols}×${rows}, W+H=${b.W + b.H}`);
+  check("20 projects: rows don't overlap and leave a walkway", b.wings.every((w) => b.wings.every((v) => v === w || v.x1 < w.x0 || v.x0 > w.x1 || v.y1 < w.y0 || v.y0 > w.y1)) && [...new Set(b.wings.map((w) => w.y0))].sort((x, y) => x - y).every((y, i, a) => i === 0 || y - a[i - 1] === b.wings[0].y1 - b.wings[0].y0 + 1 + ROW_GAP));
+  const reachable = b.wings.every((w) => w.agentIds.every((id) => {
+    const seat = b.seats.find((s) => s.agentId === id)?.tile as [number, number];
+    const door = b.doors?.get(id) as [number, number];
+    return seat[0] >= w.x0 && seat[0] <= w.x1 && seat[1] >= w.y0 && seat[1] <= w.y1 && b.grid.find(door[0], door[1], seat[0], seat[1]).length > 0;
+  }));
+  check("20 projects: every agent sits in its own wing and can walk in from its door", reachable);
+  check("20 projects: the world is a few thousand px (cut into 2048 px floor tiles)", b.worldW < 6000 && b.worldH < 3500, `${b.worldW}×${b.worldH}`);
+  check("arrange: one project is one row; four make a 2×2", arrange([17], 19).length === 1 && arrange([17, 17, 17, 17], 19).length === 2);
 }
 
 // ---------------------------------------------------------------- events

@@ -15,12 +15,12 @@ import { CanvasPen, GfxPen, makeCanvas } from "../engine/pen";
 import { canvasTexture } from "../engine/textures";
 import type { PxRect } from "../layout/layout";
 import { attachInput, inside, type Target } from "../sceneInput";
-import { buildFloor, ITEM_TOP, itemCanvas, itemKey } from "./art";
+import { buildFloor, ITEM_TOP, itemCanvas, itemKey, type Block } from "./art";
 import { canHuddle, IsoBot, modeOf, seatOf, update, type Mode } from "./behaviour";
 import { EventDiff, SEVERITY_COLOR, type IsoEvent } from "./events";
 import { Fx } from "./fx";
-import { demoSnapshot, wantsDemo } from "./demo";
-import { buildingKey, generateBuilding, remoteId, type Building, type Wing, type WingInput } from "./building";
+import { demoOthers, demoSnapshot, demoWingCount, wantsDemo } from "./demo";
+import { buildingKey, generateBuilding, remoteId, ROW_GAP, type Building, type Wing, type WingInput } from "./building";
 import { doorOf, WALL_H, type Item } from "./layout";
 import type { Tile } from "../engine/path";
 import { depth, toScreen } from "./proj";
@@ -70,6 +70,7 @@ export interface IsoSceneOptions {
   compact?: boolean;
 }
 
+const FLOOR_TILE = 2048;
 const SEAT_LIFT = 7; // px a seated robot rises onto its chair
 const DIM = 0x8d98ad;
 
@@ -84,7 +85,7 @@ export class IsoScene {
   hover: { rect: PxRect; agentId: string | null } | null = null;
   /** Ticker CPU time per frame (ms); read as `__hqScene.perf` in dev. */
   perf = { frames: 0, total: 0, max: 0 };
-  private floor: Sprite | null = null;
+  private floor = new Container(); // the baked floor, in GPU-safe tiles
   private gOver = new Graphics();
   private textures = new Map<string, Texture>();
   private t = 0;
@@ -98,8 +99,9 @@ export class IsoScene {
   private diffs = new Map<string, EventDiff>(); // per project
   private fx = new Fx(() => this.reducedMotion);
   private cheerUntil = new Map<string, number>();
-  private screens: { sprite: Sprite; x: number }[] = []; // SOC screen wall slices (tile x), for finding flashes
+  private screens: { sprite: Sprite; x: number; y: number }[] = []; // SOC screen wall slices (tile x), for finding flashes
   private banners = new Container();
+  private bannerHits: { project: string; rect: PxRect }[] = [];
 
   constructor(private opts: IsoSceneOptions = {}) {}
 
@@ -113,7 +115,7 @@ export class IsoScene {
     const i = this.insets();
     const fits = (this.app.screen.width - i.left - i.right) / z >= (l?.worldW ?? 0) && (this.app.screen.height - i.top - i.bottom) / z >= (l?.worldH ?? 0);
     if (!l || !wing || l.wings.length < 2 || fits) return this.camera.home(animate);
-    const c = this.tileAt([(wing.x0 + wing.x1) / 2, l.H / 2]);
+    const c = this.tileAt([(wing.x0 + wing.x1) / 2, (wing.y0 + wing.y1) / 2]);
     this.camera.flyTo(c.x, c.y - 20, z, animate);
   }
   private demoT = 3;
@@ -125,7 +127,7 @@ export class IsoScene {
     if (this.destroyed) return void this.app.destroy(true);
     host.appendChild(this.app.canvas);
     this.app.canvas.style.imageRendering = "pixelated";
-    this.world.addChild(this.items, this.banners, this.fx.layer, this.gOver);
+    this.world.addChild(this.floor, this.items, this.banners, this.fx.layer, this.gOver);
     this.app.stage.addChild(this.world);
     this.camera = new Camera(
       this.world,
@@ -178,9 +180,10 @@ export class IsoScene {
     if (!cur) return [];
     const p = cur.config.project;
     const out: WingData[] = [{ project: p.id, name: p.officeName || p.name, current: true, snap: cur }];
-    const others = Object.values(useBuilding.getState().others).sort((a, b) => a.id.localeCompare(b.id));
-    for (const o of others) if (o.snap?.config.team.length) out.push({ project: o.id, name: o.name, current: false, snap: namespaced(o.snap, o.id) });
-    return out;
+    const fake = this.demo && demoWingCount() ? demoOthers(cur, demoWingCount()) : null;
+    for (const o of fake ?? Object.values(useBuilding.getState().others)) if (o.snap?.config.team.length) out.push({ project: o.id, name: o.name, current: false, snap: namespaced(o.snap, o.id) });
+    // A fixed order (not "yours first"): every tab and device sees the same building; home flies to your wing.
+    return out.sort((a, b) => a.project.localeCompare(b.project));
   }
 
   private sync() {
@@ -195,6 +198,7 @@ export class IsoScene {
       this.visits.clear();
       this.layout = null;
     }
+    this.currentProject = wings.find((w) => w.current)?.project ?? null;
     const inputs: WingInput[] = wings.map((w) => ({ project: w.project, name: w.name, type: w.snap.config.project.type, team: w.snap.config.team }));
     const fresh = this.layout?.key !== buildingKey(inputs);
     if (fresh) this.rebuild(generateBuilding(inputs), wings);
@@ -251,7 +255,7 @@ export class IsoScene {
   }
 
   private screensOf(wing: Wing) {
-    return this.screens.filter((x) => x.x >= wing.x0 && x.x <= wing.x1).map((x) => x.sprite);
+    return this.screens.filter((s) => s.x >= wing.x0 && s.x <= wing.x1 && s.y >= wing.y0 && s.y <= wing.y1).map((s) => s.sprite);
   }
 
   /** Middle of a wing's SOC screen wall (or null without a SOC). */
@@ -267,8 +271,9 @@ export class IsoScene {
     return wing.agentIds.find((id) => this.robots.get(id)?.bot.isLead) ?? null;
   }
 
+  private currentProject: string | null = null;
   private get currentWing(): Wing | null {
-    return this.layout?.wings[0] ?? null;
+    return this.layout?.wings.find((w) => w.project === this.currentProject) ?? null;
   }
 
   play(ev: IsoEvent, wing: Wing | null = this.currentWing) {
@@ -295,7 +300,7 @@ export class IsoScene {
       }
       case "cheer": {
         for (const id of wing.agentIds) if (canHuddle(this.modes.get(id) ?? "stopped")) this.cheerUntil.set(id, this.t + 2.6);
-        const at = this.head(ev.agentId) ?? this.head(this.leadOf(wing)) ?? this.tileAt([Math.floor((wing.x0 + wing.x1) / 2), Math.floor(l.H / 2)], 20);
+        const at = this.head(ev.agentId) ?? this.head(this.leadOf(wing)) ?? this.tileAt([Math.floor((wing.x0 + wing.x1) / 2), Math.floor((wing.y0 + wing.y1) / 2)], 20);
         fx.confetti(at);
         fx.label(ev.label, { x: at.x, y: at.y - 14 }, "#E8B339");
         break;
@@ -378,11 +383,7 @@ export class IsoScene {
     this.items.removeChildren().forEach((ch) => ch.destroy());
     this.screens = [];
     this.robots.clear();
-    const floorTex = canvasTexture(buildFloor(l));
-    if (this.floor) {
-      this.floor.texture.destroy(true);
-      this.floor.texture = floorTex;
-    } else this.floor = this.world.addChildAt(new Sprite(floorTex), 0);
+    this.bakeFloor(l);
     this.camera.setWorldSize(l.worldW, l.worldH);
 
     const desks = new Map<string, { sprite: Sprite; item: Item }>();
@@ -392,7 +393,7 @@ export class IsoScene {
       s.position.set(l.origin.x + at.x - 16, l.origin.y + at.y - ITEM_TOP);
       s.zIndex = depth(it.x + 0.5, it.y + 0.5);
       this.items.addChild(s);
-      if (it.decal === "screen") this.screens.push({ sprite: s, x: it.x });
+      if (it.decal === "screen") this.screens.push({ sprite: s, x: it.x, y: it.y });
       if (it.kind === "desk" && it.i === 0) desks.set(`${it.x},${it.y}`, { sprite: s, item: it });
     }
     const shadowTex = this.texture("shadow", () => {
@@ -422,9 +423,33 @@ export class IsoScene {
     if (first) this.home(false);
   }
 
+  /**
+   * Bakes the floor and cuts it into tiles of at most FLOOR_TILE px: one texture of a large building
+   * would pass a tablet GPU's texture size limit (4096 on many) and render black.
+   */
+  private bakeFloor(l: Building) {
+    const blocks: Block[] = l.wings.map((w) => ({ x0: w.x0, y0: w.y0, x1: w.x1 + 1, y1: w.y1 + 1 }));
+    // A walkway in front of each row but the last, the building's full width.
+    const rowEnds = [...new Set(l.wings.map((w) => w.y1))].sort((a, b) => a - b).slice(0, -1);
+    const streets: Block[] = rowEnds.map((y) => ({ x0: 0, y0: y + 1, x1: l.W, y1: y + 1 + ROW_GAP }));
+    const full = buildFloor(l, blocks, streets);
+    this.floor.removeChildren().forEach((ch) => ch.destroy({ texture: true, textureSource: true }));
+    for (let y = 0; y < full.height; y += FLOOR_TILE)
+      for (let x = 0; x < full.width; x += FLOOR_TILE) {
+        const w = Math.min(FLOOR_TILE, full.width - x);
+        const h = Math.min(FLOOR_TILE, full.height - y);
+        const c = makeCanvas(w, h);
+        (c.getContext("2d") as CanvasRenderingContext2D).drawImage(full, x, y, w, h, 0, 0, w, h);
+        const sp = new Sprite(canvasTexture(c));
+        sp.position.set(x, y);
+        this.floor.addChild(sp);
+      }
+  }
+
   /** With several projects: each wing's name over its back wall, the one you're viewing in gold. */
   private drawBanners(l: Building, wings: WingData[]) {
     this.banners.removeChildren().forEach((ch) => ch.destroy({ texture: true }));
+    this.bannerHits = [];
     if (l.wings.length < 2) return;
     for (const w of l.wings) {
       const current = wings.find((x) => x.project === w.project)?.current ?? false;
@@ -435,9 +460,10 @@ export class IsoScene {
       p.rect(1, 1, c.width - 2, c.height - 2, "#0B1220");
       text(p, label, 4, 3, current ? "#E8B339" : "#8A97B0", 2);
       const sprite = new Sprite(canvasTexture(c));
-      const at = toScreen((w.x0 + w.x1 + 1) / 2, 0);
+      const at = toScreen((w.x0 + w.x1 + 1) / 2, w.y0);
       sprite.position.set(Math.round(l.origin.x + at.x - c.width / 2), Math.round(l.origin.y + at.y - WALL_H - 30));
       this.banners.addChild(sprite);
+      this.bannerHits.push({ project: w.project, rect: { x: sprite.x, y: sprite.y, w: c.width, h: c.height } });
     }
   }
 
@@ -508,11 +534,18 @@ export class IsoScene {
     const { x, y } = this.camera.screenToWorld(sx, sy);
     const robots = [...this.robots].sort((a, b) => b[1].sprite.zIndex - a[1].sprite.zIndex);
     for (const [id, r] of robots) if (inside(r.rect, x, y)) return { hit: { kind: "agent", id, rect: r.rect }, rect: r.rect };
+    for (const b of this.bannerHits) if (inside(b.rect, x, y)) return { hit: { kind: "wing", id: b.project, rect: b.rect }, rect: b.rect };
     return null;
   }
 
   focusOn(target: FocusTarget) {
     if (target.kind === "home") return this.home();
+    if (target.kind === "wing") {
+      const w = this.layout?.wings.find((x) => x.project === target.project);
+      if (!w) return;
+      const c = this.tileAt([(w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2]);
+      return this.camera.flyTo(c.x, c.y - 20, Math.max(1, this.camera.zoom));
+    }
     if (target.kind !== "agent") return;
     const r = this.robots.get(target.id);
     if (r) this.camera.flyTo(r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2, Math.max(this.camera.zoom, Math.min(4, this.camera.fitZoom() + 1)));

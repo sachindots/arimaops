@@ -270,17 +270,23 @@ export function startHttp(o: Options) {
       return socket.destroy();
     }
     const remote = isRemote(req);
-    log.info(`ui connected: ${rt.slug} ${who.role}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
-    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who.role, who.deviceId, origin, remote));
+    // ?watch=1: the one-building office following another project. Status only (no terminal output), commands ignored.
+    const watch = url.searchParams.get("watch") === "1";
+    log.info(`ui connected: ${rt.slug} ${who.role}${watch ? " watching" : ""}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who.role, who.deviceId, origin, remote, watch));
   });
 
-  function onClient(ws: WebSocket, rt: Runtime, role: Role, deviceId: string, origin: string, remote: boolean) {
+  function onClient(ws: WebSocket, rt: Runtime, role: Role, deviceId: string, origin: string, remote: boolean, watch = false) {
     // A device that entered a code today stays elevated (24 h); a bare-token connection only until it closes.
     let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
-    const sendEvent = (e: OfficeEvent) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(e));
+    const sendEvent = (e: OfficeEvent) => {
+      if (watch && (e.type === "terminal.output" || e.type === "workspace.info")) return;
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(e));
+    };
     sendEvent({ type: "snapshot", snapshot: rt.hub.snap });
     const unsub = rt.hub.subscribe(sendEvent);
     ws.on("message", async (raw) => {
+      if (watch) return;
       try {
         const msg = JSON.parse(String(raw)) as { cmd?: string; args?: unknown[] };
         const cmd = String(msg.cmd ?? "");

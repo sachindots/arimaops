@@ -30,6 +30,14 @@ function remote(id: string): { project: string; agentId: string; name: string; s
 }
 
 function describe(hit: Hit): { title: string; sub?: string } {
+  if (hit.kind === "wing") {
+    const mine = useOffice.getState().snap;
+    const snap = mine?.config.project.id === hit.id ? mine : useBuilding.getState().others[hit.id]?.snap;
+    if (!snap) return { title: hit.id };
+    const up = snap.agents.filter((a) => a.session.state === "running").length;
+    const p = snap.config.project;
+    return { title: p.officeName || p.name, sub: `${snap.config.team.length} agents · ${up} running · tap to fly there` };
+  }
   const r = hit.kind === "agent" ? remote(hit.id) : null;
   const snap = r?.snap ?? useOffice.getState().snap;
   if (!snap) return { title: "" };
@@ -59,7 +67,8 @@ function describe(hit: Hit): { title: string; sub?: string } {
 
 function activate(hit: Hit) {
   const r = hit.kind === "agent" ? remote(hit.id) : null;
-  if (r) {
+  if (hit.kind === "wing") ui.focus({ kind: "wing", project: hit.id });
+  else if (r) {
     // Another project's agent: open that project with this agent's drawer.
     const url = new URL(location.href);
     url.searchParams.set("project", r.project);

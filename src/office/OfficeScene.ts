@@ -157,7 +157,7 @@ export class OfficeScene {
     } else if (target.kind === "prs") {
       const r = l.prBoard ?? l.gate ?? l.mailbox;
       if (r) this.camera.flyTo(r.x + r.w / 2, r.y + r.h, near);
-    } else {
+    } else if (target.kind === "env") {
       const r = l.racks.find((x) => x.name === target.name);
       if (r) this.camera.flyTo(r.x + r.w / 2, r.y + r.h / 2, near);
     }
