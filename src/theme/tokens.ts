@@ -19,6 +19,11 @@ export const colors = {
   pink: "#ff2a85",
   grass: "#050609",
   white: "#e6edf7",
+  // ArimaOps brand accents (HUD only; the office keeps its own palette).
+  gold: "#E8B339",
+  amber: "#F59E0B",
+  goldDark: "#B9791C",
+  cyan: "#22D3EE",
 } as const;
 
 export interface StateStyle {
