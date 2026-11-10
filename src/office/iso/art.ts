@@ -14,17 +14,19 @@ export const ITEM_TOP = 48;
 export const ITEM_H = ITEM_TOP + 16;
 
 const INK = "#05060b";
-const GOLD = "#f2b632";
-const GOLD_D = "#b8801c";
+const GOLD = "#E8B339";
+const GOLD_D = "#B9791C";
 const GOLD_L = "#ffe08a";
+const CREAM = "#F3EDE0";
 const CYAN = "#38e4ff";
 const CYAN_D = "#128aa8";
 const CYAN_DD = "#0a3240";
 type Shades = [top: string, left: string, right: string];
-const WALL: Shades = ["#414a63", "#2f374b", "#222838"];
+// Night-blue walls capped with a dark-gold trim; the SOC keeps its own dark shell.
+const WALL: Shades = [GOLD_D, "#26324e", "#19223a"];
 const WALL_DARK: Shades = ["#1d2535", "#141b29", "#0e131f"];
-const DESK: Shades = ["#4a5367", "#363d4e", "#282e3c"];
-const DESK_LEAD: Shades = ["#3a3047", "#2b2335", "#1f1927"];
+const DESK: Shades = ["#46506a", "#333b50", "#262c3d"];
+const DESK_LEAD: Shades = ["#3b3250", "#2b2439", "#1f1a2a"];
 const DESK_DARK: Shades = ["#262c3a", "#1b202b", "#13171f"];
 const METAL: Shades = ["#6b7489", "#4a5265", "#333a4a"];
 const WOOD: Shades = ["#9a6534", "#7a4e26", "#5a381a"];
@@ -32,11 +34,11 @@ const SOFA: Shades = ["#e0a94a", "#bb8530", "#8e6220"];
 const SOFA_BASE: Shades = ["#3a3040", "#2a2230", "#1d1822"];
 const CLAY: Shades = ["#8a4e36", "#6b3a27", "#4d291b"];
 const FLOOR: Record<ZoneKind, [string, string]> = {
-  lobby: ["#1c2236", "#181d2f"],
-  floor: ["#262b3b", "#212534"],
+  lobby: ["#161e33", "#121a2c"],
+  floor: ["#1e2740", "#1a2238"],
   lead: ["#1b2244", "#171d3b"],
-  scrum: ["#2a2d3c", "#242734"],
-  break: ["#2e2b38", "#282531"],
+  scrum: ["#232a40", "#1e2438"],
+  break: ["#2a2638", "#242131"],
   soc: ["#0a1020", "#080d1b"],
 };
 
@@ -124,7 +126,6 @@ function textRows(str: string, scale = 1): string[] {
   return trimmed.flatMap((r) => Array.from({ length: scale }, () => [...r].map((ch) => ch.repeat(scale)).join("")));
 }
 
-const padRows = (rows: string[], left: number, width: number) => rows.map((r) => (".".repeat(left) + r).padEnd(width, "."));
 
 // ------------------------------------------------------------------ floor
 
@@ -189,12 +190,12 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
       const P = (px: number, py: number, z: number) => S(c, px, py, z);
       if (it.glass) {
         // Pane along the run, a rail on top, a mullion at mid height, a post where the run ends.
-        if (run === "x") faceY(c, y1, x0, x1, 0, h, "#8fe3ff", 0.28);
-        else faceX(c, x1, y0, y1, 0, h, "#9fe9ff", 0.3);
+        if (run === "x") faceY(c, y1, x0, x1, 0, h, "#ffd98a", 0.2);
+        else faceX(c, x1, y0, y1, 0, h, "#ffe3a3", 0.22);
         const a = run === "x" ? [x0, y1] : [x1, y0];
         const b = run === "x" ? [x1, y1] : [x1, y1];
-        for (const z of [h / 2, h]) seg(c, P(a[0], a[1], z), P(b[0], b[1], z), "#d8f6ff");
-        seg(c, P(a[0], a[1], 0), P(b[0], b[1], 0), "#56a9c4");
+        for (const z of [h / 2, h]) seg(c, P(a[0], a[1], z), P(b[0], b[1], z), GOLD);
+        seg(c, P(a[0], a[1], 0), P(b[0], b[1], 0), GOLD_D);
         if (cap) box(c, x1 - 0.1, y1 - 0.1, x1, y1, 0, h + 1, METAL);
         continue;
       }
@@ -241,9 +242,18 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
       box(c, x + 0.3, y + 0.62, x + 0.74, y + 0.76, 14, 15, METAL, false);
       box(c, x + 0.42, y + 0.36, x + 0.6, y + 0.5, 14, 17, METAL, false);
       box(c, x + 0.22, y + 0.46, x + 0.8, y + 0.54, 17, 29, ["#2b3140", "#1a1f2a", "#12161f"]);
-      const glow = it.dark ? ["#0b2a38", CYAN, CYAN_D] : ["#17365c", "#7fc4ff", "#3a7fcc"];
-      const scr = ["aaaaaaaa", "abbaaaaa", "aaaccaaa", "abbbaaaa", "aaaaacaa", "abbaaaaa", "aaaaaaaa"];
-      decalY(c, x + 0.27, y + 0.54, 19, scr, { a: glow[0], b: glow[1], c: glow[2] }, 0, 9);
+      if (it.screen === "off") decalY(c, x + 0.27, y + 0.54, 19, ["aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa"], { a: "#0b0e16" }, 0, 9);
+      else {
+        const bright = it.screen === "glow";
+        const glow = it.dark ? ["#0b2a38", CYAN, CYAN_D] : bright ? ["#1d4a80", "#bfe6ff", "#5aa6ff"] : ["#17365c", "#7fc4ff", "#3a7fcc"];
+        const scr = ["aaaaaaaa", "abbaaaaa", "aaaccaaa", "abbbaaaa", "aaaaacaa", "abbaaaaa", "aaaaaaaa"];
+        decalY(c, x + 0.27, y + 0.54, 19, scr, { a: glow[0], b: glow[1], c: glow[2] }, 0, 9);
+        if (bright) {
+          // Light spilling onto the desk and keyboard.
+          faceZ(c, 14.2, x + 0.2, y + 0.56, x + 0.82, y + 0.84, it.dark ? CYAN : "#8fc8ff", 0.22);
+          faceZ(c, 14.3, x + 0.3, y + 0.6, x + 0.74, y + 0.78, it.dark ? CYAN : "#bfe6ff", 0.25);
+        }
+      }
     } else {
       // lamp, mug, papers
       faceZ(c, 14.5, x + 0.12, y + 0.3, x + 0.42, y + 0.62, "#d8dce6");
@@ -322,6 +332,58 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
     }
     const t = S(c, x + 0.5, y + 0.5, 32);
     c.p.rect(t.x - 4, t.y - 1, 8, 1, CYAN, 0.5);
+  },
+
+  rug(c, x, y, it) {
+    // One 3-wide rug per break area; the border runs round the outer tiles.
+    const i = it.i ?? 0;
+    const n = it.n ?? 3;
+    const col = i % n;
+    const row = Math.floor(i / n);
+    const x0 = col === 0 ? 0.1 : 0;
+    const x1 = col === n - 1 ? 0.9 : 1;
+    const y0 = row === 0 ? 0.1 : 0;
+    const y1 = row === n - 1 ? 0.9 : 1;
+    faceZ(c, 0.5, x + x0, y + y0, x + x1, y + y1, "#3a2b3c");
+    faceZ(c, 0.5, x + Math.max(x0, 0.15), y + Math.max(y0, 0.15), x + Math.min(x1, 0.85), y + Math.min(y1, 0.85), "#2c2231");
+    const m = S(c, x + 0.5, y + 0.5, 1);
+    c.p.rect(m.x - 1, m.y, 3, 1, GOLD_D, 0.5);
+  },
+
+  shelf(c, x, y, it) {
+    // Bookcase along the corridor wall; spines face the viewer (+y) on three shelves.
+    box(c, x, y + 0.05, x + 1, y + 0.45, 0, 30, ["#3a2d22", "#2a2019", "#1d1711"]);
+    const o = S(c, x, y + 0.45, 0);
+    const books = ["#c0392b", GOLD, "#2e86de", CREAM, "#27ae60", "#8e44ad", GOLD_D, "#e67e22"];
+    const seed = (it.i ?? 0) * 5;
+    for (let sh = 0; sh < 3; sh++) {
+      const zb = 3 + sh * 9;
+      for (let j = 1; j < 15; j++) {
+        if ((j * 7 + sh * 3 + seed) % 11 === 0) continue; // a gap now and then
+        const h = 5 + ((j * 3 + sh + seed) % 3);
+        c.p.rect(o.x + j, o.y + (j >> 1) - zb - h, 1, h, books[(j + sh * 2 + seed) % books.length]);
+      }
+      for (let j = 0; j < 16; j++) c.p.rect(o.x + j, o.y + (j >> 1) - zb, 1, 1, "#1d1711");
+    }
+  },
+
+  whiteboard(c, x, y) {
+    box(c, x + 0.18, y + 0.42, x + 0.28, y + 0.52, 0, 19, METAL, false);
+    box(c, x + 0.72, y + 0.42, x + 0.82, y + 0.52, 0, 19, METAL, false);
+    box(c, x + 0.1, y + 0.4, x + 0.9, y + 0.54, 18, 36, ["#2b3140", "#1a1f2a", "#12161f"]);
+    faceY(c, y + 0.55, x + 0.14, x + 0.86, 19, 35, CREAM);
+    const rows = ["tttt......", "..........", ".rrrr.....", ".r..r..g..", ".r..r.gg..", ".rrrr..g..", "..........", ".bbbbbbb..", "..........", ".ddd......"];
+    decalY(c, x + 0.18, y + 0.56, 22, rows, { t: "#1d3557", r: "#e63946", g: "#2a9d8f", b: "#1d3557", d: GOLD_D }, 0, 10);
+  },
+
+  cooler(c, x, y) {
+    box(c, x + 0.3, y + 0.3, x + 0.7, y + 0.7, 0, 18, ["#3e4a66", "#2b344a", "#1e2535"]);
+    box(c, x + 0.34, y + 0.34, x + 0.66, y + 0.66, 18, 30, ["#9fe0ff", "#5fb6e8", "#3a8fc4"]);
+    const m = S(c, x + 0.5, y + 0.5, 30);
+    c.p.rect(m.x - 2, m.y - 1, 4, 1, "#d8f6ff");
+    const f = S(c, x + 0.5, y + 0.7, 9);
+    c.p.rect(f.x - 1, f.y, 1, 2, "#3ddc84");
+    c.p.rect(f.x + 1, f.y, 1, 2, "#ff3b3b");
   },
 
   mat(c, x, y) {
@@ -405,21 +467,31 @@ function screenWall(c: Ctx, x: number, y: number, i: number, n: number) {
   }
 }
 
-/** Lobby sign: lion head + ARIMAOPS in gold on the reception counter's front, sliced over `n` tiles. */
+/** The mascot's head, 11×11: crown, gold mane, navy face, cyan eyes. */
+const MASCOT = [
+  "..Y...Y...Y",
+  "..YYYYYYYYY",
+  ".GGGGGGGGG.",
+  "GGnnnnnnnGG",
+  "GnnCnnnCnnG",
+  "GnnnnnnnnnG",
+  "GnnnGGGnnnG",
+  ".GnnnnnnnG.",
+  ".GGnnnnnGG.",
+  "..GGGGGGG..",
+  "...ddddd...",
+];
+export const MASCOT_PAL = { Y: "#FFD166", G: GOLD, n: "#243050", C: CYAN, d: GOLD_D, k: INK };
+
+/** Lobby sign: the mascot head + ARIMAOPS at double size, on the reception counter's front, sliced over `n` tiles. */
 function sign(c: Ctx, x: number, y: number, i: number, n: number) {
-  const lion = [
-    ".GG....GG.",
-    "GdGGGGGGdG",
-    "GGLGGGGLGG",
-    "GGkGGGGkGG",
-    "GGGGGGGGGG",
-    ".GGGkkGGG.",
-    ".GGkGGkGG.",
-    "..GGGGGG..",
-    "...GddG...",
-  ];
-  const txt = padRows(textRows("ArimaOps"), 0, 31);
-  const rows = lion.map((r, k) => r + ".." + (k >= 2 && k < 7 ? txt[k - 2] : ".".repeat(31)));
-  const left = Math.floor((16 * n - rows[0].length) / 2);
-  decalY(c, x, y + 0.01, 3, rows, { G: GOLD, d: GOLD_D, L: GOLD_L, k: INK, "#": GOLD_L }, 16 * i - left, 16);
+  const txt = textRows("ArimaOps", 2);
+  const gap = 3;
+  const w = MASCOT[0].length + gap + txt[0].length;
+  const rows = MASCOT.map((r, k) => r + ".".repeat(gap) + (k >= 1 && k < 11 ? txt[k - 1] : ".".repeat(txt[0].length)));
+  // Dark plate behind, one pixel larger than the art.
+  const plate = Array.from({ length: rows.length + 2 }, () => "p".repeat(w + 2));
+  const left = Math.floor((16 * n - w) / 2);
+  decalY(c, x, y + 0.01, 1, plate, { p: "#0B1220" }, 16 * i - left + 1, 16);
+  decalY(c, x, y + 0.02, 2, rows, { ...MASCOT_PAL, "#": GOLD }, 16 * i - left, 16);
 }
