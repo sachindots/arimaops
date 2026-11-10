@@ -13,7 +13,7 @@ import { Camera } from "../engine/camera";
 import { text, textW } from "../engine/font";
 import { CanvasPen, GfxPen, makeCanvas } from "../engine/pen";
 import { canvasTexture } from "../engine/textures";
-import type { PxRect } from "../layout/layout";
+import type { PxRect } from "../types";
 import { attachInput, inside, type Target } from "../sceneInput";
 import { buildFloor, ITEM_TOP, itemCanvas, itemKey, type Block } from "./art";
 import { canHuddle, IsoBot, modeOf, seatOf, update, type Mode } from "./behaviour";
@@ -71,7 +71,8 @@ export interface IsoSceneOptions {
 }
 
 const FLOOR_TILE = 2048;
-const SEAT_LIFT = 7; // px a seated robot rises onto its chair
+const SEAT_LIFT = 7;
+const shift = ([x, y]: Tile, dx: number, dy: number): Tile => [x + dx, y + dy]; // px a seated robot rises onto its chair
 const DIM = 0x8d98ad;
 
 export class IsoScene {
@@ -102,19 +103,21 @@ export class IsoScene {
   private screens: { sprite: Sprite; x: number; y: number }[] = []; // SOC screen wall slices (tile x), for finding flashes
   private banners = new Container();
   private bannerHits: { project: string; rect: PxRect }[] = [];
+  private carried = new Set<string>(); // robots kept across the last rebuild
 
   constructor(private opts: IsoSceneOptions = {}) {}
 
   private insets = () => (this.opts.compact ? { left: 8, top: 8, bottom: 8, right: 8 } : { left: 312, top: 74, bottom: 16, right: useUi.getState().drawer ? 552 : 16 });
 
-  /** The whole building when it fits; otherwise the wing you're viewing (zoom never drops below 1, to keep pixels crisp). */
+  /** The whole building when it fits at 1x or closer; otherwise the wing you're viewing, at 1x. */
   private home(animate = true) {
     const l = this.layout;
     const wing = this.currentWing;
-    const z = this.camera.fitZoom();
+    // Home stays at 1x or closer (readable); below that is yours to choose with zoom out.
+    const z = Math.max(1, this.camera.fitZoom());
     const i = this.insets();
     const fits = (this.app.screen.width - i.left - i.right) / z >= (l?.worldW ?? 0) && (this.app.screen.height - i.top - i.bottom) / z >= (l?.worldH ?? 0);
-    if (!l || !wing || l.wings.length < 2 || fits) return this.camera.home(animate);
+    if (!l || !wing || fits) return this.camera.home(animate);
     const c = this.tileAt([(wing.x0 + wing.x1) / 2, (wing.y0 + wing.y1) / 2]);
     this.camera.flyTo(c.x, c.y - 20, z, animate);
   }
@@ -160,7 +163,7 @@ export class IsoScene {
       this.perf.total += ms;
       this.perf.max = Math.max(this.perf.max, ms);
     });
-    if (import.meta.env.DEV) Object.assign(window, { __hqScene: this, __hqStore: useOffice });
+    if (import.meta.env.DEV) Object.assign(window, { __hqScene: this, __hqStore: useOffice, __hqBuilding: useBuilding });
   }
 
   destroy() {
@@ -218,7 +221,7 @@ export class IsoScene {
         const mode = modeOf(agents.find((s) => s.agentId === a.id));
         this.modes.set(a.id, mode);
         r.color = a.color;
-        if (fresh) {
+        if (fresh && !this.carried.has(a.id)) {
           // First sight: everyone is already at their desk, except an agent that is just starting (at the door).
           r.bot.mode = mode;
           r.bot.place(mode === "starting" ? doorOf(l, a.id) : (seatOf(l, a.id) ?? doorOf(l, a.id)));
@@ -379,10 +382,20 @@ export class IsoScene {
   private rebuild(l: Building, wings: WingData[]) {
     // Frame the whole building again when it first appears or a project's wing comes or goes.
     const first = !this.layout || this.layout.wings.length !== l.wings.length;
+    // Robots that stay in the building keep their spot (moved with their wing) instead of jumping to their desk.
+    const before = this.layout;
+    const kept = new Map<string, { bot: IsoBot; dx: number; dy: number }>();
+    if (before)
+      for (const [id, r] of this.robots) {
+        const was = before.wings.find((w) => w.agentIds.includes(id));
+        const now = l.wings.find((w) => w.agentIds.includes(id));
+        if (was && now) kept.set(id, { bot: r.bot, dx: now.x0 - was.x0, dy: now.y0 - was.y0 });
+      }
     this.layout = l;
     this.items.removeChildren().forEach((ch) => ch.destroy());
     this.screens = [];
     this.robots.clear();
+    this.carried.clear();
     this.bakeFloor(l);
     this.camera.setWorldSize(l.worldW, l.worldH);
 
@@ -413,8 +426,21 @@ export class IsoScene {
       const bubble = new Sprite();
       bubble.visible = false;
       this.items.addChild(shadow, sprite, bubble);
+      const bot = new IsoBot(a.id, a.isLead, seat);
+      const k = kept.get(a.id);
+      const at: Tile | null = k ? [Math.floor(k.bot.x + k.dx), Math.floor(k.bot.y + k.dy)] : null;
+      if (k && at && l.grid.ok(...at)) {
+        bot.x = k.bot.x + k.dx;
+        bot.y = k.bot.y + k.dy;
+        Object.assign(bot, { facing: k.bot.facing, mode: k.bot.mode, visit: k.bot.visit, pause: k.bot.pause });
+        this.carried.add(a.id);
+      } else if (k && seatOf(l, a.id) && k.bot.at(shift(seatOf(l, a.id) as Tile, -k.dx, -k.dy))) {
+        // Seated (chairs aren't walkable): stay seated at the desk.
+        Object.assign(bot, { facing: k.bot.facing, mode: k.bot.mode });
+        this.carried.add(a.id);
+      }
       this.robots.set(a.id, {
-        bot: new IsoBot(a.id, a.isLead, seat), color: a.color, sprite, shadow, bubble,
+        bot, color: a.color, sprite, shadow, bubble,
         desk: desks.get(`${seat[0]},${seat[1] - 1}`) ?? null, rect: { x: 0, y: 0, w: 0, h: 0 }, seed: i * 3,
       });
     });

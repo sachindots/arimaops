@@ -17,9 +17,6 @@ export type SettingsTab = "team" | "workflow" | "stack" | "mcp" | "sandbox" | "b
 /** Something in the office the camera can fly to. */
 export type FocusTarget =
   | { kind: "agent"; id: string }
-  | { kind: "plan" }
-  | { kind: "prs" }
-  | { kind: "env"; name: string }
   | { kind: "wing"; project: string }
   | { kind: "home" };
 
@@ -36,7 +33,6 @@ interface UiState {
   hover: HoverInfo | null;
   focus: { target: FocusTarget; nonce: number } | null;
   zoomRequest: { delta: number; nonce: number } | null;
-  planBoardId: string | null; // board shown on the plan wall; null = first active
   debugOpen: boolean;
   setupOpen: boolean;
   /** Side drawer width in px, remembered per browser; `maximized` fills the screen. */
@@ -87,7 +83,6 @@ export const useUi = create<UiState>(() => ({
   hover: null,
   focus: null,
   zoomRequest: null,
-  planBoardId: null,
   debugOpen: false,
   setupOpen: false,
   drawerWidth: savedWidth(),
@@ -111,7 +106,6 @@ export const ui = {
   },
   openBoards(boardId?: string) {
     useUi.setState({ drawer: { kind: "boards", boardId } });
-    ui.focus({ kind: "plan" });
   },
   openTerminal() {
     useUi.setState({ drawer: { kind: "terminal" } });
@@ -127,11 +121,9 @@ export const ui = {
   },
   openPrs() {
     useUi.setState({ drawer: { kind: "prs" } });
-    ui.focus({ kind: "prs" });
   },
   openEnv(name: string) {
     useUi.setState({ drawer: { kind: "env", name } });
-    ui.focus({ kind: "env", name });
   },
   closeDrawer() {
     useUi.setState({ drawer: null });
@@ -149,9 +141,6 @@ export const ui = {
   zoom(delta: number) {
     nonce += 1;
     useUi.setState({ zoomRequest: { delta, nonce } });
-  },
-  showBoardOnWall(boardId: string | null) {
-    useUi.setState({ planBoardId: boardId });
   },
   openSetup() {
     useUi.setState({ setupOpen: true });

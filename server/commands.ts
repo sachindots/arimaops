@@ -1,6 +1,8 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
 import { isAgentCli, isAgentMode, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { releasePortBlock } from "./ports";
+import { cleanAccount } from "./accounts";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -143,6 +145,11 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         if (typeof p.model !== "string") agent.model = "";
       }
       if (Array.isArray(p.skills)) agent.skills = p.skills.map((s) => str(s, 80)).filter(Boolean);
+      if (typeof p.account === "string") {
+        const acct = cleanAccount(p.account);
+        if (acct && acct !== "default") agent.account = acct;
+        else delete agent.account;
+      }
       if (p.workspacePath !== undefined) agent.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
       hub.configChanged();
       // Non-Claude CLIs add their own setup checks.
@@ -163,6 +170,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       hub.snap.agents = hub.snap.agents.filter((a) => a.agentId !== agent.id);
       inbox.forget(agent.id);
       mcp.forget(agent.id);
+      releasePortBlock(hub.slug, agent.id);
       for (const t of hub.snap.tasks)
         if (t.ownerId === agent.id && t.status !== "done") {
           t.ownerId = null;

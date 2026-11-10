@@ -14,7 +14,6 @@ export function TopBar() {
   const snap = useOffice((s) => s.snap);
   const speed = useOffice((s) => s.speed);
   const hasDev = useOffice((s) => s.presets !== null);
-  const planBoardId = useUi((s) => s.planBoardId);
   const attention = selectAttention(snap).total;
   const debugOpen = useUi((s) => s.debugOpen);
   const live = useOffice((s) => s.live);
@@ -26,8 +25,6 @@ export function TopBar() {
   const runningIds = new Set(snap.agents.filter((a) => a.session.state === "running").map((a) => a.agentId));
   const sandboxes = snap.config.team.filter((a) => a.mode !== "local" && runningIds.has(a.id)).length;
   const local = snap.config.team.filter((a) => a.mode === "local" && runningIds.has(a.id)).length;
-  const boards = [...snap.boards].sort((a, b) => a.order - b.order);
-  const active = boards.filter((b) => b.status === "active");
   const openPrs = snap.pullRequests.filter((p) => !p.merged && !p.closed).length;
   const openFindings = (snap.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length;
 
@@ -54,22 +51,6 @@ export function TopBar() {
       </div>
       <div className="flex-1" />
 
-      <label className="hidden items-center gap-2 text-[14px] min-[1600px]:flex">
-        <span className="whitespace-nowrap text-muted">Plan wall</span>
-        <select
-          className="field w-[190px] py-0 text-[14px]"
-          value={planBoardId ?? ""}
-          onChange={(e) => ui.showBoardOnWall(e.target.value || null)}
-          aria-label="Board shown on the plan wall"
-        >
-          <option value="">First active ({active[0]?.title ?? "none"})</option>
-          {boards.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.title} · {b.status}
-            </option>
-          ))}
-        </select>
-      </label>
 
       {hasDev && (
         <div className="flex items-center gap-1.5" role="group" aria-label="Simulation speed">
@@ -127,7 +108,7 @@ export function TopBar() {
         >
           CTO Overwatch
         </button>
-        <button className="btn text-[14px]" onClick={() => ui.openBoards(planBoardId ?? undefined)}>
+        <button className="btn text-[14px]" onClick={() => ui.openBoards()}>
           Boards
         </button>
         {snap.config.project.type === "security" ? (

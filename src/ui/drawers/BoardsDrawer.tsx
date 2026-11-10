@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
-import { ui, useUi } from "../../store/ui";
 import { Dot, TokensChip } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
@@ -17,14 +16,12 @@ const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "
 
 export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
   const snap = useOffice((s) => s.snap);
-  const planBoardId = useUi((s) => s.planBoardId);
   const boards = [...(snap?.boards ?? [])].sort((a, b) => a.order - b.order);
   const [boardId, setBoardId] = useState(initialBoardId ?? boards.find((b) => b.status === "active")?.id ?? boards[0]?.id);
   if (!snap) return null;
   const board = boards.find((b) => b.id === boardId);
   const tasks = snap.tasks.filter((t) => t.boardId === boardId);
   const cols = COLUMNS.filter((c) => c.id !== "blocked" || tasks.some((t) => t.status === "blocked"));
-  const shownOnWall = (planBoardId ?? boards.find((b) => b.status === "active")?.id) === boardId;
 
   return (
     <>
@@ -55,9 +52,6 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
             ))}
           </select>
           <span className="text-[12px] text-muted">Agents only pick tasks from active boards.</span>
-          <button className="btn ml-auto px-2 text-[13px]" disabled={shownOnWall} onClick={() => ui.showBoardOnWall(board.id)}>
-            {shownOnWall ? "On the wall" : "Show on wall"}
-          </button>
         </div>
       )}
       <div className="scroll-thin grid min-h-0 flex-1 auto-cols-[minmax(200px,1fr)] grid-flow-col gap-2 overflow-auto bg-[#07090e] p-3">

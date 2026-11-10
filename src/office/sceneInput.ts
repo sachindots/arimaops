@@ -2,12 +2,12 @@
 
 import type { Application } from "pixi.js";
 import { useBuilding } from "../store/building";
-import { reviewToolLabel, useOffice } from "../store/office";
+import { useOffice } from "../store/office";
 import type { OfficeSnapshot } from "../data/types";
-import { ui, useUi } from "../store/ui";
+import { ui } from "../store/ui";
 import { sessionLabel, stateStyle } from "../theme/tokens";
 import type { Camera } from "./engine/camera";
-import type { Hit, PxRect } from "./layout/layout";
+import type { Hit, PxRect } from "./types";
 
 export type Target = { hit: Hit; rect: PxRect };
 
@@ -51,18 +51,7 @@ function describe(hit: Hit): { title: string; sub?: string } {
       sub: [st ? (st.session.state === "running" ? stateStyle[st.state].label : sessionLabel[st.session.state]) : "", task ? `${task.id} ${task.title}` : st?.note ?? ""].filter(Boolean).join(" — "),
     };
   }
-  if (hit.kind === "plan") {
-    const active = snap.boards.filter((b) => b.status === "active");
-    return { title: "Plan wall", sub: `${snap.boards.length} boards · ${active.length} active` };
-  }
-  if (hit.kind === "gate" || hit.kind === "prs") {
-    const open = snap.pullRequests.filter((p) => !p.merged && !p.closed);
-    const reviewing = open.filter((p) => p.review === "reviewing").length;
-    const label = reviewToolLabel[snap.config.workflow.review.tool];
-    return { title: hit.kind === "gate" ? `${label} review gate` : "Pull requests", sub: `${open.length} open · ${reviewing} reviewing` };
-  }
-  const env = snap.environments.find((e) => e.name === hit.id);
-  return { title: `Environment: ${hit.id}`, sub: env ? `${env.status} · ${env.url}` : undefined };
+  return { title: hit.id };
 }
 
 function activate(hit: Hit) {
@@ -74,10 +63,7 @@ function activate(hit: Hit) {
     url.searchParams.set("project", r.project);
     url.searchParams.set("open", `agent:${r.agentId}`);
     location.assign(url.toString());
-  } else if (hit.kind === "agent") ui.openAgent(hit.id);
-  else if (hit.kind === "plan") ui.openBoards(useUi.getState().planBoardId ?? undefined);
-  else if (hit.kind === "gate" || hit.kind === "prs") ui.openPrs();
-  else ui.openEnv(hit.id);
+  } else ui.openAgent(hit.id);
 }
 
 export function attachInput(s: InputHost): () => void {

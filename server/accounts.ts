@@ -3,14 +3,36 @@
 // machine's memory. A usage limit hit by one agent applies to every agent on
 // that CLI; the number of agents running at once is capped by RAM.
 
-import { totalmem } from "node:os";
-import type { AgentCli } from "../src/data/types";
+import { homedir, totalmem } from "node:os";
+import { join } from "node:path";
+import { BRAND } from "../src/data/brand";
+import type { AgentCli, AgentConfig } from "../src/data/types";
 import type { Hub } from "./hub";
 
 export interface LimitFrom {
   project: string;
   agentId: string;
   name: string;
+  account: string;
+}
+
+/** "default" unless the agent names another account. */
+export const accountOf = (a: Pick<AgentConfig, "account">) => a.account || "default";
+
+/** Account names: short, lowercase, safe in volume names and paths. */
+export const cleanAccount = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+
+/** Where a local CLI keeps another account's sign-in and logs (the default account uses the CLI's usual folder). */
+export function accountHome(cli: AgentCli, account: string, home = homedir()): string | null {
+  if (account === "default") return null;
+  return cli === "claude" || cli === "codex" ? join(home, BRAND.homeDir, "accounts", `${cli}-${account}`) : null;
+}
+
+/** Variables that point a local CLI at another account's folder. Other CLIs share one sign-in per machine. */
+export function accountEnv(cli: AgentCli, account: string, home = homedir()): Record<string, string> {
+  const dir = accountHome(cli, account, home);
+  if (!dir) return {};
+  return cli === "claude" ? { CLAUDE_CONFIG_DIR: dir } : { CODEX_HOME: dir };
 }
 type Listener = (cli: AgentCli, until: Date, from: LimitFrom) => void;
 
@@ -27,19 +49,16 @@ export function shareLimit(cli: AgentCli, until: Date, from: LimitFrom) {
   for (const fn of listeners) fn(cli, until, from);
 }
 
-/**
- * Marks this project's other running agents on `cli` limited until `until` (unless already limited as long).
- * shortcut: assumes one account per CLI on this machine; per-agent accounts would need an account id on each agent.
- */
+/** Marks this project's other running agents on the same CLI and account limited until `until` (unless already limited as long). */
 export function markLimited(hub: Hub, cli: AgentCli, until: Date, from: LimitFrom): string[] {
   const marked: string[] = [];
   const at = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   for (const a of hub.snap.config.team) {
-    if (a.cli !== cli || (hub.slug === from.project && a.id === from.agentId)) continue;
+    if (a.cli !== cli || accountOf(a) !== from.account || (hub.slug === from.project && a.id === from.agentId)) continue;
     const st = hub.status(a.id);
     if (!st || (st.session.state !== "running" && st.session.state !== "starting")) continue;
     if (st.limitedUntil && Date.parse(st.limitedUntil) >= until.getTime()) continue;
-    hub.setStatus(a.id, { limitedUntil: until.toISOString(), note: `Usage limit until ${at} (shared account: ${from.name} hit it)` });
+    hub.setStatus(a.id, { limitedUntil: until.toISOString(), note: `Usage limit until ${at} (same ${cli} account as ${from.name})` });
     marked.push(a.name);
   }
   return marked;

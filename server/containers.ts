@@ -36,7 +36,8 @@ const AUTH_DIR: Partial<Record<AgentCli, string>> = {
   opencode: "/home/agent/.local/share/opencode",
 };
 export const containerClis = Object.keys(AUTH_DIR) as AgentCli[];
-export const authVolume = (cli: AgentCli) => `hq-auth-${cli}`;
+/** Where containers keep a CLI's sign-in: one volume per CLI and account. */
+export const authVolume = (cli: AgentCli, account = "default") => (account === "default" ? `hq-auth-${cli}` : `hq-auth-${cli}-${account}`);
 
 /** With a host firewall that drops incoming traffic (ufw's default), containers need this to reach HQ and its proxy. */
 export const hostFirewallCmd = (hqPort: number) => `sudo ufw allow in on ${BRIDGE} to ${GATEWAY} port ${hqPort},${egressPort(hqPort)} proto tcp`;
@@ -112,7 +113,7 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
     ...(cpus ? ["--cpus", String(cpus)] : []),
     ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : []),
     "-v", `${dir}:${WORKDIR}`,
-    "-v", `${authVolume(agent.cli)}:${authDir}`,
+    "-v", `${authVolume(agent.cli, agent.account || "default")}:${authDir}`,
     "-w", WORKDIR,
     ...(envFile ? ["--env-file", envFile] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
@@ -127,13 +128,14 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
 /** One-time sign-in for a CLI: its normal login flow in a throwaway container that saves into the shared volume. */
 const LOGIN_PREFIX = "hq-login-";
 
-export function loginCommand(cli: AgentCli, hqPort: number): string {
+export function loginCommand(cli: AgentCli, hqPort: number, account = "default"): string {
   const authDir = AUTH_DIR[cli];
   if (!authDir) return "";
   const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
   const env = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].map((k) => `-e ${k}=${proxy}`).join(" ");
   const login: Record<string, string> = { claude: "claude", codex: "codex login --device-auth", gemini: "gemini", copilot: "copilot", opencode: "opencode auth login" };
-  return `docker run -it --rm --name ${LOGIN_PREFIX}${cli} --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli)}:${authDir} ${IMAGE} ${login[cli]}`;
+  const tag = account === "default" ? cli : `${cli}-${account}`;
+  return `docker run -it --rm --name ${LOGIN_PREFIX}${tag} --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli, account)}:${authDir} ${IMAGE} ${login[cli]}`;
 }
 
 export async function ensureNetwork(): Promise<boolean> {

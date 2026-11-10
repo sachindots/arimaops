@@ -36,6 +36,8 @@ const LEGACY_FILES = [BRAND.legacyRoleFile, BRAND.legacyHookScript];
 export interface RoleExtras {
   ownRole?: string | null;
   hasEnvFile?: boolean;
+  /** Local mode: this agent's own ports (unique on this machine). */
+  ports?: { first: number; last: number };
 }
 
 /** HQ ≤ 0.3 wrote its role to ROLE.md; recognise both old JSM HQ and new .hq headers so it can be cleaned up. */
@@ -272,6 +274,13 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "Message a teammate directly (send_message to their name) when your question is about their work; list_tasks shows who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
     ...peers,
     "",
+    ...(extras.ports
+      ? [
+          "## Your ports",
+          `Run dev servers, previews and test servers only on ports ${extras.ports.first}-${extras.ports.last} ($PORT is ${extras.ports.first}). They're yours on this machine; other agents, in this and other projects, have their own. Pass the port explicitly (e.g. \`--port $PORT\`) when a tool defaults to 3000, 5173 or 8080.`,
+          "",
+        ]
+      : []),
     "## When things go wrong",
     ...ESCALATION.map((x) => `- ${x}`),
     "",

@@ -16,7 +16,7 @@ import { log } from "./lib/log";
 import { agentToken } from "./paths";
 import { Planner } from "./planner";
 import { setLiveProject } from "./projectsRegistry";
-import { markLimited, onAccountLimit, shareLimit } from "./accounts";
+import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -113,7 +113,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const meter = new UsageMeter();
   const usageOf = (id: string) => {
     const a = hub.cfg(id);
-    return a ? meter.read(a.cli, workspaceFor(a, slug)) : null;
+    return a ? meter.read(a.cli, workspaceFor(a, slug), accountHome(a.cli, accountOf(a))) : null;
   };
   planner.usageOf = usageOf;
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
@@ -150,14 +150,15 @@ export async function startProject(path: string, port: number, paused: boolean):
     const marked = markLimited(hub, cli, until, from);
     if (!marked.length) return;
     const at = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    hub.activity("agent.needs-input", null, `${marked.join(", ")} paused until ${at}: the ${cli} account hit its usage limit (${from.name}${from.project === slug ? "" : ` in ${from.project}`}).`);
+    const acct = `${cli}${from.account === "default" ? "" : ` (${from.account})`}`;
+    hub.activity("agent.needs-input", null, `${marked.join(", ")} paused until ${at}: the ${acct} account hit its usage limit (${from.name}${from.project === slug ? "" : ` in ${from.project}`}).`);
     const lead = hub.snap.config.team.find((a) => a.isLead);
     if (lead && !marked.includes(lead.name))
-      planner.notify(lead.id, `The ${cli} subscription hit its usage limit until ${at}, so ${marked.join(", ")} can't work until then. Move urgent tasks to agents on another CLI, or wait.`);
+      planner.notify(lead.id, `The ${acct} subscription hit its usage limit until ${at}, so ${marked.join(", ")} can't work until then. Move urgent tasks to agents on another CLI, or wait.`);
   });
   sessions.onLimit = (id, until) => {
     const agentCfg = hub.cfg(id);
-    if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name });
+    if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name, account: accountOf(agentCfg) });
     const lead = hub.snap.config.team.find((a) => a.isLead);
     const agent = hub.cfg(id);
     if (!lead || !agent || lead.id === id) return;

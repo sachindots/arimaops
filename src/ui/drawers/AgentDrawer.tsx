@@ -90,6 +90,20 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               <option value="container">Container</option>
               <option value="local">Local mode</option>
             </select>
+            <input
+              className="input w-[96px] py-0.5 font-mono text-[12px]"
+              defaultValue={agent.account ?? ""}
+              key={`${agent.id}-${agent.account ?? ""}`}
+              placeholder="default"
+              aria-label={`${agent.name} subscription account`}
+              title="Which subscription this agent signs in with. Leave empty for your usual one. Agents on the same CLI and account share its usage limit; a new account signs in once in this agent's terminal."
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v === (agent.account ?? "")) return;
+                officeActions.updateAgent(agent.id, { account: v });
+                if (isRunning) setPendingRestart(true);
+              }}
+            />
             {pendingRestart && isRunning && (
               <button
                 type="button"

@@ -3,7 +3,7 @@
 // checklist's "Run in terminal" helper.
 
 import { spawn as spawnPty, type IPty } from "@lydell/node-pty";
-import { existsSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
@@ -13,7 +13,10 @@ import { adapters, containerArgs, localBinary } from "./adapters";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
-import { maxAgents, runningAgents } from "./accounts";
+import { accountEnv, accountHome, accountOf, maxAgents, runningAgents } from "./accounts";
+import { containerLoginSaved } from "./setup";
+import { loginCommand } from "./containers";
+import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
@@ -106,7 +109,10 @@ export class Sessions {
     if (agent.mode === "sandbox" && !setup.sandboxReady) return fail("Docker Sandboxes isn't ready on this machine. Finish the setup checklist, or switch this agent to Local mode.");
     const check = (cid: string) => setup.checks.find((c) => c.id === cid)?.status;
     if (agent.mode === "container" && !setup.containerReady) return fail("Container mode isn't ready: Docker, the agent image or the proxy firewall rule is missing. See the setup checklist.");
-    if (agent.mode === "container" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
+    const account = accountOf(agent);
+    if (agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account)))
+      return fail(`${CLI_LABEL[agent.cli]} isn't signed in for the "${account}" account in containers yet. Run this once in a terminal: ${loginCommand(agent.cli, hub.snap.config.project.hqPort, account)}`);
+    if (agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
     if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")
       return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
@@ -126,7 +132,8 @@ export class Sessions {
       const adapter = adapters[agent.cli];
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
       const hasEnvFile = !!this.envFileFor(id) && (agent.mode !== "local" || this.backend.persistent);
-      await adapter.writeFiles(dir, agent, hub.snap.config, agentTokenFor(this.agentToken, agent.id), { hasEnvFile });
+      const ports = agent.mode === "local" ? portBlockFor(hub.slug, agent.id) : undefined;
+      await adapter.writeFiles(dir, agent, hub.snap.config, agentTokenFor(this.agentToken, agent.id), { hasEnvFile, ports });
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
@@ -137,7 +144,11 @@ export class Sessions {
         const launch = adapter.launch(agent);
         const envFile = this.envFileFor(id);
         // Local mode: the agent gets the env file's variables (tmux only: there's no shell to load them into otherwise).
-        let spec: LaunchSpec = { file: localBinary[agent.cli], args: launch.args, envFile };
+        // Another account: its own config folder (sign in once in this agent's terminal; HQ shows the login prompt as "needs you").
+        const acctEnv = accountEnv(agent.cli, account);
+        const acctDir = accountHome(agent.cli, account);
+        if (agent.mode === "local" && acctDir) mkdirSync(acctDir, { recursive: true, mode: 0o700 });
+        let spec: LaunchSpec = { file: localBinary[agent.cli], args: launch.args, envFile, env: { ...(ports ? portEnv(ports) : {}), ...(agent.mode === "local" ? acctEnv : {}) } };
         if (agent.mode === "local" && envFile && !this.backend.persistent)
           hub.activity("session", id, `${agent.name}'s env file isn't loaded in Local mode on Windows. Use Sandbox mode for app variables.`);
         if (agent.mode === "sandbox") {

@@ -318,6 +318,12 @@ async function checkScopeFirewall(project: ProjectConfig, team: AgentConfig[]): 
   };
 }
 
+/** Whether a container sign-in is saved for this CLI and account (any file in its volume). */
+export async function containerLoginSaved(cli: AgentConfig["cli"], account = "default"): Promise<boolean> {
+  const r = await run("docker", ["run", "--rm", "-v", `${authVolume(cli, account)}:/v`, "--entrypoint", "sh", IMAGE, "-c", "ls -A /v | head -1"], { timeoutMs: 20_000 });
+  return r.ok && !!r.stdout.trim();
+}
+
 /** Whether the CLI's shared login volume has a sign-in (any file in it). */
 async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number): Promise<Check> {
   const base = { id: `login-${cli}` as const, label: `${cli} sign-in for containers`, neededFor: "container" as const };

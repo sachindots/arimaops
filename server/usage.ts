@@ -86,10 +86,11 @@ export class UsageMeter {
   }
 
   /** Total tokens an agent's CLI has used in `dir` (its workspace), or null when HQ can't read that CLI's logs. */
-  read(cli: AgentCli, dir: string): Tokens | null {
+  /** `cliHome`: another account's config folder (CLAUDE_CONFIG_DIR / CODEX_HOME); null = the CLI's usual one. */
+  read(cli: AgentCli, dir: string, cliHome: string | null = null): Tokens | null {
     try {
-      if (cli === "claude") return jsonlIn(join(this.home, ".claude", "projects", claudeDirKey(dir))).map((f) => this.cached(f, claudeTokens)).reduce(add, ZERO);
-      if (cli === "codex") return this.codexFiles().map((f) => this.cached(f, codexRollout)).filter((r) => r.cwd === dir).map((r) => r.tokens).reduce(add, ZERO);
+      if (cli === "claude") return jsonlIn(join(cliHome ?? join(this.home, ".claude"), "projects", claudeDirKey(dir))).map((f) => this.cached(f, claudeTokens)).reduce(add, ZERO);
+      if (cli === "codex") return this.codexFiles(cliHome).map((f) => this.cached(f, codexRollout)).filter((r) => r.cwd === dir).map((r) => r.tokens).reduce(add, ZERO);
     } catch {
       /* unreadable log: treat as unknown */
     }
@@ -97,8 +98,8 @@ export class UsageMeter {
   }
 
   // shortcut: scans the last 14 days of Codex sessions; older work isn't counted. Fine for a running team.
-  private codexFiles(): string[] {
-    const root = join(this.home, ".codex", "sessions");
+  private codexFiles(cliHome: string | null): string[] {
+    const root = join(cliHome ?? join(this.home, ".codex"), "sessions");
     const files: string[] = [];
     for (let d = 0; d < 14; d++) {
       const day = new Date(Date.now() - d * 86_400_000);

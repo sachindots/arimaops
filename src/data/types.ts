@@ -82,6 +82,8 @@ export interface AgentConfig {
   roleMd: string; // contents of ROLE.md
   sandbox: SandboxSettings;
   workspacePath: string | null; // an existing folder to use; null = HQ-managed clone
+  /** Which subscription this agent signs in with, for CLIs where you have more than one ("" / missing = your default one). */
+  account?: string;
   /** MCP servers (names in sbx's registry) this agent's sandbox gets. */
   mcp?: string[];
 }
@@ -518,7 +520,7 @@ export interface WelcomeInput {
 }
 
 export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "role" | "department" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath">
+  Pick<AgentConfig, "name" | "role" | "department" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "account">
 >;
 
 export interface WorkflowPatch {
