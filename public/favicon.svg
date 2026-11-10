@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">
+<!-- ArimaOps mascot, face-only for 16/32 px: gold mane ring, night face, cyan eyes, dark-gold muzzle -->
+<path fill="#E8B339" d="M2 0h4v1H2zM1 1h6v1H1zM0 2h2v1H0zM6 2h2v1H6zM0 3h1v3H0zM7 3h1v3H7zM1 6h2v1H1zM5 6h2v1H5zM2 7h4v1H2z"/>
+<path fill="#0B1220" d="M2 2h4v1H2zM1 3h6v3H1zM3 6h2v1H3z"/>
+<path fill="#22D3EE" d="M2 3h1v1H2zM5 3h1v1H5z"/>
+<path fill="#B9791C" d="M3 5h2v1H3z"/>
+</svg>
