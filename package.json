@@ -1,7 +1,7 @@
 {
   "name": "arimaops",
   "version": "0.8.0",
-  "description": "Run your own software company and security operations with a team of AI coding agents (Claude Code, Codex, Gemini\u2026), commanded from a pixel-art office.",
+  "description": "Lead the pride: your AI company in one office. AI agents build your software and run your security work while you steer from desk, tablet or phone.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/sachindots/arimaops#readme",

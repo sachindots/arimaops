@@ -1,6 +1,8 @@
 # ArimaOps · அரிமா
 
-**Run your own software company and security team with AI agents, from your desk, tablet or phone.**
+### Lead the pride.
+
+**Your AI company in one office: a team of AI agents builds your software and runs your security work, and you steer it from any screen.**
 
 ![The ArimaOps office: each project's team in its own wing, the HQ hall in front, digital rain behind](docs/images/office.png)
 

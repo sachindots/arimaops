@@ -97,5 +97,24 @@ check("reset typed alone, first", typed[0] === "/clear", JSON.stringify(typed));
 check("the next message is typed separately, after the settle time", typed[1]?.includes("Start T9") === true && Date.now() - t0 >= 5000, JSON.stringify(typed));
 inbox4.stop();
 
+// ---------------------------------------------------------------- the screen decides (trust prompts)
+{
+  const { Inbox } = await import("../server/inbox");
+  let ready = false;
+  const typed2: string[] = [];
+  const hub2 = { slug: "screen-test", snap: { messages: [], config: { team: [] } }, status: () => ({ session: { state: "running" }, state: "idle" }), emit: () => {}, activity: () => {}, name: (id: string) => id } as never;
+  const inbox2 = new Inbox(hub2, { type: async (_id, t) => (typed2.push(t), true), enter: async () => true, promptReady: async () => ready });
+  inbox2.sessionReattached("cipher");
+  inbox2.push("cipher", { fromId: "you", kind: "message", text: "Plan v1.1" });
+  await new Promise((r) => setTimeout(r, 20));
+  (inbox2 as unknown as { lastHook: Map<string, number> }).lastHook.set("cipher", 0);
+  await inbox2.tryType("cipher");
+  check("nothing is typed while a dialog (trust prompt) is on screen", typed2.length === 0);
+  ready = true;
+  await inbox2.tryType("cipher");
+  check("…and it's typed once the prompt is back", typed2.length === 1);
+  inbox2.stop();
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

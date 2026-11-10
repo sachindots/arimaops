@@ -119,7 +119,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
-  const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id) });
+  const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id), promptReady: (id) => sessions.promptReady(id) });
   sessions.onSessionDown = (id) => inbox.sessionDown(id);
   sessions.onSessionReattached = (id) => inbox.sessionReattached(id);
   sessions.lastHookAt = (id) => inbox.lastHookAt(id);

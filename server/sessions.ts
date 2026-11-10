@@ -49,6 +49,8 @@ const BUSY = /esc to interrupt|esc to cancel/i; // the footer while a turn runs
 // A question or permission prompt.
 // "Enter to confirm": Claude Code's folder-trust prompt (Local mode, first start in a folder).
 const DIALOG = /Enter to select|Enter to confirm|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
+// Folder-trust questions of every CLI (Claude Code, Codex, Antigravity, Gemini).
+const TRUST = /Do you trust (the contents of )?this (folder|directory|project)|Is this a project you created or one you trust|trust this folder/i;
 const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything|Type your message|Ask Gemini|Ask Antigravity|ctrl\+p commands/i; // the input prompt is up
 // The CLI has no login, so every message fails until you sign in (Claude Code prints this on its banner and on errors).
 const NO_LOGIN = /Not logged in · Run \/login|Login expired|Please run \/login|Invalid API key/i;
@@ -396,6 +398,12 @@ export class Sessions {
     if (!(await this.backend.type(this.name(agentId), text))) return false;
     await new Promise((r) => setTimeout(r, 200));
     return this.backend.enter(this.name(agentId));
+  }
+
+  /** True when nothing on the agent's screen is waiting for an answer (no dialog, no trust prompt, not mid-turn). */
+  async promptReady(agentId: string): Promise<boolean> {
+    const screen = await this.backend.screenText(this.name(agentId), 14);
+    return !!screen && !DIALOG.test(screen) && !TRUST.test(screen) && !BUSY.test(screen);
   }
 
   async pressEnter(agentId: string): Promise<boolean> {

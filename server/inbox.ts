@@ -26,6 +26,11 @@ export const HISTORY = 300; // messages kept (and sent to the UI)
 export interface Keyboard {
   type(agentId: string, text: string): Promise<boolean>;
   enter(agentId: string): Promise<boolean>;
+  /**
+   * Looks at the screen right before typing: false while a dialog (folder trust, a permission question) is open.
+   * Hooks alone can't tell: Claude Code fires SessionStart before its trust prompt, whose default may be "No, exit".
+   */
+  promptReady?(agentId: string): Promise<boolean>;
 }
 
 const QUIET_MS = 1000; // no hooks for this long = the prompt has settled
@@ -189,6 +194,7 @@ export class Inbox {
       if (process.env.HQ_DEBUG) log.info(`inbox ${agentId}: holding ${q.length} — ${this.whyNot(agentId)}`);
       return;
     }
+    if (this.keys.promptReady && !(await this.keys.promptReady(agentId))) return; // retried every 2 s
     if (q[0].kind === "reset") return this.typeReset(agentId, q.splice(0, 1)[0]);
     const nextReset = q.findIndex((i) => i.kind === "reset");
     const items = q.splice(0, nextReset === -1 ? q.length : nextReset);
@@ -203,7 +209,7 @@ export class Inbox {
       this.delivered(items, "typed");
       // If the prompt didn't submit (Enter swallowed), press it once more.
       await new Promise((r) => setTimeout(r, SUBMIT_CHECK_MS));
-      if ((this.lastSubmit.get(agentId) ?? 0) < typedAt && this.hub.status(agentId)?.state === "idle") {
+      if ((this.lastSubmit.get(agentId) ?? 0) < typedAt && this.hub.status(agentId)?.state === "idle" && (!this.keys.promptReady || (await this.keys.promptReady(agentId)))) {
         log.warn(`${agentId}: no prompt submit after typing; pressing Enter again`);
         await this.keys.enter(agentId);
       }
