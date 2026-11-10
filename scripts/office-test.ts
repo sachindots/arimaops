@@ -1,6 +1,7 @@
 // Isometric office: projection, building layout and robot behaviour. Run: npx tsx scripts/office-test.ts
 import type { AgentStatus } from "../src/data/types";
 import { besideSeat, IsoBot, modeOf, seatOf, targetFor, update, type Mode } from "../src/office/iso/behaviour";
+import { generateBuilding, remoteId, splitRemoteId } from "../src/office/iso/building";
 import { EventDiff } from "../src/office/iso/events";
 import { generateIsoLayout, hasSoc, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
@@ -158,6 +159,35 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   const still = new IsoBot("nyx", false, seat);
   run(still, "idle", 5, true);
   check("reduced motion: idle agents stay seated", still.at(seat) && !still.moving);
+}
+
+// ---------------------------------------------------------------- building (every running project)
+{
+  const ns = (p: string, team: TeamMember[]) => team.map((a) => ({ ...a, id: remoteId(p, a.id) }));
+  const lab: TeamMember[] = [
+    { id: "vega", role: "Red Team Commander", isLead: true, department: "exec" },
+    { id: "rook", role: "Red Teamer", isLead: false, department: "red-team" },
+  ];
+  const b = generateBuilding([
+    { project: "exposecheck", name: "ExposeCheck", type: "software", team: dev },
+    { project: "lab", name: "Lab Engagement", type: "security", team: ns("lab", lab) },
+  ]);
+  const solo = generateIsoLayout(dev, "software");
+  const one = generateBuilding([{ project: "exposecheck", name: "ExposeCheck", type: "software", team: dev }]);
+  check("building: one project is the plain office", one.W === solo.W && one.H === solo.H && one.items.length === solo.items.length && one.seats.every((s, i) => s.tile.join() === solo.seats[i].tile.join()));
+  check("building: wings side by side, same depth", b.wings.length === 2 && b.wings[1].x0 === b.wings[0].x1 + 1 && b.W === b.wings[1].x1 + 1);
+  const reach = (from: [number, number], to: [number, number]) => from.join() === to.join() || b.grid.find(from[0], from[1], to[0], to[1]).length > 0;
+  const okWing = b.wings.every((w) => w.agentIds.every((id) => {
+    const seat = b.seats.find((s) => s.agentId === id)?.tile as [number, number];
+    const door = b.doors?.get(id) as [number, number];
+    const spots = b.agentSpots?.get(id);
+    return !!seat && seat[0] >= w.x0 && seat[0] <= w.x1 && door.join() === w.door.join() && reach(door, seat) && !!spots && [...spots.wander, ...spots.coffee].every((t) => t[0] >= w.x0 && t[0] <= w.x1 && reach(seat, t));
+  }));
+  check("building: each agent sits, enters and wanders in its own wing", okWing);
+  check("building: the other project's SOC is in its wing", b.items.some((it) => it.decal === "screen" && it.x > b.wings[0].x1));
+  check("building: the wall between wings is cut away", b.items.filter((it) => it.kind === "wall" && it.x === b.wings[1].x0 && it.y > 0).every((it) => it.low));
+  check("building: signs carry the project names", b.items.some((it) => it.decal === "sign" && it.label === "Lab Engagement") && !one.items.some((it) => it.label));
+  check("remote ids round-trip", JSON.stringify(splitRemoteId(remoteId("lab", "rook"))) === JSON.stringify({ project: "lab", agentId: "rook" }) && splitRemoteId("rook") === null);
 }
 
 // ---------------------------------------------------------------- events

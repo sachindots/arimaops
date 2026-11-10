@@ -49,6 +49,7 @@ export interface Item {
   lead?: boolean; // gold-trimmed desk
   screen?: "off" | "glow"; // desk monitor: dark when the agent is stopped, bright when working (default: on)
   decal?: "board" | "screen" | "sign";
+  label?: string; // lobby sign text (default: the product name)
   i?: number; // slice index for multi-tile decals and two-part furniture
   n?: number; // slice count
 }
@@ -71,13 +72,32 @@ export interface IsoLayout {
   items: Item[];
   seats: Seat[];
   door: Tile;
-  spots: { wander: Tile[]; coffee: Tile[]; scrum: Tile[] };
+  spots: Spots;
   grid: WalkGrid;
+  /** Building of several projects: each agent's own wing door and spots (missing → `door` / `spots`). */
+  doors?: Map<string, Tile>;
+  agentSpots?: Map<string, Spots>;
 }
+
+export interface Spots {
+  wander: Tile[];
+  coffee: Tile[];
+  scrum: Tile[];
+}
+
+export interface IsoOptions {
+  /** Make the office at least this deep, so wings of one building line up. */
+  minH?: number;
+  /** Text on the lobby sign. */
+  sign?: string;
+}
+
+export const doorOf = (l: IsoLayout, id: string): Tile => l.doors?.get(id) ?? l.door;
+export const spotsOf = (l: IsoLayout, id: string): Spots => l.agentSpots?.get(id) ?? l.spots;
 
 export const WALL_H = 40;
 export const LOW_WALL_H = 8;
-const PAD = 24;
+export const PAD = 24;
 const Y_WALL = 6; // back rooms span y = 1..5
 const Y_DESK0 = 8; // y = 7 is the corridor
 const LOBBY_D = 4;
@@ -90,7 +110,7 @@ export const hasSoc = (team: TeamMember[], type: ProjectType) => type === "secur
 
 const dept = (a: TeamMember) => inferDepartmentForRole(a.role, a.isLead, a.department);
 
-export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLayout {
+export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: IsoOptions = {}): IsoLayout {
   const leads = team.filter((a) => a.isLead);
   const workers = team.filter((a) => !a.isLead);
   const soc = hasSoc(team, type);
@@ -109,7 +129,7 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
   const rows = Math.ceil(floorWorkers.length / cols); // 0 when everyone sits in the back rooms
   const yLobby = Y_DESK0 + 3 * rows + 1;
   const W = Math.max(backX1, 2 + 3 * cols, 13) + 2;
-  const H = yLobby + LOBBY_D + 1;
+  const H = Math.max(yLobby + LOBBY_D + 1, opts.minH ?? 0);
   const door: Tile = [3, H - 1];
 
   const items: Item[] = [];
@@ -178,7 +198,7 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
 
   // ---------------------------------------------------------- lobby + break
   put({ kind: "mat", x: door[0], y: H - 2 });
-  for (let i = 0; i < 5; i++) put({ kind: "counter", x: 4 + i, y: yLobby + 1, decal: "sign", i, n: 5 });
+  for (let i = 0; i < 5; i++) put({ kind: "counter", x: 4 + i, y: yLobby + 1, decal: "sign", i, n: 5, ...(opts.sign ? { label: opts.sign } : {}) });
   put({ kind: "plant", x: 1, y: yLobby });
   put({ kind: "plant", x: 8, y: H - 2 });
   for (let y = yLobby + 1; y <= yLobby + 3; y++) for (let x = 10; x <= 12; x++) put({ kind: "rug", x, y, i: x - 10 + 3 * (y - yLobby - 1), n: 3 });

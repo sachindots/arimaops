@@ -128,7 +128,7 @@ function upsert<T>(list: T[], item: T, same: (a: T) => boolean): T[] {
   return next;
 }
 
-function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
+export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
   switch (e.type) {
     case "snapshot":
       return e.snapshot;

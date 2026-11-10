@@ -318,7 +318,7 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
   counter(c, x, y, it) {
     box(c, x, y + 0.26, x + 1, y + 0.76, 0, 15, ["#2d3550", "#20273d", "#171c2c"]);
     seg(c, S(c, x, y + 0.76, 15), S(c, x + 1, y + 0.76, 15), GOLD);
-    if (it.decal === "sign") sign(c, x, y + 0.76, it.i ?? 0, it.n ?? 1);
+    if (it.decal === "sign") sign(c, x, y + 0.76, it.i ?? 0, it.n ?? 1, it.label);
   },
 
   rack(c, x, y) {
@@ -484,11 +484,14 @@ const MASCOT = [
 export const MASCOT_PAL = { Y: "#FFD166", G: GOLD, n: "#243050", C: CYAN, d: GOLD_D, k: INK };
 
 /** Lobby sign: the mascot head + ARIMAOPS at double size, on the reception counter's front, sliced over `n` tiles. */
-function sign(c: Ctx, x: number, y: number, i: number, n: number) {
-  const txt = textRows("ArimaOps", 2);
+function sign(c: Ctx, x: number, y: number, i: number, n: number, label = "ArimaOps") {
+  // Long project names drop to single size so they fit the 5-tile counter.
+  const big = label.length <= 8;
+  const txt = textRows(label.slice(0, 14), big ? 2 : 1);
   const gap = 3;
   const w = MASCOT[0].length + gap + txt[0].length;
-  const rows = MASCOT.map((r, k) => r + ".".repeat(gap) + (k >= 1 && k < 11 ? txt[k - 1] : ".".repeat(txt[0].length)));
+  const top = Math.floor((MASCOT.length - txt.length) / 2);
+  const rows = MASCOT.map((r, k) => r + ".".repeat(gap) + (k >= top && k < top + txt.length ? txt[k - top] : ".".repeat(txt[0].length)));
   // Dark plate behind, one pixel larger than the art.
   const plate = Array.from({ length: rows.length + 2 }, () => "p".repeat(w + 2));
   const left = Math.floor((16 * n - w) / 2);

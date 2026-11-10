@@ -3,7 +3,7 @@ import { Logo } from "../hud/TopBar";
 // Tablet/phone layout: a header, a bottom bar (Chat · Board · Inbox · Agents · More) and full-screen
 // pages. Opening anything else (an agent, PRs, your terminal, projects) uses the same drawers as the
 // office, shown full-screen with a Back button.
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID, type AgentConfig } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui, useUi, type LayoutChoice } from "../../store/ui";
@@ -17,14 +17,42 @@ import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
 
-type Tab = "chat" | "board" | "inbox" | "agents" | "more";
+type Tab = "chat" | "board" | "office" | "inbox" | "agents" | "more";
+
+// Loaded only when shown: Pixi and the office art stay out of the phone's first load.
+const CompactOffice = lazy(() => import("../../office/iso/CompactOffice"));
+
+/** Tablet width: the office sits beside the current page instead of being a tab. */
+const SIDE_BY_SIDE = "(min-width: 900px)";
+function useSideBySide(): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(SIDE_BY_SIDE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(SIDE_BY_SIDE);
+    const onChange = () => setOn(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return on;
+}
+
+function OfficePane() {
+  return (
+    <div className="relative min-h-0 flex-1 bg-[#070910]">
+      <Suspense fallback={<div className="p-4 text-[13px] text-muted">Loading the office…</div>}>
+        <CompactOffice />
+      </Suspense>
+    </div>
+  );
+}
 
 export function CompactApp() {
   const snap = useOffice((s) => s.snap);
   const drawer = useUi((s) => s.drawer);
   const [tab, setTab] = useState<Tab>("chat");
   const [thread, setThread] = useState<string | null>(null);
+  const side = useSideBySide();
   if (!snap) return null;
+  const current = side && tab === "office" ? "chat" : tab;
   const attention = selectAttention(snap).total;
   const setupIssues = snap.setup.checks.filter((c) => c.status !== "ok").length;
 
@@ -56,35 +84,41 @@ export function CompactApp() {
         )}
       </header>
 
-      <main className="relative flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+      <main className={`relative flex min-h-0 flex-col ${side ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
         {page ? (
           <div className="panel flex min-h-0 flex-1 flex-col !border-0">{page}</div>
-        ) : tab === "chat" ? (
+        ) : current === "office" ? (
+          <OfficePane />
+        ) : current === "chat" ? (
           thread ? (
             <Thread agentId={thread} onBack={() => setThread(null)} />
           ) : (
             <ChatList onOpen={setThread} />
           )
-        ) : tab === "board" ? (
+        ) : current === "board" ? (
           <div className="panel flex min-h-0 flex-1 flex-col !border-0">
             <BoardsDrawer />
           </div>
-        ) : tab === "inbox" ? (
+        ) : current === "inbox" ? (
           <div className="panel flex min-h-0 flex-1 flex-col !border-0">
             <ActionItemsDrawer />
           </div>
-        ) : tab === "agents" ? (
+        ) : current === "agents" ? (
           <AgentList />
         ) : (
           <More />
         )}
       </main>
+      {side && <OfficePane />}
+      </div>
 
-      <nav className="grid h-[58px] shrink-0 grid-cols-5 border-t-[3px] border-ink bg-[rgba(17,26,44,0.96)]" aria-label="Sections">
+      <nav className={`grid h-[58px] shrink-0 ${side ? "grid-cols-5" : "grid-cols-6"} border-t-[3px] border-ink bg-[rgba(17,26,44,0.96)]`} aria-label="Sections">
         {(
           [
             ["chat", "Chat", "💬"],
             ["board", "Board", "▦"],
+            ...(side ? [] : [["office", "Office", "▙"] as [Tab, string, string]]),
             ["inbox", attention ? `Inbox · ${attention}` : "Inbox", "!"],
             ["agents", "Agents", "◉"],
             ["more", "More", "⋯"],
@@ -92,8 +126,8 @@ export function CompactApp() {
         ).map(([id, label, icon]) => (
           <button
             key={id}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[12px] ${tab === id && !page ? "text-green" : "text-muted"} ${id === "inbox" && attention ? "!text-red" : ""}`}
-            aria-current={tab === id && !page ? "page" : undefined}
+            className={`flex flex-col items-center justify-center gap-0.5 text-[12px] ${current === id && !page ? "text-green" : "text-muted"} ${id === "inbox" && attention ? "!text-red" : ""}`}
+            aria-current={current === id && !page ? "page" : undefined}
             onClick={() => {
               ui.closeDrawer();
               setTab(id);
@@ -257,7 +291,7 @@ function More() {
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[12px] text-muted">Auto uses this layout below 1280 px wide and the pixel office above.</p>
+        <p className="mt-1.5 text-[12px] text-muted">Auto uses this layout below 1280 px wide and the full office above. Here the office is the Office tab, or beside the page on a tablet.</p>
       </div>
     </div>
   );

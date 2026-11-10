@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import type { OfficeSnapshot } from "./data/types";
 import { connectOffice, useOffice } from "./store/office";
 import { ui, useUi } from "./store/ui";
 import { DebugPanel } from "./ui/DebugPanel";
@@ -80,19 +81,24 @@ function useSetupPrompt() {
 
 /** `?open=actions` / `?open=agent:<id>` / `?open=board` (links from push notifications): open it once connected. */
 function useDeepLink() {
+  // Read once: dev StrictMode runs the effect twice, and the first run strips the param from the URL.
+  const [open] = useState(() => new URL(location.href).searchParams.get("open"));
   useEffect(() => {
-    const url = new URL(location.href);
-    const open = url.searchParams.get("open");
     if (!open) return;
+    const url = new URL(location.href);
     url.searchParams.delete("open");
     history.replaceState(null, "", url.toString());
-    return useOffice.subscribe((s, prev) => {
-      if (!s.snap || prev.snap) return;
+    let done = false;
+    const go = (snap: OfficeSnapshot | null) => {
+      if (!snap || done) return;
+      done = true;
       if (open === "actions") ui.openActions();
       else if (open === "board") ui.openBoards();
-      else if (open.startsWith("agent:") && s.snap.config.team.some((a) => a.id === open.slice(6))) ui.openAgent(open.slice(6));
-    });
-  }, []);
+      else if (open.startsWith("agent:") && snap.config.team.some((a) => a.id === open.slice(6))) ui.openAgent(open.slice(6));
+    };
+    go(useOffice.getState().snap);
+    return useOffice.subscribe((s) => go(s.snap));
+  }, [open]);
 }
 
 export function App() {

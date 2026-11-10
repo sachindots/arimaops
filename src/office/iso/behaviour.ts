@@ -5,7 +5,7 @@
 
 import type { AgentStatus } from "../../data/types";
 import type { Tile } from "../engine/path";
-import type { IsoLayout } from "./layout";
+import { doorOf, spotsOf, type IsoLayout } from "./layout";
 
 /** What the robot shows. Session state wins over the agent state (a stopped agent isn't "idle"). */
 export type Mode = "working" | "cheer" | "idle" | "needs-input" | "alert" | "stopped" | "starting";
@@ -97,7 +97,7 @@ export function targetFor(bot: IsoBot, l: IsoLayout, mode: Mode, rand: () => num
   }
   if (bot.huddle && canHuddle(mode)) return { tile: bot.huddle, errand: "huddle" };
   if (mode === "idle" && !bot.isLead) {
-    const { coffee, wander } = l.spots;
+    const { coffee, wander } = spotsOf(l, bot.id);
     if (rand() < 0.4 && coffee.length) return { tile: coffee[Math.floor(rand() * coffee.length)], errand: "coffee" };
     if (wander.length) return { tile: wander[Math.floor(rand() * wander.length)], errand: "wander" };
   }
@@ -112,7 +112,7 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
   const wasMode = bot.mode;
   bot.mode = mode;
   // Starting agents come in through the lobby door.
-  if (mode === "starting" && wasMode === "stopped") bot.place(l.door);
+  if (mode === "starting" && wasMode === "stopped") bot.place(doorOf(l, bot.id));
   if (mode !== "idle" && (bot.errand === "wander" || bot.errand === "coffee")) {
     bot.errand = null;
     bot.pause = 0;

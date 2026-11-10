@@ -1,7 +1,9 @@
 // Pointer input for the office: drag to pan, wheel to zoom, hover + click on things.
 
 import type { Application } from "pixi.js";
+import { useBuilding } from "../store/building";
 import { reviewToolLabel, useOffice } from "../store/office";
+import type { OfficeSnapshot } from "../data/types";
 import { ui, useUi } from "../store/ui";
 import { sessionLabel, stateStyle } from "../theme/tokens";
 import type { Camera } from "./engine/camera";
@@ -19,15 +21,25 @@ export interface InputHost {
 
 export const inside = (r: PxRect, x: number, y: number) => x >= r.x && y >= r.y && x <= r.x + r.w && y <= r.y + r.h;
 
+/** "<project>/<agent>" ids are robots of another project in the one-building office. */
+function remote(id: string): { project: string; agentId: string; name: string; snap: OfficeSnapshot } | null {
+  const i = id.indexOf("/");
+  if (i <= 0) return null;
+  const o = useBuilding.getState().others[id.slice(0, i)];
+  return o?.snap ? { project: o.id, agentId: id.slice(i + 1), name: o.name, snap: o.snap } : null;
+}
+
 function describe(hit: Hit): { title: string; sub?: string } {
-  const snap = useOffice.getState().snap;
+  const r = hit.kind === "agent" ? remote(hit.id) : null;
+  const snap = r?.snap ?? useOffice.getState().snap;
   if (!snap) return { title: "" };
   if (hit.kind === "agent") {
-    const a = snap.config.team.find((x) => x.id === hit.id);
-    const st = snap.agents.find((x) => x.agentId === hit.id);
+    const id = r?.agentId ?? hit.id;
+    const a = snap.config.team.find((x) => x.id === id);
+    const st = snap.agents.find((x) => x.agentId === id);
     const task = st?.currentTaskId ? snap.tasks.find((t) => t.id === st.currentTaskId) : null;
     return {
-      title: `${a?.name ?? hit.id} · ${a?.role ?? ""}`,
+      title: `${a?.name ?? id} · ${r ? r.name : (a?.role ?? "")}`,
       sub: [st ? (st.session.state === "running" ? stateStyle[st.state].label : sessionLabel[st.session.state]) : "", task ? `${task.id} ${task.title}` : st?.note ?? ""].filter(Boolean).join(" — "),
     };
   }
@@ -46,7 +58,14 @@ function describe(hit: Hit): { title: string; sub?: string } {
 }
 
 function activate(hit: Hit) {
-  if (hit.kind === "agent") ui.openAgent(hit.id);
+  const r = hit.kind === "agent" ? remote(hit.id) : null;
+  if (r) {
+    // Another project's agent: open that project with this agent's drawer.
+    const url = new URL(location.href);
+    url.searchParams.set("project", r.project);
+    url.searchParams.set("open", `agent:${r.agentId}`);
+    location.assign(url.toString());
+  } else if (hit.kind === "agent") ui.openAgent(hit.id);
   else if (hit.kind === "plan") ui.openBoards(useUi.getState().planBoardId ?? undefined);
   else if (hit.kind === "gate" || hit.kind === "prs") ui.openPrs();
   else ui.openEnv(hit.id);
