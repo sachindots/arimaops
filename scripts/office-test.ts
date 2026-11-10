@@ -1,4 +1,6 @@
-// Isometric office: projection and building layout. Run: npx tsx scripts/office-test.ts
+// Isometric office: projection, building layout and robot behaviour. Run: npx tsx scripts/office-test.ts
+import type { AgentStatus } from "../src/data/types";
+import { besideSeat, IsoBot, modeOf, seatOf, targetFor, update, type Mode } from "../src/office/iso/behaviour";
 import { generateIsoLayout, hasSoc, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
 
@@ -62,6 +64,79 @@ for (const [name, team, type] of [["dev team", dev, "software"], ["security team
   check(`${name}: items stay inside the building`, l.items.every((it) => it.x >= 0 && it.y >= 0 && it.x < l.W && it.y < l.H));
   const again = generateIsoLayout(team, type);
   check(`${name}: deterministic`, JSON.stringify({ ...l, grid: [...l.grid.cells] }) === JSON.stringify({ ...again, grid: [...again.grid.cells] }));
+}
+
+// ---------------------------------------------------------------- behaviour
+const status = (state: AgentStatus["state"], session: AgentStatus["session"]["state"], extra: Partial<AgentStatus> = {}): AgentStatus =>
+  ({ agentId: "x", state, currentTaskId: null, stateSince: "", note: null, session: { state: session, detail: null, workspace: null, sandbox: null }, ...extra });
+check("mode: session state wins over agent state", modeOf(status("working", "stopped")) === "stopped" && modeOf(status("idle", "starting")) === "starting" && modeOf(status("working", "failed")) === "alert");
+check("mode: running agents map by state", modeOf(status("working", "running")) === "working" && modeOf(status("idle", "running")) === "idle" && modeOf(status("needs-input", "running")) === "needs-input" && modeOf(status("review-passed", "running")) === "cheer" && modeOf(status("in-review", "running")) === "working");
+check("mode: a usage-limited agent is stuck", modeOf(status("working", "running", { limitedUntil: new Date(Date.now() + 60_000).toISOString() })) === "alert" && modeOf(status("working", "running", { limitedUntil: new Date(Date.now() - 1).toISOString() })) === "working");
+check("mode: no status means stopped", modeOf(undefined) === "stopped");
+
+{
+  const l = generateIsoLayout(dev, "software");
+  const seat = seatOf(l, "nyx") as [number, number];
+  const rand = (() => {
+    let n = 7;
+    return () => ((n = (n * 48271) % 2147483647) / 2147483647);
+  })();
+  const walkable = (t: [number, number]) => l.grid.ok(...t);
+  const reach = (from: [number, number], to: [number, number]) => (from[0] === to[0] && from[1] === to[1]) || l.grid.find(from[0], from[1], to[0], to[1]).length > 0;
+  const bot = new IsoBot("nyx", false, seat);
+  const targets = (mode: Mode) => Array.from({ length: 12 }, () => targetFor(bot, l, mode, rand) as { tile: [number, number]; errand: string });
+  const seated: Mode[] = ["working", "cheer", "needs-input", "alert", "stopped", "starting"];
+  check("target: every non-idle state heads for the seat", seated.every((m) => targets(m).every((t) => t.errand === "seat" && t.tile.join() === seat.join())));
+  const idle = targets("idle");
+  check("target: idle picks break spots (coffee and wander), never the seat", idle.every((t) => t.errand === "coffee" || t.errand === "wander") && idle.some((t) => t.errand === "coffee") && idle.some((t) => t.errand === "wander"));
+  check("target: every idle spot is walkable and reachable from the seat", idle.every((t) => walkable(t.tile) && reach(seat, t.tile)));
+  check("target: every coffee, wander and scrum spot is walkable", [...l.spots.coffee, ...l.spots.wander, ...l.spots.scrum].every(walkable));
+  const lead = new IsoBot("cipher", true, seatOf(l, "cipher") as [number, number]);
+  check("target: idle lead stays in its office", targetFor(lead, l, "idle", rand)?.errand === "seat");
+
+  // Simulate at 60 fps.
+  const run = (b: IsoBot, mode: Mode, seconds: number, still = false) => {
+    for (let i = 0; i < seconds * 60; i++) update(b, l, mode, 1 / 60, rand, still);
+  };
+  const stopped = new IsoBot("nyx", false, seat);
+  stopped.facing = "ne";
+  run(stopped, "stopped", 20);
+  check("stopped: a seated agent never moves", stopped.at(seat) && stopped.facing === "ne" && !stopped.moving);
+
+  const idler = new IsoBot("lyra", false, seatOf(l, "lyra") as [number, number]);
+  const seen = new Set<string>();
+  for (let i = 0; i < 90 * 60; i++) {
+    update(idler, l, "idle", 1 / 60, rand);
+    if (!idler.moving && idler.pause > 0) seen.add(idler.tile().join());
+  }
+  check("idle: wanders between several spots and pauses at each", seen.size >= 3 && [...seen].every((k) => [...l.spots.coffee, ...l.spots.wander].some((t) => t.join() === k)), [...seen].join(" "));
+  run(idler, "working", 30);
+  check("working: an idle wanderer returns to its desk and faces it", idler.at(seatOf(l, "lyra") as [number, number]) && idler.facing === "ne");
+
+  const starter = new IsoBot("ghost", false, seatOf(l, "ghost") as [number, number]);
+  run(starter, "stopped", 1);
+  update(starter, l, "starting", 1 / 60, rand);
+  const atDoor = starter.tile().join() === l.door.join() || starter.moving;
+  run(starter, "starting", 30);
+  check("starting: comes in through the door and sits down", atDoor && starter.at(seatOf(l, "ghost") as [number, number]));
+
+  // The lead walks to an alerted agent, waits, and comes back.
+  const home = seatOf(l, "cipher") as [number, number];
+  lead.facing = "ne";
+  lead.visit = "ghost";
+  const beside = besideSeat(l, "ghost") as [number, number];
+  let arrived = false;
+  let left = false;
+  for (let i = 0; i < 40 * 60; i++) {
+    update(lead, l, "working", 1 / 60, rand);
+    if (lead.at(beside) && lead.errand === "visit") arrived = true;
+    if (arrived && !lead.at(beside)) left = true;
+  }
+  check("lead: walks to the alerted agent's desk, then home", arrived && left && lead.at(home) && lead.visit === null && lead.facing === "ne");
+
+  const still = new IsoBot("nyx", false, seat);
+  run(still, "idle", 5, true);
+  check("reduced motion: idle agents stay seated", still.at(seat) && !still.moving);
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
