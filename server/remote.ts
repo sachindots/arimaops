@@ -51,9 +51,13 @@ const DEVICE_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_BAD_CODES = 5;
 const LOCKOUT_MS = 5 * 60 * 1000;
 
-export type Role = "operator" | "viewer";
+/** owner: everything, including accounts and people. operator: runs the teams. viewer: watches and chats. */
+export type Role = "owner" | "operator" | "viewer";
+export const canOperate = (r: Role) => r === "owner" || r === "operator";
 interface Device {
   role: Role;
+  /** The person signed in on this device; missing for token-link devices. */
+  userId?: string;
   created: number;
   lastSeen: number;
   elevatedUntil: number;
@@ -64,7 +68,7 @@ interface Device {
 
 const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-function base32Encode(buf: Buffer): string {
+export function base32Encode(buf: Buffer): string {
   let bits = 0;
   let value = 0;
   let out = "";
@@ -97,7 +101,7 @@ function base32Decode(s: string): Buffer {
   return Buffer.from(out);
 }
 
-function totp(secret: Buffer, step: number): string {
+export function totp(secret: Buffer, step: number): string {
   const msg = Buffer.alloc(8);
   msg.writeBigUInt64BE(BigInt(step));
   const h = createHmac("sha1", secret).update(msg).digest();
@@ -109,7 +113,7 @@ function totp(secret: Buffer, step: number): string {
 export class RemoteGuard {
   private secret: Buffer;
   readonly secretB32: string;
-  private usedSteps = new Set<number>(); // one-time: a code can't be replayed
+  private usedSteps = new Set<string>(); // "<who>:<step>": a code can't be replayed
   private auditFile: string;
   private devicesFile: string;
   private devices: Record<string, Device> = {};
@@ -145,10 +149,10 @@ export class RemoteGuard {
   }
 
   /** New device session after a valid link token. Returns the cookie value. Revoke by deleting it from devices.json and restarting. */
-  addDevice(role: Role, label: string): string {
+  addDevice(role: Role, label: string, userId?: string): string {
     const id = randomBytes(32).toString("hex");
     const now = Date.now();
-    this.devices[id] = { role, created: now, lastSeen: now, elevatedUntil: 0, label: label.slice(0, 120) };
+    this.devices[id] = { role, created: now, lastSeen: now, elevatedUntil: 0, label: label.slice(0, 120), ...(userId ? { userId } : {}) };
     this.saveDevices();
     return id;
   }
@@ -161,6 +165,21 @@ export class RemoteGuard {
     d.lastSeen = now;
     if (stale) this.saveDevices(); // persist lastSeen at most hourly
     return { ...d, id };
+  }
+
+  /** Ties a token-link device to the person it just created (the first owner). */
+  bindDevice(id: string, userId: string) {
+    const d = this.devices[id];
+    if (!d) return;
+    d.userId = userId;
+    this.saveDevices();
+  }
+
+  /** Sign out: the cookie stops working. */
+  removeDevice(id: string) {
+    if (!(id in this.devices)) return;
+    delete this.devices[id];
+    this.saveDevices();
   }
 
   elevateDevice(id: string, until: number) {
@@ -181,11 +200,11 @@ export class RemoteGuard {
     return `otpauth://totp/${label}?secret=${this.secretB32}&issuer=dot%20hq&digits=6&period=30`;
   }
 
-  /** Accepts the current code ±1 step (clock drift); each step is usable once. */
-  verify(code: string): boolean {
+  /** Accepts the current code ±1 step (clock drift); each step is usable once. `secretB32`: a person's own secret (default: the server's). */
+  verify(code: string, secretB32?: string): boolean {
     // Brute-force guard: 5 wrong codes lock step-up for 5 minutes (a 6-digit code is otherwise guessable).
     if (Date.now() < this.lockedUntil) return false;
-    const ok = this.check(code);
+    const ok = this.check(code, secretB32 ? base32Decode(secretB32) : this.secret, secretB32 ?? "server");
     if (ok) this.badCodes = 0;
     else if (++this.badCodes >= MAX_BAD_CODES) {
       this.badCodes = 0;
@@ -195,14 +214,15 @@ export class RemoteGuard {
     return ok;
   }
 
-  private check(code: string): boolean {
+  private check(code: string, secret: Buffer, who: string): boolean {
     const clean = String(code ?? "").replace(/\D/g, "");
     if (clean.length !== 6) return false;
     const now = Math.floor(Date.now() / 30_000);
     for (const step of [now - 1, now, now + 1]) {
-      if (!this.usedSteps.has(step) && totp(this.secret, step) === clean) {
-        this.usedSteps.add(step);
-        for (const s of this.usedSteps) if (s < now - 2) this.usedSteps.delete(s);
+      const used = `${who}:${step}`;
+      if (!this.usedSteps.has(used) && totp(secret, step) === clean) {
+        this.usedSteps.add(used);
+        for (const s of this.usedSteps) if (Number(s.slice(s.lastIndexOf(":") + 1)) < now - 2) this.usedSteps.delete(s);
         return true;
       }
     }
@@ -213,7 +233,7 @@ export class RemoteGuard {
     return Date.now() + STEP_UP_MS;
   }
 
-  audit(entry: { project?: string; role: string; origin: string; remote: boolean; cmd: string; args: unknown[]; result: "ok" | "blocked" | "step-up-required" | "error" | "elevated" | "bad-code" }) {
+  audit(entry: { project?: string; role: string; user?: string; origin: string; remote: boolean; cmd: string; args: unknown[]; result: "ok" | "blocked" | "step-up-required" | "error" | "elevated" | "bad-code" | "bad-password" | "throttled" }) {
     if (QUIET.has(entry.cmd) && entry.result === "ok") return;
     const args = REDACT_ARGS.has(entry.cmd) ? ["[redacted]"] : QUIET.has(entry.cmd) ? [] : entry.args;
     let argStr = "";
@@ -222,7 +242,7 @@ export class RemoteGuard {
     } catch {
       argStr = "[unserializable]";
     }
-    const line = `${new Date().toISOString()}\t${entry.result}\t${entry.role}${entry.remote ? "@remote" : ""}\t${entry.origin || "-"}\t${entry.project ?? "-"}\t${entry.cmd}\t${argStr}\n`;
+    const line = `${new Date().toISOString()}\t${entry.result}\t${entry.user ? `${entry.user.replace(/\s/g, "_")}/` : ""}${entry.role}${entry.remote ? "@remote" : ""}\t${entry.origin || "-"}\t${entry.project ?? "-"}\t${entry.cmd}\t${argStr}\n`;
     try {
       appendFileSync(this.auditFile, line, { mode: 0o600 });
     } catch (err) {

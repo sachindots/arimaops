@@ -19,7 +19,10 @@ import type { Runtime } from "./project";
 import { createCrossProjectTask, listProjectsOverview, registerProjectPath, setRegistryPaused, updateCrossProjectTask } from "./projectsRegistry";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
-import { RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
+import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
+import { Throttle, Users } from "./users";
+import { homedir } from "node:os";
+import { BRAND } from "../src/data/brand";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
@@ -78,11 +81,26 @@ interface Options {
   /** Origins that count as "this machine". Anything else is remote and needs TOTP step-up for risky commands. */
   localOrigins: string[];
   guard: RemoteGuard;
+  /** People who can sign in (default: ~/.hq/users.json). */
+  users?: Users;
   distDir: string | null;
   allowedOrigins: string[];
 }
 
+/** Who is calling: a role, the device cookie (if any) and the signed-in person (if any). */
+interface Who {
+  role: Role;
+  deviceId: string;
+  userId?: string;
+  userName?: string;
+}
+
+/** Only the owner manages accounts (API keys) and the machine-wide proxy. */
+const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "setProxy"]);
+
 export function startHttp(o: Options) {
+  const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
+  const throttle = new Throttle();
   const send = (res: ServerResponse, code: number, body: string, type = "text/plain") => {
     res.writeHead(code, { "Content-Type": type });
     res.end(body);
@@ -109,12 +127,32 @@ export function startHttp(o: Options) {
     return !(LOOPBACK.has(req.socket.remoteAddress ?? "") && !proxied && o.localOrigins.includes(origin));
   };
 
-  /** Token (link or bearer) first, then the device cookie. */
-  const whoIs = (req: IncomingMessage, tok: string): { role: Role; deviceId: string } | null => {
-    if (tok && safeEqual(tok, o.browserToken)) return { role: "operator", deviceId: "" };
+  /**
+   * Token (link or bearer) first, then the device cookie. The role is read from the person on every call, so a
+   * changed role, a disabled person or a removed one takes effect at once. Before anyone has signed up, the start-up
+   * link is the owner; after, it works only on this machine (as the first owner) and remote devices sign in by name.
+   */
+  const whoIs = (req: IncomingMessage, tok: string): Who | null => {
+    const owner = users.firstOwner();
+    const asOwner = (deviceId: string): Who | null => (!isRemote(req) && owner ? { role: owner.role, deviceId, userId: owner.id, userName: owner.name } : null);
+    if (tok && safeEqual(tok, o.browserToken)) return users.count() ? asOwner("") : { role: "owner", deviceId: "" };
     if (tok && safeEqual(tok, o.viewerToken)) return { role: "viewer", deviceId: "" };
     const d = o.guard.device(cookie(req, "hq_sid"));
-    return d ? { role: d.role, deviceId: d.id } : null;
+    if (!d) return null;
+    if (d.userId) {
+      const u = users.active(d.userId);
+      return u ? { role: u.role, deviceId: d.id, userId: u.id, userName: u.name } : null;
+    }
+    // A token-link device: the owner while nobody has signed up; after that, local only.
+    if (!users.count()) return { role: d.role === "operator" ? "owner" : d.role, deviceId: d.id };
+    return d.role === "viewer" ? { role: "viewer", deviceId: d.id } : asOwner(d.id);
+  };
+
+  const json = (res: ServerResponse, code: number, body: unknown) => send(res, code, JSON.stringify(body), "application/json");
+  const clientIp = (req: IncomingMessage) => String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+  const setCookie = (req: IncomingMessage, res: ServerResponse, id: string, maxAge: number) => {
+    const https = req.headers["x-forwarded-proto"] === "https" || (req.headers.origin ?? "").startsWith("https://");
+    res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? "; Secure" : ""}`);
   };
 
   const server = createServer(async (req, res) => {
@@ -125,15 +163,98 @@ export function startHttp(o: Options) {
       try {
         const { token } = JSON.parse((await readBody(req, 4096)) || "{}") as { token?: string };
         const tok = String(token ?? "");
-        const role: Role | null = tok && safeEqual(tok, o.browserToken) ? "operator" : tok && safeEqual(tok, o.viewerToken) ? "viewer" : null;
-        if (!role) return send(res, 401, JSON.stringify({ error: "invalid link" }), "application/json");
-        const id = o.guard.addDevice(role, String(req.headers["user-agent"] ?? ""));
-        const https = req.headers["x-forwarded-proto"] === "https" || (req.headers.origin ?? "").startsWith("https://");
-        res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${o.guard.cookieMaxAge}${https ? "; Secure" : ""}`);
-        o.guard.audit({ role, origin: req.headers.origin ?? "", remote: isRemote(req), cmd: "login", args: [], result: "ok" });
-        return send(res, 200, JSON.stringify({ role }), "application/json");
+        const who = tok ? whoIs(req, tok) : null;
+        if (!who) return json(res, 401, { error: users.count() ? "Sign in with your name and password." : "invalid link" });
+        const id = o.guard.addDevice(who.role, String(req.headers["user-agent"] ?? ""), who.userId);
+        setCookie(req, res, id, o.guard.cookieMaxAge);
+        o.guard.audit({ role: who.role, user: who.userName, origin: req.headers.origin ?? "", remote: isRemote(req), cmd: "login", args: [], result: "ok" });
+        return json(res, 200, { role: who.role });
       } catch {
         return send(res, 400, "bad request");
+      }
+    }
+
+    // ---------------------------------------------------------------- people: sign-in, sign-out, who am I
+    if (url.pathname.startsWith("/api/auth/")) {
+      const origin = req.headers.origin ?? "";
+      if (req.method === "POST" && url.pathname === "/api/auth/login") {
+        if (!okOrigin(req)) return send(res, 403, "bad origin");
+        let body: { name?: unknown; password?: unknown };
+        try {
+          body = JSON.parse((await readBody(req, 4096)) || "{}");
+        } catch {
+          return send(res, 400, "bad request");
+        }
+        const keys = [`ip:${clientIp(req)}`, `name:${String(body.name ?? "").trim().toLowerCase()}`];
+        if (keys.some((k) => throttle.blocked(k))) {
+          o.guard.audit({ role: "-", user: String(body.name ?? "").slice(0, 40), origin, remote: isRemote(req), cmd: "signin", args: [], result: "throttled" });
+          return json(res, 429, { error: "Too many wrong tries. Wait 15 minutes." });
+        }
+        const u = users.verify(body.name, body.password);
+        if (!u) {
+          keys.forEach((k) => throttle.fail(k));
+          o.guard.audit({ role: "-", user: String(body.name ?? "").slice(0, 40), origin, remote: isRemote(req), cmd: "signin", args: [], result: "bad-password" });
+          return json(res, 401, { error: "Wrong name or password." });
+        }
+        keys.forEach((k) => throttle.clear(k));
+        const id = o.guard.addDevice(u.role, String(req.headers["user-agent"] ?? ""), u.id);
+        setCookie(req, res, id, o.guard.cookieMaxAge);
+        o.guard.audit({ role: u.role, user: u.name, origin, remote: isRemote(req), cmd: "signin", args: [], result: "ok" });
+        return json(res, 200, { role: u.role, name: u.name });
+      }
+      if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+        if (!okOrigin(req)) return send(res, 403, "bad origin");
+        const id = cookie(req, "hq_sid");
+        if (id) o.guard.removeDevice(id);
+        setCookie(req, res, "", 0);
+        return json(res, 200, { ok: true });
+      }
+      if (req.method === "GET" && url.pathname === "/api/auth/me") {
+        const who = whoIs(req, url.searchParams.get("token") ?? "");
+        if (!who) return json(res, 401, { error: "Sign in.", people: users.count() });
+        return json(res, 200, { role: who.role, user: who.userId ? { id: who.userId, name: who.userName } : null, people: users.count() });
+      }
+      return send(res, 404, "not found");
+    }
+
+    // ---------------------------------------------------------------- people: the owner's Users page
+    if (url.pathname === "/api/users" || url.pathname.startsWith("/api/users/")) {
+      const who = whoIs(req, url.searchParams.get("token") ?? "");
+      if (!who) return json(res, 401, { error: "Sign in." });
+      if (who.role !== "owner") return json(res, 403, { error: "Only the owner manages people." });
+      if (req.method !== "GET") {
+        if (!okOrigin(req)) return send(res, 403, "bad origin");
+        if (isRemote(req) && !(who.deviceId && Date.now() < o.guard.deviceElevatedUntil(who.deviceId)))
+          return json(res, 403, { error: "From another device, enter your authenticator code in HQ first (any risky action asks for it)." });
+      }
+      const audit = (cmd: string, args: unknown[], result: "ok" | "error") =>
+        o.guard.audit({ role: who.role, user: who.userName, origin: req.headers.origin ?? "", remote: isRemote(req), cmd, args, result });
+      try {
+        if (req.method === "GET" && url.pathname === "/api/users") return json(res, 200, { users: users.views(), me: who.userId ?? null });
+        const body = req.method === "DELETE" ? {} : (JSON.parse((await readBody(req, 8192)) || "{}") as Record<string, unknown>);
+        if (req.method === "POST" && url.pathname === "/api/users") {
+          const first = users.count() === 0;
+          const made = users.create({ name: body.name, role: first ? "owner" : body.role, password: body.password });
+          // The first owner was created from a token-link device: that device is now theirs.
+          if (first && who.deviceId) o.guard.bindDevice(who.deviceId, made.user.id);
+          audit("users.create", [made.user.name, made.user.role], "ok");
+          return json(res, 200, made);
+        }
+        const id = decodeURIComponent(url.pathname.slice("/api/users/".length));
+        if (req.method === "PATCH") {
+          const out = users.update(id, body);
+          audit("users.update", [id, ...Object.keys(body).filter((k) => k !== "password"), ...(body.password ? ["password"] : [])], "ok");
+          return json(res, 200, out);
+        }
+        if (req.method === "DELETE") {
+          users.remove(id);
+          audit("users.remove", [id], "ok");
+          return json(res, 200, { ok: true });
+        }
+        return send(res, 404, "not found");
+      } catch (e) {
+        audit(`users.${req.method?.toLowerCase()}`, [], "error");
+        return json(res, 400, { error: e instanceof Error ? e.message : String(e) });
       }
     }
 
@@ -180,7 +301,7 @@ export function startHttp(o: Options) {
       const qToken = url.searchParams.get("token") ?? "";
       const bearer = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
       const who = whoIs(req, bearer || qToken);
-      const operator = who?.role === "operator";
+      const operator = !!who && canOperate(who.role);
       const viewer = who?.role === "viewer";
       if (viewer && req.method !== "GET") return send(res, 403, JSON.stringify({ error: "viewer token is read-only" }), "application/json");
       if (!operator && !viewer) return send(res, 401, JSON.stringify({ error: "unauthorized" }), "application/json");
@@ -274,10 +395,13 @@ export function startHttp(o: Options) {
     // ?watch=1: the one-building office following another project. Status only (no terminal output), commands ignored.
     const watch = url.searchParams.get("watch") === "1";
     log.info(`ui connected: ${rt.slug} ${who.role}${watch ? " watching" : ""}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
-    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who.role, who.deviceId, origin, remote, watch));
+    wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who, origin, remote, watch));
   });
 
-  function onClient(ws: WebSocket, rt: Runtime, role: Role, deviceId: string, origin: string, remote: boolean, watch = false) {
+  function onClient(ws: WebSocket, rt: Runtime, who: Who, origin: string, remote: boolean, watch = false) {
+    const { deviceId } = who;
+    // Read per command: a role change or sign-out applies to an open socket too.
+    const current = (): Who | null => (who.userId ? ((u) => (u ? { ...who, role: u.role } : null))(users.active(who.userId)) : who);
     // A device that entered a code today stays elevated (24 h); a bare-token connection only until it closes.
     let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
     const sendEvent = (e: OfficeEvent) => {
@@ -293,12 +417,16 @@ export function startHttp(o: Options) {
         const cmd = String(msg.cmd ?? "");
         const args = Array.isArray(msg.args) ? msg.args : [];
         const audit = (result: Parameters<RemoteGuard["audit"]>[0]["result"], c = cmd, a: unknown[] = args) =>
-          o.guard.audit({ project: rt.slug, role, origin, remote, cmd: c, args: a, result });
+          o.guard.audit({ project: rt.slug, role: current()?.role ?? "-", user: who.userName, origin, remote, cmd: c, args: a, result });
+        const me = current();
+        if (!me) return void (audit("blocked"), ws.close());
+        const role = me.role;
 
         // Step-up: { cmd: "elevate", args: [code, pendingCmd?, pendingArgs?] }
         if (cmd === "elevate") {
-          if (role !== "operator") return audit("blocked");
-          if (!o.guard.verify(String(args[0] ?? ""))) {
+          if (!canOperate(role)) return audit("blocked");
+          // Each person's own authenticator; token-link devices use the server's.
+          if (!o.guard.verify(String(args[0] ?? ""), who.userId ? users.active(who.userId)?.totp : undefined)) {
             audit("bad-code", "elevate", []);
             return sendEvent({ type: "remote.stepup", status: "denied" });
           }
@@ -315,6 +443,10 @@ export function startHttp(o: Options) {
 
         const fn = cmd ? rt.commands[cmd] : undefined;
         if (!fn) return log.warn("unknown command", cmd);
+        if (OWNER_COMMANDS.has(cmd) && role !== "owner") {
+          audit("blocked");
+          return log.warn("owner-only command blocked:", cmd);
+        }
         if (role === "viewer" && !VIEWER_COMMANDS.has(cmd)) {
           audit("blocked");
           return log.warn("viewer blocked:", cmd);

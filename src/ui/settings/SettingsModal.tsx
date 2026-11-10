@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { ui, useUi, type SettingsTab } from "../../store/ui";
 import { AccountsSettings } from "./AccountsSettings";
+import { UsersSettings } from "./UsersSettings";
 import { BoardsSettings } from "./BoardsSettings";
 import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettingsTab } from "./SandboxSettings";
@@ -12,6 +13,7 @@ import { WorkflowSettings } from "./WorkflowSettings";
 const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "team", label: "Team", hint: "Agents, roles, skills" },
   { id: "accounts", label: "Accounts", hint: "API keys, cloud" },
+  { id: "users", label: "Users", hint: "People, roles, sign-out" },
   { id: "workflow", label: "Workflow", hint: "Review, merge, deploy" },
   { id: "stack", label: "Stack", hint: "Frameworks, tools" },
   { id: "mcp", label: "MCP", hint: "Servers for agents" },
@@ -63,6 +65,7 @@ export function SettingsModal() {
           <div className="scroll-thin min-w-0 flex-1 overflow-auto p-3 md:p-5">
             {settings.tab === "team" && <TeamSettings />}
             {settings.tab === "accounts" && <AccountsSettings />}
+            {settings.tab === "users" && <UsersSettings />}
             {settings.tab === "workflow" && <WorkflowSettings />}
             {settings.tab === "stack" && <StackSettings />}
             {settings.tab === "mcp" && <McpSettings />}

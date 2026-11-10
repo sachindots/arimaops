@@ -1,6 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { OfficeSnapshot } from "./data/types";
 import { connectOffice, useOffice } from "./store/office";
+import { checkAuth, useAuth } from "./store/auth";
+import { SignIn } from "./ui/auth/SignIn";
+import { OwnerPrompt } from "./ui/auth/OwnerPrompt";
 import { ui, useUi } from "./store/ui";
 import { DebugPanel } from "./ui/DebugPanel";
 import { DrawerHost } from "./ui/drawers/Drawer";
@@ -103,6 +106,8 @@ function useDeepLink() {
 
 export function App() {
   useEffect(() => connectOffice(), []);
+  useEffect(() => void checkAuth(), []);
+  const auth = useAuth((s) => s.status);
   useDeepLink();
   useKeyboard();
   useSetupPrompt();
@@ -112,6 +117,8 @@ export function App() {
   const compact = useUi((s) => s.compact);
   // The office needs 1280 px; below that (when chosen anyway) the page scrolls instead of squeezing.
   useEffect(() => void (document.body.style.minWidth = compact ? "" : "1280px"), [compact]);
+  // A real HQ that doesn't know this device: sign in first (not the demo data).
+  if (auth === "signed-out") return <SignIn />;
 
   if (compact)
     return (
@@ -121,6 +128,7 @@ export function App() {
           <>
             <CompactApp />
             <SettingsModal />
+            <OwnerPrompt />
             {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
           </>
         )}
@@ -141,6 +149,7 @@ export function App() {
           <DrawerHost />
           <DebugPanel />
           <SettingsModal />
+          <OwnerPrompt />
           {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
           <Tooltip />
         </>

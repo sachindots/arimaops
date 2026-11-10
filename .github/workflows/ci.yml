@@ -56,6 +56,8 @@ jobs:
         run: npx tsx scripts/accounts-test.ts
       - name: Credentials (vault, providers, delivery, redaction)
         run: npx tsx scripts/credentials-test.ts
+      - name: People, roles and sign-in (real HTTP server)
+        run: npx tsx scripts/users-test.ts
       - name: Pack
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack

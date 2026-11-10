@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID, type AgentConfig } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui, useUi, type LayoutChoice } from "../../store/ui";
+import { signOut, useAuth } from "../../store/auth";
 import { ago, Dot, Portrait, StateChip, useNow } from "../kit";
 import { ActionItemsDrawer } from "../drawers/ActionItemsDrawer";
 import { AgentDrawer, MessagesTab } from "../drawers/AgentDrawer";
@@ -256,6 +257,7 @@ function AgentList() {
 
 function More() {
   const choice = useUi((s) => s.layoutChoice);
+  const auth = useAuth((s) => s.status);
   const security = useOffice((s) => s.snap?.config.project.type === "security");
   const open = useOffice((s) => (s.snap?.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length);
   const item = (label: string, sub: string, onClick: () => void, show = true): ReactNode =>
@@ -281,6 +283,7 @@ function More() {
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}
         {item("Setup checklist", "What's missing on the server", () => ui.openSetup())}
         {item("Settings", "Team, workflow, sandbox, project", () => ui.openSettings("team"), !isViewer)}
+        {item("Sign out", "Sign this device out of HQ", () => void signOut(), auth === "signed-in")}
       </ul>
       <div className="px-4 py-3">
         <div className="mb-1.5 text-[13px] text-muted">Layout on this device</div>
