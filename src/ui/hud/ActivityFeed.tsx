@@ -30,7 +30,7 @@ export function ActivityFeed() {
   const items = activity.slice(0, 7);
 
   return (
-    <section aria-label="Activity" className="hq-feed panel-dark fixed bottom-4 left-4 z-10 h-[220px] w-[280px] overflow-hidden px-2.5 pb-1.5 pt-2">
+    <section aria-label="Activity" className="hq-feed panel-dark fixed bottom-4 left-4 z-10 h-[220px] w-[280px] [@media(max-height:760px)]:h-[130px] overflow-hidden px-2.5 pb-1.5 pt-2">
       <div className="mb-1 flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-[#b9c3e6]">
         <i className="led" />
         Activity

@@ -85,7 +85,7 @@ export function CompactApp() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-      <main className={`relative flex min-h-0 flex-col ${side ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
+      <main className={`relative flex min-h-0 min-w-0 flex-col ${side ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
         {page ? (
           <div className="panel flex min-h-0 flex-1 flex-col !border-0">{page}</div>
         ) : current === "office" ? (

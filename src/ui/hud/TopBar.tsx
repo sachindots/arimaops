@@ -46,10 +46,12 @@ export function TopBar() {
         )}
         <span className="truncate text-[16px] text-muted">
           — <em className="font-semibold not-italic text-ink">{snap.config.project.name}</em>{" "}
-          <span className="font-term text-[17px] text-green">{snap.config.project.repo}</span>
+          <span className="hidden font-term text-[17px] text-green min-[1500px]:inline">{snap.config.project.repo}</span>
         </span>
       </div>
-      <div className="flex-1" />
+      {/* Below ~1600 px the controls don't all fit: they scroll sideways instead of running off the edge. */}
+      {/* ml-auto on the first control, not justify-end: right-aligned when it fits, scrollable from the start when it doesn't. */}
+      <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-4 overflow-x-auto [&>*]:shrink-0 [&>*:first-child]:ml-auto">
 
 
       {hasDev && (
@@ -132,6 +134,7 @@ export function TopBar() {
       <button className="btn text-[14px]" aria-pressed={debugOpen} onClick={() => ui.toggleDebug()} title="Debug panel (D)">
         Debug
       </button>
+      </div>
     </header>
   );
 }

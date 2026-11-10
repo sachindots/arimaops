@@ -91,7 +91,7 @@ export function TeamPanel() {
   })).filter((p) => p.members.length > 0);
 
   return (
-    <section aria-label="Team" className="hq-team fixed bottom-[250px] left-4 top-[74px] z-10 flex w-[288px] flex-col gap-2">
+    <section aria-label="Team" className="hq-team fixed bottom-[250px] left-4 top-[74px] z-10 [@media(max-height:760px)]:bottom-[160px] flex w-[288px] flex-col gap-2">
       <div className="flex items-center justify-between px-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink [text-shadow:0_2px_0_#040508]">
         <span>
           Org · {team.length} ops · {pods.length} {pods.length === 1 ? "pod" : "pods"}

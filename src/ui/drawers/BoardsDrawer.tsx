@@ -54,12 +54,12 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
           <span className="text-[12px] text-muted">Agents only pick tasks from active boards.</span>
         </div>
       )}
-      <div className="scroll-thin grid min-h-0 flex-1 auto-cols-[minmax(200px,1fr)] grid-flow-col gap-2 overflow-auto bg-[#07090e] p-3">
+      <div className="scroll-thin grid min-h-0 flex-1 snap-x auto-cols-[minmax(200px,1fr)] grid-flow-col gap-2 overflow-auto bg-[#07090e] p-3 max-[560px]:snap-mandatory max-[560px]:auto-cols-[86%]">
         {cols.map((c) => {
           const list = tasks.filter((t) => t.status === c.id);
           if (c.id === "done") list.reverse();
           return (
-            <div key={c.id} className="min-w-0">
+            <div key={c.id} className="min-w-0 snap-start">
               <h4 className="mb-2 flex justify-between border-b-[3px] pb-0.5 text-[14px] font-semibold" style={{ borderColor: c.color }}>
                 {c.label} <span className="font-term text-[17px] text-muted">{list.length}</span>
               </h4>

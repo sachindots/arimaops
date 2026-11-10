@@ -112,7 +112,7 @@ export const useOffice = create<OfficeState>(() => ({
   terminalChunks: 0,
   speed: 1,
   presets: source.dev?.presets ?? null,
-  live: token !== null,
+  live: token !== null || loggedIn, // a saved device login is just as live as a token link
   workspaceInfo: {},
   connection: "connecting",
   source,

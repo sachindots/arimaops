@@ -243,3 +243,11 @@ html[data-font] .font-term {
   .hq-feed { display: none; }
   .hq-drawer { left: 8px !important; right: 8px !important; bottom: 8px !important; width: auto !important; max-width: none !important; }
 }
+
+/* Sideways-scrolling rows (the top bar when it's crowded): no visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
