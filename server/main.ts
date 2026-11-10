@@ -1,6 +1,6 @@
-// dothq — one server for all your .hq projects: every registered project plus the repo you're in.
+// arimaops: one server for all your projects: every registered project plus the repo you're in.
 //
-//   dothq [--repo <path>] [--port 7420] [--dev] [--no-open] [--host 0.0.0.0] [--remote] [--origin <url>]
+//   arimaops [--repo <path>] [--port 7420] [--dev] [--no-open] [--host 0.0.0.0] [--remote] [--origin <url>]
 //
 // --ntfy <topic>: push to your phone/tablet (ntfy app) when an agent waits on you.
 // --remote: tablet/phone access. Prints operator + viewer links for LAN and Tailscale.
@@ -21,8 +21,8 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { ensurePtyHelperExecutable } from "./lib/ptyFix";
 import { browserToken } from "./paths";
-import { startProject, type Runtime } from "./project";
-import { readRegistry } from "./projectsRegistry";
+import { migrateHome, startProject, type Runtime } from "./project";
+import { dropLiveProject, readRegistry } from "./projectsRegistry";
 import { detectRepo } from "./repo";
 import { slugOf } from "./store";
 import { RemoteGuard, startPushNotifier } from "./remote";
@@ -59,6 +59,8 @@ async function main() {
   const scrubbed = scrubbedVars;
   if (scrubbed.length) log.info(`started inside an agent session: not passing ${scrubbed.length} of its variables (${scrubbed.slice(0, 3).join(", ")}…) to HQ's agents`);
   ensurePtyHelperExecutable();
+  // ~/.arima → ~/.arima, before anything reads it.
+  migrateHome();
   const dev = flag("dev");
   const port = Number(arg("port") ?? process.env.HQ_PORT ?? 7420);
   const remote = flag("remote") || !!arg("host");
@@ -67,7 +69,7 @@ async function main() {
 
   // Which folders to load: every registered project, plus --repo (or the current folder, as before).
   // The current folder only counts when it's already a repo, or nothing is registered yet (first run with npx).
-  const registered = readRegistry().filter((e) => existsSync(e.path));
+  const registered = readRegistry().filter((e) => existsSync(e.path) && !e.archived);
   const explicit = arg("repo") ?? process.env.HQ_REPO;
   const cwdIsRepo = (await run("git", ["rev-parse", "--show-toplevel"], { cwd: process.cwd() })).ok;
   const launch = explicit ? resolve(explicit) : cwdIsRepo || !registered.length ? process.cwd() : null;
@@ -91,6 +93,16 @@ async function main() {
     } catch (err) {
       log.warn(`couldn't load ${path}: ${err instanceof Error ? err.message : err}`);
     }
+  };
+  /** Stops a project's agents and takes it out of this server (archive). Its files stay. */
+  const unloadProject = async (slug: string) => {
+    const rt = projects.get(slug);
+    if (!rt) return;
+    for (const a of rt.hub.snap.config.team) await Promise.resolve(rt.commands.stopAgent(a.id)).catch(() => {});
+    rt.shutdown();
+    projects.delete(slug);
+    seenRoots.delete(rt.root);
+    dropLiveProject(rt.root);
   };
   log.info("checking setup…");
   // One at a time: setup checks and sbx calls are shared tools, and the order keeps --repo first.
@@ -116,6 +128,7 @@ async function main() {
     projects,
     defaultProject,
     loadProject: (path) => loadProject(path),
+    unloadProject,
     port,
     browserToken: uiToken,
     viewerToken,
@@ -146,7 +159,7 @@ async function main() {
       `  Risky commands from remote (terminal, approvals, secrets, settings) need a 6-digit code once a day per device.`,
       `    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`,
       `    (or type the key manually: ${guard.secretB32})`,
-      `  Audit log: ~/.hq/audit.log`,
+      `  Audit log: ~/.arima/audit.log`,
     );
     log.info(lines.join("\n") + "\n");
   }

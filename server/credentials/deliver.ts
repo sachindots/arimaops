@@ -1,7 +1,7 @@
 // Getting an account's secrets to one agent process, and nowhere else:
 // - never on a command line (tmux and docker command lines show in `ps`),
 // - never in the agent's folder (agents can read, commit and print their folder),
-// - only in ~/.hq/secrets/<project>/<agent>/ (0700), which is removed when the agent stops.
+// - only in ~/.arima/secrets/<project>/<agent>/ (0700), which is removed when the agent stops.
 // The env file is read once at launch and deleted (by the launch shell, and by HQ after a minute in case the launch failed).
 
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";

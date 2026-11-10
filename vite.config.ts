@@ -10,7 +10,7 @@ export default defineConfig({
   optimizeDeps: { entries: ["index.html"] },
   server: {
     // The HQ server reloads itself; don't reload the page for its files.
-    watch: { ignored: ["**/server/**", "**/.jsmhq/**", "**/.hq/**"] },
+    watch: { ignored: ["**/server/**", "**/.arima/**", "**/.jsmhq/**", "**/.hq/**"] },
     // `pnpm dev:hq`: the UI talks to the HQ server through Vite.
     proxy: { "/ws": { target: `ws://127.0.0.1:${hqPort}`, ws: true }, "/api": { target: `http://127.0.0.1:${hqPort}` } },
   },

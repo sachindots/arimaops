@@ -4,6 +4,9 @@
 // Other CLIs: null (shown as "n/a").
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { BRAND } from "../src/data/brand";
+
+const LEGACY_HOMES: readonly string[] = BRAND.legacyHomeDirs;
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentCli, Tokens } from "../src/data/types";
@@ -88,9 +91,11 @@ export class UsageMeter {
   /** Total tokens an agent's CLI has used in `dir` (its workspace), or null when HQ can't read that CLI's logs. */
   /** `cliHome`: another account's config folder (CLAUDE_CONFIG_DIR / CODEX_HOME); null = the CLI's usual one. */
   read(cli: AgentCli, dir: string, cliHome: string | null = null): Tokens | null {
+    // The same folder under its earlier paths (~/.hq before the move to ~/.arima): the CLIs filed those logs by path.
+    const dirs = [dir, ...LEGACY_HOMES.map((h) => dir.replace(`/${BRAND.homeDir}/`, `/${h}/`)).filter((d) => d !== dir)];
     try {
-      if (cli === "claude") return jsonlIn(join(cliHome ?? join(this.home, ".claude"), "projects", claudeDirKey(dir))).map((f) => this.cached(f, claudeTokens)).reduce(add, ZERO);
-      if (cli === "codex") return this.codexFiles(cliHome).map((f) => this.cached(f, codexRollout)).filter((r) => r.cwd === dir).map((r) => r.tokens).reduce(add, ZERO);
+      if (cli === "claude") return dirs.flatMap((d) => jsonlIn(join(cliHome ?? join(this.home, ".claude"), "projects", claudeDirKey(d)))).map((f) => this.cached(f, claudeTokens)).reduce(add, ZERO);
+      if (cli === "codex") return this.codexFiles(cliHome).map((f) => this.cached(f, codexRollout)).filter((r) => !!r.cwd && dirs.includes(r.cwd)).map((r) => r.tokens).reduce(add, ZERO);
     } catch {
       /* unreadable log: treat as unknown */
     }

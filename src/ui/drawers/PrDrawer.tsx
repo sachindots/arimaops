@@ -21,9 +21,13 @@ export function PrDrawer() {
           <div className="truncate text-[15px] font-semibold">{pr.title}</div>
           <div className="flex items-center gap-1.5 text-[12px] text-muted">
             {author && <Dot color={author.color} size={8} />}
-            <button className="underline" onClick={() => author && ui.openAgent(author.id)}>
-              {author?.name ?? (pr.authorId || "—")}
-            </button>
+            {author ? (
+              <button className="-my-2 py-2 underline" onClick={() => ui.openAgent(author.id)}>
+                {author.name}
+              </button>
+            ) : (
+              <span>{pr.authorId || "—"}</span>
+            )}
             · {ago(pr.openedAt, now)} ago
             {!pr.merged && <> · {pr.openComments} open comment{pr.openComments === 1 ? "" : "s"}{pr.conflict ? " · merge conflict" : ""}</>}
           </div>

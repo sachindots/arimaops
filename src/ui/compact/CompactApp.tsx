@@ -74,7 +74,7 @@ export function CompactApp() {
       <header className="flex h-[48px] shrink-0 items-center gap-2 border-b-[3px] border-ink bg-[rgba(17,26,44,0.96)] px-3">
         <Logo size={28} />
         <b className="text-[20px] font-bold text-gold">{BRAND.name}</b>
-        <button className="min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
+        <button className="min-h-[40px] min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
           <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
         </button>
         {isViewer && <span className="chip text-[11px]">Viewer</span>}
@@ -278,7 +278,7 @@ function More() {
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <ul>
         {item(`Findings${open ? ` · ${open}` : ""}`, "What agents found on in-scope targets; triage and the report", () => ui.openFindings(), security)}
-        {item("Projects", "Switch project, pause or resume, add tasks anywhere", () => ui.openCto())}
+        {item("Projects", "Switch, create, pause, archive or delete projects", () => ui.openCto())}
         {item("Pull requests", "Reviews and what's ready to merge", () => ui.openPrs())}
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}
         {item("Setup checklist", "What's missing on the server", () => ui.openSetup())}

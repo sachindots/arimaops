@@ -150,7 +150,7 @@ export function WorkflowSettings() {
             </div>
             <p className="m-0 text-[13px] text-muted">
               When a worker finishes a task, its next task starts in a fresh conversation instead of rereading everything before it. The task brief brings
-              back what matters: the handoff notes it builds on and the repo facts in <code>.hq/facts.md</code>. The lead keeps its conversation. HQ also asks
+              back what matters: the handoff notes it builds on and the repo facts in <code>.arima/facts.md</code>. The lead keeps its conversation. HQ also asks
               Claude Haiku (your Claude plan) whether an agent that keeps hitting the same error is stuck, and nudges it once.
             </p>
           </section>

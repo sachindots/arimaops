@@ -1,16 +1,16 @@
 {
-  "name": "dothq",
-  "version": "0.7.4",
-  "description": "Run a team of AI agents in Docker Sandboxes, and command them from a cyberspace tactical operations center.",
+  "name": "arimaops",
+  "version": "0.8.0",
+  "description": "Run your own software company and security operations with a team of AI coding agents (Claude Code, Codex, Gemini\u2026), commanded from a pixel-art office.",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/jsmastery-pro/jsm-hq#readme",
+  "homepage": "https://github.com/sachindots/arimaops#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jsmastery-pro/jsm-hq.git"
+    "url": "git+https://github.com/sachindots/arimaops.git"
   },
   "bugs": {
-    "url": "https://github.com/jsmastery-pro/jsm-hq/issues"
+    "url": "https://github.com/sachindots/arimaops/issues"
   },
   "keywords": [
     "ai",
@@ -26,12 +26,14 @@
     "opencode",
     "docker-sandboxes",
     "mcp",
-    "pixel-art",
-    "developer-tools"
+    "developer-tools",
+    "security-operations",
+    "red-team",
+    "pixel-art"
   ],
   "bin": {
-    "dothq": "bin/dothq.mjs",
-    "jsm-hq": "bin/jsm-hq.mjs"
+    "arimaops": "bin/arimaops.mjs",
+    "dothq": "bin/dothq.mjs"
   },
   "publishConfig": {
     "access": "public"
@@ -43,7 +45,9 @@
     "scripts/fix-node-pty.mjs",
     "LICENSE",
     "TRADEMARKS.md",
-    "README.md"
+    "README.md",
+    "NOTICE",
+    "SECURITY.md"
   ],
   "engines": {
     "node": ">=20"

@@ -25,7 +25,7 @@ export function modeOf(st: AgentStatus | undefined, now = Date.now()): Mode {
 
 /** Screen direction the sprite faces. +x is down-right (se), +y is down-left (sw). */
 export type Facing = "ne" | "nw" | "se" | "sw";
-export type Errand = "seat" | "wander" | "coffee" | "visit" | "huddle" | null;
+export type Errand = "seat" | "wander" | "coffee" | "visit" | "huddle" | "rest" | null;
 
 const SPEED = 2.4; // tiles per second
 
@@ -88,7 +88,23 @@ export function besideSeat(l: IsoLayout, id: string): Tile | undefined {
   return ([[x - 1, y], [x + 1, y], [x, y + 1]] as Tile[]).find((t) => l.grid.ok(...t));
 }
 
-/** Where a robot in `mode` wants to be. Idle workers pick a break spot; everyone else heads for their seat. */
+/** A stable small number per agent id, to spread agents over spots. */
+const hash = (s: string) => [...s].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+
+/** A stopped agent's own spot in the HQ hall. */
+export const restOf = (l: IsoLayout, id: string): Tile | undefined => (l.commons?.rest.length ? l.commons.rest[hash(id) % l.commons.rest.length] : undefined);
+
+/** Where an agent stands when it's first drawn: its desk if it has work, else the HQ hall. */
+export function startTile(l: IsoLayout, id: string, mode: Mode): Tile | undefined {
+  if (l.commons && mode === "stopped") return restOf(l, id);
+  if (l.commons && mode === "idle" && l.commons.wander.length) return l.commons.wander[hash(id) % l.commons.wander.length];
+  return seatOf(l, id);
+}
+
+/**
+ * Where a robot in `mode` wants to be. With an HQ hall, agents go to their project's wing only to work:
+ * idle ones mill about the hall, stopped ones sit in it. Without one, idle workers use their wing's break area.
+ */
 export function targetFor(bot: IsoBot, l: IsoLayout, mode: Mode, rand: () => number): { tile: Tile; errand: Errand } | null {
   const seat = seatOf(l, bot.id);
   if (bot.isLead && bot.visit) {
@@ -96,6 +112,15 @@ export function targetFor(bot: IsoBot, l: IsoLayout, mode: Mode, rand: () => num
     if (t) return { tile: t, errand: "visit" };
   }
   if (bot.huddle && canHuddle(mode)) return { tile: bot.huddle, errand: "huddle" };
+  if (l.commons && mode === "stopped") {
+    const t = restOf(l, bot.id);
+    if (t) return { tile: t, errand: "rest" };
+  }
+  if (l.commons && mode === "idle") {
+    const { coffee, wander } = l.commons;
+    if (rand() < 0.3 && coffee.length) return { tile: coffee[Math.floor(rand() * coffee.length)], errand: "coffee" };
+    if (wander.length) return { tile: wander[Math.floor(rand() * wander.length)], errand: "wander" };
+  }
   if (mode === "idle" && !bot.isLead) {
     const { coffee, wander } = spotsOf(l, bot.id);
     if (rand() < 0.4 && coffee.length) return { tile: coffee[Math.floor(rand() * coffee.length)], errand: "coffee" };
@@ -111,8 +136,8 @@ export function targetFor(bot: IsoBot, l: IsoLayout, mode: Mode, rand: () => num
 export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: () => number, still = false) {
   const wasMode = bot.mode;
   bot.mode = mode;
-  // Starting agents come in through the lobby door.
-  if (mode === "starting" && wasMode === "stopped") bot.place(doorOf(l, bot.id));
+  // Starting agents come in through the lobby door (in a building they walk over from the hall).
+  if (mode === "starting" && wasMode === "stopped" && !l.commons) bot.place(doorOf(l, bot.id));
   if (mode !== "idle" && (bot.errand === "wander" || bot.errand === "coffee")) {
     bot.errand = null;
     bot.pause = 0;
@@ -155,6 +180,9 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
     } else if (bot.errand === "seat") {
       bot.facing = "ne";
       bot.errand = null;
+    } else if (bot.errand === "rest") {
+      bot.facing = "sw";
+      bot.errand = null;
     }
     return;
   }
@@ -164,7 +192,8 @@ export function update(bot: IsoBot, l: IsoLayout, mode: Mode, dt: number, rand: 
   if (bot.errand === "huddle") bot.huddle = null; // huddle over: back to work
   if (bot.errand === "wander" || bot.errand === "coffee") bot.errand = null;
 
-  const want = targetFor(bot, l, still && mode === "idle" ? "working" : mode, rand);
+  // Reduced motion: no wandering. Idle agents stay at their desk, or, in a building, at their hall spot.
+  const want = targetFor(bot, l, still && mode === "idle" ? (l.commons ? "stopped" : "working") : mode, rand);
   if (!want) return;
   if (bot.at(want.tile)) {
     if (want.errand === "seat") bot.facing = "ne";

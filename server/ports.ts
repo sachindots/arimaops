@@ -38,7 +38,7 @@ function read(): Record<string, number> {
   }
 }
 
-/** This agent's block, saved in ~/.hq/ports.json. */
+/** This agent's block, saved in ~/.arima/ports.json. */
 export function portBlockFor(project: string, agentId: string): PortBlock {
   const { block, taken } = allocate(read(), `${project}/${agentId}`);
   mkdirSync(join(homedir(), BRAND.homeDir), { recursive: true });

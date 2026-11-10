@@ -1,6 +1,6 @@
 // Real sandbox settings through the sbx CLI. HQ reads back what sbx has (rules,
 // keys, proxy) and syncs each agent's allowed/blocked domains. It only ever
-// removes rules it added itself (tracked in ~/.hq/<project>/sbx-owned.json).
+// removes rules it added itself (tracked in ~/.arima/<project>/sbx-owned.json).
 
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

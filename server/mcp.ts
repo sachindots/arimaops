@@ -326,7 +326,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     "get_project_status",
     {
       description: "Multi-Project CTO Overwatch: Returns the full boards, tasks, and operator roster for any registered .hq project by projectId or name.",
-      inputSchema: { projectId: z.string().describe("Project id or name from list_projects (e.g. 'booktabs', 'jsm-hq')") },
+      inputSchema: { projectId: z.string().describe("Project id or name from list_projects (e.g. 'booktabs', 'exposecheck')") },
     },
     guard(({ projectId }: { projectId: string }) => {
       const q = projectId.trim().toLowerCase();
@@ -341,7 +341,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "create_project_task",
     {
-      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if loaded in HQ, or saved directly to that project's .hq/plan.json).",
+      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if loaded in HQ, or saved directly to that project's .arima/plan.json).",
       inputSchema: {
         projectId: z.string().describe("Project id or name from list_projects"),
         title: z.string(),

@@ -1,7 +1,7 @@
 // One project's runtime inside the shared server: its hub, agents, planner, sandbox and GitHub sync.
 // main.ts starts one per registered project; http.ts routes browsers (by ?project=) and agents (by their own token) to it.
 
-import { existsSync, renameSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, renameSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
@@ -50,26 +50,56 @@ export interface Runtime {
 }
 
 /**
- * Moves legacy JSM HQ folders to .hq names, once: <repo>/.jsmhq → <repo>/.hq and ~/.jsmhq/<slug> → ~/.hq/<slug>.
- * Skipped while that project's agents run in tmux (their folders are in use); the legacy fallbacks in paths/store still find it.
+ * Moves a project's older folders to the ArimaOps names, once:
+ * - <repo>/.hq or .jsmhq → <repo>/.arima, but only when git doesn't track it (a committed folder keeps
+ *   working where it is; moving it would leave changes in your repo). `git mv .hq .arima` when convenient.
+ * - ~/.jsmhq/<slug> → ~/.arima/<slug> (the whole ~/.arima is moved at start-up, see migrateHome).
+ * Skipped while that project's agents run in tmux (their folders are in use); the fallbacks in paths/store still find it.
  */
 export async function migrateLegacy(root: string, slug: string): Promise<void> {
-  const repoOld = join(root, BRAND.legacyRepoDir);
   const repoNew = join(root, BRAND.repoDir);
-  if (existsSync(repoOld) && !existsSync(repoNew)) {
-    renameSync(repoOld, repoNew);
-    log.info(`migrated ${repoOld} → ${repoNew}`);
+  for (const old of BRAND.legacyRepoDirs.map((d) => join(root, d))) {
+    if (!existsSync(old) || existsSync(repoNew)) continue;
+    const tracked = await run("git", ["ls-files", "--error-unmatch", "--", old.slice(root.length + 1)], { cwd: root });
+    if (tracked.ok) {
+      log.info(`${old} is committed in git, so it stays; HQ reads it there. Rename it with: git mv ${old.slice(root.length + 1)} ${BRAND.repoDir}`);
+      break;
+    }
+    renameSync(old, repoNew);
+    log.info(`migrated ${old} → ${repoNew}`);
   }
-  const homeOld = join(homedir(), BRAND.legacyHomeDir, slug);
   const homeNew = join(homedir(), BRAND.homeDir, slug);
-  if (!existsSync(homeOld) || existsSync(homeNew)) return;
+  // An old folder that is now a link to ~/.arima (after migrateHome) is the same place, not a legacy copy.
+  const realOld = (d: string) => existsSync(join(homedir(), d)) && !lstatSync(join(homedir(), d)).isSymbolicLink();
+  const homeOld = BRAND.legacyHomeDirs.filter(realOld).map((d) => join(homedir(), d, slug)).find((d) => existsSync(d));
+  if (!homeOld || existsSync(homeNew)) return;
   const tmux = await run("tmux", ["ls", "-F", "#{session_name}"]);
   if (tmux.ok && tmux.stdout.split("\n").some((s) => s.startsWith(`hq-${slug}-`))) {
     log.warn(`not migrating ${homeOld}: agents of ${slug} are running. Stop them and restart HQ to migrate.`);
     return;
   }
+  mkdirSync(join(homedir(), BRAND.homeDir), { recursive: true });
   renameSync(homeOld, homeNew);
   log.warn(`migrated ${homeOld} → ${homeNew}. Sandboxed agents of ${slug} need "Recreate sandbox" once (their folder moved).`);
+}
+
+/**
+ * Moves the whole machine folder ~/.arima → ~/.arima at start-up (people, vault, devices, audit log, ports,
+ * agents' folders) and leaves a link at ~/.arima, so anything still pointing there keeps working. Only when
+ * ~/.arima doesn't exist yet: two folders are never merged.
+ */
+export function migrateHome(home = homedir()): "moved" | "none" | "both" {
+  const next = join(home, BRAND.homeDir);
+  const old = join(home, BRAND.legacyHomeDirs[0]);
+  if (!existsSync(old) || lstatSync(old).isSymbolicLink()) return "none";
+  if (existsSync(next)) {
+    log.warn(`both ${old} and ${next} exist; HQ uses ${next}. Move anything you still need from ${old} by hand.`);
+    return "both";
+  }
+  renameSync(old, next);
+  symlinkSync(BRAND.homeDir, old);
+  log.info(`moved ${old} → ${next} (a link stays at ${old})`);
+  return "moved";
 }
 
 export async function startProject(path: string, port: number, paused: boolean): Promise<Runtime> {

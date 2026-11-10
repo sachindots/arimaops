@@ -1,9 +1,9 @@
 // Remote control safety (tablet/phone):
 //  - Push: ntfy notification when something waits on you (action item, sandbox approval, access request).
 //  - Step-up: risky commands from a non-local client need a TOTP code (authenticator app), once a day per device.
-//  - Devices: logging in with a link token sets a cookie stored in ~/.hq/devices.json, so links survive restarts.
-//  - Audit: every UI command is appended to ~/.hq/audit.log (never terminal input or secret values).
-//  One server serves every project, so the TOTP secret, devices and audit log are server-wide (~/.hq/).
+//  - Devices: logging in with a link token sets a cookie stored in ~/.arima/devices.json, so links survive restarts.
+//  - Audit: every UI command is appended to ~/.arima/audit.log (never terminal input or secret values).
+//  One server serves every project, so the TOTP secret, devices and audit log are server-wide (~/.arima/).
 
 import { createHmac, randomBytes } from "node:crypto";
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -196,7 +196,7 @@ export class RemoteGuard {
   readonly cookieMaxAge = DEVICE_MS / 1000;
 
   otpauthUrl() {
-    const label = encodeURIComponent("dot hq:server");
+    const label = encodeURIComponent(`${BRAND.name}:server`);
     return `otpauth://totp/${label}?secret=${this.secretB32}&issuer=dot%20hq&digits=6&period=30`;
   }
 
@@ -270,7 +270,7 @@ export function startPushNotifier(hub: Hub, topic: string, server = process.env.
   const push = (key: string, title: string, body: string, priority: "default" | "high", open = "actions") => {
     if (seen.has(key)) return;
     seen.add(key);
-    const headers: Record<string, string> = { Title: `.hq ${hub.snap.config.project.name}: ${title}`.slice(0, 200), Priority: priority, Tags: "rotating_light" };
+    const headers: Record<string, string> = { Title: `${BRAND.name} ${hub.snap.config.project.name}: ${title}`.slice(0, 200), Priority: priority, Tags: "rotating_light" };
     const click = link(open);
     if (click) headers.Click = click;
     fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(topic)}`, { method: "POST", headers, body: body.slice(0, 1000) }).catch((err) =>

@@ -120,7 +120,7 @@ const redCell: Preset = {
   id: "red-cell",
   label: "RedCell · 5 agents (Cybersec)",
   config: {
-    project: { id: "redcell-ops", name: "RedCell Ops", repo: "dothq/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420, type: "security" },
+    project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420, type: "security" },
     team: [
       agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),

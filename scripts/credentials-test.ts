@@ -31,7 +31,7 @@ const mode = (p: string) => statSync(p).mode & 0o777;
 
 // ---------------------------------------------------------------- master key
 const noKc = null;
-const dir = join(HOME, ".hq");
+const dir = join(HOME, ".arima");
 const m1 = loadMasterKey({ env: "", keychain: noKc, dir });
 check("no env, no keychain: a 0600 key file is created", m1.source === "file" && mode(join(dir, "vault.key")) === 0o600);
 check("the same key file is reused", loadMasterKey({ env: "", keychain: noKc, dir }).key.equals(m1.key));
@@ -88,7 +88,7 @@ check("each provider has a label and a secret hint", PROVIDERS.every((p) => PROV
 
 // ---------------------------------------------------------------- delivery
 const prep = prepareSecrets("alpha", "nyx", { env: { ANTHROPIC_API_KEY: "sk-ant-DELIVER-me" }, files: [] }, "local", HOME);
-check("secrets file is 0600 in a 0700 folder outside the agent's workspace", mode(prep.envFile) === 0o600 && mode(secretsDir("alpha", "nyx", HOME)) === 0o700 && prep.envFile.startsWith(join(HOME, ".hq", "secrets")));
+check("secrets file is 0600 in a 0700 folder outside the agent's workspace", mode(prep.envFile) === 0o600 && mode(secretsDir("alpha", "nyx", HOME)) === 0o700 && prep.envFile.startsWith(join(HOME, ".arima", "secrets")));
 const cmd = shellCommand({ file: "claude", args: [], envFile: null, env: { PORT: "4100" }, secretEnvFile: prep.envFile });
 check("the launch command line never contains the key, and deletes the file after loading it", !cmd.includes("DELIVER") && cmd.includes(`rm -f '${prep.envFile}'`) && cmd.indexOf("rm -f") > cmd.indexOf(prep.envFile));
 check("subscription agents can't inherit a model key from HQ's own shell", /unset ANTHROPIC_API_KEY [^;]*OPENAI_API_KEY/.test(cmd) && cmd.indexOf("unset ANTHROPIC_API_KEY") < cmd.indexOf(prep.envFile));

@@ -1,5 +1,6 @@
+import { readPref, writePref } from "../lib/prefs";
 // UI font styles for panels, drawers, settings and agent terminals. The office
-// canvas keeps its pixel font. Saved per browser, not in .hq/config.json,
+// canvas keeps its pixel font. Saved per browser, not in .arima/config.json,
 // because it's a personal choice, not a team setting.
 
 export type FontStyle = "pixel" | "clean" | "mono";
@@ -10,9 +11,7 @@ export const FONT_STYLES: { id: FontStyle; label: string; hint: string }[] = [
   { id: "mono", label: "Mono", hint: "JetBrains Mono, like a terminal" },
 ];
 
-const KEY = "dothq.font";
-const LEGACY_KEY = "jsmhq.font";
-export const FONT_EVENT = "dothq:font";
+export const FONT_EVENT = "arimaops:font";
 
 /** Terminals need a monospace font: Pixel keeps VT323, Clean and Mono use JetBrains Mono. */
 export function terminalFont(font: FontStyle) {
@@ -23,7 +22,7 @@ export function terminalFont(font: FontStyle) {
 
 export function savedFont(): FontStyle {
   try {
-    const v = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
+    const v = readPref("font");
     return FONT_STYLES.some((f) => f.id === v) ? (v as FontStyle) : "pixel";
   } catch {
     return "pixel";
@@ -39,7 +38,7 @@ export function setFont(font: FontStyle) {
   applyFont(font);
   window.dispatchEvent(new CustomEvent(FONT_EVENT, { detail: font }));
   try {
-    localStorage.setItem(KEY, font);
+    writePref("font", font);
   } catch {
     /* private window: still applies until reload */
   }

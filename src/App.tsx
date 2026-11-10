@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import type { OfficeSnapshot } from "./data/types";
 import { connectOffice, useOffice } from "./store/office";
 import { checkAuth, useAuth } from "./store/auth";
+import { prefKey } from "./lib/prefs";
 import { SignIn } from "./ui/auth/SignIn";
 import { OwnerPrompt } from "./ui/auth/OwnerPrompt";
 import { ui, useUi } from "./store/ui";
@@ -69,7 +70,7 @@ function useSetupPrompt() {
         .map((c) => c.id)
         .sort()
         .join(",");
-      const key = `dothq.setupSeen.${s.snap.config.project.id}`;
+      const key = prefKey(`setupSeen.${s.snap.config.project.id}`);
       let seen: string | null = null;
       try {
         seen = localStorage.getItem(key);
@@ -115,8 +116,8 @@ export function App() {
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
   const compact = useUi((s) => s.compact);
-  // The office needs 1280 px; below that (when chosen anyway) the page scrolls instead of squeezing.
-  useEffect(() => void (document.body.style.minWidth = compact ? "" : "1280px"), [compact]);
+  // The office layout needs about 1180 px (a landscape tablet); narrower, when chosen anyway, the page scrolls instead of squeezing.
+  useEffect(() => void (document.body.style.minWidth = compact ? "" : "1180px"), [compact]);
   // A real HQ that doesn't know this device: sign in first (not the demo data).
   if (auth === "signed-out") return <SignIn />;
 

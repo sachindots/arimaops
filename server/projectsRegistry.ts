@@ -1,9 +1,9 @@
-// Global Multi-Project Registry for .hq (dot hq) & CTO Overwatch.
-// Tracks all .hq projects in ~/.hq/projects.json (added explicitly: created, opened with --repo, or registered),
+// Global multi-project registry for ArimaOps and CTO Overwatch.
+// Tracks all .hq projects in ~/.arima/projects.json (added explicitly: created, opened with --repo, or registered),
 // knows which are loaded in this server, and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
 // inspect and update tasks across every project from a single command center.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
@@ -11,7 +11,7 @@ import { inferDepartmentForRole } from "../src/data/roles";
 import type { Board, HqConfig, ProjectOverview, Task, TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
-import { slugify } from "./paths";
+import { repoDirOf, slugify } from "./paths";
 import { loadConfig, loadPlan, saveConfig, savePlan } from "./store";
 
 export interface RegistryEntry {
@@ -23,6 +23,8 @@ export interface RegistryEntry {
   lastUpdatedAt: string;
   /** Loaded with GitHub/sbx polling paused. */
   paused?: boolean;
+  /** When it was archived: agents stopped, not loaded at start-up, can be restored or deleted. */
+  archived?: string;
 }
 
 /** A project loaded in this server. */
@@ -36,6 +38,10 @@ const live = new Map<string, LiveProject>(); // by resolved repo path
 
 export function setLiveProject(root: string, project: LiveProject) {
   live.set(resolve(root), project);
+}
+
+export function dropLiveProject(root: string) {
+  live.delete(resolve(root));
 }
 
 /** Hubs of every project loaded in this HQ (for machine-wide limits). */
@@ -66,11 +72,8 @@ function writeRegistry(entries: RegistryEntry[]) {
 }
 
 function findConfigFile(repoRoot: string): string | null {
-  const next = join(repoRoot, BRAND.repoDir, "config.json");
-  if (existsSync(next)) return next;
-  const legacy = join(repoRoot, BRAND.legacyRepoDir, "config.json");
-  if (existsSync(legacy)) return legacy;
-  return null;
+  const file = join(repoDirOf(repoRoot), "config.json");
+  return existsSync(file) ? file : null;
 }
 
 function readRepoConfig(repoRoot: string): HqConfig | null {
@@ -83,7 +86,7 @@ function readRepoConfig(repoRoot: string): HqConfig | null {
   }
 }
 
-/** Registers or updates a project in `~/.hq/projects.json`. */
+/** Registers or updates a project in `~/.arima/projects.json`. */
 export function registerProjectInRegistry(repoRoot: string, config: HqConfig) {
   const cleanPath = resolve(repoRoot);
   const entries = readRegistry();
@@ -97,7 +100,7 @@ export function registerProjectInRegistry(repoRoot: string, config: HqConfig) {
     lastUpdatedAt: now,
   };
   const idx = entries.findIndex((e) => resolve(e.path) === cleanPath || e.id === nextEntry.id);
-  if (idx >= 0) entries[idx] = { ...nextEntry, ...(entries[idx].paused ? { paused: true } : {}) };
+  if (idx >= 0) entries[idx] = { ...nextEntry, ...(entries[idx].paused ? { paused: true } : {}), ...(entries[idx].archived ? { archived: entries[idx].archived } : {}) };
   else entries.push(nextEntry);
   writeRegistry(entries);
 }
@@ -112,9 +115,27 @@ export function setRegistryPaused(root: string, paused: boolean) {
   writeRegistry(entries);
 }
 
-/** Manually registers an existing repo path on disk; initializes `.hq/config.json` and `.hq/plan.json` if not yet present. */
-export function registerProjectPath(rawPath: string): ProjectOverview | null {
-  const cleanPath = resolve(rawPath.trim());
+/** Archives (a date) or restores (null) a project. */
+export function setRegistryArchived(root: string, archived: string | null) {
+  const entries = readRegistry();
+  const e = entries.find((x) => resolve(x.path) === resolve(root));
+  if (!e) return;
+  if (archived) e.archived = archived;
+  else delete e.archived;
+  writeRegistry(entries);
+}
+
+export function removeFromRegistry(root: string) {
+  writeRegistry(readRegistry().filter((x) => resolve(x.path) !== resolve(root)));
+}
+
+/** Manually registers an existing repo path on disk; initializes `.arima/config.json` and `.arima/plan.json` if not yet present. */
+export function registerProjectPath(rawPath: string, create = false): ProjectOverview | null {
+  const cleanPath = resolve(rawPath.trim().replace(/^~(?=\/|$)/, homedir()));
+  if (create) {
+    if (existsSync(cleanPath) && readdirSync(cleanPath).length) throw new Error(`${cleanPath} already exists and isn't empty. Use "Add existing folder" for it.`);
+    mkdirSync(cleanPath, { recursive: true });
+  }
   if (!existsSync(cleanPath) || !statSync(cleanPath).isDirectory()) {
     throw new Error(`Directory not found: ${cleanPath}`);
   }
@@ -172,6 +193,7 @@ export function listProjectsOverview(): ProjectOverview[] {
         hqPort: cfg.project.hqPort,
         online: true,
         paused: loaded.paused,
+        archived: false,
         isCurrent: false,
         type: cfg.project.type ?? "software",
         workflowMode: cfg.workflow.mode ?? "github-pr",
@@ -204,6 +226,7 @@ export function listProjectsOverview(): ProjectOverview[] {
       hqPort: cfg.project.hqPort || entry.hqPort,
       online: false,
       paused: false,
+      archived: !!entry.archived,
       isCurrent: false,
       type: cfg.project.type ?? "software",
       workflowMode: cfg.workflow.mode ?? "github-pr",
@@ -243,7 +266,7 @@ function resolveTargetProject(projectIdOrName: string): { live?: LiveProject; pa
   return { path: match.path, config: cfg };
 }
 
-/** Creates a task in any registered project (live via Planner if current, or directly in `<projectPath>/.hq/plan.json`). */
+/** Creates a task in any registered project (live via Planner if current, or directly in `<projectPath>/.arima/plan.json`). */
 export function createCrossProjectTask(
   projectId: string,
   args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; ownerId?: string },

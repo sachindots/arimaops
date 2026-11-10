@@ -123,9 +123,13 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
         {from && <Dot color={from.color} size={8} />}
-        <button className="underline" onClick={() => from && ui.openAgent(from.id, "messages")}>
-          {from?.name ?? item.fromId}
-        </button>
+        {from ? (
+          <button className="-my-2 py-2 underline" onClick={() => ui.openAgent(from.id, "messages")}>
+            {from.name}
+          </button>
+        ) : (
+          <span>{item.fromId}</span>
+        )}
         {item.taskId && <span>· {item.taskId}</span>}
         <span>· {ago(item.at, now)} ago</span>
       </div>

@@ -223,7 +223,7 @@ export function McpSettings() {
           <button className="btn" disabled={!canAdd} onClick={add}>
             Add server
           </button>
-          <button className="text-[12px] underline" onClick={() => setForm({ ...form, local: !form.local })}>
+          <button className="min-h-[40px] px-1 text-[12px] underline" onClick={() => setForm({ ...form, local: !form.local })}>
             {form.local ? "Use a URL instead" : "Local server (command)…"}
           </button>
         </div>

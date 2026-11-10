@@ -33,7 +33,7 @@ export function handleHook(hub: Hub, inbox: Inbox, agentId: string, rawEvent: st
   const name = hub.name(agentId);
   const isAgy = hub.cfg(agentId)?.cli === "agy";
   if (!st) return { ok: false };
-  // Normalize Antigravity (agy) / Gemini CLI hook event names to .hq's canonical lifecycle events.
+  // Normalize Antigravity (agy) / Gemini CLI hook event names to HQ's canonical lifecycle events.
   const event =
     rawEvent === "BeforeAgent" || rawEvent === "PreInvocation"
       ? "UserPromptSubmit"

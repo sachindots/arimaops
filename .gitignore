@@ -4,6 +4,7 @@ dist
 *.local
 
 # HQ state when HQ is run on this repo itself
+.arima/
 .hq/
 .jsmhq/
 

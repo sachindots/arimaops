@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readPref, writePref } from "../lib/prefs";
 
 export type DrawerState =
   | { kind: "agent"; id: string; tab?: AgentTab }
@@ -45,12 +46,12 @@ interface UiState {
 
 /** auto = compact below 1280 px (the office needs that width). */
 export type LayoutChoice = "auto" | "compact" | "office";
-const LAYOUT_KEY = "dothq.layout";
+const LAYOUT_PREF = "layout";
 const NARROW = "(max-width: 1279px)";
 
 function savedLayout(): LayoutChoice {
   try {
-    const v = localStorage.getItem(LAYOUT_KEY);
+    const v = readPref(LAYOUT_PREF);
     return v === "compact" || v === "office" ? v : "auto";
   } catch {
     return "auto";
@@ -58,8 +59,7 @@ function savedLayout(): LayoutChoice {
 }
 const isCompact = (choice: LayoutChoice) => (choice === "auto" ? window.matchMedia(NARROW).matches : choice === "compact");
 
-const WIDTH_KEY = "dothq.drawerWidth";
-const LEGACY_WIDTH_KEY = "jsmhq.drawerWidth";
+const WIDTH_PREF = "drawerWidth";
 export const DRAWER_MIN = 420;
 export const DRAWER_DEFAULT = 520;
 
@@ -70,7 +70,7 @@ export function drawerMax() {
 
 function savedWidth(): number {
   try {
-    const v = Number(localStorage.getItem(WIDTH_KEY) ?? localStorage.getItem(LEGACY_WIDTH_KEY));
+    const v = Number(readPref(WIDTH_PREF));
     return Number.isFinite(v) && v >= DRAWER_MIN ? v : DRAWER_DEFAULT;
   } catch {
     return DRAWER_DEFAULT;
@@ -152,7 +152,7 @@ export const ui = {
     const w = Math.round(Math.min(drawerMax(), Math.max(DRAWER_MIN, px)));
     useUi.setState({ drawerWidth: w, drawerMaximized: false });
     try {
-      localStorage.setItem(WIDTH_KEY, String(w));
+      writePref(WIDTH_PREF, String(w));
     } catch {
       /* private window: applies until reload */
     }
@@ -162,7 +162,7 @@ export const ui = {
   },
   setLayout(choice: LayoutChoice) {
     try {
-      localStorage.setItem(LAYOUT_KEY, choice);
+      writePref(LAYOUT_PREF, choice);
     } catch {
       /* private window */
     }

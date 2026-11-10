@@ -61,12 +61,12 @@ One Node process (the **HQ server**) runs every project on a machine. Each proje
 | Read-only building feeds | `watch=1` sockets get no terminal output, and the server ignores their commands. |
 | Secrets | Sandbox keys go to `sbx secret` (never to HQ's files). Env files are passed to the agent without HQ reading them. |
 
-**Known gaps (fix before selling):**
-1. **Single owner:** there are no named users. "Who did this" is a device or token, not a person.
-2. **No HQ secret store:** API keys can only reach agents via `sbx` or an env file.
-3. **Terminal output isn't redacted:** if an agent prints a key, viewers see it.
-4. **Upstream names remain:** the `jsm-hq` command alias, `.jsmhq` folders and the `dothq` package name. JSM HQ's trademark file forbids shipping under its name.
-5. **Unsigned releases:** there's no signature on releases or the update path.
+**Gaps, and where they were closed:**
+1. ~~Single owner~~: named people with owner, operator and viewer roles, passwords and an authenticator code (stage B).
+2. ~~No HQ secret store~~: an encrypted vault for API keys and cloud credentials (stage A).
+3. ~~Terminal output isn't redacted~~: every stored secret is masked before output leaves the server (stage A).
+4. ~~Upstream names remain~~: the CLI, package, folders and UI are ArimaOps; `.hq`, `.jsmhq` and `~/.hq` move on first start (stage C).
+5. ~~Unsigned releases~~: tagged releases carry `SHA256SUMS` and a build-provenance attestation (stage C). Still open: a signed update manifest for in-app updates.
 
 ## 3. Where it's going (your decisions, 10 Nov 2026)
 
@@ -162,7 +162,7 @@ interface Account {
 |---|---|---|
 | A | Accounts and credentials: vault, provider table, delivery, redaction, UI to add keys | Unblocks API keys; everything else assumes it |
 | B | Users and roles, audit log | Needed for any team or customer |
-| C | Rename to ArimaOps everywhere, remove JSM names, signed releases | Legal and brand; must be done before selling |
+| C | Rename to ArimaOps everywhere, remove JSM names, signed releases (done) | Legal and brand; must be done before selling |
 | D | Open-core seam: `ee/` hooks, license file, first paid feature (SSO or audit export) | Revenue |
 | E | Spend tracking and limits per account | Cost control once API keys are used |
 

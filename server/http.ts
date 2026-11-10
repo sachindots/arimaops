@@ -5,7 +5,7 @@
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, rmSync, statSync } from "node:fs";
 import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
@@ -16,7 +16,17 @@ import type { OfficeEvent } from "../src/data/source";
 import { handleHook } from "./hooks";
 import { handleMcp } from "./mcp";
 import type { Runtime } from "./project";
-import { createCrossProjectTask, listProjectsOverview, registerProjectPath, setRegistryPaused, updateCrossProjectTask } from "./projectsRegistry";
+import {
+  createCrossProjectTask,
+  listProjectsOverview,
+  registerProjectPath,
+  removeFromRegistry,
+  setRegistryArchived,
+  setRegistryPaused,
+  updateCrossProjectTask,
+} from "./projectsRegistry";
+import { run } from "./lib/exec";
+import { releasePortBlock } from "./ports";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
 import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
@@ -69,6 +79,8 @@ interface Options {
   defaultProject: () => string;
   /** Loads a newly registered project into the server. */
   loadProject: (path: string) => Promise<void>;
+  /** Stops a project's agents and unloads it (archive). */
+  unloadProject: (slug: string) => Promise<void>;
   port: number;
   browserToken: string;
   /** Read-only + chat token for tablets/phones. Can't run shells, change settings or approve. */
@@ -81,7 +93,7 @@ interface Options {
   /** Origins that count as "this machine". Anything else is remote and needs TOTP step-up for risky commands. */
   localOrigins: string[];
   guard: RemoteGuard;
-  /** People who can sign in (default: ~/.hq/users.json). */
+  /** People who can sign in (default: ~/.arima/users.json). */
   users?: Users;
   distDir: string | null;
   allowedOrigins: string[];
@@ -122,7 +134,10 @@ export function startHttp(o: Options) {
   /** Local = this machine's own browser: loopback socket, not via a proxy (tailscale serve, tunnel), and a local Origin.
    *  No Origin (a script) or anything else is remote, so it can't skip TOTP step-up by leaving the header out. */
   const isRemote = (req: IncomingMessage) => {
-    const origin = req.headers.origin ?? "";
+    // Browsers send no Origin on same-origin GETs: for a read, the Host it asked for must be a local address instead.
+    // A write with no Origin (a script) still counts as remote.
+    const read = (req.method === "GET" || req.method === "HEAD") && !req.headers.upgrade; // browsers always send Origin on a WebSocket
+    const origin = req.headers.origin ?? (read && req.headers.host ? `http://${req.headers.host}` : "");
     const proxied = !!(req.headers["x-forwarded-for"] || req.headers["tailscale-user-login"] || req.headers["cf-connecting-ip"]);
     return !(LOOPBACK.has(req.socket.remoteAddress ?? "") && !proxied && o.localOrigins.includes(origin));
   };
@@ -313,14 +328,54 @@ export function startHttp(o: Options) {
         if (req.method === "GET" && url.pathname === "/api/projects") {
           return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
         }
-        if (req.method === "POST" && url.pathname === "/api/projects/register") {
-          const body = JSON.parse((await readBody(req)) || "{}") as { path?: string };
-          if (!body.path) return send(res, 400, JSON.stringify({ error: "path required" }), "application/json");
-          const project = registerProjectPath(body.path);
+        if (req.method === "POST" && (url.pathname === "/api/projects/register" || url.pathname === "/api/projects/create")) {
+          const create = url.pathname.endsWith("/create");
+          const body = JSON.parse((await readBody(req)) || "{}") as { path?: string; name?: string };
+          // New project by name: a fresh folder under ~/projects.
+          const slug = String(body.name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+          const path = body.path?.trim() || (create && slug ? join(homedir(), "projects", slug) : "");
+          if (!path) return send(res, 400, JSON.stringify({ error: create ? "name or path required" : "path required" }), "application/json");
+          const project = registerProjectPath(path, create);
+          if (project) setRegistryArchived(project.path, null); // adding an archived folder again restores it
           if (project && !o.projects.has(project.id)) await o.loadProject(project.path);
           return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
+        if (parts.length === 4 && parts[3] === "archive" && req.method === "POST") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          if (o.projects.size <= 1) return send(res, 400, JSON.stringify({ error: "That's the only active project. Add or restore another one first." }), "application/json");
+          await o.unloadProject(rt.slug);
+          setRegistryArchived(rt.root, new Date().toISOString());
+          for (const ws of sockets.get(rt) ?? []) ws.close(4004, "project archived");
+          log.info(`archived ${rt.slug}`);
+          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
+        }
+        if (parts.length === 4 && (parts[3] === "restore" || parts[3] === "delete") && req.method === "POST") {
+          const id = decodeURIComponent(parts[2]);
+          const p = listProjectsOverview().find((x) => x.id === id && x.archived);
+          if (!p) return send(res, 404, JSON.stringify({ error: "no archived project with that id" }), "application/json");
+          if (parts[3] === "restore") {
+            setRegistryArchived(p.path, null);
+            await o.loadProject(p.path);
+            return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
+          }
+          if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can delete a project" }), "application/json");
+          const body = JSON.parse((await readBody(req)) || "{}") as { confirm?: string };
+          if (body.confirm !== p.id) return send(res, 400, JSON.stringify({ error: `type the project id (${p.id}) to confirm` }), "application/json");
+          // HQ's data for it: agent folders, secrets, logs under ~/.arima/<id>, and the repo's HQ folder when git doesn't track it.
+          // The repo's own files and history are never touched.
+          if (/^[a-z0-9][a-z0-9._-]*$/.test(p.id)) for (const d of [BRAND.homeDir, ...BRAND.legacyHomeDirs]) rmSync(join(homedir(), d, p.id), { recursive: true, force: true });
+          for (const d of [BRAND.repoDir, ...BRAND.legacyRepoDirs]) {
+            const dir = join(p.path, d);
+            if (existsSync(dir) && !(await run("git", ["ls-files", "--error-unmatch", d], { cwd: p.path })).ok) rmSync(dir, { recursive: true, force: true });
+          }
+          if (existsSync(p.path)) await run("git", ["worktree", "prune"], { cwd: p.path });
+          for (const a of p.team) releasePortBlock(p.id, a.id);
+          removeFromRegistry(p.path);
+          log.info(`deleted project ${p.id} (repo files kept at ${p.path})`);
+          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
+        }
         if (parts.length === 4 && (parts[3] === "pause" || parts[3] === "resume") && req.method === "POST") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));
           if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
@@ -380,6 +435,8 @@ export function startHttp(o: Options) {
   });
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
+  /** Open sockets per project, closed when it's archived. */
+  const sockets = new Map<Runtime, Set<WebSocket>>();
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const origin = req.headers.origin ?? "";
@@ -466,7 +523,9 @@ export function startHttp(o: Options) {
         log.warn("command failed:", err instanceof Error ? err.message : err);
       }
     });
-    ws.on("close", () => unsub());
+    const mine = sockets.get(rt) ?? new Set<WebSocket>();
+    sockets.set(rt, mine.add(ws));
+    ws.on("close", () => (unsub(), mine.delete(ws)));
   }
 
   // Same handlers on each extra address; a failure there (e.g. Docker down) only disables that address.

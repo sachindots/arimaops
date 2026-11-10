@@ -8,7 +8,7 @@
 
 import type { ProjectType } from "../../data/types";
 import { WalkGrid, type Tile } from "../engine/path";
-import { generateIsoLayout, isoLayoutKey, PAD, WALL_H, type IsoLayout, type Spots, type TeamMember } from "./layout";
+import { generateCommons, generateIsoLayout, HALL_D, isoLayoutKey, PAD, WALL_H, type IsoLayout, type Spots, type TeamMember } from "./layout";
 import { HALF_H, HALF_W } from "./proj";
 
 export interface WingInput {
@@ -35,7 +35,15 @@ export interface Wing {
 
 export interface Building extends IsoLayout {
   wings: Wing[];
+  /** The HQ hall along the front: tile bounds (inclusive). */
+  hall: { x0: number; y0: number; x1: number; y1: number };
+  /** Walkways: one in front of each row of wings, and the east corridor joining them to the hall. */
+  streets: { x0: number; y0: number; x1: number; y1: number }[];
 }
+
+/** Tiles of corridor east of the wings, joining every row's walkway to the hall. */
+export const SPINE = 2;
+const HALL_MIN_W = 20;
 
 const shift = ([x, y]: Tile, dx: number, dy: number): Tile => [x + dx, y + dy];
 
@@ -59,14 +67,20 @@ export function arrange(widths: number[], depth: number): number[][] {
 
 export const buildingKey = (wings: WingInput[]) => JSON.stringify(wings.map((w) => [w.project, w.name, isoLayoutKey(w.team, w.type)]));
 
+/**
+ * Every project's wing in rows, a walkway in front of each row, a corridor down the east side,
+ * and the HQ hall across the front. With no project it's just the hall.
+ */
 export function generateBuilding(inputs: WingInput[]): Building {
   const sign = (w: WingInput, i: number) => (inputs.length === 1 && i === 0 ? undefined : w.name);
   // Two passes: the deepest office sets the depth for all.
-  const minH = Math.max(...inputs.map((w, i) => generateIsoLayout(w.team, w.type, { sign: sign(w, i) }).H));
+  const minH = inputs.length ? Math.max(...inputs.map((w, i) => generateIsoLayout(w.team, w.type, { sign: sign(w, i) }).H)) : 0;
   const parts = inputs.map((w, i) => generateIsoLayout(w.team, w.type, { minH, sign: sign(w, i) }));
-  const rows = arrange(parts.map((p) => p.W), minH);
-  const W = Math.max(...rows.map((r) => r.reduce((t, i) => t + parts[i].W, 0)));
-  const H = rows.length * minH + (rows.length - 1) * ROW_GAP;
+  const rows = inputs.length ? arrange(parts.map((p) => p.W), minH) : [];
+  const wingsW = rows.length ? Math.max(...rows.map((r) => r.reduce((t, i) => t + parts[i].W, 0))) : 0;
+  const W = Math.max(wingsW + (rows.length ? SPINE : 0), HALL_MIN_W);
+  const hallY = rows.length * (minH + ROW_GAP);
+  const H = hallY + HALL_D;
 
   const grid = new WalkGrid(W, H);
   const building: Building = {
@@ -79,12 +93,14 @@ export function generateBuilding(inputs: WingInput[]): Building {
     zones: [],
     items: [],
     seats: [],
-    door: parts[0].door,
-    spots: parts[0].spots,
+    door: [0, 0],
+    spots: { wander: [], coffee: [], scrum: [] },
     grid,
     doors: new Map(),
     agentSpots: new Map(),
     wings: [],
+    hall: { x0: 0, y0: hallY, x1: W - 1, y1: H - 1 },
+    streets: [],
   };
   building.worldH = (W + H) * HALF_H + building.origin.y + PAD + 12;
 
@@ -127,10 +143,23 @@ export function generateBuilding(inputs: WingInput[]): Building {
     });
   });
   building.wings = wings;
-  if (parts.length) {
-    building.door = wings[0].door;
-    building.spots = wings[0].spots;
-  }
+
+  // Walkways: in front of every row, the building's full width; the corridor east of the wings, top to hall.
+  rows.forEach((_, r) => building.streets.push({ x0: 0, y0: r * (minH + ROW_GAP) + minH, x1: W - 1, y1: (r + 1) * (minH + ROW_GAP) - 1 }));
+  if (rows.length) building.streets.push({ x0: wingsW, y0: 0, x1: W - 1, y1: hallY - 1 });
+  for (const s of building.streets) grid.set(s.x0, s.y0, s.x1, s.y1, true);
+
+  // The hall: openings in its glass back wall in front of each front-row door and the corridor.
+  const lastRow = rows.length ? rows[rows.length - 1].map((i) => wings[i].door[0]) : [];
+  const openings = [...new Set([...lastRow, ...(rows.length ? [wingsW] : [])])].filter((x) => x > 0 && x < W - 1);
+  const hall = generateCommons(W, openings);
+  const mv = (t: Tile) => shift(t, 0, hallY);
+  for (let y = 0; y < HALL_D; y++) for (let x = 0; x < W; x++) if (hall.grid.ok(x, y)) grid.set(x, y + hallY, x, y + hallY, true);
+  for (const it of hall.items) building.items.push({ ...it, y: it.y + hallY });
+  for (const z of hall.zones) building.zones.push({ ...z, y0: z.y0 + hallY, y1: z.y1 + hallY, anchor: mv(z.anchor) });
+  building.door = mv(hall.door);
+  building.commons = { wander: hall.commons.wander.map(mv), coffee: hall.commons.coffee.map(mv), rest: hall.commons.rest.map(mv) };
+  building.spots = { wander: building.commons.wander, coffee: building.commons.coffee, scrum: wings[0]?.spots.scrum ?? [] };
   return building;
 }
 

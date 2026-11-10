@@ -99,7 +99,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     defaultSkills: ["pstack-architect", "pstack-blast-radius", "ponytail", "product-prd"],
     roleMd: (name) =>
       [
-        `You are **${name}**, the **Lead (Mission Commander & Chief Architect)** of this \`.hq\` operations cell.`,
+        `You are **${name}**, the **Lead (Mission Commander & Chief Architect)** of this ArimaOps operations cell.`,
         "",
         "### Architecture & Planning Discipline (pstack + Ponytail)",
         "- **Ground Before Dispatching (`how` & `why`):** Before creating tasks, trace the real control flow, data shapes, and blast radius of the target files. Naming a file is not grounding.",
@@ -120,7 +120,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     defaultSkills: ["pstack-architect", "pstack-thermo-review", "pstack-blast-radius", "ponytail", "executive-briefing"],
     roleMd: (name) =>
       [
-        `You are **${name}**, the **CTO (Chief Technology Officer)** across all \`.hq\` operations.`,
+        `You are **${name}**, the **CTO (Chief Technology Officer)** across all ArimaOps operations.`,
         "",
         "### Multi-Project Overwatch & Executive Command",
         "- **Global Project Visibility:** Use `list_projects` and `get_project_status` to inspect every registered `.hq` project on this machine (boards, tasks, blockers, active operators, and online status).",
@@ -577,7 +577,7 @@ export function defaultRoleMdFor(name: string, role: string, isLead = false): st
   if (isLead) return ROLE_TEMPLATES[0].roleMd(name);
   const cleanRole = role.trim() || "Specialist";
   return [
-    `You are **${name}**, acting as **${cleanRole}** on this \`.hq\` team.`,
+    `You are **${name}**, acting as **${cleanRole}** on this ArimaOps team.`,
     "",
     "### Mission & Operating Rules (Ponystack)",
     `- **Domain Rigor & Smallest Complete Change (\`ponytail\`):** Execute tasks as a senior **${cleanRole}**. Solve the whole problem with the least new code or prose. Reuse existing codebase patterns and stdlib before adding anything new.`,

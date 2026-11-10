@@ -1,7 +1,7 @@
 // Delivery to agents. If the agent is idle at its prompt, HQ types the message
 // into its terminal. If it's busy, the message waits and is handed over by the
 // agent's Stop hook when its turn ends (Claude Code then continues with it).
-// The queue and the message history are saved in ~/.hq/<project>/messages.json, so an
+// The queue and the message history are saved in ~/.arima/<project>/messages.json, so an
 // HQ restart loses nothing: queued messages are delivered once the agent is back.
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";

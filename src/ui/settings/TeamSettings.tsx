@@ -369,7 +369,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
                 onCommit={(v) => set({ skills: v.split(",").map((s) => s.trim()).filter(Boolean) })}
               />
               <div className="flex flex-wrap gap-1">
-                {[...(snapSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.hq/skills or .hq/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
+                {[...(snapSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.arima/skills or .arima/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
                   const on = agent.skills.includes(sk.id);
                   return (
                     <button
@@ -394,7 +394,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
               <CommitInput
                 className="field font-term text-[17px]"
                 value={agent.workspacePath ?? ""}
-                placeholder={`HQ-managed: ~/.hq/…/${agent.id}`}
+                placeholder={`HQ-managed: ~/.arima/…/${agent.id}`}
                 onCommit={(v) => set({ workspacePath: v.trim() || null })}
               />
             </Field>
@@ -412,7 +412,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
             </div>
             <Field
               label=""
-              hint={`Who this agent is and how they operate. ${BRAND.name} adds the team, workflow rules and MCP tools, writes it to .hq-role.md and .agent/rules/hq-role.md (never committed), and loads it when the session starts.`}
+              hint={`Who this agent is and how they operate. ${BRAND.name} adds the team, workflow rules and MCP tools, writes it to .arima-role.md and .agent/rules/hq-role.md (never committed), and loads it when the session starts.`}
             >
               <CommitInput multiline className="field h-[140px] resize-y font-term text-[17px] leading-tight" value={agent.roleMd} onCommit={(v) => set({ roleMd: v })} />
             </Field>

@@ -1,110 +1,100 @@
-# .hq (dot hq)
+# ArimaOps · அரிமா
 
-**Run a team of AI agents across your software, security and research projects, and command them from your desk, tablet or phone.**
+**Run your own software company and security team with AI agents, from your desk, tablet or phone.**
 
-> .hq is built on [JSM HQ](https://github.com/jsmastery-pro/jsm-hq) by [JavaScript Mastery](https://github.com/jsmastery-pro), used under the MIT license. Thanks to them for the original office, sandboxes and review loop. .hq is a separate project and is not affiliated with or endorsed by JavaScript Mastery.
+![The ArimaOps office: each project's team in its own wing, the HQ hall in front, digital rain behind](docs/images/office.png)
 
-![The JSM HQ office: a lead and two developers at their desks, the task board on the wall, pull requests on the board and the review gate on the belt](docs/images/office.png)
+ArimaOps (அரிமா, "lion") runs a team of AI agents for every project on your machine. A **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of the repo and, if you like, its own sandbox or container, then opens a pull request. Security teams get a SOC: an engagement scope, findings and a report.
 
-One **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of your repo and its own Docker Sandbox, then opens a pull request. You see it all happen: the plan on the wall, agents at their desks, PRs moving through review.
+You watch it all in one isometric office. Every running project is a wing of the building. Agents walk to their wing when they have work and wait in the HQ hall when they don't.
 
-Agents run **Claude Code** or **Codex**. Everything runs on your machine.
+Agents run **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, **Copilot** or **Antigravity**, on your CLI subscriptions or on API keys you add. Everything runs on your machine.
 
 ## Why use it
 
 - **A real team, not one chat.** The lead splits the work into small tasks (one task, one branch, one PR) and assigns them. Agents message each other through HQ.
-- **Safe by default.** Each agent works in its own Docker Sandbox, a small VM that can't touch the rest of your computer. Websites are blocked until you allow them.
-- **You stay in charge.** Anything an agent needs from you (a decision, an API key, a blocked website) shows up in **Action items**. HQ never merges for you.
-- **Your workflow.** Pull requests on GitHub, reviewed by CodeRabbit, Greptile, Copilot or you.
-- **Knows your stack.** Pick your tools (Next.js, Clerk, Stripe, Supabase…) and agents get their official agent skills and docs access.
+- **Many projects, one HQ.** Create, pause, archive and delete projects from **Projects**. Each project's team is a wing of the same building.
+- **Software and security.** Dev teams ship PRs. Security teams work inside an engagement scope: out-of-scope targets are refused, findings flash on the SOC wall, and the report is written for you.
+- **Safe by default.** Agents work in their own folder, container or Docker Sandbox. API keys are encrypted on disk, sent only to the agent that uses them, and masked if anything prints them.
+- **A small team, with roles.** Owner, operator and viewer sign-ins with an authenticator code. Risky actions from a phone or tablet need the code.
+- **You stay in charge.** Anything an agent needs from you shows up in **Action items**. HQ never merges for you.
 
 ## Quick start
 
-From inside a git repo that has a GitHub remote:
+From inside a git repo:
 
 ```bash
-npx @therealjsmastery/jsm-hq@latest
+npx arimaops@latest
 ```
 
-HQ opens in your browser and walks you through the rest:
+HQ opens in your browser:
 
-1. **Welcome:** name the project and pick a lead and workers (Claude Code or Codex for each).
+1. **Welcome:** name the project and pick a lead and workers.
 2. **Setup checklist:** anything missing on your machine is listed with the command to fix it.
-3. **Start team** in the top bar, then message the lead, for example: *"Plan two small tasks for Dwight and assign the first one."*
+3. **Start team**, then message the lead, for example: *"Plan two small tasks and assign the first one."*
 
-**First time?** The [getting-started guide](docs/getting-started.md) takes you from a fresh machine to a working team in about 15 minutes, on macOS, Linux and Windows.
+More projects: open **Projects**, then **Create project** (a fresh folder under `~/projects`) or **Add an existing folder**.
 
-**Just trying it?** Use a throwaway repo:
-
-```bash
-mkdir hq-test && cd hq-test
-git init -b main && echo "# HQ test" > README.md && git add . && git commit -m init
-npx @therealjsmastery/jsm-hq@latest
-```
+**First time?** The [getting-started guide](docs/getting-started.md) goes from a fresh machine to a working team.
 
 ### Options
 
 ```
-jsm-hq --repo <path>   the repo to manage (default: current folder)
-       --port <n>      HQ port (default: 7420)
-       --no-open       don't open the browser
-       --version, --help
+arimaops --repo <path>   the repo to manage (default: current folder)
+         --port <n>      HQ port (default: 7420)
+         --remote        also serve your tablet or phone (sign-in required)
+         --no-open       don't open the browser
+         --version, --help
 ```
 
-Use it often? `npm install -g @therealjsmastery/jsm-hq`, then run `jsm-hq` in any repo.
+`dothq` still works as an alias. Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
 
 ## Requirements
 
 | What | Why |
 | --- | --- |
 | Node.js 20+ | Runs HQ |
-| git and a GitHub repo | Each agent clones it, pushes a branch and opens a PR |
-| GitHub CLI (`gh`) | Reads PRs and reviews |
-| Docker Sandboxes (`sbx`) | Each agent runs in its own VM |
+| git | Each agent works on its own copy of the repo |
 | tmux (macOS, Linux) | Agents keep running if you close HQ |
-| A Claude or ChatGPT account | For the agents themselves |
+| GitHub CLI (`gh`), optional | Pull requests and reviews |
+| Docker or Docker Sandboxes, optional | Container or sandbox mode for agents |
+| A Claude, ChatGPT or Gemini account, or an API key | For the agents themselves |
 
-Sandboxes need **macOS 14+ on Apple silicon, Windows 11, or Ubuntu 24.04+**. On other machines, set agents to **Local** in Settings → Team: they run Claude Code or Codex directly on your machine, with permission prompts on.
+HQ checks for each one and shows the exact command to install it.
 
-You don't need to install these by hand first. HQ checks for each one and shows the exact command. The [getting-started guide](docs/getting-started.md) has every step.
+## On a tablet or phone
 
-## How it works
+Run HQ with `--remote` and open the link it prints. Below 1280 px wide, HQ switches to the phone layout: Chat, Board, Office, Inbox, Agents and More. On a landscape tablet (1180 px or wider) you can switch to the full office under **More → Layout on this device**. Every control is sized for touch.
 
-![An agent's drawer: its live terminal, its sandbox, websites it tried to reach, and tabs for its task and messages](docs/images/agent-drawer.png)
+## Your data
 
-1. **You tell the lead what to build.** It creates a board of small tasks, each with the files it may touch, and assigns them.
-2. **Workers build in their own sandboxes.** Each one pulls `main`, makes a branch, writes the code and opens a PR titled `[TASK-ID] …`.
-3. **HQ follows the PRs on GitHub.** Review comments go back to the author; a passing PR is reported to the lead; a merged PR marks the task done.
-4. **Agents ask when they're stuck.** A question, a blocked website or a missing key shows up in **Action items** and on the agent's card.
-5. **You review and merge.**
-
-Click any agent to open its drawer: its live terminal, a shell inside its sandbox, its task, its messages, and the websites it tried to reach. Drag the drawer's edge to make it wider, or maximize it. **Terminal** in the top bar opens your own shell in the repo or any agent's folder.
-
-More detail on workspaces, sandboxes, MCP servers, app variables and what HQ saves: **[How it works](docs/how-it-works.md)**.
-
-## Troubleshooting
-
-| Problem | Fix |
+| Where | What |
 | --- | --- |
-| A setup check shows "!" but the tool works | You may be on an old HQ. Run `npx @therealjsmastery/jsm-hq@latest` (npx can keep an old version cached). |
-| Start fails: "network policy has not been initialized" | A new Docker Sandboxes install needs a base policy once: `sbx policy init balanced`. |
-| Agents fail to start with a sign-in error | Your Docker sign-in expired. Run `sbx login`, then **Check again** in the setup checklist. |
-| Agents can't push or open PRs | Run `sbx secret set github --command "gh auth token"`, and check the repo has a GitHub `origin`. |
-| A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
-| A CLI sign-in in a sandbox opens the browser, then fails on `localhost:<port>` | Press **Forward port** in the agent's drawer, then reload the page. |
-| An agent's state never changes | The sandbox can't reach HQ. `sbx policy ls` should show `localhost:<port>` and `host.docker.internal:<port>` allowed; HQ adds them on start. |
-| "Port 7420 is in use" | Another HQ is running. Stop it, or use `--port 7421`. |
-| Windows: `listen EACCES` on start | Windows reserved that port. Use `--port 8420`. |
-| `posix_spawnp failed` when opening a terminal | Run `npx clear-npx-cache`, then `npx @therealjsmastery/jsm-hq@latest`. |
+| `.arima/` in your repo | Team, workflow, boards and tasks |
+| `~/.arima/` | Agents' folders, the projects list, people, devices, the audit log, and the encrypted key vault |
 
-**Remove a project:** delete each agent in Settings → Team (this removes its sandbox and, if you choose, its folder), then delete `~/.jsmhq/<project>`.
+Folders from older versions (`.hq`, `.jsmhq`, `~/.hq`) are moved on first start. A `.hq` folder your repo commits stays where it is and keeps working.
 
 ## Docs
 
-- [Getting started](docs/getting-started.md): install everything and run your first team.
-- [How it works](docs/how-it-works.md): workspaces, sandboxes, GitHub, MCP, settings and files.
-- [Contributing](CONTRIBUTING.md): run HQ from source and release it.
+- [Getting started](docs/getting-started.md)
+- [How it works](docs/how-it-works.md)
+- [Architecture](docs/architecture.md): the code layout, the security boundaries, and the plan
+- [Security](SECURITY.md): report a vulnerability
+- [Contributing](CONTRIBUTING.md)
+
+## Credits
+
+ArimaOps is built on **[JSM HQ](https://github.com/jsmastery-pro/jsm-hq)** by [JavaScript Mastery](https://github.com/jsmastery-pro), used under the MIT license. Thanks to them for the original office, sandboxes and review loop. ArimaOps is a separate project and is not affiliated with or endorsed by JavaScript Mastery.
+
+Ideas and tools that shaped it:
+
+- **TokenEconomizer** (Microsoft): lean-mode ideas for spending fewer tokens.
+- **stageshow** by benjitaylor: inspiration for the demo recordings.
+- **ponytail**, **pstack** and **caveman**: the working style used to build it.
+
+See [NOTICE](NOTICE) for the license notices.
 
 ## License
 
-Code: [MIT](LICENSE). The JSM HQ name and logo are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md).
+Code: [MIT](LICENSE). The ArimaOps name and logo, and the JSM HQ name and logo, are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md).

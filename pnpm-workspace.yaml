@@ -5,3 +5,8 @@ onlyBuiltDependencies:
   - esbuild
 allowBuilds:
   esbuild: true
+# Patched versions of packages the MCP SDK pulls in (pnpm audit --prod).
+overrides:
+  "body-parser@>=2.0.0 <2.4.0": ^2.4.0
+  "fast-uri@>=3.0.0 <3.1.9": ^3.1.9
+  "qs@>=6.7.0 <=6.16.0": ^6.16.1

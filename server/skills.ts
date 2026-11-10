@@ -1,8 +1,8 @@
 // Agent skills for the project's stack (plan 009), user-authored custom skill folders
-// (.hq/skills/<id>/ and ~/.hq/skills/<id>/), AND per-agent built-in/external skills.
+// (.hq/skills/<id>/ and ~/.arima/skills/<id>/), AND per-agent built-in/external skills.
 //
 // How skills work for Sandboxed Models:
-// Docker Sandboxes (`sbx run`) bind-mounts the agent's host workspace folder (`~/.hq/<project>/<agentId>`)
+// Docker Sandboxes (`sbx run`) bind-mounts the agent's host workspace folder (`~/.arima/<project>/<agentId>`)
 // into the microVM. `.hq` resolves, downloads, and writes all skill folders on the HOST into:
 // - .claude/skills/ (Claude Code, GitHub Copilot)
 // - .agents/skills/ (Codex, OpenCode, Gemini CLI)
@@ -11,6 +11,7 @@
 // skill (and its helper scripts/references) inside the VM without needing sandbox internet access.
 
 import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { repoDirOf } from "./paths";
 import { agentMkdir, agentPath, agentRemove, agentWrite } from "./lib/agentFs";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -111,13 +112,13 @@ function readOwned(slug: string, workspace: string): string[] {
 /**
  * Resolves user-authored custom skill folders from:
  * 1. Repo-local: `<repoRoot>/.hq/skills/<skill-id>/`
- * 2. Global home: `~/.hq/skills/<skill-id>/`
+ * 2. Global home: `~/.arima/skills/<skill-id>/`
  * Repo-local overrides global if both exist.
  */
 export function resolveUserSkillFolders(repoRoot: string | undefined, requestedIds: string[]): Map<string, string> {
   const found = new Map<string, string>();
   const globalSkillsRoot = join(homedir(), BRAND.homeDir, "skills");
-  const repoSkillsRoot = repoRoot ? join(repoRoot, BRAND.repoDir, "skills") : null;
+  const repoSkillsRoot = repoRoot ? join(repoDirOf(repoRoot), "skills") : null;
   const wantAll = requestedIds.includes("*");
   const wantSet = new Set(requestedIds.map((s) => s.trim().toLowerCase()));
 
@@ -179,7 +180,7 @@ export async function syncSkillsInto(
         now.push(rel);
       }
     }
-    // 2. Copy user-authored custom skill folders (.hq/skills/<id>/ or ~/.hq/skills/<id>/)
+    // 2. Copy user-authored custom skill folders (.hq/skills/<id>/ or ~/.arima/skills/<id>/)
     for (const [skillName, sourcePath] of userSkillFolders.entries()) {
       const rel = `${sub}/${skillName}`;
       if (!inside(rel)) continue;
@@ -226,7 +227,7 @@ export async function prepareSkills(
 ): Promise<{ count: number; error: string | null }> {
   const userSkillFolders = resolveUserSkillFolders(repoRoot, agentSkills);
   const { builtin, external, custom } = classifyAgentSkills(agentSkills);
-  // Filter out custom stubs if a real user skill folder exists in .hq/skills/ or ~/.hq/skills/
+  // Filter out custom stubs if a real user skill folder exists in .hq/skills/ or ~/.arima/skills/
   const directSkills = [...builtin, ...custom.filter((c) => !userSkillFolders.has(c.id))];
   const allSpecs = mergeSkillSpecs(stackSpecs, external);
   let cacheError: string | null = null;

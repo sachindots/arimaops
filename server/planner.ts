@@ -267,7 +267,7 @@ export class Planner {
     const added = merged.filter((f) => !current.includes(f)).length;
     if (!added) return;
     writeFacts(root, merged);
-    this.hub.activity("config", null, `Repo facts: ${added} new from ${done.id} (.hq/facts.md)`);
+    this.hub.activity("config", null, `Repo facts: ${added} new from ${done.id} (facts.md)`);
   }
 
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */

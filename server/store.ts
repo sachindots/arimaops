@@ -1,13 +1,12 @@
-// Persistence in the repo: .hq/config.json (team + workflow, safe to commit)
-// and .hq/plan.json (boards + tasks, owned by HQ). Falls back to .jsmhq/ if present.
+// Persistence in the repo: .arima/config.json (team + workflow, safe to commit)
+// and .arima/plan.json (boards + tasks, owned by HQ). An older .hq/ or .jsmhq/ is read where it is (see paths.repoDirOf).
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BRAND } from "../src/data/brand";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
 import { isAgentCli, isDepartmentId, isProjectType, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../src/data/types";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
-import { slugify } from "./paths";
+import { repoDirOf, slugify } from "./paths";
 import type { RepoInfo } from "./repo";
 
 export interface PlanFile {
@@ -15,11 +14,7 @@ export interface PlanFile {
   tasks: Task[];
 }
 
-const dir = (root: string) => {
-  const next = join(root, BRAND.repoDir);
-  const legacy = join(root, BRAND.legacyRepoDir);
-  return !existsSync(next) && existsSync(legacy) ? legacy : next;
-};
+const dir = (root: string) => repoDirOf(root);
 
 function readJson<T>(file: string): T | null {
   if (!existsSync(file)) return null;

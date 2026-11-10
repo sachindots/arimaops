@@ -144,7 +144,7 @@ export function buildFloor(l: IsoLayout, blocks: Block[] = [{ x0: 0, y0: 0, x1: 
   const canvas = makeCanvas(l.worldW, l.worldH);
   const p = new CanvasPen(canvas.getContext("2d") as CanvasRenderingContext2D);
   const c: Ctx = { p, ox: l.origin.x, oy: l.origin.y };
-  p.rect(0, 0, l.worldW, l.worldH, "#070910");
+  // No backdrop: the digital rain shows around the building.
   // Ground shadow and the slab each block stands on.
   for (const b of [...blocks, ...streets]) faceZ(c, -14, b.x0 + 0.6, b.y0 + 0.6, b.x1 + 0.6, b.y1 + 0.6, "#04050a", 0.6);
   for (const b of streets)
@@ -166,6 +166,13 @@ export function buildFloor(l: IsoLayout, blocks: Block[] = [{ x0: 0, y0: 0, x1: 
           const m = S(c, x + 0.5, y + 0.5);
           p.rect(m.x, m.y, 1, 1, GOLD_D, 0.7);
         }
+      }
+    // Warm pools under the ceiling lights, every few tiles.
+    for (let y = b.y0 + 2; y < b.y1 - 1; y += 4)
+      for (let x = b.x0 + 2 + ((y >> 2) % 2) * 2; x < b.x1 - 1; x += 4) {
+        const m = S(c, x + 0.5, y + 0.5);
+        ellipse(p, m.x, m.y, 30, 15, "#ffd27a", 0.035);
+        ellipse(p, m.x, m.y, 18, 9, "#ffd27a", 0.045);
       }
     seg(c, S(c, b.x0, b.y1), S(c, b.x1, b.y1));
     seg(c, S(c, b.x1, b.y1), S(c, b.x1, b.y0));
@@ -241,6 +248,8 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
     if (it.dir === "xy") faceZ(c, h, x + 0.5 - T / 2, y + 0.5 - T / 2, x + 0.5 + T / 2, y + 0.5 + T / 2, sh[0]);
     if (it.decal === "board") board(c, x, y + 0.5 + T / 2, it.i ?? 0, it.n ?? 1);
     if (it.decal === "screen") screenWall(c, x, y + 0.5 + T / 2, it.i ?? 0, it.n ?? 1);
+    if (it.decal === "window") cityWindow(c, x, y + 0.5 + T / 2, it.i ?? 0);
+    if (it.decal === "poster") poster(c, x, y + 0.5 + T / 2, it.i ?? 0);
   },
 
   desk(c, x, y, it) {
@@ -254,22 +263,15 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
     box(c, x0, y + 0.18, x1, y + 0.84, 10, 14, sh);
     if (it.lead) seg(c, S(c, x0, y + 0.84, 14), S(c, x1, y + 0.84, 14), GOLD);
     if (it.i === 0) {
-      // keyboard, monitor on a stand, screen on the +y face
-      box(c, x + 0.3, y + 0.62, x + 0.74, y + 0.76, 14, 15, METAL, false);
-      box(c, x + 0.42, y + 0.36, x + 0.6, y + 0.5, 14, 17, METAL, false);
-      box(c, x + 0.22, y + 0.46, x + 0.8, y + 0.54, 17, 29, ["#2b3140", "#1a1f2a", "#12161f"]);
-      if (it.screen === "off") decalY(c, x + 0.27, y + 0.54, 19, ["aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa", "aaaaaaaa"], { a: "#0b0e16" }, 0, 9);
-      else {
-        const bright = it.screen === "glow";
-        const glow = it.dark ? ["#0b2a38", CYAN, CYAN_D] : bright ? ["#1d4a80", "#bfe6ff", "#5aa6ff"] : ["#17365c", "#7fc4ff", "#3a7fcc"];
-        const scr = ["aaaaaaaa", "abbaaaaa", "aaaccaaa", "abbbaaaa", "aaaaacaa", "abbaaaaa", "aaaaaaaa"];
-        decalY(c, x + 0.27, y + 0.54, 19, scr, { a: glow[0], b: glow[1], c: glow[2] }, 0, 9);
-        if (bright) {
-          // Light spilling onto the desk and keyboard.
-          faceZ(c, 14.2, x + 0.2, y + 0.56, x + 0.82, y + 0.84, it.dark ? CYAN : "#8fc8ff", 0.22);
-          faceZ(c, 14.3, x + 0.3, y + 0.6, x + 0.74, y + 0.78, it.dark ? CYAN : "#bfe6ff", 0.25);
-        }
-      }
+      // Keyboard and mouse; two monitors (three for leads and the SOC, the third on the other half).
+      box(c, x + 0.36, y + 0.62, x + 0.86, y + 0.76, 14, 15, METAL, false);
+      box(c, x + 0.9, y + 0.64, x + 0.98, y + 0.74, 14, 15, ["#d0d4de", "#a9afbd", "#8a90a0"], false);
+      monitor(c, x + 0.12, y, it, 0);
+      monitor(c, x + 0.56, y, it, 1);
+    } else if (it.lead || it.dark) {
+      monitor(c, x + 0.02, y, it, 2);
+      box(c, x + 0.52, y + 0.6, x + 0.62, y + 0.72, 14, 18, ["#f0f0f4", "#d0d4de", "#a9afbd"], false);
+      box(c, x + 0.62, y + 0.2, x + 0.88, y + 0.46, 14, 15, [CREAM, "#d8d0bc", "#b9b09a"], false); // papers
     } else {
       // lamp, mug, papers
       faceZ(c, 14.5, x + 0.12, y + 0.3, x + 0.42, y + 0.62, "#d8dce6");
@@ -281,6 +283,14 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
       box(c, x + 0.56, y + 0.14, x + 0.92, y + 0.46, 24, 28, [GOLD_L, GOLD, GOLD_D]);
       const l = S(c, x + 0.74, y + 0.46, 23);
       c.p.rect(l.x - 2, l.y, 5, 1, "#fff2b0", 0.6);
+    }
+    if (it.i === 1) {
+      // PC tower under the desk, its power light and a glowing side vent.
+      box(c, x + 0.5, y + 0.3, x + 0.78, y + 0.66, 0, 10, ["#232838", "#1a1f2c", "#121621"]);
+      const led = S(c, x + 0.56, y + 0.66, 7);
+      const on = it.screen !== "off";
+      c.p.rect(led.x, led.y, 1, 1, on ? (it.dark ? CYAN : "#3ddc84") : "#3a2020");
+      if (on) faceX(c, x + 0.781, y + 0.36, y + 0.6, 2, 8, it.dark ? CYAN : it.lead ? GOLD : "#7f5cff", 0.55);
     }
   },
 
@@ -414,7 +424,126 @@ const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => voi
     c.p.rect(h.x, h.y, 1, 2, GOLD);
     c.p.rect(h.x + 3, h.y + 1, 1, 2, GOLD);
   },
+
+  vending(c, x, y) {
+    box(c, x + 0.12, y + 0.18, x + 0.88, y + 0.82, 0, 34, ["#b8232f", "#93202a", "#6c1820"]);
+    // Glass front with rows of snacks, a slot and a lit panel.
+    faceY(c, y + 0.83, x + 0.18, x + 0.62, 10, 31, "#1a2236");
+    const o = S(c, x + 0.18, y + 0.83, 0);
+    const snack = ["#ffd23f", "#38e4ff", "#ff7aa2", "#6ecf78", "#f4f4f8"];
+    for (let r = 0; r < 4; r++) for (let j = 1; j < 7; j += 2) c.p.rect(o.x + j, o.y + (j >> 1) - 13 - r * 5, 1, 3, snack[(r + j) % snack.length]);
+    faceY(c, y + 0.83, x + 0.66, x + 0.82, 18, 28, "#ffe08a", 0.85);
+    faceY(c, y + 0.83, x + 0.2, x + 0.6, 3, 7, "#0b0e16");
+  },
+
+  arcade(c, x, y, it) {
+    const body: Shades = ["#2a1f4a", "#211839", "#170f2a"];
+    box(c, x + 0.2, y + 0.16, x + 0.84, y + 0.84, 0, 18, body);
+    box(c, x + 0.2, y + 0.16, x + 0.84, y + 0.5, 18, 34, body);
+    // Screen facing the room (+x), marquee on top, buttons on the control deck.
+    const hue = (it.y ?? 0) % 2 ? "#ff3df2" : CYAN;
+    faceX(c, x + 0.841, y + 0.2, y + 0.46, 22, 31, "#071722");
+    for (let k = 0; k < 4; k++) faceX(c, x + 0.842, y + 0.24 + k * 0.05, y + 0.28 + k * 0.05, 24 + k * 2, 25 + k * 2, hue, 0.9);
+    faceX(c, x + 0.841, y + 0.18, y + 0.5, 32, 34, GOLD_L);
+    faceZ(c, 18.2, x + 0.5, y + 0.55, x + 0.8, y + 0.8, "#120c22");
+    const b = S(c, x + 0.66, y + 0.66, 18.5);
+    c.p.rect(b.x - 2, b.y, 1, 1, "#ff3b3b");
+    c.p.rect(b.x + 1, b.y - 1, 1, 1, "#ffd23f");
+    c.p.rect(b.x + 3, b.y, 1, 1, CYAN);
+  },
+
+  pingpong(c, x, y, it) {
+    const x0 = it.i === 0 ? x + 0.1 : x;
+    const x1 = it.i === 1 ? x + 0.9 : x + 1;
+    if (it.i === 0) box(c, x + 0.2, y + 0.4, x + 0.3, y + 0.5, 0, 9, METAL, false);
+    if (it.i === 1) box(c, x + 0.7, y + 0.4, x + 0.8, y + 0.5, 0, 9, METAL, false);
+    box(c, x0, y + 0.15, x1, y + 0.85, 9, 11, ["#1f6f4a", "#175538", "#103d28"]);
+    seg(c, S(c, x0, y + 0.5, 11), S(c, x1, y + 0.5, 11), "#e9f5ee");
+    if (it.i === 0) faceX(c, x + 0.995, y + 0.15, y + 0.85, 11, 15, "#e9f5ee", 0.7); // net
+    if (it.i === 1) {
+      const b = S(c, x + 0.4, y + 0.35, 15);
+      c.p.rect(b.x, b.y, 1, 1, "#ff9f1c");
+    }
+  },
+
+  beanbag(c, x, y) {
+    const m = S(c, x + 0.5, y + 0.55, 3);
+    ellipse(c.p, m.x, m.y + 1, 9, 5, INK);
+    ellipse(c.p, m.x, m.y, 8, 5, (x + y) % 2 ? "#6a3fb5" : "#c0392b");
+    ellipse(c.p, m.x - 1, m.y - 2, 6, 3, (x + y) % 2 ? "#8a5fd5" : "#e05a4b");
+    ellipse(c.p, m.x - 3, m.y - 3, 2, 1, "#ffffff", 0.25);
+  },
+
+  lamp(c, x, y) {
+    box(c, x + 0.42, y + 0.42, x + 0.58, y + 0.58, 0, 1, METAL, false);
+    box(c, x + 0.48, y + 0.48, x + 0.52, y + 0.52, 1, 26, METAL, false);
+    box(c, x + 0.32, y + 0.32, x + 0.68, y + 0.68, 26, 32, [GOLD_L, GOLD, GOLD_D]);
+    const g = S(c, x + 0.5, y + 0.5, 0);
+    ellipse(c.p, g.x, g.y, 14, 7, "#ffd27a", 0.12);
+    ellipse(c.p, g.x, g.y, 8, 4, "#ffd27a", 0.12);
+  },
+
+  printer(c, x, y) {
+    box(c, x + 0.2, y + 0.25, x + 0.8, y + 0.75, 0, 12, METAL);
+    box(c, x + 0.16, y + 0.2, x + 0.84, y + 0.8, 12, 18, ["#d8dce6", "#b9c0cf", "#9aa2b4"]);
+    faceZ(c, 18.2, x + 0.3, y + 0.3, x + 0.7, y + 0.55, "#f4f4f8");
+    const l = S(c, x + 0.7, y + 0.8, 15);
+    c.p.rect(l.x, l.y, 1, 1, "#3ddc84");
+  },
+
+  tv(c, x, y) {
+    // A big screen on a stand showing a dashboard: bars and a line.
+    box(c, x + 0.4, y + 0.4, x + 0.6, y + 0.6, 0, 18, METAL, false);
+    box(c, x + 0.05, y + 0.42, x + 0.95, y + 0.52, 18, 36, ["#2b3140", "#1a1f2a", "#12161f"]);
+    const rows = [
+      "ggggggggggggg", "g...........g", "g.y.........g", "g.y...c.....g", "g.yy..cc..m.g", "g.yy.ccc.mm.g", "g.yyycccmmm.g", "g...........g", "g.wwwwwwwww.g", "ggggggggggggg",
+    ];
+    decalY(c, x + 0.08, y + 0.53, 21, rows, { g: "#0b1430", ".": "#0e1d3d", y: GOLD, c: CYAN, m: "#ff7aa2", w: "#7f8ba8" }, 0, 13);
+  },
 };
+
+/** A monitor on its stand at desk tile x (screen on the +y face); `n` varies what's on it. */
+function monitor(c: Ctx, x: number, y: number, it: Item, n: number) {
+  box(c, x + 0.16, y + 0.38, x + 0.26, y + 0.48, 14, 17, METAL, false);
+  box(c, x, y + 0.46, x + 0.42, y + 0.53, 17, 27, ["#2b3140", "#1a1f2a", "#12161f"]);
+  const off = it.screen === "off";
+  const bright = it.screen === "glow";
+  const glow = it.dark ? ["#0b2a38", CYAN, CYAN_D] : bright ? ["#1d4a80", "#bfe6ff", "#5aa6ff"] : ["#17365c", "#7fc4ff", "#3a7fcc"];
+  const scr = off
+    ? ["aaaaaa", "aaaaaa", "aaaaaa", "aaaaaa", "aaaaaa"]
+    : [["aaaaaa", "abbaaa", "aaacca", "abbbaa", "aaaaca"], ["aaaaaa", "accaca", "aaaaaa", "abbbba", "aaaaaa"], ["aaaaaa", "aabaaa", "abcbaa", "aabaca", "aaaaaa"]][n % 3];
+  decalY(c, x + 0.04, y + 0.531, 19, scr, off ? { a: "#0b0e16" } : { a: glow[0], b: glow[1], c: glow[2] }, 0, 6);
+  if (bright) faceZ(c, 14.2, x, y + 0.56, x + 0.44, y + 0.84, it.dark ? CYAN : "#8fc8ff", 0.2);
+}
+
+/** A window in the back wall: night sky, a few stars, the city skyline with lit windows. Varies by `seed`. */
+function cityWindow(c: Ctx, x: number, y: number, seed: number) {
+  const H = 20;
+  const rows: string[] = [];
+  const heights = Array.from({ length: 16 }, (_, col) => 3 + ((Math.floor((col + seed * 3) / 3) * 7 + seed * 5) % 11));
+  for (let r = 0; r < H; r++) {
+    let row = "";
+    for (let col = 0; col < 16; col++) {
+      const up = H - 1 - r;
+      if (col <= 1 || col >= 14 || r === 0 || r === H - 1) row += col === 0 || col === 15 ? "." : "f";
+      else if (col === 8 || r === 9) row += "m";
+      else if (up <= heights[col]) row += (col * 5 + r * 3 + seed) % 7 === 0 && up < heights[col] ? "l" : "b";
+      else if ((col * 7 + r * 13 + seed * 3) % 41 === 0) row += "*";
+      else row += r < 7 ? "s" : "t";
+    }
+    rows.push(row);
+  }
+  decalY(c, x, y + 0.01, 12, rows, { f: "#2a3350", m: "#3a4566", s: "#070d22", t: "#101b3c", b: "#090c16", l: "#ffd27a", "*": "#cfe3ff" }, 0, 16);
+}
+
+/** A framed poster: the mascot on gold, or a growth chart. */
+function poster(c: Ctx, x: number, y: number, seed: number) {
+  const art =
+    seed % 2
+      ? ["kkkkkkkkkkkkk", ...MASCOT.map((r) => "k" + r.replace(/\./g, "o") + "k"), "kkkkkkkkkkkkk"]
+      : ["kkkkkkkkkkkkk", "kooooooooooook".slice(0, 13), "koooooooooook", "kooooooooocok", "koooooooocccok".slice(0, 13), "kooooyooccook", "koooyyoocoook", "kooyyyycooook", "koyyyyyyooook", "kooooooooooook".slice(0, 13), "kgggggggggggk", "kkkkkkkkkkkkk"];
+  decalY(c, x, y + 0.01, 14, art, { ...MASCOT_PAL, k: "#3a2d22", o: seed % 2 ? "#1b2440" : "#f3ede0", y: GOLD, c: "#e63946", g: GOLD_D }, -2, 16);
+}
 
 // ------------------------------------------------------------------ wall decals
 

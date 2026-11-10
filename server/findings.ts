@@ -3,8 +3,8 @@
 // <repo>/deliverables/security-report.md on every change, so the report is versioned with the repo.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { repoDirOf } from "./paths";
 import { dirname, join } from "node:path";
-import { BRAND } from "../src/data/brand";
 import { FINDING_STATUSES, SEVERITIES, type Finding, type FindingStatus, type Severity } from "../src/data/types";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
@@ -78,7 +78,7 @@ export class Findings {
   private file: string;
 
   constructor(private hub: Hub) {
-    this.file = join(hub.repo.root, BRAND.repoDir, "findings.json");
+    this.file = join(repoDirOf(hub.repo.root), "findings.json");
     try {
       hub.snap.findings = existsSync(this.file) ? (JSON.parse(readFileSync(this.file, "utf8")) as Finding[]) : [];
     } catch (err) {

@@ -1,9 +1,9 @@
 // Isometric office: projection, building layout and robot behaviour. Run: npx tsx scripts/office-test.ts
 import type { AgentStatus } from "../src/data/types";
-import { besideSeat, IsoBot, modeOf, seatOf, targetFor, update, type Mode } from "../src/office/iso/behaviour";
-import { arrange, generateBuilding, remoteId, ROW_GAP, splitRemoteId } from "../src/office/iso/building";
+import { besideSeat, IsoBot, modeOf, seatOf, startTile, targetFor, update, type Mode } from "../src/office/iso/behaviour";
+import { arrange, generateBuilding, remoteId, ROW_GAP, SPINE, splitRemoteId } from "../src/office/iso/building";
 import { EventDiff } from "../src/office/iso/events";
-import { generateIsoLayout, hasSoc, type TeamMember } from "../src/office/iso/layout";
+import { generateIsoLayout, HALL_D, hasSoc, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
 
 let fails = 0;
@@ -174,8 +174,31 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   ]);
   const solo = generateIsoLayout(dev, "software");
   const one = generateBuilding([{ project: "exposecheck", name: "ExposeCheck", type: "software", team: dev }]);
-  check("building: one project is the plain office", one.W === solo.W && one.H === solo.H && one.items.length === solo.items.length && one.seats.every((s, i) => s.tile.join() === solo.seats[i].tile.join()));
-  check("building: wings side by side, same depth", b.wings.length === 2 && b.wings[1].x0 === b.wings[0].x1 + 1 && b.W === b.wings[1].x1 + 1);
+  check("building: one project is its office plus the HQ hall in front", one.wings[0].x1 + 1 === solo.W && one.wings[0].y1 + 1 === solo.H && one.hall.y0 === solo.H + ROW_GAP && one.seats.every((s, i) => s.tile.join() === solo.seats[i].tile.join()));
+  check("building: wings side by side, same depth, corridor east", b.wings.length === 2 && b.wings[1].x0 === b.wings[0].x1 + 1 && b.W === b.wings[1].x1 + 1 + SPINE);
+  {
+    const go = (from: [number, number], to: [number, number]) => from.join() === to.join() || b.grid.find(from[0], from[1], to[0], to[1]).length > 0;
+    const hallDoor = b.door as [number, number];
+    const c = b.commons!;
+    check("hall: every seat is reachable from the HQ hall's door", b.seats.every((s) => go(hallDoor, s.tile as [number, number])));
+    check("hall: lounge, coffee and rest spots are in the hall and walkable", [...c.wander, ...c.coffee, ...c.rest].every((t) => t[1] >= b.hall.y0 && b.grid.ok(...t) && go(hallDoor, t as [number, number])) && c.rest.length >= 4 && c.coffee.length > 0);
+    check("hall: has the reception sign", b.items.some((it) => it.decal === "sign" && it.y > b.hall.y0 && !it.label));
+    const empty = generateBuilding([]);
+    check("hall: no project is just the HQ hall", empty.wings.length === 0 && empty.hall.y0 === 0 && empty.H === HALL_D && !!empty.commons?.rest.length);
+    // Agents go to their wing only to work.
+    const id = b.seats[1].agentId;
+    const seat = b.seats[1].tile as [number, number];
+    const bot = new IsoBot(id, false, b.commons!.rest[0] as [number, number]);
+    const inHall = (t: [number, number]) => t[1] >= b.hall.y0;
+    const idleT = Array.from({ length: 30 }, () => targetFor(bot, b, "idle", Math.random)!);
+    check("hall: idle agents mill about the hall, not their wing", idleT.every((t) => inHall(t.tile as [number, number])));
+    check("hall: stopped agents rest in the hall", targetFor(bot, b, "stopped", Math.random)?.errand === "rest" && inHall(targetFor(bot, b, "stopped", Math.random)!.tile as [number, number]));
+    for (let i = 0; i < 4000 && !bot.at(seat); i++) update(bot, b, i ? "working" : "starting", 0.05, Math.random);
+    check("hall: starting/working walks from the hall to the desk", bot.at(seat));
+    for (let i = 0; i < 4000 && !inHall(bot.tile()); i++) update(bot, b, "stopped", 0.05, Math.random);
+    check("hall: stopping walks back to the hall", inHall(bot.tile()));
+    check("hall: start tile is the desk only with work", startTile(b, id, "working")?.join() === seat.join() && inHall(startTile(b, id, "stopped") as [number, number]) && inHall(startTile(b, id, "idle") as [number, number]));
+  }
   const reach = (from: [number, number], to: [number, number]) => from.join() === to.join() || b.grid.find(from[0], from[1], to[0], to[1]).length > 0;
   const okWing = b.wings.every((w) => w.agentIds.every((id) => {
     const seat = b.seats.find((s) => s.agentId === id)?.tile as [number, number];
@@ -185,7 +208,7 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   }));
   check("building: each agent sits, enters and wanders in its own wing", okWing);
   check("building: the other project's SOC is in its wing", b.items.some((it) => it.decal === "screen" && it.x > b.wings[0].x1));
-  check("building: the wall between wings is cut away", b.items.filter((it) => it.kind === "wall" && it.x === b.wings[1].x0 && it.y > 0).every((it) => it.low));
+  check("building: the wall between wings is cut away", b.items.filter((it) => it.kind === "wall" && it.x === b.wings[1].x0 && it.y > 0 && it.y <= b.wings[1].y1).every((it) => it.low));
   check("building: signs carry the project names", b.items.some((it) => it.decal === "sign" && it.label === "Lab Engagement") && !one.items.some((it) => it.label));
   check("remote ids round-trip", JSON.stringify(splitRemoteId(remoteId("lab", "rook"))) === JSON.stringify({ project: "lab", agentId: "rook" }) && splitRemoteId("rook") === null);
 }
@@ -210,7 +233,7 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
   const reachable = b.wings.every((w) => w.agentIds.every((id) => {
     const seat = b.seats.find((s) => s.agentId === id)?.tile as [number, number];
     const door = b.doors?.get(id) as [number, number];
-    return seat[0] >= w.x0 && seat[0] <= w.x1 && seat[1] >= w.y0 && seat[1] <= w.y1 && b.grid.find(door[0], door[1], seat[0], seat[1]).length > 0;
+    return seat[0] >= w.x0 && seat[0] <= w.x1 && seat[1] >= w.y0 && seat[1] <= w.y1 && b.grid.find(door[0], door[1], seat[0], seat[1]).length > 0 && b.grid.find(b.door[0], b.door[1], seat[0], seat[1]).length > 0;
   }));
   check("20 projects: every agent sits in its own wing and can walk in from its door", reachable);
   check("20 projects: the world is a few thousand px (cut into 2048 px floor tiles)", b.worldW < 6000 && b.worldH < 3500, `${b.worldW}×${b.worldH}`);

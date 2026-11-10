@@ -23,6 +23,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Dependency audit (shipped packages, high and critical)
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm audit --prod --audit-level high
       - run: pnpm build
       - name: Session backends (fake agent)
         run: npx tsx scripts/session-backend-test.ts
@@ -58,11 +61,13 @@ jobs:
         run: npx tsx scripts/credentials-test.ts
       - name: People, roles and sign-in (real HTTP server)
         run: npx tsx scripts/users-test.ts
+      - name: Rename to ArimaOps (folder moves, old markers, old logs)
+        run: npx tsx scripts/rename-test.ts
       - name: Pack
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack
       - name: CLI smoke test
-        run: node bin/jsm-hq.mjs --version && node bin/jsm-hq.mjs --help
+        run: node bin/arimaops.mjs --version && node bin/arimaops.mjs --help && node bin/dothq.mjs --version
       - name: Install and run like a new user
         shell: bash
         run: node scripts/smoke-test.mjs pack/*.tgz 7431

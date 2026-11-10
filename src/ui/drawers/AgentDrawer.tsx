@@ -2,7 +2,8 @@ import { BRAND } from "../../data/brand";
 import { clisFor, PROVIDER_SPECS } from "../../data/providers";
 import { useEffect, useState, type ReactNode } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
-import { officeActions, useOffice } from "../../store/office";
+import { isViewer, officeActions, useOffice } from "../../store/office";
+import { RemoveAgentDialog } from "../settings/RemoveAgentDialog";
 import { ui, type AgentTab } from "../../store/ui";
 import { ago, DepartmentBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
 import { ModelSelect } from "../primitives/ModelSelect";
@@ -292,6 +293,7 @@ const SESSION_COLOR = { running: "#00ff66", starting: "#00e5ff", stopped: "#6e7b
 function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
   const s = status.session;
   const live = useOffice((st) => st.live);
+  const [removing, setRemoving] = useState(false);
   return (
     <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream px-3 py-1.5 text-[13px]">
       <span className={`chip chip-dot ${s.state === "starting" ? "blink" : ""}`} style={{ ["--c" as string]: SESSION_COLOR[s.state] }}>
@@ -314,6 +316,13 @@ function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus
           Start
         </button>
       )}
+      {/* The lead can't be removed (it plans for the team); everyone else can, here or in Settings → Team. */}
+      {!agent.isLead && !isViewer && (
+        <button className="btn px-2 text-[12px] text-red" onClick={() => setRemoving(true)} title={`Remove ${agent.name} from the team`}>
+          Remove
+        </button>
+      )}
+      {removing && <RemoveAgentDialog agent={agent} onClose={() => setRemoving(false)} />}
     </div>
   );
 }
@@ -340,7 +349,7 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
             </p>
             {agent.cli === "codex" && (
               <p className="mb-4 text-[12px] text-orange">
-                First start only: Codex asks you to trust this folder and .hq's hooks. Choose <b>Yes</b>, then <b>Trust all and continue</b>, in the terminal.
+                First start only: Codex asks you to trust this folder and HQ's hooks. Choose <b>Yes</b>, then <b>Trust all and continue</b>, in the terminal.
               </p>
             )}
             <p className="hidden">
@@ -485,7 +494,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
               </span>
             ))
           ) : (
-            <button className="text-[13px] underline" onClick={() => ui.openSettings("mcp")}>
+            <button className="min-h-[40px] text-left text-[13px] underline" onClick={() => ui.openSettings("mcp")}>
               None — add in Settings → MCP
             </button>
           ),

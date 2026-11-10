@@ -1,7 +1,7 @@
 // People who use this HQ: owner (everything, including accounts and people),
 // operator (runs the teams), viewer (watches and chats). Passwords are scrypt
 // hashes; each person has their own authenticator secret for the remote
-// step-up. Stored in ~/.hq/users.json (0600). Agents never use these.
+// step-up. Stored in ~/.arima/users.json (0600). Agents never use these.
 
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";

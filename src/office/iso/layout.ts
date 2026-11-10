@@ -33,7 +33,9 @@ export interface Zone {
   anchor: Tile; // a walkable tile inside, for reachability
 }
 
-export type ItemKind = "wall" | "desk" | "chair" | "plant" | "sofa" | "coffee" | "table" | "counter" | "rack" | "mat" | "cabinet" | "rug" | "shelf" | "whiteboard" | "cooler";
+export type ItemKind =
+  | "wall" | "desk" | "chair" | "plant" | "sofa" | "coffee" | "table" | "counter" | "rack" | "mat" | "cabinet" | "rug" | "shelf" | "whiteboard" | "cooler"
+  | "vending" | "arcade" | "pingpong" | "beanbag" | "lamp" | "printer" | "tv";
 
 export interface Item {
   kind: ItemKind;
@@ -48,7 +50,7 @@ export interface Item {
   dark?: boolean; // SOC styling
   lead?: boolean; // gold-trimmed desk
   screen?: "off" | "glow"; // desk monitor: dark when the agent is stopped, bright when working (default: on)
-  decal?: "board" | "screen" | "sign";
+  decal?: "board" | "screen" | "sign" | "window" | "poster";
   label?: string; // lobby sign text (default: the product name)
   i?: number; // slice index for multi-tile decals and two-part furniture
   n?: number; // slice count
@@ -77,6 +79,8 @@ export interface IsoLayout {
   /** Building of several projects: each agent's own wing door and spots (missing → `door` / `spots`). */
   doors?: Map<string, Tile>;
   agentSpots?: Map<string, Spots>;
+  /** The HQ hall's spots: agents with no work go here instead of their own wing. */
+  commons?: Commons;
 }
 
 export interface Spots {
@@ -109,6 +113,114 @@ export function isoLayoutKey(team: TeamMember[], type: ProjectType): string {
 export const hasSoc = (team: TeamMember[], type: ProjectType) => type === "security" || team.some((a) => dept(a) === "red-team");
 
 const dept = (a: TeamMember) => inferDepartmentForRole(a.role, a.isLead, a.department);
+
+type WallStyle = Omit<Item, "kind" | "x" | "y" | "dir">;
+
+/** Night-city windows in pairs along the back wall, a poster between; tiles that already carry a board or screen keep it. */
+function dressBackWall(walls: Map<string, WallStyle>, W: number) {
+  for (let x = 1; x < W - 1; x++) {
+    const k = `${x},0`;
+    const w = walls.get(k);
+    if (!w || w.decal || w.dark || w.glass) continue;
+    const m = x % 5;
+    if (m === 1 || m === 2) walls.set(k, { ...w, decal: "window", i: x });
+    else if (m === 4) walls.set(k, { ...w, decal: "poster", i: x });
+  }
+}
+
+/** Turns wall tiles into items: each one's run direction and end caps come from its neighbours. */
+function placeWalls(walls: Map<string, WallStyle>, put: (it: Item) => void) {
+  for (const [k, w] of walls) {
+    const [x, y] = k.split(",").map(Number);
+    const rx = walls.has(`${x - 1},${y}`) || walls.has(`${x + 1},${y}`);
+    const ry = walls.has(`${x},${y - 1}`) || walls.has(`${x},${y + 1}`);
+    const dir = rx && ry ? "xy" : ry ? "y" : "x";
+    const cx = dir !== "y" && !walls.has(`${x + 1},${y}`);
+    const cy = dir !== "x" && !walls.has(`${x},${y + 1}`);
+    put({ kind: "wall", x, y, dir, ...(cx || cy ? { cap: cx && cy ? "xy" : cy ? "y" : "x" } : {}), ...w });
+  }
+}
+
+/** Where agents with no work go: lounges, a coffee bar and the reception, shared by every project. */
+export interface Commons {
+  wander: Tile[];
+  coffee: Tile[];
+  /** Sofa-side spots for stopped agents: one each, they stay put. */
+  rest: Tile[];
+}
+
+export const HALL_D = 9;
+
+/**
+ * The HQ hall: a W × HALL_D room every project's agents share. Its back wall is glass with
+ * `openings` (x) onto the street in front of the wings; the main door is in the front wall.
+ */
+export function generateCommons(W: number, openings: number[]): { items: Item[]; zones: Zone[]; grid: WalkGrid; door: Tile; commons: Commons } {
+  const D = HALL_D;
+  const items: Item[] = [];
+  const grid = new WalkGrid(W, D);
+  grid.set(1, 1, W - 2, D - 2, true);
+  const door: Tile = [Math.floor(W / 2), D - 1];
+  grid.set(door[0], door[1], door[0], door[1], true);
+  for (const x of openings) grid.set(x, 0, x, 0, true);
+  const put = (it: Item) => {
+    items.push(it);
+    if (it.kind !== "mat" && it.kind !== "rug") grid.set(it.x, it.y, it.x, it.y, false);
+  };
+  const walls = new Map<string, WallStyle>();
+  for (let x = 0; x < W; x++) (walls.set(`${x},0`, { glass: true }), walls.set(`${x},${D - 1}`, { low: true }));
+  for (let y = 0; y < D; y++) (walls.set(`0,${y}`, {}), walls.set(`${W - 1},${y}`, { low: true }));
+  for (const x of [...openings, door[0]]) (walls.delete(`${x},0`), walls.delete(`${x},${D - 1}`));
+  placeWalls(walls, put);
+
+  // Reception with the big sign, facing the main door.
+  const sx = Math.max(2, door[0] - 2);
+  for (let i = 0; i < 5; i++) put({ kind: "counter", x: sx + i, y: 3, decal: "sign", i, n: 5 });
+  put({ kind: "mat", x: door[0], y: D - 2 });
+  const wander: Tile[] = [];
+  const rest: Tile[] = [];
+  // Lounges every 9 tiles either side of the reception: rug, sofa, table.
+  for (let x0 = 2; x0 + 4 < W - 1; x0 += 9) {
+    if (x0 + 4 >= sx - 1 && x0 <= sx + 5) continue;
+    for (let y = 4; y <= 6; y++) for (let x = x0; x <= x0 + 2; x++) put({ kind: "rug", x, y, i: x - x0 + 3 * (y - 4), n: 3 });
+    put({ kind: "sofa", x: x0, y: 4, i: 0 });
+    put({ kind: "sofa", x: x0 + 1, y: 4, i: 1 });
+    put({ kind: "table", x: x0 + 1, y: 6 });
+    put({ kind: "plant", x: x0 + 3, y: 2 });
+    rest.push([x0, 5], [x0 + 2, 5], [x0 + 2, 4], [x0, 6], [x0 + 2, 6]);
+    wander.push([x0 + 3, 5], [x0 + 1, 7]);
+  }
+  // Extras only where nothing stands yet (narrow halls skip some).
+  const free = (x: number, y: number) => grid.ok(x, y) && !items.some((it) => it.x === x && it.y === y);
+  const extra = (...its: Item[]) => {
+    if (its.every((it) => free(it.x, it.y))) for (const it of its) put(it);
+  };
+  // Games corner west of the reception: arcade cabinets and a ping-pong table; a TV and bean bags east.
+  extra({ kind: "arcade", x: 1, y: 3 });
+  extra({ kind: "arcade", x: 1, y: 4 });
+  extra({ kind: "pingpong", x: sx - 4, y: 6, i: 0 }, { kind: "pingpong", x: sx - 3, y: 6, i: 1 });
+  extra({ kind: "tv", x: sx + 6, y: 1 });
+  extra({ kind: "beanbag", x: sx + 6, y: 3 }, { kind: "beanbag", x: sx + 8, y: 3 });
+  extra({ kind: "vending", x: W - 5, y: 1 });
+  extra({ kind: "lamp", x: sx - 1, y: 1 });
+  extra({ kind: "lamp", x: W - 2, y: 6 });
+  // Coffee bar along the east wall.
+  put({ kind: "counter", x: W - 4, y: 1 });
+  put({ kind: "coffee", x: W - 3, y: 1 });
+  put({ kind: "cooler", x: W - 2, y: 3 });
+  put({ kind: "plant", x: 1, y: 1 });
+  put({ kind: "plant", x: W - 2, y: D - 2 });
+  put({ kind: "shelf", x: 1, y: D - 3, i: 0 });
+  const coffee: Tile[] = [[W - 3, 2], [W - 4, 2]];
+  wander.push([door[0], D - 3], [sx - 1, 2], [sx + 5, 2], [W - 3, 5]);
+  if (!rest.length) rest.push([door[0] - 2, 6], [door[0] + 2, 6], [door[0] - 1, 6], [door[0] + 1, 6]);
+  const ok = (t: Tile) => grid.ok(t[0], t[1]);
+  const zones: Zone[] = [
+    { kind: "lobby", x0: sx - 1, y0: 1, x1: sx + 5, y1: D - 2, anchor: [door[0], D - 2] },
+    { kind: "break", x0: 1, y0: 1, x1: W - 2, y1: D - 2, anchor: [door[0], D - 3] },
+  ];
+  return { items, zones, grid, door, commons: { wander: wander.filter(ok), coffee: coffee.filter(ok), rest: rest.filter(ok) } };
+}
 
 export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: IsoOptions = {}): IsoLayout {
   const leads = team.filter((a) => a.isLead);
@@ -158,17 +270,10 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: I
     for (let i = 1; i <= socW; i++) wall(xSoc + i, 0, { dark: true, decal: "screen", i: i - 1, n: socW });
     if (xSoc + socW === W - 1) for (let y = 1; y <= Y_WALL; y++) wall(W - 1, y, { dark: true, low: true });
   }
+  dressBackWall(walls, W);
   const doors: Tile[] = [door, [2, Y_WALL], ...(soc ? [[xSoc + 2, Y_WALL] as Tile] : [])];
   for (const [x, y] of doors) walls.delete(`${x},${y}`);
-  for (const [k, w] of walls) {
-    const [x, y] = k.split(",").map(Number);
-    const rx = walls.has(`${x - 1},${y}`) || walls.has(`${x + 1},${y}`);
-    const ry = walls.has(`${x},${y - 1}`) || walls.has(`${x},${y + 1}`);
-    const dir = rx && ry ? "xy" : ry ? "y" : "x";
-    const cx = dir !== "y" && !walls.has(`${x + 1},${y}`);
-    const cy = dir !== "x" && !walls.has(`${x},${y + 1}`);
-    put({ kind: "wall", x, y, dir, ...(cx || cy ? { cap: cx && cy ? "xy" : cy ? "y" : "x" } : {}), ...w });
-  }
+  placeWalls(walls, put);
 
   // ---------------------------------------------------------- back rooms
   const desk = (x: number, y: number, a: TeamMember, zone: ZoneKind, style: Partial<Item> = {}) => {
@@ -207,6 +312,10 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: I
   put({ kind: "table", x: 11, y: yLobby + 3 });
   put({ kind: "counter", x: W - 4, y: yLobby });
   put({ kind: "coffee", x: W - 3, y: yLobby });
+  put({ kind: "vending", x: W - 5, y: yLobby });
+  put({ kind: "lamp", x: 9, y: yLobby + 1 });
+  put({ kind: "printer", x: W - 4, y: Y_WALL + 1 });
+  put({ kind: "tv", x: leadW - 1, y: 1 });
   put({ kind: "cooler", x: W - 2, y: yLobby + 2 });
   put({ kind: "plant", x: W - 2, y: H - 2 });
 

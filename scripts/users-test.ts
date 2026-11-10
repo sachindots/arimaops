@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 // People, roles, sign-in and sessions, end to end against the real HTTP server. Run: npx tsx scripts/users-test.ts
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,7 +69,7 @@ const calls: string[] = [];
 const hub = { snap: { config: { team: [] } }, subscribe: () => () => {} };
 const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent") } };
 const server = await startHttp({
-  projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {},
+  projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {}, unloadProject: async () => {},
   port: PORT, browserToken: "link-token-123", viewerToken: "viewer-token-456", host: "127.0.0.1",
   sameOrigin: false, localOrigins: [LOCAL], allowedOrigins: [LOCAL], guard, users, distDir: null,
 });
@@ -90,6 +92,14 @@ r = await call("GET", "/api/auth/me?token=link-token-123", { origin: "https://ph
 check("after that, the start-up link doesn't work from another device", r.status === 401);
 r = await call("GET", "/api/auth/me?token=link-token-123");
 check("…but still works on this machine, as the owner", r.status === 200 && (r.body.user as { name: string }).name === "Sam");
+// A browser sends no Origin on a same-origin GET: the Host it asked for decides.
+const hostGet = (host: string) =>
+  new Promise<number>((res) => {
+    const { request } = require("node:http") as typeof import("node:http");
+    request({ host: "127.0.0.1", port: PORT, path: "/api/auth/me?token=link-token-123", headers: { Host: host } }, (m) => (m.resume(), res(m.statusCode ?? 0))).end();
+  });
+check("…including a browser's plain GET (no Origin) to a local address", (await hostGet("localhost:5173")) === 200);
+check("…but not a plain GET for another host name (a LAN address through a proxy)", (await hostGet("192.168.1.5:5173")) === 401);
 
 const sam = await call("POST", "/api/auth/login", { body: { name: "sam", password: "sams-password-1" } });
 check("signing in with name and password sets a session cookie", sam.status === 200 && sam.cookie.startsWith("hq_sid=") && sam.cookie.length > 20);

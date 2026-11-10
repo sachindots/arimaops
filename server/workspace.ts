@@ -2,6 +2,7 @@
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import { BRAND } from "../src/data/brand";
 import type { AgentConfig } from "../src/data/types";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
@@ -12,8 +13,8 @@ export function workspaceFor(agent: AgentConfig, projectSlug: string): string {
   return agent.workspacePath || managedWorkspace(projectSlug, agent.id);
 }
 
-const INTERNAL_PREFIXES = [".git/", ".hq/", ".claude/", ".agents/", ".agent/", ".codex/", ".gemini/", "node_modules/"];
-const INTERNAL_FILES = new Set([".hq-role.md", ".hq-hook.mjs", ".jsmhq-role.md", ".jsmhq-hook.mjs", "opencode.json"]);
+const INTERNAL_PREFIXES = [".git/", ".arima/", ".hq/", ".claude/", ".agents/", ".agent/", ".codex/", ".gemini/", "node_modules/"];
+const INTERNAL_FILES = new Set([BRAND.roleFile, ...BRAND.legacyRoleFiles, BRAND.hookScript, ...BRAND.legacyHookScripts, "opencode.json"]);
 
 function isSyncableRelPath(rel: string, hintSet: Set<string>): boolean {
   const norm = rel.replace(/\\/g, "/").replace(/^\.\/+/, "").trim();
@@ -63,7 +64,7 @@ function copyRelFile(srcRoot: string, dstRoot: string, rel: string): boolean {
 }
 
 /**
- * In Deliverables mode, each agent runs in an isolated clone (`~/.hq/<slug>/<agentId>`).
+ * In Deliverables mode, each agent runs in an isolated clone (`~/.arima/<slug>/<agentId>`).
  * When an agent completes or submits a task for review, sync its created/modified project files
  * back to `repoRoot` and into all other active agent workspaces so downstream tasks see them immediately.
  */

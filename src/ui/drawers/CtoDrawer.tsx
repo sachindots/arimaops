@@ -33,6 +33,9 @@ export function CtoDrawer() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [registerPath, setRegisterPath] = useState("");
+  const [newName, setNewName] = useState("");
+  const [archiving, setArchiving] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; typed: string } | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState<Record<string, string>>({});
   const [newTaskOwner, setNewTaskOwner] = useState<Record<string, string>>({});
   const [auditSent, setAuditSent] = useState(false);
@@ -51,6 +54,7 @@ export function CtoDrawer() {
           hqPort: snap.config.project.hqPort,
           online: true,
           paused: false,
+          archived: false,
           isCurrent: true,
           type: snap.config.project.type,
           workflowMode: snap.config.workflow.mode ?? "github-pr",
@@ -185,6 +189,25 @@ export function CtoDrawer() {
     }
   };
 
+  /** POSTs to /api/projects/…; refreshes the list from the reply. */
+  const post = async (path: string, body?: object) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/projects/${path}?token=${encodeURIComponent(getBrowserToken())}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body ?? {}),
+      });
+      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  };
+
   const setPaused = async (projectId: string, pause: boolean) => {
     setError(null);
     try {
@@ -198,6 +221,8 @@ export function CtoDrawer() {
     }
   };
 
+  const archived = projects.filter((p) => p.archived);
+  const active = projects.filter((p) => !p.archived);
   const totalTasksAll = projects.reduce((acc, p) => acc + p.counts.total, 0);
   const totalDoneAll = projects.reduce((acc, p) => acc + p.counts.done, 0);
 
@@ -207,7 +232,7 @@ export function CtoDrawer() {
         {ctoAgent && <Portrait color={ctoAgent.color} lead={ctoAgent.isLead} size={36} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-[18px]">CTO Multi-Project Overwatch</b>
+            <b className="text-[18px]">Projects</b>
             <span className="border border-red bg-[rgba(255,23,68,0.16)] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-red">
               {projects.length} {projects.length === 1 ? "PROJECT" : "PROJECTS"} · {totalDoneAll}/{totalTasksAll} DONE
             </span>
@@ -252,8 +277,26 @@ export function CtoDrawer() {
         )}
 
         <section className="flex flex-col gap-3">
-          <SectionTitle>Registered {BRAND.name} Projects ({projects.length})</SectionTitle>
-          {projects.map((p) => {
+          <SectionTitle>Projects ({active.length})</SectionTitle>
+          {live && !isViewer && (
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newName.trim()) void post("create", { name: newName.trim() }).then((ok) => ok && setNewName(""));
+              }}
+            >
+              <div className="min-w-[200px] flex-1">
+                <Field label="New project" hint="Makes ~/projects/<name> with a fresh git repo and a lead.">
+                  <input className="field" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="my-app" autoComplete="off" />
+                </Field>
+              </div>
+              <button type="submit" className="btn min-h-[44px] border-green px-3 text-green" disabled={!newName.trim()}>
+                Create project
+              </button>
+            </form>
+          )}
+          {active.map((p) => {
             const isExpanded = expandedId === p.id;
             const pct = p.counts.total > 0 ? Math.round((p.counts.done / p.counts.total) * 100) : 0;
             return (
@@ -263,7 +306,7 @@ export function CtoDrawer() {
                   onClick={() => setExpandedId(isExpanded ? null : p.id)}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <b className="text-[16px]">{p.name}</b>
                       {p.isCurrent ? (
                         <span className="border border-green bg-[rgba(0,255,102,0.14)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-green">
@@ -273,7 +316,7 @@ export function CtoDrawer() {
                         <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">{p.paused ? "PAUSED" : "RUNNING"}</span>
                       ) : (
                         <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                          NOT LOADED (.hq/plan.json)
+                          NOT LOADED (.arima/plan.json)
                         </span>
                       )}
                       <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
@@ -302,6 +345,21 @@ export function CtoDrawer() {
                           }}
                         >
                           {p.paused ? "Resume" : "Pause"}
+                        </button>
+                      )}
+                      {live && !isViewer && p.online && active.length > 1 && (
+                        <button
+                          type="button"
+                          className={`btn px-2 py-0.5 text-[11px] ${archiving === p.id ? "border-red text-red" : ""}`}
+                          title="Stop its agents and move it to the archive. Nothing is deleted."
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (archiving !== p.id) return setArchiving(p.id);
+                            setArchiving(null);
+                            void post(`${encodeURIComponent(p.id)}/archive`);
+                          }}
+                        >
+                          {archiving === p.id ? "Stop agents & archive" : "Archive"}
                         </button>
                       )}
                       {p.officeName && (
@@ -375,17 +433,17 @@ export function CtoDrawer() {
                           return (
                             <div
                               key={t.id}
-                              className="grid grid-cols-[72px_1fr_130px_125px] items-center gap-2 border-2 border-ink bg-white px-2 py-1.5 text-[12px]"
+                              className="grid grid-cols-2 items-center gap-2 border-2 border-ink bg-white px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
                             >
-                              <span className="font-mono font-bold text-muted">{t.id}</span>
-                              <div className="min-w-0">
+                              <span className="col-span-2 font-mono font-bold text-muted sm:col-span-1">{t.id}</span>
+                              <div className="col-span-2 min-w-0 sm:col-span-1">
                                 <div className="truncate font-semibold" title={t.title}>
                                   {t.title}
                                 </div>
                                 {t.note && <div className="truncate font-mono text-[10px] text-muted">{t.note}</div>}
                               </div>
                               <select
-                                className="input py-0.5 font-mono text-[11px]"
+                                className="input min-w-0 py-0.5 font-mono text-[11px]"
                                 value={t.ownerId ?? ""}
                                 aria-label={`Owner for ${t.id}`}
                                 onChange={(e) =>
@@ -400,7 +458,7 @@ export function CtoDrawer() {
                                 ))}
                               </select>
                               <select
-                                className="input py-0.5 font-mono text-[11px] font-bold"
+                                className="input min-w-0 py-0.5 font-mono text-[11px] font-bold"
                                 style={{ color: st.color }}
                                 value={t.status}
                                 aria-label={`Status for ${t.id}`}
@@ -461,14 +519,73 @@ export function CtoDrawer() {
           })}
         </section>
 
-        {live && (
+        {archived.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <SectionTitle>Archive ({archived.length})</SectionTitle>
+            {archived.map((p) => (
+              <div key={p.id} className="flex flex-col gap-2 border-[3px] border-dashed border-ink p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <b className="text-[15px]">{p.name}</b>
+                  <span className="font-mono text-[11px] text-muted">
+                    {p.team.length} agents · {p.counts.done}/{p.counts.total} tasks done
+                  </span>
+                  <span className="flex-1" />
+                  {live && !isViewer && (
+                    <>
+                      <button type="button" className="btn min-h-[40px] px-3 text-[12px]" onClick={() => void post(`${encodeURIComponent(p.id)}/restore`)}>
+                        Restore
+                      </button>
+                      <button
+                        type="button"
+                        className="btn min-h-[40px] border-red px-3 text-[12px] text-red"
+                        onClick={() => setDeleting(deleting?.id === p.id ? null : { id: p.id, typed: "" })}
+                      >
+                        Delete…
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="truncate font-mono text-[11px] text-muted">{p.path}</div>
+                {deleting?.id === p.id && (
+                  <form
+                    className="flex flex-col gap-2 border-2 border-red p-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void post(`${encodeURIComponent(p.id)}/delete`, { confirm: deleting.typed.trim() }).then((ok) => ok && setDeleting(null));
+                    }}
+                  >
+                    <p className="m-0 text-[12px]">
+                      Deletes the agents' folders, chats, tasks, findings and logs {BRAND.name} keeps for <b>{p.name}</b>. The code in {p.path} and its git history stay.
+                      This can't be undone. Type <code>{p.id}</code> to confirm.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        className="field min-w-[160px] flex-1 font-mono"
+                        value={deleting.typed}
+                        autoComplete="off"
+                        autoCapitalize="off"
+                        onChange={(e) => setDeleting({ id: p.id, typed: e.target.value })}
+                        placeholder={p.id}
+                      />
+                      <button type="submit" className="btn min-h-[40px] border-red px-3 text-red" disabled={deleting.typed.trim() !== p.id}>
+                        Delete for good
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            ))}
+          </section>
+        )}
+
+        {live && !isViewer && (
           <section className="border-[3px] border-dashed border-ink p-3">
-            <SectionTitle>Register Another {BRAND.name} Project Folder</SectionTitle>
+            <SectionTitle>Add an existing folder</SectionTitle>
             <form className="flex items-end gap-2" onSubmit={handleRegisterProject}>
               <div className="flex-1">
                 <Field
                   label="Repository / Project Path on Disk"
-                  hint="Adds the folder to ~/.hq/projects.json and loads it into this server (a new folder gets a fresh .hq/config.json)."
+                  hint="Adds the folder to ~/.arima/projects.json and loads it into this server (a new folder gets a fresh .arima/config.json)."
                 >
                   <input
                     className="field font-mono text-[12px]"

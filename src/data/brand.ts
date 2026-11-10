@@ -1,42 +1,40 @@
-// Centralized brand & path constants for ArimaOps (அரிமா, Tamil for lion), a fork of JSM HQ / .hq.
-// Paths, CLI names and storage prefixes still carry the .hq / dothq names so running agents are not disturbed.
+// Product name, paths and markers in one place. Older names are kept only so an
+// existing install migrates (they're never shown): ".hq" / "dothq" were this
+// project's own earlier names; ".jsmhq" is the folder name of the upstream it
+// was forked from (JSM HQ), recognised so old installs move over.
 
 export const BRAND = {
-  /** Primary display name in UI headers and prose. */
+  /** Display name in headers and prose. */
   name: "ArimaOps",
-  /** Long-form name for titles and descriptions. */
+  /** Long form for titles. */
   fullName: "ArimaOps · அரிமா",
-  /** Default pixel sign on the operations center wall (fits up to 19 chars). */
+  /** The lobby sign in the office (fits up to 19 characters). */
   officeSign: "ARIMAOPS",
-  /** CLI binary command name. */
-  bin: "dothq",
-  /** Legacy CLI binary alias kept for compatibility. */
-  legacyBin: "jsm-hq",
-  /** Per-repo configuration folder (.hq/config.json, .hq/plan.json). */
-  repoDir: ".hq",
-  /** Legacy per-repo configuration folder (.jsmhq/). */
-  legacyRepoDir: ".jsmhq",
-  /** Machine-wide per-project state folder (~/.hq/<project>/). */
-  homeDir: ".hq",
-  /** Legacy machine-wide state folder (~/.jsmhq/<project>/). */
-  legacyHomeDir: ".jsmhq",
+  /** CLI command; `dothq` stays as an alias for existing scripts. */
+  bin: "arimaops",
+  aliasBins: ["dothq"],
+  /** Per-repo folder (config.json, plan.json, facts.md, skills/). */
+  repoDir: ".arima",
+  legacyRepoDirs: [".hq", ".jsmhq"],
+  /** Machine-wide folder (~/.arima: projects, agents' folders, vault, people, audit log). */
+  homeDir: ".arima",
+  legacyHomeDirs: [".hq", ".jsmhq"],
   /** Agent workspace role file (git-excluded). */
-  roleFile: ".hq-role.md",
-  /** Legacy agent workspace role file. */
-  legacyRoleFile: ".jsmhq-role.md",
-  /** Local-mode Windows node hook script (git-excluded). */
-  hookScript: ".hq-hook.mjs",
-  /** Legacy node hook script. */
-  legacyHookScript: ".jsmhq-hook.mjs",
-  /** Shell comment marker identifying HQ-managed hooks. */
-  hookMark: "# dothq-hook",
-  legacyHookMark: "# jsmhq-hook",
-  /** CLI arg marker identifying HQ-managed node hooks. */
-  hookMarkArg: "--dothq-hook",
-  legacyHookMarkArg: "--jsmhq-hook",
-  /** Header written into .git/info/exclude. */
-  excludeHeader: "# .hq",
-  /** Browser localStorage key prefix. */
-  storagePrefix: "dothq",
-  legacyStoragePrefix: "jsmhq",
+  roleFile: ".arima-role.md",
+  legacyRoleFiles: [".hq-role.md", ".jsmhq-role.md"],
+  /** Local-mode Windows hook script (git-excluded). */
+  hookScript: ".arima-hook.mjs",
+  legacyHookScripts: [".hq-hook.mjs", ".jsmhq-hook.mjs"],
+  /** Marks HQ-managed hooks in agents' settings so they can be replaced, never duplicated. */
+  hookMark: "# arimaops-hook",
+  legacyHookMarks: ["# dothq-hook", "# jsmhq-hook"],
+  hookMarkArg: "--arimaops-hook",
+  legacyHookMarkArgs: ["--dothq-hook", "--jsmhq-hook"],
+  /** Header of HQ's lines in .git/info/exclude. */
+  excludeHeader: "# arimaops",
+  /** Browser storage key prefix. */
+  storagePrefix: "arimaops",
+  legacyStoragePrefixes: ["dothq", "jsmhq"],
+  /** Where the code lives. */
+  repoUrl: "https://github.com/sachindots/arimaops",
 } as const;

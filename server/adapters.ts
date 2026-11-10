@@ -46,7 +46,7 @@ const CONTAINER_YOLO: Partial<Record<AgentCli, string[]>> = {
 export const containerArgs = (cli: AgentCli, launch: Launch) => [...launch.args, ...(CONTAINER_YOLO[cli] ?? [])];
 
 export interface CliAdapter {
-  /** Writes .hq's files into the agent's folder (all git-excluded). */
+  /** Writes HQ's files into the agent's folder (all git-excluded). */
   writeFiles(dir: string, agent: AgentConfig, cfg: HqConfig, token: string, extras?: RoleExtras): Promise<void>;
   launch(agent: AgentConfig): Launch;
 }
@@ -147,7 +147,7 @@ const agy: CliAdapter = {
     // `agy` runs interactively at the root command; `--dangerously-skip-permissions` prevents tool confirmation hangs.
     const args = ["--dangerously-skip-permissions", "--mode", "auto", ...(model ? ["--model", model] : [])];
     const cmdStr = ["agy", ...args.map((a) => `'${a.replace(/'/g, "'\\''")}'`)].join(" ");
-    const sbxScript = `if command -v agy >/dev/null 2>&1; then agy mcp add hq node ./${HOOK_SCRIPT} --mcp-stdio >/dev/null 2>&1 || true; exec ${cmdStr}; elif command -v antigravity >/dev/null 2>&1; then exec antigravity ${args.join(" ")}; else echo "[.hq] Antigravity CLI (agy) is not pre-installed in this Docker Sandbox VM image. Install agy in the sandbox shell or switch this agent to Local mode."; exec bash -l; fi`;
+    const sbxScript = `if command -v agy >/dev/null 2>&1; then agy mcp add hq node ./${HOOK_SCRIPT} --mcp-stdio >/dev/null 2>&1 || true; exec ${cmdStr}; elif command -v antigravity >/dev/null 2>&1; then exec antigravity ${args.join(" ")}; else echo "[ArimaOps] Antigravity CLI (agy) is not pre-installed in this Docker Sandbox VM image. Install agy in the sandbox shell or switch this agent to Local mode."; exec bash -l; fi`;
     return {
       sbxAgent: "shell",
       args,
@@ -167,7 +167,7 @@ const opencode: CliAdapter = {
     const model = cleanModel(agent.model);
     const args = model ? ["-m", model] : [];
     const cmdStr = ["opencode", ...args.map((a) => `'${a.replace(/'/g, "'\\''")}'`)].join(" ");
-    const sbxScript = `if ! command -v opencode >/dev/null 2>&1; then echo "[.hq] Installing OpenCode CLI in sandbox…"; npm install -g opencode-ai >/dev/null 2>&1 || true; fi; exec ${cmdStr}`;
+    const sbxScript = `if ! command -v opencode >/dev/null 2>&1; then echo "[ArimaOps] Installing OpenCode CLI in sandbox…"; npm install -g opencode-ai >/dev/null 2>&1 || true; fi; exec ${cmdStr}`;
     return {
       sbxAgent: "shell",
       args,

@@ -1,0 +1,14 @@
+ArimaOps
+Copyright (c) 2026 Sachin Dot
+
+This product is based on JSM HQ (https://github.com/jsmastery-pro/jsm-hq),
+Copyright (c) 2026 JavaScript Mastery, licensed under the MIT License.
+The full license text, including JavaScript Mastery's copyright notice,
+is in the LICENSE file and must be kept in copies and forks.
+
+"JSM HQ", "JavaScript Mastery" and "JSM" are trademarks of JavaScript Mastery.
+ArimaOps is not affiliated with or endorsed by JavaScript Mastery.
+See TRADEMARKS.md.
+
+Third-party packages keep their own licenses; see each package under
+node_modules or the published package's dependency list.

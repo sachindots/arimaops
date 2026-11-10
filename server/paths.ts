@@ -10,13 +10,22 @@ export const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "") || "project";
 
-/** ~/.hq/<project>/ — HQ's per-project home (agent folders, tokens). Falls back to ~/.jsmhq/<project>/ if already created there. */
+/** ~/.arima: everything HQ keeps for this machine. */
+export const homeRoot = () => join(homedir(), BRAND.homeDir);
+
+/** ~/.arima/<project>/: HQ's per-project home (agent folders, tokens). Falls back to an older folder name if the project is still there. */
 export function projectHome(projectSlug: string): string {
   const nextDir = join(homedir(), BRAND.homeDir, projectSlug);
-  const legacyDir = join(homedir(), BRAND.legacyHomeDir, projectSlug);
-  const dir = !existsSync(nextDir) && existsSync(legacyDir) ? legacyDir : nextDir;
+  const legacyDir = BRAND.legacyHomeDirs.map((d) => join(homedir(), d, projectSlug)).find((d) => existsSync(d));
+  const dir = !existsSync(nextDir) && legacyDir ? legacyDir : nextDir;
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/** The repo's HQ folder: .arima, or an older name already there (a committed .hq keeps working until you `git mv` it). */
+export function repoDirOf(root: string): string {
+  for (const d of [BRAND.repoDir, ...BRAND.legacyRepoDirs]) if (existsSync(join(root, d))) return join(root, d);
+  return join(root, BRAND.repoDir);
 }
 
 export function managedWorkspace(projectSlug: string, agentId: string): string {

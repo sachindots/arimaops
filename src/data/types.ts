@@ -139,7 +139,7 @@ export const PROJECT_TYPES: { id: ProjectType; label: string }[] = [
 export const isProjectType = (v: unknown): v is ProjectType => PROJECT_TYPES.some((t) => t.id === v);
 
 export interface ProjectConfig {
-  /** Fixed once created: names sandboxes, tmux sessions and ~/.hq/<id>. Renaming the project never changes it. */
+  /** Fixed once created: names sandboxes, tmux sessions and ~/.arima/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
   name: string; // "Askwell"
   repo: string; // "jsmastery-pro/askwell"
@@ -459,7 +459,7 @@ export interface SetupState {
 export interface OfficeSnapshot {
   /** True until the first-run welcome is finished for this repo (real HQ only). */
   welcome?: boolean;
-  /** Your own skills found in ~/.hq/skills and the repo's .hq/skills (folders with a SKILL.md). */
+  /** Your own skills found in ~/.arima/skills and the repo's .arima/skills (folders with a SKILL.md). */
   customSkills?: string[];
   setup: SetupState;
   sbx: SbxState;
@@ -545,6 +545,8 @@ export interface ProjectOverview {
   online: boolean;
   /** Loaded but GitHub/sbx polling paused. */
   paused: boolean;
+  /** Archived: agents stopped and not loaded. Restore it, or delete it for good. */
+  archived: boolean;
   /** Always false from the server (it serves every project); the UI sets it for the project you're viewing. */
   isCurrent: boolean;
   type: ProjectType;

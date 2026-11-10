@@ -16,11 +16,12 @@ import { canvasTexture } from "../engine/textures";
 import type { PxRect } from "../types";
 import { attachInput, inside, type Target } from "../sceneInput";
 import { buildFloor, ITEM_TOP, itemCanvas, itemKey, type Block } from "./art";
-import { canHuddle, IsoBot, modeOf, seatOf, update, type Mode } from "./behaviour";
+import { canHuddle, IsoBot, modeOf, seatOf, startTile, update, type Mode } from "./behaviour";
 import { EventDiff, SEVERITY_COLOR, type IsoEvent } from "./events";
 import { Fx } from "./fx";
+import { startRain } from "./rain";
 import { demoOthers, demoSnapshot, demoWingCount, wantsDemo } from "./demo";
-import { buildingKey, generateBuilding, remoteId, ROW_GAP, type Building, type Wing, type WingInput } from "./building";
+import { buildingKey, generateBuilding, remoteId, type Building, type Wing, type WingInput } from "./building";
 import { doorOf, WALL_H, type Item } from "./layout";
 import type { Tile } from "../engine/path";
 import { depth, toScreen } from "./proj";
@@ -126,9 +127,12 @@ export class IsoScene {
   private destroyed = false;
 
   async init(host: HTMLElement) {
-    await this.app.init({ resizeTo: host, background: "#070910", antialias: false, autoDensity: true, resolution: window.devicePixelRatio || 1, roundPixels: true });
+    await this.app.init({ resizeTo: host, backgroundAlpha: 0, antialias: false, autoDensity: true, resolution: window.devicePixelRatio || 1, roundPixels: true });
     if (this.destroyed) return void this.app.destroy(true);
+    // The building floats over digital rain (its own canvas, behind Pixi's transparent one).
+    this.cleanups.push(startRain(host, () => this.reducedMotion));
     host.appendChild(this.app.canvas);
+    Object.assign(this.app.canvas.style, { position: "relative", zIndex: "1" });
     this.app.canvas.style.imageRendering = "pixelated";
     this.world.addChild(this.floor, this.items, this.banners, this.fx.layer, this.gOver);
     this.app.stage.addChild(this.world);
@@ -222,10 +226,11 @@ export class IsoScene {
         this.modes.set(a.id, mode);
         r.color = a.color;
         if (fresh && !this.carried.has(a.id)) {
-          // First sight: everyone is already at their desk, except an agent that is just starting (at the door).
+          // First sight: working agents at their desk, the rest in the HQ hall, a starting one at its wing door.
           r.bot.mode = mode;
-          r.bot.place(mode === "starting" ? doorOf(l, a.id) : (seatOf(l, a.id) ?? doorOf(l, a.id)));
-          if (mode !== "starting") r.bot.facing = "ne";
+          const at = mode === "starting" ? doorOf(l, a.id) : (startTile(l, a.id, mode) ?? doorOf(l, a.id));
+          r.bot.place(at);
+          r.bot.facing = at === seatOf(l, a.id) ? "ne" : "sw";
         }
         // The lead comes over when someone needs the user or is stuck...
         if (!fresh && lead && a.id !== lead.id && (mode === "needs-input" || mode === "alert") && prev.get(a.id) !== mode) queue.push(a.id);
@@ -385,11 +390,15 @@ export class IsoScene {
     // Robots that stay in the building keep their spot (moved with their wing) instead of jumping to their desk.
     const before = this.layout;
     const kept = new Map<string, { bot: IsoBot; dx: number; dy: number }>();
+    const within = (b: { x0: number; y0: number; x1: number; y1: number }, x: number, y: number) => x >= b.x0 && x <= b.x1 + 1 && y >= b.y0 && y <= b.y1 + 1;
     if (before)
       for (const [id, r] of this.robots) {
         const was = before.wings.find((w) => w.agentIds.includes(id));
         const now = l.wings.find((w) => w.agentIds.includes(id));
-        if (was && now) kept.set(id, { bot: r.bot, dx: now.x0 - was.x0, dy: now.y0 - was.y0 });
+        if (!was || !now) continue;
+        // In the hall: moves with the hall. In its wing: moves with the wing. On a walkway: starts over.
+        if (within(before.hall, r.bot.x, r.bot.y)) kept.set(id, { bot: r.bot, dx: 0, dy: l.hall.y0 - before.hall.y0 });
+        else if (within(was, r.bot.x, r.bot.y)) kept.set(id, { bot: r.bot, dx: now.x0 - was.x0, dy: now.y0 - was.y0 });
       }
     this.layout = l;
     this.items.removeChildren().forEach((ch) => ch.destroy());
@@ -454,11 +463,8 @@ export class IsoScene {
    * would pass a tablet GPU's texture size limit (4096 on many) and render black.
    */
   private bakeFloor(l: Building) {
-    const blocks: Block[] = l.wings.map((w) => ({ x0: w.x0, y0: w.y0, x1: w.x1 + 1, y1: w.y1 + 1 }));
-    // A walkway in front of each row but the last, the building's full width.
-    const rowEnds = [...new Set(l.wings.map((w) => w.y1))].sort((a, b) => a - b).slice(0, -1);
-    const streets: Block[] = rowEnds.map((y) => ({ x0: 0, y0: y + 1, x1: l.W, y1: y + 1 + ROW_GAP }));
-    const full = buildFloor(l, blocks, streets);
+    const box = (b: { x0: number; y0: number; x1: number; y1: number }): Block => ({ x0: b.x0, y0: b.y0, x1: b.x1 + 1, y1: b.y1 + 1 });
+    const full = buildFloor(l, [...l.wings.map(box), box(l.hall)], l.streets.map(box));
     this.floor.removeChildren().forEach((ch) => ch.destroy({ texture: true, textureSource: true }));
     for (let y = 0; y < full.height; y += FLOOR_TILE)
       for (let x = 0; x < full.width; x += FLOOR_TILE) {

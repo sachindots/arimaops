@@ -1,17 +1,13 @@
 # Trademarks
 
-The code in this repository is MIT licensed (see `LICENSE`). The license covers the code only.
+The code in this repository is MIT licensed (see `LICENSE`). The license covers the code only, not names or logos.
 
-The names **JSM HQ**, **JavaScript Mastery** and **JSM**, and their logos, are trademarks of JavaScript Mastery. The MIT license does not give you any right to use them.
+## ArimaOps
 
-**You may:**
+**ArimaOps**, **அரிமா** and the lion mascot are the names and logo of this project. You may say that your project is based on, forked from or works with ArimaOps. Please don't publish a fork, package or hosted service under the ArimaOps name or with its logo, or suggest that this project made or endorses your version.
 
-- Say that your project is based on, forked from or works with JSM HQ.
-- Use the name in plain text to refer to this project, for example in a blog post or a talk.
+## JSM HQ
 
-**Please don't:**
+ArimaOps is based on JSM HQ by JavaScript Mastery. The names **JSM HQ**, **JavaScript Mastery** and **JSM**, and their logos, are trademarks of JavaScript Mastery. The MIT license does not give anyone the right to use them. ArimaOps uses the name only to say what it is based on, and is not affiliated with or endorsed by JavaScript Mastery.
 
-- Publish a fork, package or hosted service under the name JSM HQ, or a name or logo that could be confused with it.
-- Suggest that JavaScript Mastery made, endorses or supports your version.
-
-If you publish a fork, give it a different name and logo. Questions: open an issue on the repository.
+Questions: open an issue on the repository.

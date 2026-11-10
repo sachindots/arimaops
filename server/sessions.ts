@@ -538,7 +538,7 @@ export class Sessions {
 
   /**
    * Antigravity (`agy`) asks to trust a newly cloned folder on first run and does not emit SessionStart.
-   * For HQ-managed clones (`~/.hq/<slug>/<id>`), auto-confirm the folder trust prompt so agents start hands-free.
+   * For HQ-managed clones (`~/.arima/<slug>/<id>`), auto-confirm the folder trust prompt so agents start hands-free.
    */
   private async watchAgyScreen(agentId: string, name: string, managedWorkspace: boolean) {
     const st = this.hub.status(agentId);

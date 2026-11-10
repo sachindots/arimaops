@@ -1,4 +1,4 @@
-// Installs a packed jsm-hq tarball into an empty folder like a new user would,
+// Installs a packed arimaops tarball into an empty folder like a new user would,
 // then checks the parts that differ by OS: the terminal library loads and can
 // spawn, and HQ starts on a fresh repo and serves the page and a snapshot.
 //
@@ -7,15 +7,18 @@
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const tarball = resolve(process.argv[2] ?? "");
 const port = Number(process.argv[3] ?? 7431);
 const win = process.platform === "win32";
-const work = mkdtempSync(join(tmpdir(), "jsmhq-smoke-"));
+const work = mkdtempSync(join(tmpdir(), "arimaops-smoke-"));
 const app = join(work, "app");
-const repo = join(work, "jsmhq-smoke-repo"); // also HQ's project id → ~/.jsmhq/jsmhq-smoke-repo
+const repo = join(work, "arimaops-smoke-repo");
+// HQ gets its own home folder: the smoke run never touches your ~/.arima (projects list, vault, users).
+const home = join(work, "home");
+mkdirSync(home);
 let hq = null;
 
 const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: "pipe", shell: win, encoding: "utf8" });
@@ -31,7 +34,6 @@ function cleanup() {
     else hq.kill("SIGTERM");
   }
   try {
-    rmSync(join(homedir(), ".jsmhq", "jsmhq-smoke-repo"), { recursive: true, force: true });
     rmSync(work, { recursive: true, force: true });
   } catch {
     /* Windows may still hold a file; the runner is thrown away anyway */
@@ -54,8 +56,8 @@ try {
 } catch (e) {
   fail(`npm install failed:\n${e.stdout ?? ""}${e.stderr ?? ""}`);
 }
-const pkgRoot = join(app, "node_modules", "@therealjsmastery", "jsm-hq");
-const bin = join(pkgRoot, "bin", "jsm-hq.mjs");
+const pkgRoot = join(app, "node_modules", "arimaops");
+const bin = join(pkgRoot, "bin", "arimaops.mjs");
 step(`version ${sh(process.execPath, [bin, "--version"]).trim()}`);
 
 // 2. The terminal library loads its prebuilt binary and can spawn a process.
@@ -77,7 +79,7 @@ writeFileSync(join(repo, "README.md"), "# smoke\n");
 sh("git", ["add", "."], repo);
 sh("git", ["-c", "user.name=smoke", "-c", "user.email=smoke@example.com", "commit", "-qm", "init"], repo);
 
-hq = spawn(process.execPath, [bin, "--repo", repo, "--port", String(port), "--no-open"], { stdio: ["ignore", "pipe", "pipe"] });
+hq = spawn(process.execPath, [bin, "--repo", repo, "--port", String(port), "--no-open"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: home, USERPROFILE: home } });
 let log = "";
 const token = await new Promise((done) => {
   const onData = (d) => {

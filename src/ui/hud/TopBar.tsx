@@ -29,9 +29,9 @@ export function TopBar() {
   const openFindings = (snap.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length;
 
   return (
-    <header className="hq-topbar panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-4 px-3">
+    <header className="hq-topbar panel fixed left-4 right-4 top-[10px] z-10 flex h-[50px] items-center gap-3 px-3 max-[1499px]:[&_.btn]:px-1.5">
       {/* Keeps the logo and chips readable; only the project name truncates when the bar is crowded. */}
-      <div className="flex min-w-[170px] items-center gap-2.5 overflow-hidden">
+      <div className="flex min-w-[170px] items-center gap-2.5 overflow-hidden max-[1499px]:max-w-[240px]">
         <Logo />
         <b className="whitespace-nowrap text-[22px] font-bold tracking-[0.04em] text-gold">{BRAND.name}</b>
         {isViewer && (
@@ -51,7 +51,7 @@ export function TopBar() {
       </div>
       {/* Below ~1600 px the controls don't all fit: they scroll sideways instead of running off the edge. */}
       {/* ml-auto on the first control, not justify-end: right-aligned when it fits, scrollable from the start when it doesn't. */}
-      <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-4 overflow-x-auto [&>*]:shrink-0 [&>*:first-child]:ml-auto">
+      <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [&>*]:shrink-0 [&>*:first-child]:ml-auto">
 
 
       {hasDev && (
@@ -78,7 +78,8 @@ export function TopBar() {
         title="Each agent runs in its own isolated Docker Sandbox (microVM)"
       >
         <span>
-          Sandbox · <b className="text-green">{sandboxes}</b> running{local ? ` · ${local} local` : ""}
+          <span className="hidden min-[1500px]:inline">Sandbox · </span>
+          <b className="text-green">{sandboxes}</b> running{local ? ` · ${local} local` : ""}
         </span>
         <i className="led" style={runningIds.size ? undefined : { background: "#6e7b94", boxShadow: "none", animation: "none" }} />
       </div>
@@ -106,9 +107,9 @@ export function TopBar() {
           className="btn text-[14px]"
           style={{ borderColor: "rgba(0, 229, 255, 0.45)", color: "#00e5ff" }}
           onClick={() => ui.openCto()}
-          title="Multi-project CTO Command Center & Overwatch"
+          title="Every project: switch, create, pause, archive or delete; tasks across projects"
         >
-          CTO Overwatch
+          Projects
         </button>
         <button className="btn text-[14px]" onClick={() => ui.openBoards()}>
           Boards
@@ -131,7 +132,7 @@ export function TopBar() {
           Settings
         </button>
       )}
-      <button className="btn text-[14px]" aria-pressed={debugOpen} onClick={() => ui.toggleDebug()} title="Debug panel (D)">
+      <button className="btn text-[14px] max-[1279px]:hidden" aria-pressed={debugOpen} onClick={() => ui.toggleDebug()} title="Debug panel (D)">
         Debug
       </button>
       </div>

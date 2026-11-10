@@ -72,7 +72,7 @@ export function hostAllowed(rules: string[], host: string, port: number): boolea
 
 /**
  * Each container agent keeps one fixed IP on hq-agents (172.30.0.10–250), so a security engagement's
- * firewall rules can name exactly which agent may reach which target. Saved in ~/.hq/container-ips.json.
+ * firewall rules can name exactly which agent may reach which target. Saved in ~/.arima/container-ips.json.
  */
 export function agentIp(containerName: string): string {
   const file = join(homedir(), BRAND.homeDir, "container-ips.json");
@@ -94,7 +94,7 @@ export function agentIp(containerName: string): string {
     renameSync(tmp, file);
     return ip;
   }
-  throw new Error("No free container IPs left on hq-agents (240 agents). Remove old entries from ~/.hq/container-ips.json.");
+  throw new Error("No free container IPs left on hq-agents (240 agents). Remove old entries from ~/.arima/container-ips.json.");
 }
 
 /** `docker run` arguments for an agent (run in tmux like the other modes; --rm: state lives in the folder and login volume). */
@@ -232,7 +232,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     const port = Number(url.port || 80);
     const d = await decide(req, url.hostname, port);
     if (!d.ok) {
-      res.writeHead(403, { "Content-Type": "text/plain" }).end(`.hq proxy: ${d.why}. Ask with request_access.`);
+      res.writeHead(403, { "Content-Type": "text/plain" }).end(`${BRAND.name} proxy: ${d.why}. Ask with request_access.`);
       return;
     }
     const headers = { ...req.headers };

@@ -30,7 +30,7 @@ export const HQ_FILES = [ROLE_FILE, ".claude/settings.local.json", MCP_CONFIG, H
 export const AGY_FILES = [...HQ_FILES, GEMINI_SETTINGS, AGY_RULE_FILE, AGYS_RULE_FILE, AGY_HOOKS_FILE, AGY_PLUGIN_DIR];
 export const GEMINI_FILES = [ROLE_FILE, GEMINI_SETTINGS, HOOK_SCRIPT];
 export const OPENCODE_FILES = [ROLE_FILE, OPENCODE_CONFIG, HOOK_SCRIPT];
-const LEGACY_FILES = [BRAND.legacyRoleFile, BRAND.legacyHookScript];
+const LEGACY_FILES = [...BRAND.legacyRoleFiles, ...BRAND.legacyHookScripts];
 
 /** Extra context for the generated role: the folder's own ROLE.md, and whether app variables are set. */
 export interface RoleExtras {
@@ -40,7 +40,7 @@ export interface RoleExtras {
   ports?: { first: number; last: number };
 }
 
-/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise both old JSM HQ and new .hq headers so it can be cleaned up. */
+/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise the old upstream and earlier headers so it can be cleaned up. */
 const isHqRole = (text: string) =>
   text.includes("## Team MCP (server `hq`)") && (text.includes("You are managed by JSM HQ.") || text.includes(`You are managed by ${BRAND.name}.`));
 
@@ -72,8 +72,7 @@ export async function adoptRoleFile(dir: string): Promise<string | null> {
 export const MARK = BRAND.hookMark;
 /** Same marker for node hook commands (cmd and PowerShell have no `#` comments). */
 const MARK_ARG = BRAND.hookMarkArg;
-const isOurs = (command: string) =>
-  command.includes(MARK) || command.includes(MARK_ARG) || command.includes(BRAND.legacyHookMark) || command.includes(BRAND.legacyHookMarkArg);
+const isOurs = (command: string) => [MARK, MARK_ARG, ...BRAND.legacyHookMarks, ...BRAND.legacyHookMarkArgs].some((m) => command.includes(m));
 
 /**
  * Hooks run where the agent runs. Sandboxes are Linux, so they use sh + curl;
@@ -89,7 +88,7 @@ const HOOK_SCRIPT_SOURCE = `// Written by ${BRAND.name} (git-excluded). Sends th
 // Usage: node ${HOOK_SCRIPT} <url> <token> [--print-reply] | --print-role | --mcp-stdio
 import { readFileSync } from "node:fs";
 
-const args = process.argv.slice(2).filter((a) => a !== "${MARK_ARG}" && a !== "${BRAND.legacyHookMarkArg}");
+const args = process.argv.slice(2).filter((a) => !${JSON.stringify([MARK_ARG, ...BRAND.legacyHookMarkArgs])}.includes(a));
 if (args[0] === "--print-role") {
   try {
     process.stdout.write(readFileSync(new URL("./${ROLE_FILE}", import.meta.url), "utf8"));
@@ -178,7 +177,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
           "Assign only to agents that are running and free (check `list_workers`).",
           "When an operator marks a task `in-review`, inspect their summary or deliverable and either mark the task `done` (`update_task`) or message them with revision feedback (`send_message`).",
-          "Multi-Project CTO Overwatch: You can also inspect and update all other registered `.hq` projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+          "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
         ]
       : [
           "You plan the work and assign it to the team across department pods. You never write app code.",
@@ -188,7 +187,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
             ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
             : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
           "If the user changes who merges, HQ tells you. Follow the latest message.",
-          "Multi-Project CTO Overwatch: You can also inspect and update all other registered `.hq` projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+          "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
         ]
     : isDeliverables
       ? [
