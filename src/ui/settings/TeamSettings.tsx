@@ -1,3 +1,4 @@
+import { BRAND } from "../../data/brand";
 import { useState } from "react";
 import { nextAgentName } from "../../data/names";
 import {
@@ -389,7 +390,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
           </div>
 
           <div className="col-span-2">
-            <Field label="Folder" hint="Leave empty and .hq keeps its own isolated workspace for this agent. Or enter an existing folder path.">
+            <Field label="Folder" hint={`Leave empty and ${BRAND.name} keeps its own isolated workspace for this agent. Or enter an existing folder path.`}>
               <CommitInput
                 className="field font-term text-[17px]"
                 value={agent.workspacePath ?? ""}
@@ -411,7 +412,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
             </div>
             <Field
               label=""
-              hint="Who this agent is and how they operate. .hq adds the team, workflow rules and MCP tools, writes it to .hq-role.md and .agent/rules/hq-role.md (never committed), and loads it when the session starts."
+              hint={`Who this agent is and how they operate. ${BRAND.name} adds the team, workflow rules and MCP tools, writes it to .hq-role.md and .agent/rules/hq-role.md (never committed), and loads it when the session starts.`}
             >
               <CommitInput multiline className="field h-[140px] resize-y font-term text-[17px] leading-tight" value={agent.roleMd} onCommit={(v) => set({ roleMd: v })} />
             </Field>

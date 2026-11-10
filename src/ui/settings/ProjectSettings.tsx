@@ -1,3 +1,4 @@
+import { BRAND } from "../../data/brand";
 import { useState } from "react";
 import { DEFAULT_OFFICE_NAME, OFFICE_NAME_MAX } from "../../data/names";
 import { PROJECT_TYPES, type ProjectType } from "../../data/types";
@@ -122,7 +123,7 @@ export function ProjectSettings() {
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />
         <p className="mt-1 text-[13px] text-muted">
-          .hq keeps the plan in .hq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
+          {BRAND.name} keeps the plan in .hq/plan.json. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
         </p>
       </section>
       <section className="border-[3px] border-ink bg-white p-3 text-[13px]">

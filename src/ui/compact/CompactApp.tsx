@@ -1,3 +1,5 @@
+import { BRAND } from "../../data/brand";
+import { Logo } from "../hud/TopBar";
 // Tablet/phone layout: a header, a bottom bar (Chat · Board · Inbox · Agents · More) and full-screen
 // pages. Opening anything else (an agent, PRs, your terminal, projects) uses the same drawers as the
 // office, shown full-screen with a Back button.
@@ -39,11 +41,10 @@ export function CompactApp() {
     : null;
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#050609] text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <header className="flex h-[48px] shrink-0 items-center gap-2 border-b-[3px] border-ink bg-[rgba(10,12,18,0.96)] px-3">
-        <b className="text-[20px] font-bold">
-          <span className="text-red">.</span>hq
-        </b>
+    <div className="fixed inset-0 flex flex-col bg-grass text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <header className="flex h-[48px] shrink-0 items-center gap-2 border-b-[3px] border-ink bg-[rgba(17,26,44,0.96)] px-3">
+        <Logo size={28} />
+        <b className="text-[20px] font-bold text-gold">{BRAND.name}</b>
         <button className="min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
           <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
         </button>
@@ -79,7 +80,7 @@ export function CompactApp() {
         )}
       </main>
 
-      <nav className="grid h-[58px] shrink-0 grid-cols-5 border-t-[3px] border-ink bg-[rgba(10,12,18,0.96)]" aria-label="Sections">
+      <nav className="grid h-[58px] shrink-0 grid-cols-5 border-t-[3px] border-ink bg-[rgba(17,26,44,0.96)]" aria-label="Sections">
         {(
           [
             ["chat", "Chat", "💬"],

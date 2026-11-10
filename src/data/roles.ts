@@ -1,4 +1,5 @@
-// Universal Persona, Department Pod & Organization Catalog for .hq (dot hq).
+import { BRAND } from "./brand";
+// Universal Persona, Department Pod & Organization Catalog for ArimaOps.
 // Supports multi-domain missions: Full Product Organization (CTO, VP Product, Sr/Jr Dev, UI/UX, QA & CI/CD, Marketing),
 // Red Team Cybersec Center (Red Team Commander, OSINT, Exploit Dev, AppSec, Blue Team), and Custom Personas.
 
@@ -619,7 +620,7 @@ export const DEPARTMENT_PODS: DepartmentPodPreset[] = [
     label: "CTO & Executive Command Pod",
     short: "+ CTO / Exec",
     color: "#ff1744",
-    description: "Adds a Multi-Project CTO who can inspect & update all .hq projects plus architect local boards.",
+    description: `Adds a Multi-Project CTO who can inspect & update all ${BRAND.name} projects plus architect local boards.`,
     members: [
       { name: "Overwatch", role: "CTO", department: "exec", cli: "claude", model: "claude-opus-5-5" },
     ],

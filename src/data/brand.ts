@@ -1,12 +1,13 @@
-// Centralized brand & path constants for .hq (dot hq) with legacy JSM HQ compatibility.
+// Centralized brand & path constants for ArimaOps (அரிமா, Tamil for lion), a fork of JSM HQ / .hq.
+// Paths, CLI names and storage prefixes still carry the .hq / dothq names so running agents are not disturbed.
 
 export const BRAND = {
   /** Primary display name in UI headers and prose. */
-  name: ".hq",
+  name: "ArimaOps",
   /** Long-form name for titles and descriptions. */
-  fullName: "dot hq",
+  fullName: "ArimaOps · அரிமா",
   /** Default pixel sign on the operations center wall (fits up to 19 chars). */
-  officeSign: ".HQ",
+  officeSign: "ARIMAOPS",
   /** CLI binary command name. */
   bin: "dothq",
   /** Legacy CLI binary alias kept for compatibility. */

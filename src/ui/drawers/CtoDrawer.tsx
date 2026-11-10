@@ -1,3 +1,4 @@
+import { BRAND } from "../../data/brand";
 import { useCallback, useEffect, useState } from "react";
 import { inferDepartmentForRole } from "../../data/roles";
 import { PROJECT_TYPES, type ProjectOverview, type TaskStatus } from "../../data/types";
@@ -212,7 +213,7 @@ export function CtoDrawer() {
             </span>
           </div>
           <div className="truncate font-mono text-[12px] text-muted">
-            {ctoAgent ? `Commanded by ${ctoAgent.name} (${ctoAgent.role} · ${ctoAgent.cli}${ctoAgent.model ? `:${ctoAgent.model}` : ""})` : "Global .hq Project Registry"}
+            {ctoAgent ? `Commanded by ${ctoAgent.name} (${ctoAgent.role} · ${ctoAgent.cli}${ctoAgent.model ? `:${ctoAgent.model}` : ""})` : `Global ${BRAND.name} Project Registry`}
           </div>
         </div>
       </DrawerHeader>
@@ -251,7 +252,7 @@ export function CtoDrawer() {
         )}
 
         <section className="flex flex-col gap-3">
-          <SectionTitle>Registered .hq Projects ({projects.length})</SectionTitle>
+          <SectionTitle>Registered {BRAND.name} Projects ({projects.length})</SectionTitle>
           {projects.map((p) => {
             const isExpanded = expandedId === p.id;
             const pct = p.counts.total > 0 ? Math.round((p.counts.done / p.counts.total) * 100) : 0;
@@ -462,7 +463,7 @@ export function CtoDrawer() {
 
         {live && (
           <section className="border-[3px] border-dashed border-ink p-3">
-            <SectionTitle>Register Another .hq Project Folder</SectionTitle>
+            <SectionTitle>Register Another {BRAND.name} Project Folder</SectionTitle>
             <form className="flex items-end gap-2" onSubmit={handleRegisterProject}>
               <div className="flex-1">
                 <Field

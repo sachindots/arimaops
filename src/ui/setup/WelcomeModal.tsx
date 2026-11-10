@@ -1,3 +1,4 @@
+import { BRAND } from "../../data/brand";
 import { useState } from "react";
 import { LEAD_NAME, nextAgentName, WORKER_NAMES } from "../../data/names";
 import { DEPARTMENT_PODS, inferDepartmentForRole, ORG_PRESETS, type DepartmentPodPreset, type OrgPreset } from "../../data/roles";
@@ -110,7 +111,7 @@ export function WelcomeModal() {
     const hasStack = stack.frameworks.length > 0 || Object.values(stack.tools).some(Boolean);
     officeActions.completeWelcome({
       projectName: projectName.trim(),
-      officeName: officeName.trim() || ".HQ",
+      officeName: officeName.trim() || BRAND.officeSign,
       lead,
       workers,
       workflowMode,
@@ -121,11 +122,11 @@ export function WelcomeModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Welcome to .hq">
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col">
         <div className="border-b-[3px] border-ink px-4 py-2">
           <h2 className="m-0 text-[22px] font-bold">
-            Welcome to <span className="text-red">.</span>hq
+            Welcome to <span className="text-gold">{BRAND.name}</span>
           </h2>
           <p className="m-0 text-[14px] text-muted">
             Assemble your Product Company or Red Team Cybersec War-Room for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>.

@@ -1,19 +1,13 @@
+import { BRAND } from "../../data/brand";
 import type { SimSpeed } from "../../data/source";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 
 const SPEEDS: SimSpeed[] = [1, 2, 4];
 
-function Logo() {
-  return (
-    <svg className="h-[30px] w-[30px] shrink-0" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden>
-      <rect x="0" y="0" width="10" height="10" fill="#050609" />
-      <rect x="1" y="1" width="8" height="8" fill="#0a0c12" stroke="#ff1744" strokeWidth="1" />
-      <rect x="2" y="6" width="2" height="2" fill="#ff1744" />
-      <rect x="5" y="2" width="3" height="6" fill="#00ff66" />
-      <rect x="6" y="3" width="1" height="4" fill="#0a0c12" />
-    </svg>
-  );
+/** The ArimaOps lion-robot mascot (public/arima-mascot.svg). */
+export function Logo({ size = 30 }: { size?: number }) {
+  return <img src="/arima-mascot.svg" width={size} height={size} className="shrink-0" style={{ imageRendering: "pixelated" }} alt="" aria-hidden />;
 }
 
 export function TopBar() {
@@ -42,16 +36,14 @@ export function TopBar() {
       {/* Keeps the logo and chips readable; only the project name truncates when the bar is crowded. */}
       <div className="flex min-w-[170px] items-center gap-2.5 overflow-hidden">
         <Logo />
-        <b className="whitespace-nowrap text-[22px] font-bold tracking-[0.04em]">
-          <span className="text-red">.</span>hq
-        </b>
+        <b className="whitespace-nowrap text-[22px] font-bold tracking-[0.04em] text-gold">{BRAND.name}</b>
         {isViewer && (
           <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#00e5ff" }} title="Read-only link: watch + chat. Use the operator link to control agents.">
             Viewer
           </span>
         )}
         {!live && (
-          <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ff1744" }} title="Running on mock data. Start the real .hq with `pnpm dev:hq`.">
+          <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ff1744" }} title={`Running on mock data. Start the real ${BRAND.name} with \`pnpm dev:hq\`.`}>
             Demo data
           </span>
         )}

@@ -1,3 +1,4 @@
+import { BRAND } from "../../data/brand";
 import { useEffect, useState, type ReactNode } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
@@ -502,7 +503,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#00ff66" } : id === "hq" ? { name: ".hq", color: "#ff1744" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#00ff66" } : id === "hq" ? { name: BRAND.name, color: "#E8B339" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;
