@@ -345,6 +345,8 @@ export function createMockSource(): OfficeDataSource {
       world.message("you", item.fromId, decision === "done" ? `Done: ${item.title}${item.note ? ` (${item.note})` : ""}` : `Dismissed: ${item.title}${item.note ? ` (${item.note})` : ""}`);
     },
 
+    saveAccount() {},
+    removeAccount() {},
     refreshMcp() {
       if (world.snap.mcp) world.emit({ type: "mcp.updated", mcp: structuredClone(world.snap.mcp) });
     },

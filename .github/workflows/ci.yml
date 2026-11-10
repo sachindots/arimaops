@@ -54,6 +54,8 @@ jobs:
         run: npx tsx scripts/office-test.ts
       - name: Account limits test
         run: npx tsx scripts/accounts-test.ts
+      - name: Credentials (vault, providers, delivery, redaction)
+        run: npx tsx scripts/credentials-test.ts
       - name: Pack
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack

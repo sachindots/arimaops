@@ -7,8 +7,10 @@ export interface LaunchSpec {
   args: string[];
   /** Local mode only: an env file whose variables the agent gets. HQ never reads it. */
   envFile: string | null;
-  /** Extra variables for the agent's process (e.g. its port block). */
+  /** Extra variables for the agent's process (e.g. its port block). Not secret: tmux puts them on its command line. */
   env?: Record<string, string>;
+  /** Secrets: a 0600 KEY=value file the launch shell loads and then deletes (never on a command line). */
+  secretEnvFile?: string;
 }
 
 export interface TermSize {

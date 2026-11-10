@@ -2,6 +2,7 @@
 // OfficeEvent to all connected browsers, and config/plan changes are saved.
 
 import type { OfficeEvent } from "../src/data/source";
+import { redactor } from "./credentials/registry";
 import type { ActivityType, AgentConfig, AgentStatus, HqConfig, OfficeSnapshot, SessionInfo, SetupState } from "../src/data/types";
 import { writePlanExport } from "./planExport";
 import { registerProjectInRegistry } from "./projectsRegistry";
@@ -150,6 +151,7 @@ export class Hub {
   }
 
   terminal(agentId: string, data: string) {
-    this.emit({ type: "terminal.output", agentId, data });
+    // Stored keys never reach a viewer, even if an agent prints one.
+    redactor().stream(`${this.slug}/${agentId}`, data, (text) => this.emit({ type: "terminal.output", agentId, data: text }));
   }
 }

@@ -32,7 +32,8 @@ export function shellCommand(spec: LaunchSpec): string {
     .filter(([k]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k))
     .map(([k, v]) => `export ${k}=${shq(v)}; `)
     .join("");
-  return SCRUB_SHELL + load + vars + [spec.file, ...spec.args].map(q).join(" ");
+  const secrets = spec.secretEnvFile ? `${loadEnvFile(shq(spec.secretEnvFile))} && rm -f ${shq(spec.secretEnvFile)} && ` : "";
+  return SCRUB_SHELL + load + vars + secrets + [spec.file, ...spec.args].map(q).join(" ");
 }
 
 export const tmuxBackend: SessionBackend = {

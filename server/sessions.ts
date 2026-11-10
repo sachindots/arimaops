@@ -14,6 +14,9 @@ import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
 import { accountEnv, accountHome, accountOf, maxAgents, runningAgents } from "./accounts";
+import { accounts } from "./credentials/registry";
+import { prepareSecrets, removeSecrets } from "./credentials/deliver";
+import type { ProviderEnv } from "../src/data/providers";
 import { containerLoginSaved } from "./setup";
 import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
@@ -110,6 +113,19 @@ export class Sessions {
     const check = (cid: string) => setup.checks.find((c) => c.id === cid)?.status;
     if (agent.mode === "container" && !setup.containerReady) return fail("Container mode isn't ready: Docker, the agent image or the proxy firewall rule is missing. See the setup checklist.");
     const account = accountOf(agent);
+    // An API-key or cloud account (Settings → Accounts): its secrets go to this agent's process only.
+    let keyed: ProviderEnv | null = null;
+    if (account !== "default") {
+      let got: ReturnType<ReturnType<typeof accounts>["envFor"]>;
+      try {
+        got = accounts().envFor(account, agent.cli);
+      } catch (e) {
+        return fail(`Couldn't open the key vault: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      if (got && "error" in got) return fail(got.error);
+      if (got && agent.mode === "sandbox") return fail("API-key accounts run in Local or Container mode. Sandbox mode keeps its own keys: Settings → Sandbox → keys.");
+      keyed = got;
+    }
     if (agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account)))
       return fail(`${CLI_LABEL[agent.cli]} isn't signed in for the "${account}" account in containers yet. Run this once in a terminal: ${loginCommand(agent.cli, hub.snap.config.project.hqPort, account)}`);
     if (agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
@@ -148,7 +164,13 @@ export class Sessions {
         const acctEnv = accountEnv(agent.cli, account);
         const acctDir = accountHome(agent.cli, account);
         if (agent.mode === "local" && acctDir) mkdirSync(acctDir, { recursive: true, mode: 0o700 });
-        let spec: LaunchSpec = { file: localBinary[agent.cli], args: launch.args, envFile, env: { ...(ports ? portEnv(ports) : {}), ...(agent.mode === "local" ? acctEnv : {}) } };
+        removeSecrets(hub.slug, id);
+        const secrets = keyed && agent.mode !== "sandbox" ? prepareSecrets(hub.slug, id, keyed, agent.mode === "container" ? "container" : "local") : null;
+        let spec: LaunchSpec = {
+          file: localBinary[agent.cli], args: launch.args, envFile,
+          env: { ...(ports ? portEnv(ports) : {}), ...(agent.mode === "local" ? acctEnv : {}) },
+          ...(secrets && agent.mode === "local" ? { secretEnvFile: secrets.envFile } : {}),
+        };
         if (agent.mode === "local" && envFile && !this.backend.persistent)
           hub.activity("session", id, `${agent.name}'s env file isn't loaded in Local mode on Windows. Use Sandbox mode for app variables.`);
         if (agent.mode === "sandbox") {
@@ -170,7 +192,7 @@ export class Sessions {
           if (!(await ensureNetwork())) throw new Error("Couldn't create the hq-agents Docker network. See HQ's log.");
           await run("docker", ["rm", "-f", name], { timeoutMs: 20_000 }); // a container left from a crash
           const gitEnv = await gitIdentityEnv(hub.repo.root);
-          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort, gitEnv), envFile: null };
+          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort, gitEnv, secrets), envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }
@@ -197,6 +219,7 @@ export class Sessions {
     this.detach(id);
     this.closeShell(id);
     await this.backend.kill(name);
+    removeSecrets(this.hub.slug, id);
     // Stop (not remove) the VM so it can resume later with its state.
     if (agent.mode === "sandbox") void run("sbx", ["stop", name], { timeoutMs: 30_000 });
     if (agent.mode === "container") void run("docker", ["rm", "-f", name], { timeoutMs: 30_000 });
@@ -235,6 +258,7 @@ export class Sessions {
   async removeResources(id: string, opts: { deleteSandbox: boolean; deleteFolder: boolean }): Promise<string[]> {
     const agent = this.hub.cfg(id);
     if (!agent) return [];
+    removeSecrets(this.hub.slug, id);
     const done: string[] = [];
     const name = this.name(id);
     this.onSessionDown(id);
@@ -456,6 +480,7 @@ export class Sessions {
           this.detach(agent.id);
           this.closeShell(agent.id);
           this.onSessionDown(agent.id);
+          removeSecrets(this.hub.slug, agent.id); // the agent exited on its own
           this.hub.setSession(agent.id, { state: "stopped", detail: null });
           this.hub.setStatus(agent.id, { state: "idle", note: "Stopped" });
         }

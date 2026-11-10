@@ -6,6 +6,7 @@
 //   GET  /*                     the built UI (dist/), when present
 
 import { createReadStream, existsSync, statSync } from "node:fs";
+import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
 import { timingSafeEqual } from "node:crypto";
@@ -281,7 +282,7 @@ export function startHttp(o: Options) {
     let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
     const sendEvent = (e: OfficeEvent) => {
       if (watch && (e.type === "terminal.output" || e.type === "workspace.info")) return;
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(e));
+      if (ws.readyState === ws.OPEN) ws.send(redactor().redact(JSON.stringify(e))); // messages, notes, findings: masked too
     };
     sendEvent({ type: "snapshot", snapshot: rt.hub.snap });
     const unsub = rt.hub.subscribe(sendEvent);

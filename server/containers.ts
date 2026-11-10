@@ -98,7 +98,10 @@ export function agentIp(containerName: string): string {
 }
 
 /** `docker run` arguments for an agent (run in tmux like the other modes; --rm: state lives in the folder and login volume). */
-export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number, env: Record<string, string> = {}): string[] {
+export function runArgs(
+  agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number, env: Record<string, string> = {},
+  secrets: { envFile: string; mounts: [string, string][] } | null = null,
+): string[] {
   const authDir = AUTH_DIR[agent.cli];
   if (!authDir) throw new Error(`${agent.cli} can't run in Container mode yet. Use Sandbox or Local mode for this agent.`);
   const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
@@ -116,6 +119,8 @@ export function runArgs(agent: AgentConfig, name: string, dir: string, cliArgs: 
     "-v", `${authVolume(agent.cli, agent.account || "default")}:${authDir}`,
     "-w", WORKDIR,
     ...(envFile ? ["--env-file", envFile] : []),
+    // Account secrets: read by docker at start (the file is deleted right after), files mounted read-only.
+    ...(secrets ? ["--env-file", secrets.envFile, ...secrets.mounts.flatMap(([host, inside]) => ["-v", `${host}:${inside}:ro`])] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
     "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`, "-e", "TE_DISABLE=1",
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),

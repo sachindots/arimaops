@@ -29,6 +29,8 @@ import type {
   SandboxSettings,
   Task,
   WorkflowPatch,
+  AccountInput,
+  AccountsState,
 } from "./types";
 
 export type OfficeEvent =
@@ -50,6 +52,7 @@ export type OfficeEvent =
   | { type: "terminal.output"; agentId: string; data: string }
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
+  | { type: "accounts.updated"; accounts: AccountsState }
   | { type: "action.updated"; item: ActionItem }
   | { type: "finding.updated"; finding: Finding }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
@@ -123,6 +126,10 @@ export interface OfficeDataSource {
   openEnvFile(agentId: string): void;
   /** Closes an action item; HQ tells the agent (done: with your note; dismissed: continue without it). */
   resolveActionItem(id: string, decision: "done" | "dismissed", note?: string): void;
+
+  // Accounts (machine-wide): API keys and cloud credentials, stored encrypted on the server
+  saveAccount(input: AccountInput): void;
+  removeAccount(id: string): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

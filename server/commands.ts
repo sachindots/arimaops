@@ -1,6 +1,19 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
 import { isAgentCli, isAgentMode, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { accounts, accountsState, redactor } from "./credentials/registry";
+import { PROVIDER_SPECS } from "../src/data/providers";
+import type { AccountInput } from "../src/data/types";
+import { liveHubs } from "./projectsRegistry";
+
+/** Sends the accounts list (no secrets) to every loaded project. */
+function broadcastAccounts() {
+  const state = accountsState();
+  for (const h of liveHubs()) {
+    h.snap.accounts = state;
+    h.emit({ type: "accounts.updated", accounts: state });
+  }
+}
 import { releasePortBlock } from "./ports";
 import { cleanAccount } from "./accounts";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
@@ -251,6 +264,30 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
     authMcp: (name) => mcp.authorize(str(name, 40)),
     removeMcp: (name) => mcp.remove(str(name, 40)),
+
+    // Accounts are machine-wide: every open project hears about a change.
+    saveAccount: (raw) => {
+      try {
+        const rec = accounts().save((raw ?? {}) as AccountInput);
+        redactor().refresh();
+        broadcastAccounts();
+        hub.activity("config", null, `Saved the ${rec.id} account (${PROVIDER_SPECS[rec.provider].label}). Agents using it pick up a new key on their next start.`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't save the account: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    removeAccount: (id) => {
+      const acct = str(id, 40);
+      try {
+        accounts().remove(acct);
+        redactor().refresh();
+        broadcastAccounts();
+        const using = liveHubs().flatMap((h) => h.snap.config.team.filter((a) => a.account === acct).map((a) => a.name));
+        hub.activity("config", null, `Removed the ${acct} account and its key.${using.length ? ` ${using.join(", ")} still point at it and won't start until you pick another account.` : ""}`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't remove the account: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
     setAgentMcp: (agentId, names) => mcp.setAgent(str(agentId, 80), Array.isArray(names) ? names.slice(0, 50).map((n) => str(n, 40)) : []),
     answerApproval: (agentId, approvalId, decision) => {
       const d = decision === "allow" || decision === "dismiss" ? decision : null;

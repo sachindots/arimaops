@@ -1,4 +1,5 @@
 import { BRAND } from "../../data/brand";
+import { clisFor, PROVIDER_SPECS } from "../../data/providers";
 import { useEffect, useState, type ReactNode } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
@@ -95,6 +96,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               defaultValue={agent.account ?? ""}
               key={`${agent.id}-${agent.account ?? ""}`}
               placeholder="default"
+              list={`accounts-${agent.id}`}
               aria-label={`${agent.name} subscription account`}
               title="Which subscription this agent signs in with. Leave empty for your usual one. Agents on the same CLI and account share its usage limit; a new account signs in once in this agent's terminal."
               onBlur={(e) => {
@@ -104,6 +106,13 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 if (isRunning) setPendingRestart(true);
               }}
             />
+            <datalist id={`accounts-${agent.id}`}>
+              {(snap.accounts?.list ?? []).filter((a) => clisFor(a.provider).includes(agent.cli)).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {PROVIDER_SPECS[a.provider].label}
+                </option>
+              ))}
+            </datalist>
             {pendingRestart && isRunning && (
               <button
                 type="button"

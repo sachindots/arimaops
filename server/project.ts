@@ -16,6 +16,7 @@ import { log } from "./lib/log";
 import { agentToken } from "./paths";
 import { Planner } from "./planner";
 import { setLiveProject } from "./projectsRegistry";
+import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
@@ -84,6 +85,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   log.info(`project ${slug}  ${repo.root}${bad.length ? `  (${bad.length} setup checks need attention)` : ""}`);
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
+  hub.snap.accounts = accountsState();
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);

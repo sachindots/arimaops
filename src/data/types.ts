@@ -473,6 +473,8 @@ export interface OfficeSnapshot {
   activity: ActivityEvent[]; // newest first, last 50
   accessRequests?: AccessRequest[];
   mcp?: McpState;
+  /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
+  accounts?: AccountsState;
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
@@ -562,3 +564,20 @@ export interface ProjectOverview {
   };
 }
 
+
+/** Accounts on this machine and where the vault's master key comes from (null: no vault yet). */
+export interface AccountsState {
+  list: import("./providers").AccountView[];
+  masterSource: "env" | "keychain" | "file" | null;
+  /** Set when the vault exists but can't be opened (wrong or missing master key). */
+  error?: string;
+}
+
+/** What the Accounts form sends; the secret is optional when updating. */
+export interface AccountInput {
+  id: string;
+  provider: import("./providers").Provider;
+  label?: string;
+  fields?: Record<string, string>;
+  secret?: string;
+}

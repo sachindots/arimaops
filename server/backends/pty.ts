@@ -5,6 +5,7 @@
 
 import { spawn as spawnPty, type IPty } from "@lydell/node-pty";
 import xtermHeadless from "@xterm/headless";
+import { readFileSync, rmSync } from "node:fs";
 import { run } from "../lib/exec";
 import type { ExitInfo, SessionBackend, TermSize } from "./types";
 
@@ -49,7 +50,16 @@ export const ptyBackend: SessionBackend = {
     if (procs.has(name)) return;
     // There's no shell to load an env file into (sandbox mode passes it to sbx instead).
     const { file, args } = await resolveCommand(spec.file, spec.args);
-    const pty = spawnPty(file, args, { name: "xterm-256color", cols: size.cols, rows: size.rows, cwd, env: { ...TERM_ENV, ...spec.env } });
+    // No shell here: read the secrets file ourselves, pass it as the process environment, delete it.
+    const secrets: Record<string, string> = {};
+    if (spec.secretEnvFile) {
+      for (const line of readFileSync(spec.secretEnvFile, "utf8").split("\n")) {
+        const i = line.indexOf("=");
+        if (i > 0) secrets[line.slice(0, i)] = line.slice(i + 1);
+      }
+      rmSync(spec.secretEnvFile, { force: true });
+    }
+    const pty = spawnPty(file, args, { name: "xterm-256color", cols: size.cols, rows: size.rows, cwd, env: { ...TERM_ENV, ...spec.env, ...secrets } });
     const screen = new Terminal({ cols: size.cols, rows: size.rows, scrollback: 300, allowProposedApi: true });
     const proc: Proc = { pty, screen, exit: { dead: false, exitStatus: null }, views: new Set(), ends: new Set() };
     pty.onData((d) => {

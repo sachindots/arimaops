@@ -6,7 +6,7 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccessDecision, NewMcpServer, AgentCli, AgentConfig, FindingStatus, Severity, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, FindingStatus, Severity, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -169,6 +169,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, actionItems: upsert(snap.actionItems ?? [], e.item, (i) => i.id === e.item.id) };
     case "finding.updated":
       return { ...snap, findings: upsert(snap.findings ?? [], e.finding, (f) => f.id === e.finding.id) };
+    case "accounts.updated":
+      return { ...snap, accounts: e.accounts };
     case "mcp.updated":
       return { ...snap, mcp: e.mcp };
     case "remote.stepup":
@@ -251,6 +253,8 @@ export const officeActions = {
   completeWelcome: (input: WelcomeInput) => source.completeWelcome(input),
   updateStack: (stack: StackConfig | null) => source.updateStack(stack),
   resolveActionItem: (id: string, decision: "done" | "dismissed", note?: string) => source.resolveActionItem(id, decision, note),
+  saveAccount: (input: AccountInput) => source.saveAccount(input),
+  removeAccount: (id: string) => source.removeAccount(id),
   refreshMcp: () => source.refreshMcp(),
   addMcp: (input: NewMcpServer) => source.addMcp(input),
   authMcp: (name: string) => source.authMcp(name),
