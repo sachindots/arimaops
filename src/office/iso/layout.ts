@@ -41,12 +41,15 @@ export interface Item {
   y: number;
   /** Wall run direction(s); other items ignore it. */
   dir?: "x" | "y" | "xy";
+  /** Which run(s) end at this tile on the viewer's side, so the end face is drawn once per run. */
+  cap?: "x" | "y" | "xy";
   low?: boolean; // cut-away wall on the viewer's side
   glass?: boolean;
   dark?: boolean; // SOC styling
   lead?: boolean; // gold-trimmed desk
   decal?: "board" | "screen" | "sign";
-  i?: number; // slice index for multi-tile decals
+  i?: number; // slice index for multi-tile decals and two-part furniture
+  n?: number; // slice count
 }
 
 export interface Seat {
@@ -127,11 +130,11 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
   for (let y = 0; y < H; y++) (wall(0, y), wall(W - 1, y, { low: true }));
   for (let y = 1; y <= Y_WALL; y++) wall(xGlass, y, { glass: true });
   for (let x = 1; x <= xGlass; x++) wall(x, Y_WALL, { glass: true });
-  for (let i = scrumX0; i <= scrumX1; i++) wall(i, 0, { decal: "board", i: i - scrumX0 });
+  for (let i = scrumX0; i <= scrumX1; i++) wall(i, 0, { decal: "board", i: i - scrumX0, n: 7 });
   if (soc) {
     for (let y = 1; y <= Y_WALL; y++) wall(xSoc, y, { dark: true });
     for (let x = xSoc; x <= xSoc + socW; x++) wall(x, Y_WALL, { dark: true, low: true });
-    for (let i = 1; i <= socW; i++) wall(xSoc + i, 0, { dark: true, decal: "screen", i: i - 1 });
+    for (let i = 1; i <= socW; i++) wall(xSoc + i, 0, { dark: true, decal: "screen", i: i - 1, n: socW });
     if (xSoc + socW === W - 1) for (let y = 1; y <= Y_WALL; y++) wall(W - 1, y, { dark: true, low: true });
   }
   const doors: Tile[] = [door, [2, Y_WALL], ...(soc ? [[xSoc + 2, Y_WALL] as Tile] : [])];
@@ -140,7 +143,10 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
     const [x, y] = k.split(",").map(Number);
     const rx = walls.has(`${x - 1},${y}`) || walls.has(`${x + 1},${y}`);
     const ry = walls.has(`${x},${y - 1}`) || walls.has(`${x},${y + 1}`);
-    put({ kind: "wall", x, y, dir: rx && ry ? "xy" : ry ? "y" : "x", ...w });
+    const dir = rx && ry ? "xy" : ry ? "y" : "x";
+    const cx = dir !== "y" && !walls.has(`${x + 1},${y}`);
+    const cy = dir !== "x" && !walls.has(`${x},${y + 1}`);
+    put({ kind: "wall", x, y, dir, ...(cx || cy ? { cap: cx && cy ? "xy" : cy ? "y" : "x" } : {}), ...w });
   }
 
   // ---------------------------------------------------------- back rooms
@@ -167,7 +173,7 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
 
   // ---------------------------------------------------------- lobby + break
   put({ kind: "mat", x: door[0], y: H - 2 });
-  for (let i = 0; i < 3; i++) put({ kind: "counter", x: 5 + i, y: yLobby + 1, decal: "sign", i });
+  for (let i = 0; i < 3; i++) put({ kind: "counter", x: 5 + i, y: yLobby + 1, decal: "sign", i, n: 3 });
   put({ kind: "plant", x: 1, y: yLobby });
   put({ kind: "plant", x: 8, y: H - 2 });
   put({ kind: "sofa", x: 10, y: yLobby + 1, i: 0 });

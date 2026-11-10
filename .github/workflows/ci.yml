@@ -50,6 +50,8 @@ jobs:
         run: npx tsx scripts/persona-test.ts
       - name: Container mode (rules and flags; live proxy when Docker has the image)
         run: npx tsx scripts/container-test.ts
+      - name: Isometric office (projection and building layout)
+        run: npx tsx scripts/office-test.ts
       - name: Pack
         shell: bash
         run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack

@@ -1,0 +1,425 @@
+// Isometric pixel art, drawn in code onto canvases: the floor (one canvas per
+// layout) and one small canvas per furniture/wall tile (cached by look, so a
+// hundred wall tiles share one texture). Light comes from the upper left: top
+// faces are brightest, the +y face (lower-left) mid, the +x face (lower-right)
+// darkest. Every box gets a 1px ink outline on its visible edges.
+
+import { FONT } from "../engine/font";
+import { CanvasPen, disc, ellipse, line, makeCanvas, type Pen } from "../engine/pen";
+import { type IsoLayout, type Item, LOW_WALL_H, WALL_H, zoneAt, type ZoneKind } from "./layout";
+import { toScreen } from "./proj";
+
+/** Item canvases are 32 px wide; the tile's top corner sits ITEM_TOP px down so art can rise above the floor. */
+export const ITEM_TOP = 48;
+export const ITEM_H = ITEM_TOP + 16;
+
+const INK = "#05060b";
+const GOLD = "#f2b632";
+const GOLD_D = "#b8801c";
+const GOLD_L = "#ffe08a";
+const CYAN = "#38e4ff";
+const CYAN_D = "#128aa8";
+const CYAN_DD = "#0a3240";
+type Shades = [top: string, left: string, right: string];
+const WALL: Shades = ["#414a63", "#2f374b", "#222838"];
+const WALL_DARK: Shades = ["#1d2535", "#141b29", "#0e131f"];
+const DESK: Shades = ["#4a5367", "#363d4e", "#282e3c"];
+const DESK_LEAD: Shades = ["#3a3047", "#2b2335", "#1f1927"];
+const DESK_DARK: Shades = ["#262c3a", "#1b202b", "#13171f"];
+const METAL: Shades = ["#6b7489", "#4a5265", "#333a4a"];
+const WOOD: Shades = ["#9a6534", "#7a4e26", "#5a381a"];
+const SOFA: Shades = ["#e0a94a", "#bb8530", "#8e6220"];
+const SOFA_BASE: Shades = ["#3a3040", "#2a2230", "#1d1822"];
+const CLAY: Shades = ["#8a4e36", "#6b3a27", "#4d291b"];
+const FLOOR: Record<ZoneKind, [string, string]> = {
+  lobby: ["#1c2236", "#181d2f"],
+  floor: ["#262b3b", "#212534"],
+  lead: ["#1b2244", "#171d3b"],
+  scrum: ["#2a2d3c", "#242734"],
+  break: ["#2e2b38", "#282531"],
+  soc: ["#0a1020", "#080d1b"],
+};
+
+interface Ctx {
+  p: Pen;
+  ox: number;
+  oy: number;
+}
+type Pt = { x: number; y: number };
+const S = (c: Ctx, x: number, y: number, z = 0): Pt => {
+  const s = toScreen(x, y, z);
+  return { x: s.x + c.ox, y: s.y + c.oy };
+};
+
+// ------------------------------------------------------------------ primitives
+
+/** Crisp convex polygon fill: integer scanlines, [round(left), round(right)). Adjacent diamonds tile seamlessly. */
+function quad(c: Ctx, pts: Pt[], color: string, alpha = 1) {
+  const ys = pts.map((p) => p.y);
+  const y0 = Math.ceil(Math.min(...ys));
+  const y1 = Math.floor(Math.max(...ys));
+  for (let y = y0; y <= y1; y++) {
+    let xl = Infinity;
+    let xr = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (y < Math.min(a.y, b.y) || y > Math.max(a.y, b.y)) continue;
+      const xs = a.y === b.y ? [a.x, b.x] : [a.x + ((y - a.y) * (b.x - a.x)) / (b.y - a.y)];
+      for (const x of xs) (xl = Math.min(xl, x)), (xr = Math.max(xr, x));
+    }
+    const w = Math.round(xr) - Math.round(xl);
+    if (w > 0) c.p.rect(Math.round(xl), y, w, 1, color, alpha);
+  }
+}
+
+const faceZ = (c: Ctx, z: number, x0: number, y0: number, x1: number, y1: number, col: string, a = 1) => quad(c, [S(c, x0, y0, z), S(c, x1, y0, z), S(c, x1, y1, z), S(c, x0, y1, z)], col, a);
+const faceY = (c: Ctx, y: number, x0: number, x1: number, z0: number, z1: number, col: string, a = 1) => quad(c, [S(c, x0, y, z0), S(c, x1, y, z0), S(c, x1, y, z1), S(c, x0, y, z1)], col, a);
+const faceX = (c: Ctx, x: number, y0: number, y1: number, z0: number, z1: number, col: string, a = 1) => quad(c, [S(c, x, y0, z0), S(c, x, y1, z0), S(c, x, y1, z1), S(c, x, y0, z1)], col, a);
+const seg = (c: Ctx, a: Pt, b: Pt, col = INK) => line(c.p, a.x, a.y, b.x, b.y, col);
+
+/** A box from z0 to z1 over the footprint, with outlined visible edges. */
+function box(c: Ctx, x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, [top, lf, rt]: Shades, outline = true) {
+  faceY(c, y1, x0, x1, z0, z1, lf);
+  faceX(c, x1, y0, y1, z0, z1, rt);
+  faceZ(c, z1, x0, y0, x1, y1, top);
+  if (!outline) return;
+  const T = (x: number, y: number) => S(c, x, y, z1);
+  const B = (x: number, y: number) => S(c, x, y, z0);
+  seg(c, T(x0, y0), T(x1, y0));
+  seg(c, T(x1, y0), T(x1, y1));
+  seg(c, T(x1, y1), T(x0, y1));
+  seg(c, T(x0, y1), T(x0, y0));
+  seg(c, T(x1, y1), B(x1, y1));
+  seg(c, T(x0, y1), B(x0, y1));
+  seg(c, T(x1, y0), B(x1, y0));
+  seg(c, B(x0, y1), B(x1, y1));
+  seg(c, B(x1, y1), B(x1, y0));
+}
+
+/** Paints bitmap columns [col0, col0 + 16) on the +y face of tile x (plane y), bottom-left at height z. Rows are strings; '.' is clear. */
+function decalY(c: Ctx, x: number, y: number, z: number, rows: string[], pal: Record<string, string>, col0 = 0, cols = 16) {
+  const o = S(c, x, y, z);
+  const h = rows.length;
+  for (let j = 0; j < cols; j++) {
+    const bx = col0 + j;
+    if (bx < 0 || bx >= rows[0].length) continue;
+    for (let by = 0; by < h; by++) {
+      const col = pal[rows[by][bx]];
+      if (col) c.p.rect(o.x + j, o.y + (j >> 1) - (h - by), 1, 1, col);
+    }
+  }
+}
+
+/** Text as bitmap rows ('#' = ink) in the 3×5 office font, optionally scaled. */
+function textRows(str: string, scale = 1): string[] {
+  const up = str.toUpperCase();
+  const rows = Array.from({ length: 5 }, () => "");
+  for (const ch of up) {
+    const gl = FONT[ch] ?? FONT["?"];
+    for (let r = 0; r < 5; r++) rows[r] += gl[r] + ".";
+  }
+  const trimmed = rows.map((r) => r.slice(0, -1));
+  if (scale === 1) return trimmed;
+  return trimmed.flatMap((r) => Array.from({ length: scale }, () => [...r].map((ch) => ch.repeat(scale)).join("")));
+}
+
+const padRows = (rows: string[], left: number, width: number) => rows.map((r) => (".".repeat(left) + r).padEnd(width, "."));
+
+// ------------------------------------------------------------------ floor
+
+export function buildFloor(l: IsoLayout): HTMLCanvasElement {
+  const canvas = makeCanvas(l.worldW, l.worldH);
+  const p = new CanvasPen(canvas.getContext("2d") as CanvasRenderingContext2D);
+  const c: Ctx = { p, ox: l.origin.x, oy: l.origin.y };
+  p.rect(0, 0, l.worldW, l.worldH, "#070910");
+  // Ground shadow and the slab the building stands on.
+  faceZ(c, -14, 0.6, 0.6, l.W + 0.6, l.H + 0.6, "#04050a", 0.6);
+  faceY(c, l.H, 0, l.W, -10, 0, "#161b2a");
+  faceX(c, l.W, 0, l.H, -10, 0, "#0f131f");
+  for (let y = 0; y < l.H; y++)
+    for (let x = 0; x < l.W; x++) {
+      const zone = zoneAt(l, x, y)?.kind ?? "floor";
+      const [a, b] = FLOOR[zone];
+      faceZ(c, 0, x, y, x + 1, y + 1, (x + y) % 2 ? a : b);
+      if (zone === "soc") {
+        // Faint cyan grid on the SOC floor.
+        seg(c, S(c, x, y), S(c, x + 1, y), "#0f2238");
+        seg(c, S(c, x, y), S(c, x, y + 1), "#0f2238");
+      } else if (zone === "lead" && (x + y) % 2) {
+        const m = S(c, x + 0.5, y + 0.5);
+        p.rect(m.x, m.y, 1, 1, GOLD_D, 0.7);
+      }
+    }
+  seg(c, S(c, 0, l.H), S(c, l.W, l.H));
+  seg(c, S(c, l.W, l.H), S(c, l.W, 0));
+  seg(c, S(c, 0, l.H, -10), S(c, l.W, l.H, -10));
+  seg(c, S(c, l.W, l.H, -10), S(c, l.W, 0, -10));
+  seg(c, S(c, l.W, l.H), S(c, l.W, l.H, -10));
+  seg(c, S(c, 0, l.H), S(c, 0, l.H, -10));
+  seg(c, S(c, l.W, 0), S(c, l.W, 0, -10));
+  return canvas;
+}
+
+// ------------------------------------------------------------------ items
+
+/** Cache key: everything about an item except where it stands. */
+export const itemKey = ({ x: _x, y: _y, ...look }: Item) => JSON.stringify(look);
+
+/** Draws one item into a fresh 32×64 canvas whose tile diamond's top corner is at (16, ITEM_TOP). */
+export function itemCanvas(it: Item): HTMLCanvasElement {
+  const canvas = makeCanvas(32, ITEM_H);
+  const p = new CanvasPen(canvas.getContext("2d") as CanvasRenderingContext2D);
+  const s = toScreen(it.x, it.y);
+  const c: Ctx = { p, ox: 16 - s.x, oy: ITEM_TOP - s.y };
+  DRAW[it.kind](c, it.x, it.y, it);
+  return canvas;
+}
+
+const DRAW: Record<Item["kind"], (c: Ctx, x: number, y: number, it: Item) => void> = {
+  wall(c, x, y, it) {
+    const h = it.low ? LOW_WALL_H : WALL_H;
+    const T = 0.25; // wall thickness in tiles
+    const sh = it.dark ? WALL_DARK : WALL;
+    const runs: ("x" | "y")[] = it.dir === "xy" ? ["y", "x"] : [it.dir ?? "x"];
+    for (const run of runs) {
+      const cap = it.cap === "xy" || it.cap === run;
+      // Footprint of this run's slice: a thin strip through the tile centre.
+      const [x0, y0, x1, y1] = run === "x" ? [x, y + 0.5 - T / 2, x + 1, y + 0.5 + T / 2] : [x + 0.5 - T / 2, y, x + 0.5 + T / 2, y + 1];
+      const P = (px: number, py: number, z: number) => S(c, px, py, z);
+      if (it.glass) {
+        // Pane along the run, a rail on top, a mullion at mid height, a post where the run ends.
+        if (run === "x") faceY(c, y1, x0, x1, 0, h, "#8fe3ff", 0.28);
+        else faceX(c, x1, y0, y1, 0, h, "#9fe9ff", 0.3);
+        const a = run === "x" ? [x0, y1] : [x1, y0];
+        const b = run === "x" ? [x1, y1] : [x1, y1];
+        for (const z of [h / 2, h]) seg(c, P(a[0], a[1], z), P(b[0], b[1], z), "#d8f6ff");
+        seg(c, P(a[0], a[1], 0), P(b[0], b[1], 0), "#56a9c4");
+        if (cap) box(c, x1 - 0.1, y1 - 0.1, x1, y1, 0, h + 1, METAL);
+        continue;
+      }
+      // Long face, top, and only the end face where the run stops; outlines skip the seams between tiles.
+      if (run === "x") faceY(c, y1, x0, x1, 0, h, sh[1]);
+      else faceX(c, x1, y0, y1, 0, h, sh[2]);
+      faceZ(c, h, x0, y0, x1, y1, sh[0]);
+      if (cap) {
+        if (run === "x") faceX(c, x1, y0, y1, 0, h, sh[2]);
+        else faceY(c, y1, x0, x1, 0, h, sh[1]);
+        seg(c, P(x1, y0, h), P(x1, y1, h));
+        seg(c, P(x1, y1, h), P(x1, y1, 0));
+        if (run === "x") (seg(c, P(x1, y0, h), P(x1, y0, 0)), seg(c, P(x1, y0, 0), P(x1, y1, 0)));
+        else (seg(c, P(x0, y1, h), P(x0, y1, 0)), seg(c, P(x0, y1, 0), P(x1, y1, 0)));
+      }
+      if (run === "x") {
+        seg(c, P(x0, y1, h), P(x1, y1, h));
+        seg(c, P(x0, y0, h), P(x1, y0, h));
+        seg(c, P(x0, y1, 0), P(x1, y1, 0));
+        faceY(c, y1 + 0.01, x0, x1, 0, 2, sh[2]); // skirting
+      } else {
+        seg(c, P(x1, y0, h), P(x1, y1, h));
+        seg(c, P(x0, y0, h), P(x0, y1, h));
+        seg(c, P(x1, y0, 0), P(x1, y1, 0));
+      }
+    }
+    if (it.dir === "xy") faceZ(c, h, x + 0.5 - T / 2, y + 0.5 - T / 2, x + 0.5 + T / 2, y + 0.5 + T / 2, sh[0]);
+    if (it.decal === "board") board(c, x, y + 0.5 + T / 2, it.i ?? 0, it.n ?? 1);
+    if (it.decal === "screen") screenWall(c, x, y + 0.5 + T / 2, it.i ?? 0, it.n ?? 1);
+  },
+
+  desk(c, x, y, it) {
+    const sh = it.lead ? DESK_LEAD : it.dark ? DESK_DARK : DESK;
+    const x0 = it.i === 0 ? x + 0.1 : x;
+    const x1 = it.i === 1 ? x + 0.9 : x + 1;
+    // legs, then the slab
+    if (it.i === 0) box(c, x + 0.14, y + 0.7, x + 0.24, y + 0.82, 0, 11, METAL, false);
+    if (it.i === 1) box(c, x + 0.76, y + 0.7, x + 0.86, y + 0.82, 0, 11, METAL, false);
+    faceY(c, y + 0.82, x0 + 0.1, x1 - 0.1, 3, 11, sh[2]); // modesty panel
+    box(c, x0, y + 0.18, x1, y + 0.84, 10, 14, sh);
+    if (it.lead) seg(c, S(c, x0, y + 0.84, 14), S(c, x1, y + 0.84, 14), GOLD);
+    if (it.i === 0) {
+      // keyboard, monitor on a stand, screen on the +y face
+      box(c, x + 0.3, y + 0.62, x + 0.74, y + 0.76, 14, 15, METAL, false);
+      box(c, x + 0.42, y + 0.36, x + 0.6, y + 0.5, 14, 17, METAL, false);
+      box(c, x + 0.22, y + 0.46, x + 0.8, y + 0.54, 17, 29, ["#2b3140", "#1a1f2a", "#12161f"]);
+      const glow = it.dark ? ["#0b2a38", CYAN, CYAN_D] : ["#17365c", "#7fc4ff", "#3a7fcc"];
+      const scr = ["aaaaaaaa", "abbaaaaa", "aaaccaaa", "abbbaaaa", "aaaaacaa", "abbaaaaa", "aaaaaaaa"];
+      decalY(c, x + 0.27, y + 0.54, 19, scr, { a: glow[0], b: glow[1], c: glow[2] }, 0, 9);
+    } else {
+      // lamp, mug, papers
+      faceZ(c, 14.5, x + 0.12, y + 0.3, x + 0.42, y + 0.62, "#d8dce6");
+      faceZ(c, 14.5, x + 0.16, y + 0.36, x + 0.4, y + 0.6, "#b9c0cf");
+      box(c, x + 0.52, y + 0.6, x + 0.62, y + 0.72, 14, 18, ["#f0f0f4", "#d0d4de", "#a9afbd"], false);
+      const m = S(c, x + 0.64, y + 0.66, 16);
+      c.p.rect(m.x + 1, m.y - 1, 1, 2, "#a9afbd");
+      box(c, x + 0.7, y + 0.26, x + 0.78, y + 0.34, 14, 25, METAL, false);
+      box(c, x + 0.56, y + 0.14, x + 0.92, y + 0.46, 24, 28, [GOLD_L, GOLD, GOLD_D]);
+      const l = S(c, x + 0.74, y + 0.46, 23);
+      c.p.rect(l.x - 2, l.y, 5, 1, "#fff2b0", 0.6);
+    }
+  },
+
+  chair(c, x, y) {
+    faceZ(c, 0.5, x + 0.3, y + 0.3, x + 0.7, y + 0.7, "#1a1e29");
+    box(c, x + 0.45, y + 0.45, x + 0.55, y + 0.55, 0, 6, METAL, false);
+    box(c, x + 0.28, y + 0.28, x + 0.72, y + 0.72, 6, 9, ["#4a5a7c", "#374460", "#283247"]);
+    box(c, x + 0.3, y + 0.68, x + 0.7, y + 0.76, 9, 19, ["#4a5a7c", "#374460", "#283247"]);
+  },
+
+  plant(c, x, y) {
+    box(c, x + 0.32, y + 0.32, x + 0.68, y + 0.68, 0, 8, CLAY);
+    faceZ(c, 8, x + 0.38, y + 0.38, x + 0.62, y + 0.62, "#3a2a1e");
+    const m = S(c, x + 0.5, y + 0.5, 16);
+    disc(c.p, m.x, m.y, 8, INK);
+    disc(c.p, m.x, m.y, 7, "#2a6d35");
+    disc(c.p, m.x - 2, m.y - 2, 4, "#3e9a4c");
+    c.p.rect(m.x - 4, m.y - 5, 2, 2, "#6ecf78");
+    c.p.rect(m.x + 3, m.y - 1, 1, 2, "#6ecf78");
+    c.p.rect(m.x - 1, m.y + 3, 2, 1, "#1d4a26");
+  },
+
+  sofa(c, x, y, it) {
+    box(c, x, y + 0.2, x + 1, y + 0.9, 0, 6, SOFA_BASE, false);
+    box(c, x, y + 0.2, x + 1, y + 0.42, 6, 18, SOFA); // backrest
+    box(c, x + 0.02, y + 0.4, x + 0.98, y + 0.88, 6, 10, SOFA); // cushion
+    if (it.i === 0) box(c, x, y + 0.2, x + 0.16, y + 0.9, 6, 14, SOFA);
+    if (it.i === 1) box(c, x + 0.84, y + 0.2, x + 1, y + 0.9, 6, 14, SOFA);
+    seg(c, S(c, x, y + 0.9), S(c, x + 1, y + 0.9));
+  },
+
+  coffee(c, x, y) {
+    box(c, x + 0.22, y + 0.22, x + 0.78, y + 0.78, 0, 26, ["#505a70", "#3a4253", "#2a303e"]);
+    const f = ["kkkkkkkk", "krrkkkkk", "kkkkkkkk", "kggggggk", "kgcccggk", "kggggggk", "kkkkkkkk", "kwwkkkkk", "kkkkkkkk"];
+    decalY(c, x + 0.3, y + 0.78, 8, f, { k: "#1a1f2a", r: "#ff3b3b", g: "#0e1a1f", c: GOLD_L, w: "#f4f4f8" }, 0, 8);
+    const o = S(c, x + 0.5, y + 0.5, 26);
+    c.p.rect(o.x - 3, o.y - 1, 6, 1, "#f2b632", 0.8);
+  },
+
+  table(c, x, y) {
+    box(c, x + 0.44, y + 0.44, x + 0.56, y + 0.56, 0, 10, METAL, false);
+    const m = S(c, x + 0.5, y + 0.5, 10);
+    ellipse(c.p, m.x, m.y, 10, 5, INK);
+    ellipse(c.p, m.x, m.y - 1, 10, 5, INK);
+    ellipse(c.p, m.x, m.y - 1, 9, 4, WOOD[0]);
+    ellipse(c.p, m.x, m.y, 9, 4, WOOD[1]);
+    ellipse(c.p, m.x, m.y - 1, 9, 4, WOOD[0]);
+    ellipse(c.p, m.x - 2, m.y - 2, 4, 1, "#b7824a");
+  },
+
+  counter(c, x, y, it) {
+    box(c, x, y + 0.26, x + 1, y + 0.76, 0, 15, ["#2d3550", "#20273d", "#171c2c"]);
+    seg(c, S(c, x, y + 0.76, 15), S(c, x + 1, y + 0.76, 15), GOLD);
+    if (it.decal === "sign") sign(c, x, y + 0.76, it.i ?? 0, it.n ?? 1);
+  },
+
+  rack(c, x, y) {
+    box(c, x + 0.2, y + 0.2, x + 0.8, y + 0.8, 0, 32, ["#2a3242", "#1a2030", "#111621"]);
+    const o = S(c, x + 0.22, y + 0.8, 2);
+    for (let u = 0; u < 9; u++) {
+      const zy = o.y - 3 - u * 3;
+      for (let j = 0; j < 9; j++) c.p.rect(o.x + j, zy + (j >> 1), 1, 1, "#0c1018");
+      c.p.rect(o.x + 1, zy, 1, 1, u % 3 === 1 ? "#39d98a" : CYAN);
+      if (u % 2) c.p.rect(o.x + 7, zy + 3, 1, 1, "#ff9f1c");
+    }
+    const t = S(c, x + 0.5, y + 0.5, 32);
+    c.p.rect(t.x - 4, t.y - 1, 8, 1, CYAN, 0.5);
+  },
+
+  mat(c, x, y) {
+    faceZ(c, 0.5, x + 0.12, y + 0.12, x + 0.88, y + 0.88, GOLD_D);
+    faceZ(c, 0.5, x + 0.2, y + 0.2, x + 0.8, y + 0.8, "#1c2a4d");
+  },
+
+  cabinet(c, x, y) {
+    box(c, x + 0.16, y + 0.1, x + 0.84, y + 0.9, 0, 22, ["#2d3550", "#20273d", "#171c2c"]);
+    seg(c, S(c, x + 0.5, y + 0.9, 2), S(c, x + 0.5, y + 0.9, 20), "#0f1320");
+    const h = S(c, x + 0.42, y + 0.9, 11);
+    c.p.rect(h.x, h.y, 1, 2, GOLD);
+    c.p.rect(h.x + 3, h.y + 1, 1, 2, GOLD);
+  },
+};
+
+// ------------------------------------------------------------------ wall decals
+
+/** Cork board with sticky notes, spanning `n` wall tiles; this is slice `i`. */
+function board(c: Ctx, x: number, y: number, i: number, n: number) {
+  const cork = i === 0 || i === n - 1 ? "#6a5440" : "#5a4634";
+  faceY(c, y + 0.02, x + (i === 0 ? 0.1 : 0), x + (i === n - 1 ? 0.9 : 1), 12, 34, cork);
+  if (i === 0) faceY(c, y + 0.03, x + 0.1, x + 0.16, 12, 34, "#7a6248");
+  if (i === n - 1) faceY(c, y + 0.03, x + 0.84, x + 0.9, 12, 34, "#7a6248");
+  seg(c, S(c, x + (i === 0 ? 0.1 : 0), y + 0.03, 34), S(c, x + (i === n - 1 ? 0.9 : 1), y + 0.03, 34), "#7a6248");
+  // Three swimlanes and a few notes placed by slice index so the board varies but stays deterministic.
+  const o = S(c, x, y + 0.04, 0);
+  const notes = ["#ffd23f", CYAN, "#ff7aa2", "#6ecf78", GOLD_L];
+  for (let k = 0; k < 2; k++) {
+    const col = 3 + ((i * 7 + k * 5) % 9);
+    const row = 15 + ((i * 3 + k * 11) % 14);
+    const nc = notes[(i + k * 2) % notes.length];
+    for (let j = 0; j < 4; j++) {
+      c.p.rect(o.x + col + j, o.y + ((col + j) >> 1) - row, 1, 4, nc);
+      c.p.rect(o.x + col + j, o.y + ((col + j) >> 1) - row + 4, 1, 1, "#2a2016");
+    }
+    c.p.rect(o.x + col + 1, o.y + ((col + 1) >> 1) - row + 1, 2, 1, "#4a3a20", 0.6);
+  }
+}
+
+// A rough world map, 64×12, drawn by hand (original). '#' is land.
+const WORLD = [
+  "...####...##.....................##..####.######.##.............",
+  "..#########..................#########..#######################.",
+  "..##########...............##########.###########.##########....",
+  "...#########..............######.#.#####################.###....",
+  "....#######...............##########################.#####......",
+  ".....#####.................#########################..###.......",
+  "......###...................#######################....##.......",
+  ".......##....................#################.........#........",
+  "........###..................###############............##......",
+  "........####..................############...............####...",
+  ".........###...................#########................#####...",
+  "..........##....................#######..................###....",
+  "..........#......................####...........................",
+  "...........#......................##............................",
+];
+
+/** SOC screen wall: dark panel with a cyan frame and the world map centred across all `n` tiles. */
+function screenWall(c: Ctx, x: number, y: number, i: number, n: number) {
+  faceY(c, y + 0.02, x, x + 1, 9, 36, "#071722");
+  seg(c, S(c, x, y + 0.03, 36), S(c, x + 1, y + 0.03, 36), CYAN_D);
+  seg(c, S(c, x, y + 0.03, 9), S(c, x + 1, y + 0.03, 9), CYAN_D);
+  seg(c, S(c, x, y + 0.03, 6), S(c, x + 1, y + 0.03, 6), CYAN);
+  const total = 16 * n;
+  const map = WORLD.flatMap((r) => [r, r].map((row) => [...row].map((ch) => ch.repeat(2)).join("")));
+  const mapW = map[0].length;
+  const left = Math.floor((total - mapW) / 2);
+  const col0 = 16 * i - left;
+  // Map pixels light up cyan; the sea gets a faint grid.
+  const sea = Array.from({ length: map.length }, (_, r) => Array.from({ length: mapW }, (_, k) => ((r % 6 === 0 || k % 8 === 0) ? "g" : ".")).join(""));
+  decalY(c, x, y + 0.02, 12, sea, { g: CYAN_DD }, col0, 16);
+  decalY(c, x, y + 0.02, 12, map, { "#": CYAN }, col0, 16);
+  // Side panels: little bar charts where the map doesn't reach.
+  if (16 * i + 16 <= left || 16 * i >= left + mapW) {
+    const o = S(c, x + 0.15, y + 0.04, 16);
+    for (let b = 0; b < 5; b++) {
+      const hgt = 3 + ((i * 5 + b * 3) % 9);
+      c.p.rect(o.x + b * 2, o.y + ((b * 2) >> 1) - hgt, 1, hgt, b % 2 ? CYAN_D : CYAN);
+    }
+  }
+}
+
+/** Lobby sign: lion head + ARIMAOPS in gold on the reception counter's front, sliced over `n` tiles. */
+function sign(c: Ctx, x: number, y: number, i: number, n: number) {
+  const lion = [
+    ".GG....GG.",
+    "GdGGGGGGdG",
+    "GGLGGGGLGG",
+    "GGkGGGGkGG",
+    "GGGGGGGGGG",
+    ".GGGkkGGG.",
+    ".GGkGGkGG.",
+    "..GGGGGG..",
+    "...GddG...",
+  ];
+  const txt = padRows(textRows("ArimaOps"), 0, 31);
+  const rows = lion.map((r, k) => r + ".." + (k >= 2 && k < 7 ? txt[k - 2] : ".".repeat(31)));
+  const left = Math.floor((16 * n - rows[0].length) / 2);
+  decalY(c, x, y + 0.01, 3, rows, { G: GOLD, d: GOLD_D, L: GOLD_L, k: INK, "#": GOLD_L }, 16 * i - left, 16);
+}
