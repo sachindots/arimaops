@@ -103,10 +103,10 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
   const scrumX0 = xGlass + 1;
   const scrumX1 = scrumX0 + 4;
   const xSoc = scrumX1 + 1; // SOC west wall column
-  const socW = Math.max(7, 3 * socWorkers.length + 3);
+  const socW = Math.max(9, 3 * socWorkers.length + 3); // the screen wall's world map needs 8 tiles plus a margin
   const backX1 = soc ? xSoc + socW : scrumX1;
   const cols = Math.max(1, Math.min(floorWorkers.length, Math.floor((backX1 - 1) / 3)));
-  const rows = Math.max(1, Math.ceil(floorWorkers.length / cols));
+  const rows = Math.ceil(floorWorkers.length / cols); // 0 when everyone sits in the back rooms
   const yLobby = Y_DESK0 + 3 * rows + 1;
   const W = Math.max(backX1, 2 + 3 * cols, 13) + 2;
   const H = yLobby + LOBBY_D + 1;
@@ -174,7 +174,7 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType): IsoLay
   put({ kind: "shelf", x: W - 3, y: Y_WALL + 1, i: 0 });
   put({ kind: "shelf", x: W - 2, y: Y_WALL + 1, i: 1 });
   put({ kind: "whiteboard", x: W - 2, y: Y_DESK0 });
-  put({ kind: "plant", x: W - 2, y: yLobby - 1 });
+  if (rows) put({ kind: "plant", x: W - 2, y: yLobby - 1 });
 
   // ---------------------------------------------------------- lobby + break
   put({ kind: "mat", x: door[0], y: H - 2 });
