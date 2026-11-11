@@ -197,7 +197,7 @@ export class RemoteGuard {
 
   otpauthUrl() {
     const label = encodeURIComponent(`${BRAND.name}:server`);
-    return `otpauth://totp/${label}?secret=${this.secretB32}&issuer=dot%20hq&digits=6&period=30`;
+    return `otpauth://totp/${label}?secret=${this.secretB32}&issuer=${encodeURIComponent(BRAND.name)}&digits=6&period=30`;
   }
 
   /** Accepts the current code ±1 step (clock drift); each step is usable once. `secretB32`: a person's own secret (default: the server's). */
