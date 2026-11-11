@@ -13,6 +13,7 @@ import { ActionItemsDrawer } from "../drawers/ActionItemsDrawer";
 import { AgentDrawer, MessagesTab } from "../drawers/AgentDrawer";
 import { BoardsDrawer } from "../drawers/BoardsDrawer";
 import { CtoDrawer } from "../drawers/CtoDrawer";
+import { CommandView } from "../command/CommandView";
 import { EnvironmentDrawer } from "../drawers/EnvironmentDrawer";
 import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
@@ -47,6 +48,7 @@ function OfficePane() {
 }
 
 export function CompactApp() {
+  const view = useUi((st) => st.view);
   const snap = useOffice((s) => s.snap);
   const drawer = useUi((s) => s.drawer);
   const [tab, setTab] = useState<Tab>("chat");
@@ -68,6 +70,9 @@ export function CompactApp() {
     : drawer?.kind === "boards" ? <BoardsDrawer initialBoardId={drawer.boardId} />
     : drawer?.kind === "findings" ? <FindingsDrawer />
     : null;
+
+  // The command center is a full-screen page; an agent opened from it is a page over it (Back returns).
+  if (view === "command" && !page) return <CommandView />;
 
   return (
     <div className="fixed inset-0 flex flex-col bg-grass text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -285,6 +290,7 @@ function More() {
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <ul>
         {item(`Findings${open ? ` · ${open}` : ""}`, "What agents found on in-scope targets; triage and the report", () => ui.openFindings(), security)}
+        {item("Command center", "Every agent of every project, needs-you first", () => ui.setView("command", false))}
         {item("Projects", "Switch, create, pause, archive or delete projects", () => ui.openCto())}
         {item("Pull requests", "Reviews and what's ready to merge", () => ui.openPrs())}
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}

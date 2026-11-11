@@ -183,9 +183,10 @@ export const ui = {
   toggleDrawerMaximized() {
     useUi.setState((s) => ({ drawerMaximized: !s.drawerMaximized }));
   },
-  setView(view: View) {
+  /** `remember`: keep it for the next visit (the phone/tablet layout opens it as a page instead, so it doesn't). */
+  setView(view: View, remember = true) {
     try {
-      writePref(VIEW_PREF, view);
+      if (remember) writePref(VIEW_PREF, view);
     } catch {
       /* private window */
     }

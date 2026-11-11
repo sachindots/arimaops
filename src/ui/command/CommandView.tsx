@@ -54,6 +54,7 @@ function usePrefSet(name: string): [Set<string>, (key: string) => void] {
  */
 export function CommandView() {
   const solo = useUi((s) => s.solo?.kind === "command");
+  const compact = useUi((s) => s.compact); // phone/tablet layout: a full-screen page with a Back button
   const snap = useOffice((s) => s.snap);
   const live = useOffice((s) => s.live);
   const others = useBuilding((s) => s.others);
@@ -119,8 +120,13 @@ export function CommandView() {
   };
 
   return (
-    <div className={`fixed z-[5] flex flex-col gap-2 ${solo ? "inset-0 p-3" : "bottom-4 left-4 right-4 top-[74px]"}`} aria-label="Command center">
+    <div className={`fixed z-[5] flex flex-col gap-2 ${solo || compact ? "inset-0 bg-grass p-2" : "bottom-4 left-4 right-4 top-[74px]"}`} aria-label="Command center">
       <div className="panel flex flex-wrap items-center gap-2 px-3 py-2">
+        {compact && !solo && (
+          <button className="btn min-h-[40px] px-2.5" aria-label="Back" onClick={() => ui.setView("office", false)}>
+            ‹
+          </button>
+        )}
         {solo && <b className="font-term text-[20px] text-gold">{BRAND.name}</b>}
         <b className="text-[16px]">Command</b>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Show">
@@ -146,7 +152,7 @@ export function CommandView() {
             </button>
           ))}
         </div>
-        {!solo && (
+        {!solo && !compact && (
           <>
             <button className="btn min-h-[36px] px-2 text-[12px]" onClick={() => ui.popOutCommand(current)} title="Open the command center in its own window (another monitor)">
               Pop out ↗
