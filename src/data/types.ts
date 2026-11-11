@@ -376,7 +376,8 @@ export type SetupCheckId =
   | "egress-lock"
   | "hq-reach"
   | "scope-firewall"
-  | `login-${AgentCli}`;
+  | `login-${AgentCli}`
+  | `login-${AgentCli}@${string}`;
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
 export interface SetupFix {

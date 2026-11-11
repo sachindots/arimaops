@@ -92,7 +92,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       await sessions.recheckSetup();
       await sbx.refresh();
     },
-    runSetupFix: (id) => sessions.runFix(str(id, 40) as SetupCheckId),
+    runSetupFix: (id) => sessions.runFix(str(id, 64) as SetupCheckId),
 
     // You → agent: same delivery path as the lead's assign_task / send_message.
     assignTask: (taskId, agentId) => planner.assign(str(taskId, 40), str(agentId, 80), "you"),

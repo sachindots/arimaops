@@ -8,6 +8,7 @@ import { firewallCommands, scopeDomains, scopeNetworks } from "./scope";
 import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
+import { accounts } from "./credentials/registry";
 import type { RepoInfo } from "./repo";
 import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
 
@@ -343,14 +344,32 @@ export async function containerLoginSaved(cli: AgentConfig["cli"], account = "de
   return r.ok && !!r.stdout.trim();
 }
 
-/** Whether the CLI's shared login volume has a finished sign-in. */
-async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number): Promise<Check> {
-  const base = { id: `login-${cli}` as const, label: `${cli} sign-in for containers`, neededFor: "container" as const };
-  const cmd = loginCommand(cli, hqPort);
+/** Whether the CLI's shared login volume for an account has a finished sign-in. */
+async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number, account = "default"): Promise<Check> {
+  const named = account !== "default";
+  const base = {
+    id: named ? (`login-${cli}@${account}` as const) : (`login-${cli}` as const),
+    label: named ? `${cli} sign-in for containers (${account} account)` : `${cli} sign-in for containers`,
+    neededFor: "container" as const,
+  };
+  const cmd = loginCommand(cli, hqPort, account);
+  const who = named ? `${cli} container on the ${account} account` : `${cli} container`;
   if (!cmd) return { ...base, status: "unsupported", detail: `${cli} can't run in Container mode yet.`, fix: null };
   if (!imageOk) return { ...base, status: "missing", detail: "Waiting for the agent image.", fix: null };
-  if (await containerLoginSaved(cli, "default", hqPort)) return { ...base, status: "ok", detail: `Saved in the ${authVolume(cli)} volume, shared by every ${cli} container.`, fix: fix(cmd, true, null) };
-  return { ...base, status: "missing", detail: "Sign in once; every container of this CLI reuses it. Opens the CLI's own login (a link and code you can use on any device).", fix: fix(cmd, true, null) };
+  if (await containerLoginSaved(cli, account, hqPort)) return { ...base, status: "ok", detail: `Saved in the ${authVolume(cli, account)} volume, shared by every ${who}.`, fix: fix(cmd, true, null) };
+  return { ...base, status: "missing", detail: `Sign in once; every ${who} reuses it. Opens the CLI's own login (a link and code you can use on any device).`, fix: fix(cmd, true, null) };
+}
+
+/** Container CLIs and the named accounts their agents sign in with (API-key accounts need no sign-in). */
+export function containerLogins(team: AgentConfig[], isApiAccount: (id: string) => boolean): [AgentConfig["cli"], string][] {
+  const seen = new Map<string, [AgentConfig["cli"], string]>();
+  for (const a of team) {
+    if (a.mode !== "container") continue;
+    seen.set(`${a.cli}@default`, [a.cli, "default"]);
+    const acct = a.account || "default";
+    if (acct !== "default" && !isApiAccount(acct)) seen.set(`${a.cli}@${acct}`, [a.cli, acct]);
+  }
+  return [...seen.values()];
 }
 
 /** `team` adds CLI-specific checks for any CLI used by the team. */
@@ -372,15 +391,22 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
   if (hasCli("gemini", "local")) checks.push(await checkGemini());
   if (hasCli("copilot", "local")) checks.push(await checkCopilot());
 
-  const containerClis = [...new Set(team.filter((a) => a.mode === "container").map((a) => a.cli))];
+  const isApiAccount = (id: string) => {
+    try {
+      return !!accounts().get(id);
+    } catch {
+      return false;
+    }
+  };
+  const loginsNeeded = containerLogins(team, isApiAccount);
   let containerReady = false;
-  if (containerClis.length) {
+  if (loginsNeeded.length) {
     const docker = await checkDocker();
     const image = await checkAgentImage(docker.status === "ok");
     const imageOk = image.status === "ok";
     const lock = await checkEgressLock(imageOk);
     const reach = await checkHqReach(imageOk, hqPort);
-    const logins = await Promise.all(containerClis.map((c) => checkContainerLogin(c, imageOk, hqPort)));
+    const logins = await Promise.all(loginsNeeded.map(([c, acct]) => checkContainerLogin(c, imageOk, hqPort, acct)));
     checks.push(docker, image, lock, reach, ...logins);
     const scopeFw = project ? await checkScopeFirewall(project, team) : null;
     if (scopeFw) checks.push(scopeFw);

@@ -67,6 +67,13 @@ rmSync(real, { recursive: true, force: true });
 
 check("Antigravity sign-in keeps its settings folders in the login volume", loginCommand("agy", 7420, "g2").includes("-e XDG_CONFIG_HOME=/home/agent/.gemini/") && loginCommand("agy", 7420, "g2").includes("hq-auth-agy-g2:/home/agent/.gemini") && !loginCommand("claude", 7420).includes("XDG_"));
 
+{
+  const { containerLogins } = await import("../server/setup");
+  const t = (cli: string, mode: string, account?: string) => ({ cli, mode, account }) as never;
+  const got = containerLogins([t("agy", "container"), t("agy", "container", "g2"), t("claude", "container", "work-key"), t("codex", "local", "g3")], (id) => id === "work-key");
+  check("Setup asks for each container account's sign-in, not API-key or Local ones", JSON.stringify(got) === JSON.stringify([["agy", "default"], ["agy", "g2"], ["claude", "default"]]), JSON.stringify(got));
+}
+
 // Port blocks: unique, stable, reused after release.
 let taken: Record<string, number> = {};
 const first = allocate(taken, "alpha/cipher");
