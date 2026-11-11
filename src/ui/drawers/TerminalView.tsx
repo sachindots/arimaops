@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { officeActions } from "../../store/office";
 import { readTerminal, subscribeTerminal } from "../../store/terminal";
 import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme/fonts";
+import { lastLink } from "./links";
 
 const theme = {
   background: "#04060a",
@@ -59,6 +60,8 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
   const touch_ = () => void (touched.current = true);
   const [ctrlOn, setCtrlOn] = useState(false);
   const termRef = useRef<Terminal | null>(null);
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const el = host.current;
@@ -110,7 +113,13 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       officeActions.resizeTerminal(agentId, term.cols, term.rows);
       term.onResize(({ cols, rows }) => officeActions.resizeTerminal(agentId, cols, rows));
       term.write(readTerminal(agentId));
-      unsub = subscribeTerminal(agentId, (data) => term.write(data));
+      setLink(lastLink(readTerminal(agentId)));
+      let linkTimer = 0;
+      unsub = subscribeTerminal(agentId, (data) => {
+        term.write(data);
+        window.clearTimeout(linkTimer);
+        linkTimer = window.setTimeout(() => !disposed && setLink(lastLink(readTerminal(agentId))), 200);
+      });
       term.onData((data) => {
         if (!touched.current) return;
         // Sticky Ctrl from the touch key row: Ctrl+letter is the letter's control code.
@@ -153,9 +162,37 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
     };
   }, [agentId, autoFocus]);
 
-  if (!touch()) return <div ref={host} className="h-full min-h-0 w-full bg-navy-2" onPointerDown={touch_} onKeyDownCapture={touch_} />;
+  const linkBar = link && (
+    <div className="flex shrink-0 items-center gap-2 border-b-2 border-ink bg-navy px-2 py-1">
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted" title={link}>
+        {link}
+      </span>
+      <button className="btn shrink-0 border-green px-3 py-1 text-[13px] text-green" onClick={() => openLink(link)}>
+        Open link ↗
+      </button>
+      <button
+        className="btn shrink-0 px-3 py-1 text-[13px]"
+        onClick={() =>
+          void navigator.clipboard?.writeText(link).then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          })
+        }
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+  if (!touch())
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
+        {linkBar}
+        <div ref={host} className="min-h-0 w-full flex-1" onPointerDown={touch_} onKeyDownCapture={touch_} />
+      </div>
+    );
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
+      {linkBar}
       <div ref={host} className="min-h-0 w-full flex-1" onPointerDown={touch_} onKeyDownCapture={touch_} />
       <div className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-t-2 border-ink p-1" aria-label="Terminal keys">
         {KEYS.map(([label, seq]) => (

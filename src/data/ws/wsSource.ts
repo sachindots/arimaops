@@ -2,6 +2,7 @@
 // Server → browser: OfficeEvent JSON. Browser → server: { cmd, args }.
 
 import type { OfficeDataSource, OfficeEvent } from "../source";
+import { ask } from "../../ui/dialog";
 
 /** `watch`: a read-only feed for the one-building office (no terminal output; the server ignores commands). */
 export function createWsSource(token: string, project = "", opts: { watch?: boolean } = {}): OfficeDataSource {
@@ -15,17 +16,42 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
   };
 
   // Remote step-up: the server refused a risky command until a TOTP code is entered.
+  const ACTION: Record<string, string> = {
+    openShell: "Opening a terminal",
+    openHostShell: "Opening a terminal",
+    sendTerminalInput: "Typing into a terminal",
+    runSetupFix: "Running a setup step",
+    recreateSandbox: "Recreating a sandbox",
+    removeAgent: "Removing an agent",
+    updateAgent: "Changing an agent",
+    updateSandbox: "Changing sandbox rules",
+    setSecret: "Saving a key",
+    saveAccount: "Saving an account",
+    removeAccount: "Removing an account",
+    removeSecret: "Removing a key",
+    setProxy: "Changing the proxy",
+    openEnvFile: "Opening an env file",
+    addMcp: "Adding an MCP server",
+    removeMcp: "Removing an MCP server",
+    authMcp: "Signing in an MCP server",
+    answerApproval: "Answering an agent's request",
+    resolveAccess: "Answering an access request",
+    resolveActionItem: "Closing an action item",
+    updateWorkflow: "Changing the workflow",
+    updateProject: "Changing the project",
+    forwardPort: "Opening a port",
+  };
   let prompting = false;
   const handleStepUp = (ev: Extract<OfficeEvent, { type: "remote.stepup" }>) => {
-    if (ev.status === "denied") return void window.alert("Wrong or reused code. Try the next one from your authenticator app.");
+    if (ev.status === "denied") return void ask.alert("Wrong or reused code", "Try the next code from your authenticator app.");
     if (ev.status !== "required" || prompting) return;
     prompting = true;
-    // Defer so the socket handler returns first.
-    setTimeout(() => {
-      const code = window.prompt(`"${ev.cmd}" needs confirmation from a remote device.\nEnter the 6-digit code from your authenticator app (valid 24 h on this device):`);
-      prompting = false;
-      if (code) send("elevate", code.trim(), ev.cmd, ev.args ?? []);
-    }, 0);
+    void ask
+      .text("Confirm it's you", `${(ev.cmd && ACTION[ev.cmd]) || "This action"} needs the code from your authenticator app on a device away from the server. This device stays confirmed for 24 hours.`, { field: "code", ok: "Confirm" })
+      .then((code) => {
+        prompting = false;
+        if (code) send("elevate", code, ev.cmd, ev.args ?? []);
+      });
   };
 
   const source: OfficeDataSource = {

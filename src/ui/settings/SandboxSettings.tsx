@@ -4,6 +4,7 @@ import { officeActions, useOffice } from "../../store/office";
 import { Dot, Field, SectionTitle } from "../kit";
 import { ChipList, CommitInput, isDomain } from "./controls";
 import { ResourcesSection } from "./ResourcesSection";
+import { ask } from "../dialog";
 
 const BASE: Record<BasePolicy, string> = {
   "allow-all": "Allow all — every outbound connection is allowed",
@@ -25,7 +26,7 @@ function KeyEditor({ keys, onSet, onRemove, disabled }: { keys: string[]; onSet:
         {keys.map((k) => (
           <li key={k} className="chip font-term text-[15px]">
             {k} <span className="text-muted">••••</span>
-            <button className="ml-1 text-[12px]" aria-label={`Remove ${k} key`} onClick={() => window.confirm(`Remove the ${k} key from sbx?`) && onRemove(k)}>
+            <button className="ml-1 text-[12px]" aria-label={`Remove ${k} key`} onClick={() => void ask.confirm(`Remove the ${k} key from sbx?`, undefined, { ok: "Remove", danger: true }).then((ok) => ok && onRemove(k))}>
               ✕
             </button>
           </li>

@@ -1,5 +1,5 @@
 import { BRAND } from "../../data/brand";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SetupCheck, SetupStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
@@ -74,6 +74,8 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
 export function SetupChecklist() {
   const setup = useOffice((s) => s.snap?.setup);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [big, setBig] = useState(false);
+  const termBox = useRef<HTMLDivElement>(null);
   if (!setup) return null;
 
   return (
@@ -108,19 +110,23 @@ export function SetupChecklist() {
                 onRun={() => {
                   setRunningId(c.id);
                   officeActions.runSetupFix(c.id);
+                  window.setTimeout(() => termBox.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
                 }}
               />
             ))}
           </ul>
           {runningId && (
-            <div className="mb-2 mt-1 border-[3px] border-ink">
-              <div className="flex items-center justify-between bg-navy px-2 py-1 text-[13px] text-cream">
-                <span>Running · type here if it asks for input</span>
-                <button className="text-[12px] underline" onClick={() => setRunningId(null)}>
+            <div ref={termBox} className={big ? "fixed inset-0 z-[55] flex flex-col bg-navy-2" : "mb-2 mt-1 scroll-mt-2 border-[3px] border-ink"}>
+              <div className="flex items-center gap-2 bg-navy px-2 py-1 text-[13px] text-cream">
+                <span className="min-w-0 flex-1 truncate">{setup.checks.find((c) => c.id === runningId)?.label ?? "Running"} · type here if it asks for input</span>
+                <button className="btn px-2 py-1 text-[12px]" onClick={() => setBig(!big)}>
+                  {big ? "Exit full screen" : "Full screen"}
+                </button>
+                <button className="btn px-2 py-1 text-[12px]" onClick={() => (setBig(false), setRunningId(null))}>
                   Hide
                 </button>
               </div>
-              <div className="h-[220px]">
+              <div className={big ? "min-h-0 flex-1" : "h-[min(62vh,520px)]"}>
                 <TerminalView key={runningId} agentId={`setup:${runningId}`} />
               </div>
             </div>

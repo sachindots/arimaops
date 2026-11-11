@@ -10,6 +10,7 @@ import { ModelSelect } from "../primitives/ModelSelect";
 import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
 import { TerminalView } from "./TerminalView";
+import { ask } from "../dialog";
 
 /** How each CLI handles permission prompts in Local mode (see server/adapters.ts). */
 const LOCAL_PERMISSIONS: Partial<Record<AgentCli, string>> = {
@@ -232,7 +233,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
           onClick={() => {
             const hosts = [...new Set(approvals.map((a) => a.title ?? a.host))];
             const list = hosts.slice(0, 15).join("\n") + (hosts.length > 15 ? `\n…and ${hosts.length - 15} more` : "");
-            if (window.confirm(`Allow all ${hosts.length} for ${agent.name}'s sandbox?\n\n${list}\n\nOnly allow sites you trust. You can remove them later in Settings → Sandbox.`)) act("all", "allow");
+            void ask.confirm(`Allow all ${hosts.length} for ${agent.name}'s sandbox?`, `${list}\n\nOnly allow sites you trust. You can remove them later in Settings → Sandbox.`, { ok: "Allow all" }).then((ok) => ok && act("all", "allow"));
           }}
         >
           Allow all

@@ -3,6 +3,7 @@ import { chosenTools, STACK_CATALOG } from "../../data/stack";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { TerminalView } from "../drawers/TerminalView";
+import { ask } from "../dialog";
 
 const STATUS: Record<string, [string, string]> = {
   ready: ["Ready", "#00ff66"],
@@ -166,7 +167,7 @@ export function McpSettings() {
               <button
                 className="btn px-2 text-[12px]"
                 onClick={() => {
-                  if (window.confirm(`Recreate ${agent.name}'s sandbox? Its folder is kept; the VM starts fresh.`)) officeActions.recreateSandbox(agent.id);
+                  void ask.confirm(`Recreate ${agent.name}'s sandbox?`, "Its folder is kept; the VM starts fresh.", { ok: "Recreate", danger: true }).then((ok) => ok && officeActions.recreateSandbox(agent.id));
                 }}
               >
                 Recreate sandbox

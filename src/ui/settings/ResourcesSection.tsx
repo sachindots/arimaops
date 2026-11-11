@@ -3,6 +3,7 @@ import type { AgentConfig, AgentStatus, MachineInfo } from "../../data/types";
 import { officeActions } from "../../store/office";
 import { SectionTitle } from "../kit";
 import { effective, fmtGb, maxMemory, sbxDefault, sizeMismatch, teamBudget } from "../resources";
+import { ask } from "../dialog";
 
 /** CPU + memory for one agent's sandbox, plus the whole team's budget. */
 export function ResourcesSection({ agent, status, team, machine }: { agent: AgentConfig; status: AgentStatus | undefined; team: AgentConfig[]; machine: MachineInfo }) {
@@ -88,9 +89,9 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
             <button
               className="btn px-2 text-[12px]"
               onClick={() =>
-                window.confirm(
-                  `Recreate ${agent.name}'s sandbox with ${eff.cpus} CPUs and ${fmtGb(eff.memoryGb)}?\n\nThe agent's folder and code are kept. Anything installed inside the VM is lost, and the current session restarts.`,
-                ) && officeActions.recreateSandbox(agent.id)
+                void ask
+                  .confirm(`Recreate ${agent.name}'s sandbox with ${eff.cpus} CPUs and ${fmtGb(eff.memoryGb)}?`, "The agent's folder and code are kept. Anything installed inside the VM is lost, and the current session restarts.", { ok: "Recreate", danger: true })
+                  .then((ok) => ok && officeActions.recreateSandbox(agent.id))
               }
             >
               Recreate sandbox

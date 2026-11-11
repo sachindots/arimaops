@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { changePassword, signOut, useAuth, usersApi, type AuthRole } from "../../store/auth";
 import { AuthenticatorLink } from "../auth/Authenticator";
 import { Field, SectionTitle } from "../kit";
+import { ask } from "../dialog";
 
 interface Person {
   id: string;
@@ -115,8 +116,9 @@ export function UsersSettings() {
                     <button
                       className="btn px-2 text-[12px]"
                       onClick={() => {
-                        const pw = window.prompt(`New password for ${p.name} (10+ characters):`);
-                        if (pw) void act(() => usersApi("PATCH", `/${p.id}`, { password: pw }));
+                        void ask.text(`New password for ${p.name}`, "10 or more characters.", { field: "password", ok: "Set password" }).then((pw) => {
+                          if (pw) void act(() => usersApi("PATCH", `/${p.id}`, { password: pw }));
+                        });
                       }}
                     >
                       Reset password
@@ -128,7 +130,7 @@ export function UsersSettings() {
                       {p.disabled ? "Enable" : "Disable"}
                     </button>
                     {p.id !== user?.id && (
-                      <button className="btn px-2 text-[12px]" onClick={() => window.confirm(`Remove ${p.name}? Their devices are signed out.`) && void act(() => usersApi("DELETE", `/${p.id}`))}>
+                      <button className="btn px-2 text-[12px]" onClick={() => void ask.confirm(`Remove ${p.name}?`, "Their devices are signed out.", { ok: "Remove", danger: true }).then((ok) => ok && void act(() => usersApi("DELETE", `/${p.id}`)))}>
                         Remove
                       </button>
                     )}

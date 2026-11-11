@@ -31,6 +31,7 @@ import { DepartmentBadge, Field, Portrait, SectionTitle } from "../kit";
 import { ModelSelect } from "../primitives/ModelSelect";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
+import { ask } from "../dialog";
 
 export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: AgentCli) => void }) {
   return (
@@ -109,11 +110,13 @@ export function TeamSettings() {
     }
   };
 
-  const applyOrgPreset = (org: OrgPreset) => {
+  const applyOrgPreset = async (org: OrgPreset) => {
     if (
-      !window.confirm(
-        `Load "${org.label}" (${1 + org.workers.length} operators)?\n\nThis will update your Lead to ${org.lead.name} (${org.lead.role}), replace current non-lead workers with the ${org.label} roster, and set the War-Room sign to "${org.officeName}".`,
-      )
+      !(await ask.confirm(
+        `Load "${org.label}" (${1 + org.workers.length} operators)?`,
+        `This will update your Lead to ${org.lead.name} (${org.lead.role}), replace current non-lead workers with the ${org.label} roster, and set the War-Room sign to "${org.officeName}".`,
+        { ok: "Load" },
+      ))
     ) {
       return;
     }
@@ -178,7 +181,7 @@ export function TeamSettings() {
                 key={org.id}
                 type="button"
                 className="flex flex-col items-start border-2 border-ink bg-white p-2 text-left transition hover:border-red"
-                onClick={() => applyOrgPreset(org)}
+                onClick={() => void applyOrgPreset(org)}
               >
                 <div className="flex w-full items-center justify-between gap-2">
                   <b className="text-[13px]">{org.label}</b>

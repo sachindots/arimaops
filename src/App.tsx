@@ -17,6 +17,7 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
+import { DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
 import { closeTopPanel, useNativePush } from "./lib/native";
@@ -154,6 +155,7 @@ export function App() {
             )}
             <OwnerPrompt />
             <Tooltip />
+            <DialogHost />
           </>
         )}
       </>
@@ -170,6 +172,7 @@ export function App() {
             <SettingsModal />
             <OwnerPrompt />
             {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
+            <DialogHost />
           </>
         )}
       </>
@@ -201,6 +204,7 @@ export function App() {
           <OwnerPrompt />
           {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
           <Tooltip />
+          <DialogHost />
         </>
       )}
     </>
