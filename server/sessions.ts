@@ -131,7 +131,7 @@ export class Sessions {
       try { await checkAccountModel(account, agent.cli, agent.model); }
       catch (e) { return fail(e instanceof Error ? e.message : "Couldn't validate the account's model."); }
     }
-    if (!keyed && agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account)))
+    if (!keyed && agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account, hub.snap.config.project.hqPort)))
       return fail(`${CLI_LABEL[agent.cli]} isn't signed in for the "${account}" account in containers yet. Run this once in a terminal: ${loginCommand(agent.cli, hub.snap.config.project.hqPort, account)}`);
     if (!keyed && agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
     if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")

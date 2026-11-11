@@ -37,6 +37,13 @@ const AUTH_DIR: Partial<Record<AgentCli, string>> = {
   opencode: "/home/agent/.local/share/opencode",
 };
 export const containerClis = Object.keys(AUTH_DIR) as AgentCli[];
+export const authDirOf = (cli: AgentCli) => AUTH_DIR[cli] ?? null;
+
+/** Antigravity may keep part of its sign-in under ~/.config or ~/.local: a container has no keyring, so those go in the login volume too. */
+const AUTH_ENV: Partial<Record<AgentCli, Record<string, string>>> = {
+  agy: { XDG_CONFIG_HOME: "/home/agent/.gemini/.xdg/config", XDG_DATA_HOME: "/home/agent/.gemini/.xdg/data", XDG_STATE_HOME: "/home/agent/.gemini/.xdg/state" },
+};
+export const authEnvArgs = (cli: AgentCli) => Object.entries(AUTH_ENV[cli] ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
 /** Where containers keep a CLI's sign-in: one volume per CLI and account. */
 export const authVolume = (cli: AgentCli, account = "default") => (account === "default" ? `hq-auth-${cli}` : `hq-auth-${cli}-${account}`);
 /** Per-agent transcripts, outside shared sign-in volumes, for accurate usage attribution. */
@@ -130,6 +137,7 @@ export function runArgs(
     ...(secrets ? ["--env-file", secrets.envFile, ...secrets.mounts.flatMap(([host, inside]) => ["-v", `${host}:${inside}:ro`])] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
     "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`, "-e", "TE_DISABLE=1",
+    ...authEnvArgs(agent.cli),
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     IMAGE,
     agent.cli,
@@ -138,7 +146,7 @@ export function runArgs(
 }
 
 /** One-time sign-in for a CLI: its normal login flow in a throwaway container that saves into the shared volume. */
-const LOGIN_PREFIX = "hq-login-";
+export const LOGIN_PREFIX = "hq-login-";
 
 export function loginCommand(cli: AgentCli, hqPort: number, account = "default"): string {
   const authDir = AUTH_DIR[cli];
@@ -147,7 +155,8 @@ export function loginCommand(cli: AgentCli, hqPort: number, account = "default")
   const env = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].map((k) => `-e ${k}=${proxy}`).join(" ");
   const login: Record<string, string> = { claude: "claude", codex: "codex login --device-auth", agy: "agy", gemini: "gemini", copilot: "copilot", opencode: "opencode auth login" };
   const tag = account === "default" ? cli : `${cli}-${account}`;
-  return `docker run -it --rm --name ${LOGIN_PREFIX}${tag} --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli, account)}:${authDir} ${IMAGE} ${login[cli]}`;
+  const extra = authEnvArgs(cli).join(" ");
+  return `docker run -it --rm --name ${LOGIN_PREFIX}${tag} --network ${NETWORK} --user $(id -u):$(id -g) ${env}${extra ? ` ${extra}` : ""} -v ${authVolume(cli, account)}:${authDir} ${IMAGE} ${login[cli]}`;
 }
 
 export async function ensureNetwork(): Promise<boolean> {

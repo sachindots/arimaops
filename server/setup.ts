@@ -9,7 +9,7 @@ import { usesTmux } from "./backends";
 import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import type { RepoInfo } from "./repo";
-import { agentIp, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, loginCommand, NETWORK } from "./containers";
+import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -318,20 +318,38 @@ async function checkScopeFirewall(project: ProjectConfig, team: AgentConfig[]): 
   };
 }
 
-/** Whether a container sign-in is saved for this CLI and account (any file in its volume). */
-export async function containerLoginSaved(cli: AgentConfig["cli"], account = "default"): Promise<boolean> {
-  const r = await run("docker", ["run", "--rm", "-v", `${authVolume(cli, account)}:/v`, "--entrypoint", "sh", IMAGE, "-c", "ls -A /v | head -1"], { timeoutMs: 20_000 });
+/** A file only a finished sign-in writes, inside the CLI's login volume. Antigravity writes its settings before you sign in, so it's asked instead. */
+const SIGNED_IN_FILE: Partial<Record<AgentConfig["cli"], string>> = { claude: ".credentials.json", codex: "auth.json", gemini: "oauth_creds.json", opencode: "auth.json" };
+
+/** Whether a container sign-in is saved for this CLI and account. */
+export async function containerLoginSaved(cli: AgentConfig["cli"], account = "default", hqPort = 7420): Promise<boolean> {
+  const vol = `${authVolume(cli, account)}:/v`;
+  if (cli === "agy") {
+    // Ask Antigravity itself, through HQ's proxy (only sign-in containers and agents may go out).
+    const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
+    const uid = process.getuid?.() ?? 1000;
+    const gid = process.getgid?.() ?? 1000;
+    const r = await run("docker", [
+      "run", "--rm", "--name", `${LOGIN_PREFIX}check-${cli}-${account}-${Date.now().toString(36)}`, "--network", NETWORK, "--user", `${uid}:${gid}`,
+      ...["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),
+      ...authEnvArgs(cli), "-v", `${authVolume(cli, account)}:${authDirOf(cli)}`,
+      "--entrypoint", "sh", IMAGE, "-c", "timeout 40 agy models </dev/null 2>&1 | head -3",
+    ], { timeoutMs: 60_000 });
+    return r.ok && /\S/.test(r.stdout) && !/sign in|not logged/i.test(r.stdout);
+  }
+  const file = SIGNED_IN_FILE[cli];
+  const test = file ? `test -s /v/${file} && echo yes` : "ls -A /v | head -1";
+  const r = await run("docker", ["run", "--rm", "-v", vol, "--entrypoint", "sh", IMAGE, "-c", test], { timeoutMs: 20_000 });
   return r.ok && !!r.stdout.trim();
 }
 
-/** Whether the CLI's shared login volume has a sign-in (any file in it). */
+/** Whether the CLI's shared login volume has a finished sign-in. */
 async function checkContainerLogin(cli: AgentConfig["cli"], imageOk: boolean, hqPort: number): Promise<Check> {
   const base = { id: `login-${cli}` as const, label: `${cli} sign-in for containers`, neededFor: "container" as const };
   const cmd = loginCommand(cli, hqPort);
   if (!cmd) return { ...base, status: "unsupported", detail: `${cli} can't run in Container mode yet.`, fix: null };
   if (!imageOk) return { ...base, status: "missing", detail: "Waiting for the agent image.", fix: null };
-  const r = await run("docker", ["run", "--rm", "-v", `${authVolume(cli)}:/v`, "--entrypoint", "sh", IMAGE, "-c", "ls -A /v | head -1"], { timeoutMs: 20_000 });
-  if (r.ok && r.stdout.trim()) return { ...base, status: "ok", detail: `Saved in the ${authVolume(cli)} volume, shared by every ${cli} container.`, fix: fix(cmd, true, null) };
+  if (await containerLoginSaved(cli, "default", hqPort)) return { ...base, status: "ok", detail: `Saved in the ${authVolume(cli)} volume, shared by every ${cli} container.`, fix: fix(cmd, true, null) };
   return { ...base, status: "missing", detail: "Sign in once; every container of this CLI reuses it. Opens the CLI's own login (a link and code you can use on any device).", fix: fix(cmd, true, null) };
 }
 

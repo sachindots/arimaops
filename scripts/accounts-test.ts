@@ -65,6 +65,8 @@ check("account home: git, ssh, gh and tools link to the real home", link(".gitco
 check("account home: sign-in folders and HQ's own folder are not shared", link(".gemini") === null && link(".config/antigravity") === null && link(".arima") === null && lstatSync(join(acct, ".config")).isDirectory() && !lstatSync(join(acct, ".config")).isSymbolicLink());
 rmSync(real, { recursive: true, force: true });
 
+check("Antigravity sign-in keeps its settings folders in the login volume", loginCommand("agy", 7420, "g2").includes("-e XDG_CONFIG_HOME=/home/agent/.gemini/") && loginCommand("agy", 7420, "g2").includes("hq-auth-agy-g2:/home/agent/.gemini") && !loginCommand("claude", 7420).includes("XDG_"));
+
 // Port blocks: unique, stable, reused after release.
 let taken: Record<string, number> = {};
 const first = allocate(taken, "alpha/cipher");
