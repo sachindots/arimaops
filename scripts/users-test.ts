@@ -66,7 +66,7 @@ const LOCAL = "http://localhost:5173";
 const guard = new RemoteGuard(join(HOME, "guard"));
 const users = new Users(join(HOME, "users.json"));
 const calls: string[] = [];
-const hub = { snap: { config: { team: [] } }, subscribe: () => () => {} };
+const hub = { snap: { config: { team: [] }, agents: [], environments: [] }, subscribe: () => () => {} };
 const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent") } };
 const server = await startHttp({
   projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {}, unloadProject: async () => {},
@@ -147,8 +147,38 @@ await call("POST", "/api/auth/logout", { cookie: sam.cookie });
 r = await call("GET", "/api/auth/me", { cookie: sam.cookie });
 check("signing out ends the session", r.status === 401);
 
+// A person changes their own password from a remote app, using the current password instead of admin step-up.
+const mobile = users.create({ name: "Mobile", role: "viewer", password: "old-mobile-password" }).user;
+const mobileCookie = `hq_sid=${guard.addDevice("viewer", "mobile", mobile.id)}`;
+const otherCookie = `hq_sid=${guard.addDevice("viewer", "other phone", mobile.id)}`;
+const idleSeen = guard.device(otherCookie.slice(7), false)?.lastSeen;
+await new Promise((res) => setTimeout(res, 10));
+check("background checks do not extend a device session", guard.device(otherCookie.slice(7), false)?.lastSeen === idleSeen);
+const change = (cookie: string, currentPassword: string, newPassword: string, origin: string | null = LOCAL) =>
+  call("POST", "/api/auth/password", { cookie, origin, body: { currentPassword, newPassword } });
+check("password change requires a signed-in account", (await change("", "old-mobile-password", "new-mobile-password")).status === 401);
+check("another origin cannot change a password", (await change(mobileCookie, "old-mobile-password", "new-mobile-password", "https://evil.example")).status === 403);
+check("wrong current password is refused", (await change(mobileCookie, "wrong", "new-mobile-password")).status === 403);
+check("short new passwords are refused", (await change(mobileCookie, "old-mobile-password", "short")).status === 400);
+const oldSocket = new WebSocket(`ws://127.0.0.1:${PORT}/ws?project=alpha`, { headers: { Cookie: otherCookie, Origin: LOCAL } });
+await new Promise((res, rej) => (oldSocket.once("open", res), oldSocket.once("error", rej)));
+r = await change(mobileCookie, "old-mobile-password", "new-mobile-password", null);
+const changedCookie = r.cookie;
+check("a viewer can change their own password remotely without admin access", r.status === 200 && !!changedCookie);
+check("only the new password signs in", !users.verify("Mobile", "old-mobile-password") && !!users.verify("Mobile", "new-mobile-password"));
+check("password change rotates the current cookie", changedCookie !== mobileCookie && (await call("GET", "/api/auth/me", { cookie: changedCookie })).status === 200);
+check("password change revokes other sessions", (await call("GET", "/api/auth/me", { cookie: otherCookie })).status === 401 && (await call("GET", "/api/auth/me", { cookie: mobileCookie })).status === 401);
+calls.length = 0;
+const closed = new Promise((res) => oldSocket.once("close", res));
+oldSocket.send(JSON.stringify({ cmd: "sendMessage", args: [] }));
+await closed;
+check("a revoked open socket cannot run commands", calls.length === 0);
+check("passwords stay out of the user file", !/old-mobile-password|new-mobile-password/.test(readFileSync(join(HOME, "users.json"), "utf8")));
+for (let i = 0; i < 5; i++) await change(changedCookie, "wrong", "next-mobile-password");
+check("guessing a current password is throttled", (await change(changedCookie, "new-mobile-password", "next-mobile-password")).status === 429);
+
 const log = readFileSync(join(HOME, "guard", "audit.log"), "utf8");
-check("the audit log names the person and never holds a password", /\tSam\/owner\t/.test(log) && /bad-password/.test(log) && !/sams-password|anas-password|wrong-password/.test(log), log.slice(-400));
+check("the audit log names the person and never holds a password", /\tSam\/owner\t/.test(log) && /bad-password/.test(log) && !/sams-password|anas-password|wrong-password|old-mobile-password|new-mobile-password/.test(log), log.slice(-400));
 
 server.close();
 console.log(fails ? `\n${fails} failed` : "\nall passed");

@@ -74,7 +74,7 @@ Run HQ with `--remote` and open the link it prints. Below 1280 px wide, HQ switc
 
 ### Build the Android app
 
-The Java app in `android/` runs on Android 12 or later. Set `JAVA_HOME` to a full JDK 21 installation, add its `bin` directory to `PATH`, and set `ANDROID_HOME` to your Android SDK with platform 36 installed. From the repo root, run:
+The Java app in `android/` runs on Android 12 or later. Add your Firebase Android app's `google-services.json` to `android/app/` (gitignored). Set `JAVA_HOME` to a full JDK 21 installation, add its `bin` directory to `PATH`, and set `ANDROID_HOME` to your Android SDK with platform 36 installed. From the repo root, run:
 
 ```bash
 npx tsx scripts/android-test.ts
@@ -84,7 +84,25 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 Open **ArimaOps** and enter your HQ's HTTPS URL. Connect Tailscale first if the server needs it. HTTP works only for localhost development. Saved servers retain separate cookies. In the compact layout, **More → Switch server** returns to the connection screen. Back closes setup, settings, or a drawer before using web history. Links to other origins open in another app.
 
-Deploy the web UI from this checkout to enable the Back handler and **Switch server** on your HQ. Notification links use `arimaops://open?path=%2F%3Fopen%3Dboard`; the path stays on the selected server. Firebase push is not connected yet. The APK above is a debug build for local installation.
+Deploy the web UI from this checkout to enable the Back handler and **Switch server** on your HQ. Notification links use `arimaops://open?path=%2F%3Fopen%3Dboard`; paths stay on a saved server. The APK above is a debug build for local installation.
+
+### Enable Android alerts
+
+On the HQ host, run this as the same user that runs HQ:
+
+```bash
+npx tsx scripts/configure-push.ts /private/path/firebase-service-account.json
+```
+
+The command verifies Firebase authorization and stores the credential in the encrypted vault as `push:fcm`. Keep service-account files outside the repo. Sign in to HQ in the Android app and allow notifications. The app registers its current Firebase token with your signed-in device and refreshes it when you return to the app. Push uses FCM HTTP v1 and does not need an incoming public port on HQ.
+
+Alerts cover agents waiting for input, stalled agents, action and access requests, merged pull requests, high or critical findings, and deployment events. Viewers receive informational alerts. Revoked sessions and disabled users receive none. Notification taps open the corresponding project on the saved HQ that sent the alert.
+
+Run `npx tsx scripts/push-test.ts` to check delivery, token rotation, roles, revocation, deduplication, and registration authentication without contacting Firebase.
+
+### Change your password in the app
+
+Open **More → Settings → Users → Change your password**. Enter your current password and a new password of 10 to 200 characters, then confirm the new password. Your other devices are signed out, and the current device gets a new session. Changing your own password does not require the owner's admin reset or an authenticator code.
 
 ## Your data
 

@@ -157,13 +157,13 @@ export class RemoteGuard {
     return id;
   }
 
-  device(id: string): (Device & { id: string }) | null {
+  device(id: string, touch = true): (Device & { id: string }) | null {
     const d = id ? this.devices[id] : undefined;
     if (!d || Date.now() - d.lastSeen > DEVICE_MS) return null;
     const now = Date.now();
     const stale = now - d.lastSeen > 60 * 60 * 1000;
-    d.lastSeen = now;
-    if (stale) this.saveDevices(); // persist lastSeen at most hourly
+    if (touch) d.lastSeen = now;
+    if (touch && stale) this.saveDevices(); // persist lastSeen at most hourly
     return { ...d, id };
   }
 
@@ -179,6 +179,11 @@ export class RemoteGuard {
   removeDevice(id: string) {
     if (!(id in this.devices)) return;
     delete this.devices[id];
+    this.saveDevices();
+  }
+
+  revokeUserDevices(userId: string) {
+    for (const [id, device] of Object.entries(this.devices)) if (device.userId === userId) delete this.devices[id];
     this.saveDevices();
   }
 

@@ -86,6 +86,17 @@ export async function signOut() {
   location.reload();
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<string | null> {
+  try {
+    const result = await post("/api/auth/password", { currentPassword, newPassword });
+    if (!result.ok) return String(result.data.error ?? "Could not change your password.");
+    location.reload();
+    return null;
+  } catch {
+    return "Could not reach HQ. Check your connection and try again.";
+  }
+}
+
 /** The owner's people API. Throws the server's message on failure. */
 export async function usersApi<T = Record<string, unknown>>(method: "GET" | "POST" | "PATCH" | "DELETE", path = "", body?: unknown): Promise<T> {
   const tok = linkToken();

@@ -33,6 +33,10 @@ import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remot
 import { Throttle, Users } from "./users";
 import { homedir } from "node:os";
 import { BRAND } from "../src/data/brand";
+import { PushDevices, pushRegistrationBody } from "./push";
+import { z } from "zod";
+
+const passwordChange = z.object({ currentPassword: z.string().max(200), newPassword: z.string().min(10).max(200) });
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
@@ -95,6 +99,7 @@ interface Options {
   guard: RemoteGuard;
   /** People who can sign in (default: ~/.arima/users.json). */
   users?: Users;
+  push?: PushDevices;
   distDir: string | null;
   allowedOrigins: string[];
 }
@@ -112,6 +117,18 @@ const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "setProxy"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
+  const push = o.push ?? new PushDevices((deviceId, userId) => {
+    const device = o.guard.device(deviceId, false);
+    const user = users.active(userId);
+    return device?.userId === userId && user ? user.role : null;
+  });
+  const pushSubscriptions = new Map<Runtime, () => void>();
+  const refreshPush = () => {
+    const live = new Set(o.projects.values());
+    for (const [rt, stop] of pushSubscriptions) if (!live.has(rt)) { stop(); pushSubscriptions.delete(rt); }
+    for (const rt of live) if (!pushSubscriptions.has(rt)) pushSubscriptions.set(rt, push.watch(rt.hub));
+  };
+  refreshPush();
   const throttle = new Throttle();
   const send = (res: ServerResponse, code: number, body: string, type = "text/plain") => {
     res.writeHead(code, { "Content-Type": type });
@@ -220,7 +237,10 @@ export function startHttp(o: Options) {
       if (req.method === "POST" && url.pathname === "/api/auth/logout") {
         if (!okOrigin(req)) return send(res, 403, "bad origin");
         const id = cookie(req, "hq_sid");
-        if (id) o.guard.removeDevice(id);
+        if (id) {
+          o.guard.removeDevice(id);
+          try { push.remove(id); } catch { log.warn("Could not remove push registration for the signed-out device."); }
+        }
         setCookie(req, res, "", 0);
         return json(res, 200, { ok: true });
       }
@@ -229,7 +249,51 @@ export function startHttp(o: Options) {
         if (!who) return json(res, 401, { error: "Sign in.", people: users.count() });
         return json(res, 200, { role: who.role, user: who.userId ? { id: who.userId, name: who.userName } : null, people: users.count() });
       }
+      if (req.method === "POST" && url.pathname === "/api/auth/password") {
+        if (!okOrigin(req)) return send(res, 403, "bad origin");
+        const who = whoIs(req, "");
+        if (!who?.userId || !who.deviceId) return json(res, 401, { error: "Sign in with your HQ account first." });
+        const key = `password:${who.userId}:${clientIp(req)}`;
+        if (throttle.blocked(key)) return json(res, 429, { error: "Too many wrong tries. Wait 15 minutes." });
+        try {
+          const parsed = passwordChange.safeParse(JSON.parse(await readBody(req, 8192)));
+          if (!parsed.success) return json(res, 400, { error: "Enter your current password and a new password of 10 to 200 characters." });
+          if (!users.verify(who.userName, parsed.data.currentPassword)) {
+            throttle.fail(key);
+            o.guard.audit({ role: who.role, user: who.userName, origin, remote: isRemote(req), cmd: "password.change", args: [], result: "bad-password" });
+            return json(res, 403, { error: "Your current password is incorrect." });
+          }
+          users.update(who.userId, { password: parsed.data.newPassword });
+          o.guard.revokeUserDevices(who.userId);
+          const id = o.guard.addDevice(who.role, String(req.headers["user-agent"] ?? ""), who.userId);
+          setCookie(req, res, id, o.guard.cookieMaxAge);
+          throttle.clear(key);
+          o.guard.audit({ role: who.role, user: who.userName, origin, remote: isRemote(req), cmd: "password.change", args: [], result: "ok" });
+          return json(res, 200, { ok: true });
+        } catch (error) {
+          return json(res, 400, { error: error instanceof Error && error.message.startsWith("Passwords need") ? error.message : "Could not change your password. Use 10 to 200 characters." });
+        }
+      }
       return send(res, 404, "not found");
+    }
+
+    if (url.pathname === "/api/push/register") {
+      if (!okOrigin(req) || !req.headers.origin) return send(res, 403, "bad origin");
+      const who = whoIs(req, "");
+      if (!who?.userId || !who.deviceId) return json(res, 401, { error: "Sign in with your HQ account first." });
+      if (req.method === "DELETE") {
+        push.remove(who.deviceId);
+        return json(res, 200, { ok: true });
+      }
+      if (req.method !== "POST") return send(res, 405, "method not allowed");
+      try {
+        const body = pushRegistrationBody.safeParse(JSON.parse(await readBody(req, 8192)));
+        if (!body.success) return json(res, 400, { error: "Invalid push registration token." });
+        push.register({ deviceId: who.deviceId, userId: who.userId, token: body.data.token, server: req.headers.origin });
+        return json(res, 200, { ok: true });
+      } catch {
+        return json(res, 400, { error: "Could not save push registration." });
+      }
     }
 
     // ---------------------------------------------------------------- people: the owner's Users page
@@ -337,7 +401,7 @@ export function startHttp(o: Options) {
           if (!path) return send(res, 400, JSON.stringify({ error: create ? "name or path required" : "path required" }), "application/json");
           const project = registerProjectPath(path, create);
           if (project) setRegistryArchived(project.path, null); // adding an archived folder again restores it
-          if (project && !o.projects.has(project.id)) await o.loadProject(project.path);
+          if (project && !o.projects.has(project.id)) { await o.loadProject(project.path); refreshPush(); }
           return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
@@ -346,6 +410,7 @@ export function startHttp(o: Options) {
           if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
           if (o.projects.size <= 1) return send(res, 400, JSON.stringify({ error: "That's the only active project. Add or restore another one first." }), "application/json");
           await o.unloadProject(rt.slug);
+          refreshPush();
           setRegistryArchived(rt.root, new Date().toISOString());
           for (const ws of sockets.get(rt) ?? []) ws.close(4004, "project archived");
           log.info(`archived ${rt.slug}`);
@@ -358,6 +423,7 @@ export function startHttp(o: Options) {
           if (parts[3] === "restore") {
             setRegistryArchived(p.path, null);
             await o.loadProject(p.path);
+            refreshPush();
             return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
           }
           if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can delete a project" }), "application/json");
@@ -458,10 +524,14 @@ export function startHttp(o: Options) {
   function onClient(ws: WebSocket, rt: Runtime, who: Who, origin: string, remote: boolean, watch = false) {
     const { deviceId } = who;
     // Read per command: a role change or sign-out applies to an open socket too.
-    const current = (): Who | null => (who.userId ? ((u) => (u ? { ...who, role: u.role } : null))(users.active(who.userId)) : who);
+    const current = (): Who | null => {
+      if (deviceId && !o.guard.device(deviceId, false)) return null;
+      return who.userId ? ((u) => (u ? { ...who, role: u.role } : null))(users.active(who.userId)) : who;
+    };
     // A device that entered a code today stays elevated (24 h); a bare-token connection only until it closes.
     let elevatedUntil = deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0;
     const sendEvent = (e: OfficeEvent) => {
+      if (!current()) { ws.close(4001, "session expired"); return; }
       if (watch && (e.type === "terminal.output" || e.type === "workspace.info")) return;
       if (ws.readyState === ws.OPEN) ws.send(redactor().redact(JSON.stringify(e))); // messages, notes, findings: masked too
     };
@@ -527,6 +597,8 @@ export function startHttp(o: Options) {
     sockets.set(rt, mine.add(ws));
     ws.on("close", () => (unsub(), mine.delete(ws)));
   }
+
+  server.on("close", () => { for (const stop of pushSubscriptions.values()) stop(); pushSubscriptions.clear(); });
 
   // Same handlers on each extra address; a failure there (e.g. Docker down) only disables that address.
   for (const h of o.extraHosts ?? []) {

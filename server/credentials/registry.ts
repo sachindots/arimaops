@@ -122,6 +122,16 @@ export class Accounts {
 
 let shared: Accounts | null = null;
 let redactorShared: Redactor | null = null;
+let vaultShared: Vault | null = null;
+
+/** One vault writer for accounts and machine-wide integrations. */
+export function credentialsVault(): Vault {
+  if (!vaultShared) {
+    const dir = join(homedir(), BRAND.homeDir);
+    vaultShared = new Vault(join(dir, "vault.json"), loadMasterKey({ dir }));
+  }
+  return vaultShared;
+}
 
 /** The machine's redactor: masks every stored secret. Works (as a no-op) when the vault can't be opened. */
 export function redactor(): Redactor {
@@ -142,7 +152,7 @@ export function redactor(): Redactor {
 export function accounts(): Accounts {
   if (!shared) {
     const dir = join(homedir(), BRAND.homeDir);
-    shared = new Accounts(new Vault(join(dir, "vault.json"), loadMasterKey({ dir })), join(dir, "accounts.json"));
+    shared = new Accounts(credentialsVault(), join(dir, "accounts.json"));
   }
   return shared;
 }

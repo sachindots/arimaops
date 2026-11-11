@@ -32,7 +32,7 @@ const hooked: string[] = []; // "<project>:<agent>" for each hook that reached a
 function fakeProject(slug: string, secret: string) {
   const hub = {
     slug,
-    snap: { config: { project: { id: slug, name: slug }, team: [] } },
+    snap: { config: { project: { id: slug, name: slug }, team: [] }, agents: [], environments: [] },
     cfg: (id: string) => (id === "dwight" || id === "michael" ? { id } : undefined),
     status: (id: string) => void hooked.push(`${slug}:${id}`),
     name: (id: string) => id,

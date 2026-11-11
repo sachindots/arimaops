@@ -17,7 +17,7 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
-import { closeTopPanel } from "./lib/native";
+import { closeTopPanel, useNativePush } from "./lib/native";
 
 // The office (PixiJS, most of the bundle) loads only when it's shown, so phones and tablets skip it.
 const OfficeCanvas = lazy(() => import("./office/OfficeCanvas").then((m) => ({ default: m.OfficeCanvas })));
@@ -101,6 +101,7 @@ function useDeepLink() {
       done = true;
       if (open === "actions") ui.openActions();
       else if (open === "board") ui.openBoards();
+      else if (open === "findings") ui.openFindings();
       else if (open.startsWith("agent:") && snap.config.team.some((a) => a.id === open.slice(6))) ui.openAgent(open.slice(6));
     };
     go(useOffice.getState().snap);
@@ -112,6 +113,7 @@ export function App() {
   useEffect(() => connectOffice(), []);
   useEffect(() => void checkAuth(), []);
   const auth = useAuth((s) => s.status);
+  const pushError = useNativePush(auth === "signed-in");
   useDeepLink();
   useKeyboard();
   useSetupPrompt();
@@ -128,6 +130,7 @@ export function App() {
     return (
       <>
         <ConnectionBanner />
+        {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
         {ready && (
           <>
             <CompactApp />
@@ -145,6 +148,7 @@ export function App() {
         <OfficeCanvas />
       </Suspense>
       <ConnectionBanner />
+      {pushError && <div role="status" className="fixed top-0 z-50 bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
       {ready && (
         <>
           <TopBar />

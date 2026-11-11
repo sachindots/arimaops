@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { signOut, useAuth, usersApi, type AuthRole } from "../../store/auth";
+import { changePassword, signOut, useAuth, usersApi, type AuthRole } from "../../store/auth";
 import { AuthenticatorLink } from "../auth/Authenticator";
 import { Field, SectionTitle } from "../kit";
 
@@ -24,14 +24,17 @@ export function UsersSettings() {
   const [error, setError] = useState<string | null>(null);
   const [shown, setShown] = useState<{ url: string; who: string } | null>(null);
   const [form, setForm] = useState({ name: "", role: "operator" as AuthRole, password: "" });
+  const [passwords, setPasswords] = useState({ current: "", next: "", confirm: "" });
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const load = useCallback(async () => {
+    if (role !== "owner") return;
     try {
       setPeople((await usersApi<{ users: Person[] }>("GET")).users);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [role]);
   useEffect(() => void load(), [load]);
 
   const act = async (fn: () => Promise<{ otpauth?: string } | unknown>, who?: string) => {
@@ -61,6 +64,31 @@ export function UsersSettings() {
       </p>
       {error && <p className="m-0 border-[3px] border-red px-3 py-1.5 text-[13px]">{error}</p>}
       {shown && <AuthenticatorLink url={shown.url} who={shown.who} />}
+
+      {user && (
+        <form className="flex max-w-[520px] flex-col gap-3" aria-label="Change your password" onSubmit={async (event) => {
+          event.preventDefault();
+          if (passwords.next !== passwords.confirm) return setError("The new passwords do not match.");
+          setChangingPassword(true);
+          setError(await changePassword(passwords.current, passwords.next));
+          setChangingPassword(false);
+        }}>
+          <SectionTitle>Change your password</SectionTitle>
+          <p className="m-0 text-[13px] text-muted">Use your current password to set a new one. Other devices will be signed out.</p>
+          <label className="flex flex-col gap-1 text-[14px]">Current password
+            <input className="field" type="password" autoComplete="current-password" required value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1 text-[14px]">New password
+            <input className="field" type="password" autoComplete="new-password" minLength={10} maxLength={200} required value={passwords.next} onChange={(e) => setPasswords({ ...passwords, next: e.target.value })} />
+          </label>
+          <label className="flex flex-col gap-1 text-[14px]">Confirm new password
+            <input className="field" type="password" autoComplete="new-password" minLength={10} maxLength={200} required value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} />
+          </label>
+          <button className="btn self-start border-green text-green" type="submit" disabled={changingPassword}>
+            {changingPassword ? "Changing password…" : "Change password"}
+          </button>
+        </form>
+      )}
 
       {role === "owner" && (
         <>
