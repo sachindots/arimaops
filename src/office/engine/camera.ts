@@ -76,16 +76,20 @@ export class Camera {
 
   /** `delta` is in steps (+1 = one step closer). */
   zoomBy(delta: number, anchor?: { x: number; y: number }) {
-    const z = snapZoom(this.zoom + delta * STEP);
+    this.zoomTo(this.zoom + delta * STEP, anchor);
+  }
+
+  zoomTo(zoom: number, anchor?: { x: number; y: number }) {
+    const z = snapZoom(zoom);
     if (z === this.zoom) return;
     this.flight = null;
     if (anchor) {
       // Keep the world point under the cursor fixed.
       const before = this.screenToWorld(anchor.x, anchor.y);
       this.zoom = z;
-      const after = this.screenToWorld(anchor.x, anchor.y);
-      this.x += before.x - after.x;
-      this.y += before.y - after.y;
+      const { cx, cy } = this.centre();
+      this.x = before.x - (anchor.x - cx) / z;
+      this.y = before.y - (anchor.y - cy) / z;
     } else this.zoom = z;
     this.apply();
   }

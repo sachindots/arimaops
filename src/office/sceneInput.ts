@@ -1,4 +1,4 @@
-// Pointer input for the office: drag to pan, wheel to zoom, hover + click on things.
+// Pointer input for the office: drag to pan, pinch/wheel to zoom, hover + click on things.
 
 import type { Application } from "pixi.js";
 import { useBuilding } from "../store/building";
@@ -74,6 +74,18 @@ export function attachInput(s: InputHost): () => void {
     const r = el.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
+  const pointers = new Map<number, { x: number; y: number }>();
+  let pinch: { distance: number; zoom: number; x: number; y: number } | null = null;
+  const pair = () => {
+    const [a, b] = [...pointers.values()];
+    return { distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+  const startPinch = () => {
+    pinch = { ...pair(), zoom: s.camera.zoom };
+    down = null;
+    s.hover = null;
+    ui.setHover(null);
+  };
 
   const updateHover = (e: PointerEvent) => {
     const p = local(e);
@@ -84,11 +96,23 @@ export function attachInput(s: InputHost): () => void {
   };
 
   const onDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
     const p = local(e);
-    down = { x: p.x, y: p.y, lastX: p.x, lastY: p.y, dragging: false };
+    pointers.set(e.pointerId, p);
     el.setPointerCapture(e.pointerId);
+    if (pointers.size > 1) startPinch();
+    else down = { x: p.x, y: p.y, lastX: p.x, lastY: p.y, dragging: false };
   };
   const onMove = (e: PointerEvent) => {
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, local(e));
+    if (pinch && pointers.size > 1) {
+      const next = pair();
+      s.camera.panBy(next.x - pinch.x, next.y - pinch.y);
+      s.camera.zoomTo(pinch.zoom * next.distance / pinch.distance, next);
+      pinch.x = next.x;
+      pinch.y = next.y;
+      return;
+    }
     if (down) {
       const p = local(e);
       if (!down.dragging && Math.hypot(p.x - down.x, p.y - down.y) > 4) down.dragging = true;
@@ -104,9 +128,20 @@ export function attachInput(s: InputHost): () => void {
     updateHover(e);
   };
   const onUp = (e: PointerEvent) => {
+    if (!pointers.delete(e.pointerId)) return;
     const wasDrag = down?.dragging;
     down = null;
     if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    if (pinch) {
+      if (pointers.size > 1) startPinch();
+      else {
+        pinch = null;
+        const remaining = pointers.values().next().value;
+        if (remaining) down = { ...remaining, lastX: remaining.x, lastY: remaining.y, dragging: true };
+      }
+      return;
+    }
+    if (e.type !== "pointerup") return onLeave();
     if (wasDrag) return updateHover(e);
     const p = local(e);
     const target = s.hitTest(p.x, p.y);
@@ -129,14 +164,21 @@ export function attachInput(s: InputHost): () => void {
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointermove", onMove);
   el.addEventListener("pointerup", onUp);
+  el.addEventListener("pointercancel", onUp);
+  el.addEventListener("lostpointercapture", onUp);
   el.addEventListener("pointerleave", onLeave);
   el.addEventListener("wheel", onWheel, { passive: false });
   el.style.cursor = "grab";
+  const previousTouchAction = el.style.touchAction;
+  el.style.touchAction = "none";
   return () => {
     el.removeEventListener("pointerdown", onDown);
     el.removeEventListener("pointermove", onMove);
     el.removeEventListener("pointerup", onUp);
+    el.removeEventListener("pointercancel", onUp);
+    el.removeEventListener("lostpointercapture", onUp);
     el.removeEventListener("pointerleave", onLeave);
     el.removeEventListener("wheel", onWheel);
+    el.style.touchAction = previousTouchAction;
   };
 }

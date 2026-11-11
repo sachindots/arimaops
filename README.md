@@ -84,6 +84,8 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 Open **ArimaOps** and enter your HQ's HTTPS URL. Connect Tailscale first if the server needs it. HTTP works only for localhost development. Saved servers retain separate cookies. In the compact layout, **More → Switch server** returns to the connection screen. Back closes setup, settings, or a drawer before using web history. Links to other origins open in another app.
 
+In the office, drag with one finger to pan and pinch with two fingers to zoom. Rotating the tablet keeps your open page and unsaved form in place. Landscape uses the office beside the current page when there is enough room.
+
 Deploy the web UI from this checkout to enable the Back handler and **Switch server** on your HQ. Notification links use `arimaops://open?path=%2F%3Fopen%3Dboard`; paths stay on a saved server. The APK above is a debug build for local installation.
 
 ### Enable Android alerts
