@@ -420,6 +420,14 @@ export function startHttp(o: Options) {
           return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
+        // The command center's tile previews: each running agent's last lines, secrets masked. Read-only.
+        if (parts.length === 4 && parts[3] === "screens" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const lines = Math.max(5, Math.min(60, Number(url.searchParams.get("lines")) || 30));
+          const screens = await rt.screens(lines);
+          return send(res, 200, redactor().redact(JSON.stringify({ screens, at: new Date().toISOString() })), "application/json");
+        }
         if (parts.length === 4 && parts[3] === "archive" && req.method === "POST") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));
           if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");

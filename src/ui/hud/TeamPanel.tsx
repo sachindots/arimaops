@@ -92,14 +92,19 @@ export function TeamPanel() {
 
   return (
     <section aria-label="Team" className="hq-team fixed bottom-[250px] left-4 top-[74px] z-10 [@media(max-height:760px)]:bottom-[160px] flex w-[288px] flex-col gap-2">
-      <div className="flex items-center justify-between px-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink [text-shadow:0_2px_0_#040508]">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 px-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink [text-shadow:0_2px_0_#040508]">
         <span>
           Org · {team.length} ops · {pods.length} {pods.length === 1 ? "pod" : "pods"}
           {needs > 0 && <span className="ml-2 text-red">{needs} need you</span>}
         </span>
-        <button className="btn px-2 text-[11px] normal-case tracking-normal text-ink [text-shadow:none]" onClick={() => ui.openSettings("team")}>
-          + Pod / Agent
-        </button>
+        <span className="flex w-full gap-1">
+          <button className="btn min-h-[34px] flex-1 px-2 text-[12px] normal-case tracking-normal text-ink [text-shadow:none]" onClick={() => ui.setView("command")} title="Every agent of every project, tiled (o)">
+            ▦ Command center
+          </button>
+          <button className="btn min-h-[34px] px-2 text-[12px] normal-case tracking-normal text-ink [text-shadow:none]" onClick={() => ui.openSettings("team")}>
+            + Pod / Agent
+          </button>
+        </span>
       </div>
       <div className="scroll-thin flex min-h-0 flex-col gap-2.5 overflow-y-auto pb-2 pl-4 -ml-4 pr-1">
         {pods.map(({ meta, members }) => {

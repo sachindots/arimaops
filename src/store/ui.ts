@@ -42,6 +42,27 @@ interface UiState {
   /** Tablet/phone layout: chat, board and inbox instead of the office (narrow screens, or chosen). */
   compact: boolean;
   layoutChoice: LayoutChoice;
+  /** Desktop: the pixel office, or the command center (every agent of every project, tiled). */
+  view: View;
+  /** A pop-out window showing one thing full-window: an agent (`?solo=agent&agent=<id>`) or the command center. */
+  solo: Solo | null;
+}
+
+export type View = "office" | "command";
+export type Solo = { kind: "agent"; agentId: string } | { kind: "command" };
+const VIEW_PREF = "view";
+function savedView(): View {
+  try {
+    return readPref(VIEW_PREF) === "command" ? "command" : "office";
+  } catch {
+    return "office";
+  }
+}
+function soloFromUrl(): Solo | null {
+  const q = new URL(location.href).searchParams;
+  if (q.get("solo") === "agent" && q.get("agent")) return { kind: "agent", agentId: q.get("agent")! };
+  if (q.get("solo") === "command") return { kind: "command" };
+  return null;
 }
 
 /** auto = compact below 1280 px (the office needs that width). */
@@ -89,6 +110,8 @@ export const useUi = create<UiState>(() => ({
   drawerMaximized: false,
   compact: isCompact(savedLayout()),
   layoutChoice: savedLayout(),
+  view: soloFromUrl()?.kind === "command" ? "command" : savedView(),
+  solo: soloFromUrl(),
 }));
 
 window.matchMedia(NARROW).addEventListener("change", () => useUi.setState((s) => ({ compact: isCompact(s.layoutChoice) })));
@@ -159,6 +182,21 @@ export const ui = {
   },
   toggleDrawerMaximized() {
     useUi.setState((s) => ({ drawerMaximized: !s.drawerMaximized }));
+  },
+  setView(view: View) {
+    try {
+      writePref(VIEW_PREF, view);
+    } catch {
+      /* private window */
+    }
+    useUi.setState({ view });
+  },
+  /** Opens an agent in its own window (drag it to another monitor). */
+  popOutAgent(project: string, agentId: string) {
+    window.open(`/?project=${encodeURIComponent(project)}&solo=agent&agent=${encodeURIComponent(agentId)}`, `arima-${project}-${agentId}`, "popup=yes,width=1040,height=780");
+  },
+  popOutCommand(project: string) {
+    window.open(`/?project=${encodeURIComponent(project)}&solo=command`, "arima-command", "popup=yes,width=1600,height=900");
   },
   setLayout(choice: LayoutChoice) {
     try {

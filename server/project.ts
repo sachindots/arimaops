@@ -46,6 +46,8 @@ export interface Runtime {
   isNew: boolean;
   paused: boolean;
   recheckSetup(): Promise<void>;
+  /** Plain-text screen previews of running agents (last `lines` lines each). */
+  screens(lines: number): Promise<Record<string, string>>;
   pause(): void;
   resume(): void;
   shutdown(): void;
@@ -236,6 +238,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       rt.paused = false;
       setLiveProject(repo.root, rt);
     },
+    screens: (lines) => sessions.screens(lines),
     shutdown() {
       rt.pause();
       inbox.stop();

@@ -403,6 +403,16 @@ export class Sessions {
     return this.backend.enter(this.name(agentId));
   }
 
+  /** The last `lines` of each running agent's screen, as plain text (for the command center's previews). */
+  async screens(lines: number): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    for (const a of this.hub.snap.config.team) {
+      if (this.hub.status(a.id)?.session.state !== "running") continue;
+      out[a.id] = (await this.backend.screenText(this.name(a.id), lines).catch(() => "")) ?? "";
+    }
+    return out;
+  }
+
   /** True when nothing on the agent's screen is waiting for an answer (no dialog, no trust prompt, not mid-turn). */
   async promptReady(agentId: string): Promise<boolean> {
     const screen = await this.backend.screenText(this.name(agentId), 14);

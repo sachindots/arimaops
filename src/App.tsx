@@ -17,6 +17,8 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
+import { CommandView } from "./ui/command/CommandView";
+import { AgentDrawer } from "./ui/drawers/AgentDrawer";
 import { closeTopPanel, useNativePush } from "./lib/native";
 
 // The office (PixiJS, most of the bundle) loads only when it's shown, so phones and tablets skip it.
@@ -40,6 +42,7 @@ function useKeyboard() {
       if (settings || setupOpen) return;
       let handled = true;
       if (e.key === "d" || e.key === "D") ui.toggleDebug();
+      else if ((e.key === "o" || e.key === "O") && !useUi.getState().compact) ui.setView("command");
       else if (e.key === "+" || e.key === "=") ui.zoom(1);
       else if (e.key === "-") ui.zoom(-1);
       else if (/^[1-9]$/.test(e.key)) {
@@ -121,10 +124,40 @@ export function App() {
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
   const compact = useUi((s) => s.compact);
+  const view = useUi((s) => s.view);
+  const solo = useUi((s) => s.solo);
+  const agentName = useOffice((s) => (solo?.kind === "agent" ? s.snap?.config.team.find((a) => a.id === solo.agentId)?.name : undefined));
+  useEffect(() => {
+    if (solo) document.title = solo.kind === "agent" ? `${agentName ?? "Agent"} · ArimaOps` : "Command · ArimaOps";
+  }, [solo, agentName]);
   // The office layout needs about 1180 px (a landscape tablet); narrower, when chosen anyway, the page scrolls instead of squeezing.
-  useEffect(() => void (document.body.style.minWidth = compact ? "" : "1180px"), [compact]);
+  useEffect(() => void (document.body.style.minWidth = compact || solo ? "" : "1180px"), [compact, solo]);
   // A real HQ that doesn't know this device: sign in first (not the demo data).
   if (auth === "signed-out") return <SignIn />;
+
+  // A pop-out window (another monitor): one agent, or the command center, filling the window.
+  if (solo)
+    return (
+      <>
+        <ConnectionBanner />
+        {ready && (
+          <>
+            {solo.kind === "agent" ? (
+              <div className="panel fixed inset-0 flex flex-col">
+                <AgentDrawer id={solo.agentId} />
+              </div>
+            ) : (
+              <>
+                <CommandView />
+                <DrawerHost />
+              </>
+            )}
+            <OwnerPrompt />
+            <Tooltip />
+          </>
+        )}
+      </>
+    );
 
   if (compact)
     return (
@@ -144,16 +177,24 @@ export function App() {
 
   return (
     <>
-      <Suspense fallback={null}>
-        <OfficeCanvas />
-      </Suspense>
+      {view === "office" && (
+        <Suspense fallback={null}>
+          <OfficeCanvas />
+        </Suspense>
+      )}
       <ConnectionBanner />
       {pushError && <div role="status" className="fixed top-0 z-50 bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
       {ready && (
         <>
           <TopBar />
-          <TeamPanel />
-          <ActivityFeed />
+          {view === "command" ? (
+            <CommandView />
+          ) : (
+            <>
+              <TeamPanel />
+              <ActivityFeed />
+            </>
+          )}
           <DrawerHost />
           <DebugPanel />
           <SettingsModal />

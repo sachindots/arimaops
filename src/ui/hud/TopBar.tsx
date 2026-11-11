@@ -11,6 +11,7 @@ export function Logo({ size = 30 }: { size?: number }) {
 }
 
 export function TopBar() {
+  const view = useUi((st) => st.view);
   const snap = useOffice((s) => s.snap);
   const speed = useOffice((s) => s.speed);
   const hasDev = useOffice((s) => s.presets !== null);
@@ -64,7 +65,7 @@ export function TopBar() {
         </div>
       )}
 
-      <div className="flex gap-1.5">
+      <div className={`flex gap-1.5 ${view === "command" ? "hidden" : ""}`}>
         <button className="btn w-8 px-0 text-[18px] leading-none" aria-label="Zoom out" onClick={() => ui.zoom(-1)}>
           −
         </button>

@@ -14,6 +14,7 @@ export function DrawerHeader({ children }: { children: ReactNode }) {
   // Compact layout: drawers are full-screen pages, so no resize/maximize; close goes back.
   const compact = useUi((s) => s.compact);
   const opened = useUi((s) => s.drawer !== null); // a bottom-bar tab (board, inbox) has nothing to go back to
+  const solo = useUi((s) => s.solo !== null); // a pop-out window: the panel is the whole window
   return (
     <div className="flex flex-wrap items-center gap-2.5 border-b-[3px] border-ink px-3 py-2">
       {compact && opened && (
@@ -22,8 +23,8 @@ export function DrawerHeader({ children }: { children: ReactNode }) {
         </button>
       )}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{children}</div>
-      {!compact && <MaximizeButton />}
-      {!compact && (
+      {!compact && !solo && <MaximizeButton />}
+      {!compact && !solo && (
         <button className="btn px-2.5" aria-label="Close" onClick={() => ui.closeDrawer()}>
           ✕
         </button>
