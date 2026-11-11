@@ -1,5 +1,8 @@
 // Machine-wide account limits and the agent cap. Run: npx tsx scripts/accounts-test.ts
-import { accountEnv, cleanAccount, markLimited, maxAgents, onAccountLimit, runningAgents, shareLimit } from "../server/accounts";
+import { lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { accountEnv, cleanAccount, markLimited, maxAgents, mirrorHome, onAccountLimit, runningAgents, shareLimit } from "../server/accounts";
 import { allocate, BLOCK, PORT_BASE } from "../server/ports";
 import { shellCommand } from "../server/backends/tmux";
 import { authVolume, loginCommand } from "../server/containers";
@@ -47,7 +50,20 @@ check("running agents counted across projects (stopped excluded)", runningAgents
 // Accounts: names, folders, container volumes.
 check("account names are cleaned", cleanAccount("  Work Account! ") === "work-account" && cleanAccount("///") === "");
 check("default account: the CLI's usual folder and volume", JSON.stringify(accountEnv("claude", "default", "/h")) === "{}" && authVolume("claude") === "hq-auth-claude");
-check("another account: its own folder (Claude, Codex) and volume", accountEnv("claude", "work", "/h").CLAUDE_CONFIG_DIR?.endsWith("accounts/claude-work") === true && accountEnv("codex", "work", "/h").CODEX_HOME?.endsWith("accounts/codex-work") === true && JSON.stringify(accountEnv("gemini", "work", "/h")) === "{}" && authVolume("codex", "work") === "hq-auth-codex-work" && loginCommand("codex", 7420, "work").includes("hq-auth-codex-work:"));
+check("another account: its own folder (Claude, Codex) and volume", accountEnv("claude", "work", "/h").CLAUDE_CONFIG_DIR?.endsWith("accounts/claude-work") === true && accountEnv("codex", "work", "/h").CODEX_HOME?.endsWith("accounts/codex-work") === true && authVolume("codex", "work") === "hq-auth-codex-work" && loginCommand("codex", 7420, "work").includes("hq-auth-codex-work:"));
+
+const g = accountEnv("agy", "g2", "/h");
+check("another Google account: its own home and no shared keyring", g.HOME?.endsWith("accounts/agy-g2") === true && g.DBUS_SESSION_BUS_ADDRESS?.startsWith(`unix:path=${g.HOME}/`) === true);
+const real = mkdtempSync(join(tmpdir(), "arima-home-"));
+for (const d of [".ssh", ".gemini", ".config/gh", ".config/antigravity", ".local/bin", ".arima/accounts"]) mkdirSync(join(real, d), { recursive: true });
+writeFileSync(join(real, ".gitconfig"), "");
+const acct = join(real, ".arima/accounts/agy-g2");
+mirrorHome(acct, real);
+mirrorHome(acct, real);
+const link = (p: string) => { try { return readlinkSync(join(acct, p)); } catch { return null; } };
+check("account home: git, ssh, gh and tools link to the real home", link(".gitconfig") === join(real, ".gitconfig") && link(".ssh") === join(real, ".ssh") && link(".config/gh") === join(real, ".config/gh") && link(".local/bin") === join(real, ".local/bin"));
+check("account home: sign-in folders and HQ's own folder are not shared", link(".gemini") === null && link(".config/antigravity") === null && link(".arima") === null && lstatSync(join(acct, ".config")).isDirectory() && !lstatSync(join(acct, ".config")).isSymbolicLink());
+rmSync(real, { recursive: true, force: true });
 
 // Port blocks: unique, stable, reused after release.
 let taken: Record<string, number> = {};

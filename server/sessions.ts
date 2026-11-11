@@ -13,7 +13,7 @@ import { adapters, containerArgs, localBinary } from "./adapters";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
-import { accountEnv, accountHome, accountOf, maxAgents, runningAgents } from "./accounts";
+import { accountEnv, accountHome, accountOf, maxAgents, mirrorHome, ownsHome, runningAgents } from "./accounts";
 import { accounts } from "./credentials/registry";
 import { prepareSecrets, removeSecrets } from "./credentials/deliver";
 import type { ProviderEnv } from "../src/data/providers";
@@ -168,7 +168,10 @@ export class Sessions {
         // Another account: its own config folder (sign in once in this agent's terminal; HQ shows the login prompt as "needs you").
         const acctEnv = accountEnv(agent.cli, account);
         const acctDir = accountHome(agent.cli, account);
-        if (agent.mode === "local" && acctDir) mkdirSync(acctDir, { recursive: true, mode: 0o700 });
+        if (agent.mode === "local" && acctDir) {
+          if (ownsHome(agent.cli)) mirrorHome(acctDir);
+          else mkdirSync(acctDir, { recursive: true, mode: 0o700 });
+        }
         removeSecrets(hub.slug, id);
         const secrets = keyed && agent.mode !== "sandbox" ? prepareSecrets(hub.slug, id, keyed, agent.mode === "container" ? "container" : "local") : null;
         let spec: LaunchSpec = {

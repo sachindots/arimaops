@@ -3,6 +3,7 @@
 // machine's memory. A usage limit hit by one agent applies to every agent on
 // that CLI; the number of agents running at once is capped by RAM.
 
+import { lstatSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
@@ -25,14 +26,44 @@ export const cleanAccount = (s: string) => s.trim().toLowerCase().replace(/[^a-z
 /** Where a local CLI keeps another account's sign-in and logs (the default account uses the CLI's usual folder). */
 export function accountHome(cli: AgentCli, account: string, home = homedir()): string | null {
   if (account === "default") return null;
-  return cli === "claude" || cli === "codex" ? join(home, BRAND.homeDir, "accounts", `${cli}-${account}`) : null;
+  return join(home, BRAND.homeDir, "accounts", `${cli}-${account}`);
 }
 
-/** Variables that point a local CLI at another account's folder. Other CLIs share one sign-in per machine. */
+/** Variables that point a local CLI at another account's folder. */
 export function accountEnv(cli: AgentCli, account: string, home = homedir()): Record<string, string> {
   const dir = accountHome(cli, account, home);
   if (!dir) return {};
-  return cli === "claude" ? { CLAUDE_CONFIG_DIR: dir } : { CODEX_HOME: dir };
+  if (cli === "claude") return { CLAUDE_CONFIG_DIR: dir };
+  if (cli === "codex") return { CODEX_HOME: dir };
+  // Antigravity, Gemini, Copilot and OpenCode have no config-folder setting: they get a home of their own (see mirrorHome),
+  // and a dead keyring address, because a desktop keyring would hand every account the same saved sign-in.
+  return { HOME: dir, DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(dir, ".no-keyring")}` };
+}
+
+/** True when the CLI's account folder is a whole home (mirrorHome) rather than a config folder. */
+export const ownsHome = (cli: AgentCli) => cli !== "claude" && cli !== "codex";
+
+/** Where these CLIs keep their sign-ins; an account home gets its own copy, everything else links to the real home. */
+const OWN_PER_ACCOUNT = [".gemini", ".copilot", ".cache", ".config/antigravity", ".config/github-copilot", ".local/share/opencode", ".local/state"];
+
+/** Fills an account home with links to the real home (git, ssh, gh, tools), keeping the sign-in folders its own. Safe to rerun. */
+export function mirrorHome(dir: string, home = homedir(), rel = "") {
+  mkdirSync(join(dir, rel), { recursive: true, mode: 0o700 });
+  for (const name of readdirSync(join(home, rel))) {
+    const path = rel ? `${rel}/${name}` : name;
+    if (path === BRAND.homeDir || OWN_PER_ACCOUNT.includes(path)) continue;
+    if (OWN_PER_ACCOUNT.some((p) => p.startsWith(`${path}/`))) mirrorHome(dir, home, path);
+    else if (!lexists(join(dir, path))) symlinkSync(join(home, path), join(dir, path));
+  }
+}
+
+function lexists(p: string): boolean {
+  try {
+    lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 type Listener = (cli: AgentCli, until: Date, from: LimitFrom) => void;
 
