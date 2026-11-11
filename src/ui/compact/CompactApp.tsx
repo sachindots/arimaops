@@ -256,6 +256,13 @@ function AgentList() {
 }
 
 function More() {
+  const [native, setNative] = useState(() => !!window.ArimaNative);
+  useEffect(() => {
+    const ready = () => setNative(!!window.ArimaNative);
+    window.addEventListener("arima-native-ready", ready);
+    ready();
+    return () => window.removeEventListener("arima-native-ready", ready);
+  }, []);
   const choice = useUi((s) => s.layoutChoice);
   const auth = useAuth((s) => s.status);
   const security = useOffice((s) => s.snap?.config.project.type === "security");
@@ -284,6 +291,7 @@ function More() {
         {item("Setup checklist", "What's missing on the server", () => ui.openSetup())}
         {item("Settings", "Team, workflow, sandbox, project", () => ui.openSettings("team"), !isViewer)}
         {item("Sign out", "Sign this device out of HQ", () => void signOut(), auth === "signed-in")}
+        {item("Switch server", "Connect this app to another HQ", () => window.ArimaNative?.switchServer(), native)}
       </ul>
       <div className="px-4 py-3">
         <div className="mb-1.5 text-[13px] text-muted">Layout on this device</div>

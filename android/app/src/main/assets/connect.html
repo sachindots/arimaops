@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action arima-connect:">
+<title>Connect to your HQ · ArimaOps</title>
+<style>
+  * { box-sizing: border-box } body { margin: 0; min-height: 100vh; background: #10151c; color: #f3ead8; font: 17px system-ui; display: grid; place-items: center; padding: 24px }
+  main { width: min(100%, 440px) } h1 { font-size: 30px } p { color: #aeb7c3; line-height: 1.5 }
+  label { display: block; margin-bottom: 8px } input, button { width: 100%; padding: 15px; border-radius: 10px; font: inherit }
+  input { background: #1b2530; border: 1px solid #58616c; color: inherit } button { margin-top: 12px; background: #e6b75a; color: #10151c; border: 0; cursor: pointer }
+  .saved { background: #1b2530; color: #f3ead8; overflow-wrap: anywhere; text-align: left } #error { color: #ffb5ad } a { color: #e6b75a }
+</style></head><body><main>
+<h1>Connect to your HQ</h1><p>Your agents, wherever you are. Enter your ArimaOps server URL. Connect Tailscale first if your HQ uses it.</p>
+<form><label for="server">Server URL</label><input id="server" type="url" placeholder="https://your-hq.example" required autocomplete="url" autocapitalize="none" spellcheck="false"><button>Connect</button></form>
+<p id="error" role="alert"></p><div id="saved" aria-label="Saved servers"></div>
+<p>Use HTTPS. HTTP is available only for localhost development. Sign in on your HQ after connecting.</p>
+<script>
+  const servers = {{SERVERS}};
+  function connect(url) { location.href = 'arima-connect://connect?url=' + encodeURIComponent(url.trim()); }
+  document.querySelector('form').onsubmit = event => { event.preventDefault(); connect(document.querySelector('input').value); };
+  for (const url of servers) {
+    const button = document.createElement('button'); button.className = 'saved'; button.textContent = url;
+    button.onclick = () => connect(url); document.querySelector('#saved').append(button);
+  }
+</script></main></body></html>

@@ -17,12 +17,14 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
+import { closeTopPanel } from "./lib/native";
 
 // The office (PixiJS, most of the bundle) loads only when it's shown, so phones and tablets skip it.
 const OfficeCanvas = lazy(() => import("./office/OfficeCanvas").then((m) => ({ default: m.OfficeCanvas })));
 
 function useKeyboard() {
   useEffect(() => {
+    window.__arimaBack = closeTopPanel;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       // Never steal keys from inputs or the terminal.
@@ -30,11 +32,9 @@ function useKeyboard() {
         if (e.key === "Escape" && el.closest(".xterm")) el.blur();
         return;
       }
-      const { settings, drawer, setupOpen } = useUi.getState();
+      const { settings, setupOpen } = useUi.getState();
       if (e.key === "Escape") {
-        if (setupOpen) ui.closeSetup();
-        else if (settings) ui.closeSettings();
-        else if (drawer) ui.closeDrawer();
+        closeTopPanel();
         return;
       }
       if (settings || setupOpen) return;
@@ -51,7 +51,10 @@ function useKeyboard() {
       if (handled) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      delete window.__arimaBack;
+    };
   }, []);
 }
 

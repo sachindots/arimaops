@@ -72,6 +72,20 @@ HQ checks for each one and shows the exact command to install it.
 
 Run HQ with `--remote` and open the link it prints. Below 1280 px wide, HQ switches to the phone layout: Chat, Board, Office, Inbox, Agents and More. On a landscape tablet (1180 px or wider) you can switch to the full office under **More → Layout on this device**. Every control is sized for touch.
 
+### Build the Android app
+
+The Java app in `android/` runs on Android 12 or later. Set `JAVA_HOME` to a full JDK 21 installation, add its `bin` directory to `PATH`, and set `ANDROID_HOME` to your Android SDK with platform 36 installed. From the repo root, run:
+
+```bash
+npx tsx scripts/android-test.ts
+android/gradlew -p android assembleDebug lintDebug
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Open **ArimaOps** and enter your HQ's HTTPS URL. Connect Tailscale first if the server needs it. HTTP works only for localhost development. Saved servers retain separate cookies. In the compact layout, **More → Switch server** returns to the connection screen. Back closes setup, settings, or a drawer before using web history. Links to other origins open in another app.
+
+Deploy the web UI from this checkout to enable the Back handler and **Switch server** on your HQ. Notification links use `arimaops://open?path=%2F%3Fopen%3Dboard`; the path stays on the selected server. Firebase push is not connected yet. The APK above is a debug build for local installation.
+
 ## Your data
 
 | Where | What |
