@@ -308,7 +308,7 @@ function More() {
             </button>
           ))}
         </div>
-        <p className="mt-1.5 text-[12px] text-muted">Auto uses this layout below 1280 px wide and the full office above. Here the office is the Office tab, or beside the page on a tablet.</p>
+        <p className="mt-1.5 text-[12px] text-muted">Auto uses this layout below 1280 px wide and the full office above. Office keeps the full office down to 1180 px; narrower screens, like a tablet held upright, use this layout. Here the office is the Office tab, or beside the page on a tablet.</p>
       </div>
     </div>
   );

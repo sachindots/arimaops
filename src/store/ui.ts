@@ -69,6 +69,8 @@ function soloFromUrl(): Solo | null {
 export type LayoutChoice = "auto" | "compact" | "office";
 const LAYOUT_PREF = "layout";
 const NARROW = "(max-width: 1279px)";
+/** Narrower than the office's 1180 px: even when chosen it would be stretched and cut off, so this layout is used. */
+const TOO_NARROW = "(max-width: 1179px)";
 
 function savedLayout(): LayoutChoice {
   try {
@@ -78,7 +80,7 @@ function savedLayout(): LayoutChoice {
     return "auto";
   }
 }
-const isCompact = (choice: LayoutChoice) => (choice === "auto" ? window.matchMedia(NARROW).matches : choice === "compact");
+const isCompact = (choice: LayoutChoice) => choice === "compact" || window.matchMedia(choice === "auto" ? NARROW : TOO_NARROW).matches;
 
 const WIDTH_PREF = "drawerWidth";
 export const DRAWER_MIN = 420;
@@ -114,7 +116,7 @@ export const useUi = create<UiState>(() => ({
   solo: soloFromUrl(),
 }));
 
-window.matchMedia(NARROW).addEventListener("change", () => useUi.setState((s) => ({ compact: isCompact(s.layoutChoice) })));
+for (const q of [NARROW, TOO_NARROW]) window.matchMedia(q).addEventListener("change", () => useUi.setState((s) => ({ compact: isCompact(s.layoutChoice) })));
 
 let nonce = 0;
 
