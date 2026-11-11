@@ -135,7 +135,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const agent = hub.cfg(str(id));
       if (!agent) return;
       const p = (patch ?? {}) as AgentPatch;
-      const before = `${agent.cli}/${agent.mode}`;
+      const before = `${agent.cli}/${agent.mode}/${agent.account ?? ""}`;
       const oldName = agent.name;
       const oldRole = agent.role;
       const hadDefaultRoleMd = agent.roleMd.trim() === defaultRoleMdFor(oldName, oldRole, agent.isLead).trim();
@@ -166,8 +166,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       if (p.workspacePath !== undefined) agent.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
       hub.configChanged();
-      // Non-Claude CLIs add their own setup checks.
-      if (`${agent.cli}/${agent.mode}` !== before) void sessions.recheckSetup();
+      // Non-Claude CLIs and named container accounts add their own setup checks.
+      if (`${agent.cli}/${agent.mode}/${agent.account ?? ""}` !== before) void sessions.recheckSetup();
     },
 
     inspectWorkspace: async (id) => {
