@@ -115,9 +115,7 @@ const codex: CliAdapter = {
     excludeFromGit(dir, [CODEX_CONFIG, HOOK_SCRIPT]);
   },
   launch(agent) {
-    const raw = cleanModel(agent.model);
-    // Older configs saved "gpt-5.4" / "gpt-5.3-codex" / "o3", which Codex v0.167+ rejects on ChatGPT OAuth accounts.
-    const model = raw && /^(gpt-5\.4|gpt-5\.3-codex|o3)$/i.test(raw) ? "gpt-6.1-sol" : raw;
+    const model = cleanModel(agent.model);
     // On the command line: the folder's config.toml is read only after the trust prompt, and an update menu
     // shown before it would stall an unattended agent.
     const args = [

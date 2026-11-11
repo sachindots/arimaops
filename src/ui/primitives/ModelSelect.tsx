@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CLI_MODELS, type AgentCli } from "../../data/types";
+import { useOffice } from "../../store/office";
 
 const CUSTOM_SENTINEL = "__custom__";
 
@@ -10,6 +11,7 @@ export function ModelSelect({
   className = "input",
   ariaLabel = "Model",
   compact = false,
+  account,
 }: {
   cli: AgentCli;
   value: string;
@@ -17,8 +19,24 @@ export function ModelSelect({
   className?: string;
   ariaLabel?: string;
   compact?: boolean;
+  account?: string;
 }) {
-  const presets = CLI_MODELS[cli] ?? [];
+  const apiAccount = useOffice((s) => s.snap?.accounts?.list.find((a) => a.id === account));
+  const live = useOffice((s) => s.live);
+  const [catalog, setCatalog] = useState<string[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  useEffect(() => {
+    setCatalog([]); setCatalogError("");
+    if (!apiAccount || !live) return;
+    const controller = new AbortController();
+    void fetch(`/api/models/account?account=${encodeURIComponent(apiAccount.id)}&cli=${cli}`, { signal: controller.signal }).then(async (r) => {
+      const data = await r.json() as { models?: string[]; error?: string };
+      if (!r.ok || !data.models) throw new Error(data.error ?? "Catalog unavailable");
+      setCatalog(data.models);
+    }).catch((e: unknown) => { if (!controller.signal.aborted) setCatalogError(e instanceof Error ? e.message : "Catalog unavailable"); });
+    return () => controller.abort();
+  }, [apiAccount?.id, apiAccount?.provider, apiAccount?.secret?.updatedAt, cli, live]);
+  const presets = apiAccount ? catalog : CLI_MODELS[cli] ?? [];
   const isCustomValue = Boolean(value && !presets.includes(value));
   const [customMode, setCustomMode] = useState(isCustomValue);
 
@@ -31,6 +49,7 @@ export function ModelSelect({
           onChange={(e) => onChange(e.target.value)}
           placeholder={`Custom ${cli} model…`}
           aria-label={ariaLabel}
+          title={catalogError || (apiAccount ? "Use a model ID from the selected API account's catalog." : "Availability is checked by the signed-in CLI.")}
         />
         <button
           type="button"
@@ -47,7 +66,7 @@ export function ModelSelect({
     );
   }
 
-  return (
+  return (<div>
     <select
       className={`${className} font-mono ${compact ? "py-1 text-[12px]" : ""}`}
       value={isCustomValue ? CUSTOM_SENTINEL : value}
@@ -69,5 +88,6 @@ export function ModelSelect({
       ))}
       <option value={CUSTOM_SENTINEL}>Custom model ID…</option>
     </select>
-  );
+    {catalogError && <p role="status" className="text-[11px] text-red">{catalogError}</p>}
+  </div>);
 }

@@ -2,6 +2,7 @@ import type { DeployTool, ReviewTool, WorkflowMode } from "../../data/types";
 import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
+import { useEffect, useState } from "react";
 
 const REVIEW_HINT: Record<ReviewTool, string> = {
   coderabbit: "Reads CodeRabbit's check and comments on each PR.",
@@ -14,6 +15,21 @@ const REVIEW_HINT: Record<ReviewTool, string> = {
 export function WorkflowSettings() {
   const wf = useOffice((s) => s.snap?.config.workflow);
   const live = useOffice((s) => s.live);
+  const accounts = useOffice((s) => s.snap?.accounts?.list);
+  const [models, setModels] = useState<{ id: string; name: string }[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  const [helperAccount, setHelperAccount] = useState(wf?.lean?.helper?.account ?? "");
+  const [helperModel, setHelperModel] = useState(wf?.lean?.helper?.model ?? "");
+  useEffect(() => {
+    if (!live) return;
+    const controller = new AbortController();
+    void fetch("/api/models/free", { signal: controller.signal }).then(async (r) => {
+      if (!r.ok) throw new Error("Free-model catalog unavailable. No paid fallback.");
+      const data = await r.json() as { models: { id: string; name: string }[] };
+      setModels(data.models);
+    }).catch((e: unknown) => { if (!controller.signal.aborted) setCatalogError(e instanceof Error ? e.message : "Catalog unavailable."); });
+    return () => controller.abort();
+  }, [live]);
   if (!wf) return null;
   const mode: WorkflowMode = wf.mode ?? "github-pr";
   const isDeliverables = mode === "deliverables";
@@ -139,21 +155,6 @@ export function WorkflowSettings() {
             <p className="mt-2 text-[12px] text-muted">The lead always sets the merge order and handles conflicts between PRs.</p>
           </section>
 
-          <section className="border-[3px] border-ink bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <SectionTitle>Token saving</SectionTitle>
-              <Toggle
-                checked={wf.lean?.clearBetweenTasks !== false}
-                onChange={(v) => officeActions.updateWorkflow({ lean: { clearBetweenTasks: v } })}
-                label={wf.lean?.clearBetweenTasks !== false ? "On" : "Off"}
-              />
-            </div>
-            <p className="m-0 text-[13px] text-muted">
-              When a worker finishes a task, its next task starts in a fresh conversation instead of rereading everything before it. The task brief brings
-              back what matters: the handoff notes it builds on and the repo facts in <code>.arima/facts.md</code>. The lead keeps its conversation. HQ also asks
-              Claude Haiku (your Claude plan) whether an agent that keeps hitting the same error is stuck, and nudges it once.
-            </p>
-          </section>
 
           {live ? (
             <section className="border-[3px] border-dashed border-ink bg-cream-2 p-3">
@@ -205,6 +206,39 @@ export function WorkflowSettings() {
           )}
         </>
       )}
+          <section className="border-[3px] border-ink bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <SectionTitle>Token saving</SectionTitle>
+              <Toggle
+                checked={wf.lean?.clearBetweenTasks !== false}
+                onChange={(v) => officeActions.updateWorkflow({ lean: { clearBetweenTasks: v } })}
+                label={wf.lean?.clearBetweenTasks !== false ? "On" : "Off"}
+              />
+            </div>
+            <p className="m-0 text-[13px] text-muted">
+              When a worker finishes a task, its next task starts in a fresh conversation instead of rereading everything before it. The task brief brings
+              back what matters: short handoff notes and bounded repo facts in <code>.arima/facts.md</code>. The lead keeps its conversation.
+              Repeated-error detection uses rules by default, with no background Claude calls.
+            </p>
+            <div className="mt-3 grid gap-2">
+              <Field label="Optional free helper" hint="For loop checks and repo facts only. No tools, no paid fallback, at most 20 attempts per HQ process per day. Add a key once in Settings → Accounts → OpenRouter.">
+                <select className="field" aria-label="Free helper account" value={helperAccount} onChange={(e) => setHelperAccount(e.target.value)}>
+                  <option value="">Disabled</option>
+                  {(accounts ?? []).filter((a) => a.provider === "openrouter").map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                </select>
+              </Field>
+              {helperAccount && <select className="field" aria-label="Free helper model" value={helperModel} onChange={(e) => setHelperModel(e.target.value)}>
+                <option value="">Choose a free model</option>
+                {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>}
+              {catalogError && <p role="status" className="text-[12px] text-red">{catalogError}</p>}
+              <div className="flex flex-wrap items-center gap-2">
+                <button className="btn" disabled={!live || (!!helperAccount && !models.some((m) => m.id === helperModel))} onClick={() => officeActions.updateWorkflow({ lean: { helper: helperAccount ? { account: helperAccount, model: helperModel } : null } })}>Save helper</button>
+                <span className="text-[12px] text-muted">{wf.lean?.helper ? `Active: ${wf.lean.helper.model}` : "Helpers are disabled"}</span>
+              </div>
+            </div>
+          </section>
+
     </div>
   );
 }

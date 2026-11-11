@@ -106,8 +106,10 @@ export class Users {
   }
 
   update(id: string, patch: { role?: unknown; password?: unknown; disabled?: unknown; resetTotp?: unknown }): { otpauth?: string } {
-    const u = this.list.find((x) => x.id === id);
-    if (!u) throw new Error("No such person.");
+    const index = this.list.findIndex((x) => x.id === id);
+    if (index < 0) throw new Error("No such person.");
+    // Validate the entire patch on a copy before changing any live credentials or roles.
+    const u = { ...this.list[index] };
     const out: { otpauth?: string } = {};
     if (patch.role !== undefined) {
       if (!isUserRole(patch.role)) throw new Error("Unknown role.");
@@ -126,6 +128,7 @@ export class Users {
       u.totp = base32Encode(randomBytes(20));
       out.otpauth = otpauthFor(u.name, u.totp);
     }
+    this.list[index] = u;
     this.save();
     return out;
   }

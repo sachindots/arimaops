@@ -30,6 +30,7 @@ import { log } from "./lib/log";
 import { agentTokenFor, projectHome, sessionName } from "./paths";
 import { POLICY_NOT_INITIALIZED, policyVerdict, runSetupChecks } from "./setup";
 import { ensureWorkspace, workspaceFor } from "./workspace";
+import { checkAccountModel } from "./models";
 
 const TERM_ENV = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor" } as Record<string, string>;
 /**
@@ -127,10 +128,12 @@ export class Sessions {
       if (got && "error" in got) return fail(got.error);
       if (got && agent.mode === "sandbox") return fail("API-key accounts run in Local or Container mode. Sandbox mode keeps its own keys: Settings → Sandbox → keys.");
       keyed = got;
+      try { await checkAccountModel(account, agent.cli, agent.model); }
+      catch (e) { return fail(e instanceof Error ? e.message : "Couldn't validate the account's model."); }
     }
-    if (agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account)))
+    if (!keyed && agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account)))
       return fail(`${CLI_LABEL[agent.cli]} isn't signed in for the "${account}" account in containers yet. Run this once in a terminal: ${loginCommand(agent.cli, hub.snap.config.project.hqPort, account)}`);
-    if (agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
+    if (!keyed && agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
     if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")
       return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")

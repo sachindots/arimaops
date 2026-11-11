@@ -176,7 +176,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "You plan the mission and assign tasks to the team across department pods. You coordinate and review deliverables rather than executing worker tasks yourself.",
           "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
           "Assign only to agents that are running and free (check `list_workers`).",
-          "When an operator marks a task `in-review`, inspect their summary or deliverable and either mark the task `done` (`update_task`) or message them with revision feedback (`send_message`).",
+          "When a worker marks a task `in-review`, inspect the deliverable against doneWhen. Accept with `update_task` done and a concrete verification note, or send revision feedback. Never accept your own work when review is enabled.",
           "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
         ]
       : [
@@ -194,7 +194,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "Work only on the task you were given (`get_my_task`).",
           "Write your output, research report, security audit, or artifact to the files listed on the task (or `deliverables/<TASK-ID>.md` if no file path was specified).",
           "Edit only the files or deliverable paths the task lists. Need another file or input from a teammate? Ask the lead or teammate with `send_message`.",
-          "When your deliverable satisfies `doneWhen`, call `set_my_status` with `in-review` (or `done` if no review is required) and a concise summary + deliverable path in `note` / `deliverablePath`.",
+          "When your deliverable satisfies `doneWhen`, call `set_my_status` with `in-review`, a concise verification summary in `note`, and `deliverablePath`. A different reviewer accepts it when review is enabled.",
           "`set_my_status` notifies the lead automatically. Don't also `send_message` the same news.",
           "If you are blocked or need a decision, call `set_my_status` with `blocked` and the reason.",
         ]
@@ -237,6 +237,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   } else if (project.type === "research") {
     rules.push("This is a research / docs project: deliver well-sourced documents. Cite sources with links, separate facts from your conclusions, and say what you couldn't verify.");
   }
+  rules.push("Keep context small: read the task brief first, search before reading whole files, and limit tool output to the relevant lines. Handoff only changed paths, verification results, and blockers. Do not repeat status messages or send acknowledgements. After three identical failures, stop retrying that approach and report the blocker. Use another agent only for a distinct task; do not have the whole team reread the same context.");
   // Sandboxes block most sites; the agent asks instead of working around it.
   if (agent.mode !== "local")
     rules.push(

@@ -13,6 +13,7 @@ import type { Hub } from "./hub";
 import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
 import { loadConfig, loadPlan, saveConfig, savePlan } from "./store";
+import { assertTaskCompletion } from "./taskCompletion";
 
 export interface RegistryEntry {
   id: string;
@@ -343,6 +344,7 @@ export function updateCrossProjectTask(
     ownerId?: string | null;
     note?: string | null;
   },
+  reviewerId = "you",
 ): Task {
   const target = resolveTargetProject(projectId);
   if (target.live) {
@@ -352,7 +354,8 @@ export function updateCrossProjectTask(
       description: patch.description,
       doneWhen: patch.doneWhen,
       status: patch.status,
-    });
+      note: patch.note,
+    }, reviewerId);
     if (patch.note !== undefined) t.note = patch.note;
     if (patch.ownerId !== undefined) {
       if (patch.ownerId) {
@@ -373,6 +376,7 @@ export function updateCrossProjectTask(
   const plan = loadPlan(target.path);
   const task = plan.tasks.find((t) => t.id.toLowerCase() === taskId.trim().toLowerCase());
   if (!task) throw new Error(`Task "${taskId}" not found in project "${target.config.project.name}".`);
+  if (patch.status === "done" && task.status !== "done") assertTaskCompletion({ ...task, ...patch }, target.config.workflow, [], reviewerId);
   if (patch.title !== undefined) task.title = patch.title;
   if (patch.description !== undefined) task.description = patch.description;
   if (patch.doneWhen !== undefined) task.doneWhen = patch.doneWhen;

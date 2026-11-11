@@ -31,6 +31,7 @@ const WORKDIR = "/work";
 const AUTH_DIR: Partial<Record<AgentCli, string>> = {
   claude: "/auth/claude",
   codex: "/auth/codex",
+  agy: "/home/agent/.gemini",
   gemini: "/home/agent/.gemini",
   copilot: "/home/agent/.copilot",
   opencode: "/home/agent/.local/share/opencode",
@@ -38,6 +39,8 @@ const AUTH_DIR: Partial<Record<AgentCli, string>> = {
 export const containerClis = Object.keys(AUTH_DIR) as AgentCli[];
 /** Where containers keep a CLI's sign-in: one volume per CLI and account. */
 export const authVolume = (cli: AgentCli, account = "default") => (account === "default" ? `hq-auth-${cli}` : `hq-auth-${cli}-${account}`);
+/** Per-agent transcripts, outside shared sign-in volumes, for accurate usage attribution. */
+export const containerLogHome = (name: string) => join(homedir(), BRAND.homeDir, "usage", name);
 
 /** With a host firewall that drops incoming traffic (ufw's default), containers need this to reach HQ and its proxy. */
 export const hostFirewallCmd = (hqPort: number) => `sudo ufw allow in on ${BRIDGE} to ${GATEWAY} port ${hqPort},${egressPort(hqPort)} proto tcp`;
@@ -54,7 +57,7 @@ export const BASE_ALLOW = [
   "anthropic.com", "*.anthropic.com", "claude.ai", "*.claude.ai", "claude.com", "*.claude.com",
   "openai.com", "*.openai.com", "chatgpt.com", "*.chatgpt.com",
   "*.googleapis.com", "accounts.google.com", "*.google.com", "*.gstatic.com",
-  "api.deepseek.com", "opencode.ai", "*.opencode.ai", "models.dev",
+  "api.deepseek.com", "opencode.ai", "*.opencode.ai", "models.dev", "openrouter.ai", "*.openrouter.ai", "antigravity.google",
   "github.com", "*.github.com", "*.githubusercontent.com", "*.githubcopilot.com",
   "registry.npmjs.org", "*.npmjs.org", "pypi.org", "files.pythonhosted.org",
 ];
@@ -108,6 +111,9 @@ export function runArgs(
   const { cpus, memoryGb } = agent.sandbox.resources;
   const uid = process.getuid?.() ?? 1000;
   const gid = process.getgid?.() ?? 1000;
+  const logSubdir = agent.cli === "claude" ? "projects" : agent.cli === "codex" ? "sessions" : null;
+  const logDir = logSubdir ? join(containerLogHome(name), logSubdir) : null;
+  if (logDir) mkdirSync(logDir, { recursive: true, mode: 0o700 });
   return [
     "run", "-it", "--rm", "--init", "--name", name, "--hostname", agent.id,
     "--network", NETWORK, "--ip", agentIp(name),
@@ -117,6 +123,7 @@ export function runArgs(
     ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : []),
     "-v", `${dir}:${WORKDIR}`,
     "-v", `${authVolume(agent.cli, agent.account || "default")}:${authDir}`,
+    ...(logDir ? ["-v", `${logDir}:${authDir}/${logSubdir}`] : []),
     "-w", WORKDIR,
     ...(envFile ? ["--env-file", envFile] : []),
     // Account secrets: read by docker at start (the file is deleted right after), files mounted read-only.
@@ -138,7 +145,7 @@ export function loginCommand(cli: AgentCli, hqPort: number, account = "default")
   if (!authDir) return "";
   const proxy = `http://${GATEWAY}:${egressPort(hqPort)}`;
   const env = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].map((k) => `-e ${k}=${proxy}`).join(" ");
-  const login: Record<string, string> = { claude: "claude", codex: "codex login --device-auth", gemini: "gemini", copilot: "copilot", opencode: "opencode auth login" };
+  const login: Record<string, string> = { claude: "claude", codex: "codex login --device-auth", agy: "agy", gemini: "gemini", copilot: "copilot", opencode: "opencode auth login" };
   const tag = account === "default" ? cli : `${cli}-${account}`;
   return `docker run -it --rm --name ${LOGIN_PREFIX}${tag} --network ${NETWORK} --user $(id -u):$(id -g) ${env} -v ${authVolume(cli, account)}:${authDir} ${IMAGE} ${login[cli]}`;
 }

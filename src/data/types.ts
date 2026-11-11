@@ -125,7 +125,7 @@ export interface WorkflowConfig {
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
   /** Token saving. clearBetweenTasks (default on): a worker starts each task in a fresh conversation. */
-  lean?: { clearBetweenTasks: boolean };
+  lean?: { clearBetweenTasks: boolean; helper?: { account: string; model: string } | null };
 }
 
 /** What kind of work the project is; decides its workflow (software: PRs; the others come in later phases). */
@@ -264,6 +264,8 @@ export interface Task {
   model?: string | null;
   /** Tokens its owner used between starting and finishing it. */
   usage?: Tokens | null;
+  /** Persisted baseline while running, so HQ restarts preserve task usage. */
+  usageStart?: Tokens | null;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -530,7 +532,7 @@ export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;
-  lean?: { clearBetweenTasks?: boolean };
+  lean?: { clearBetweenTasks?: boolean; helper?: { account: string; model: string } | null };
 }
 
 // ---------------------------------------------------------------- Multi-Project CTO Registry

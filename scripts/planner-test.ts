@@ -17,7 +17,7 @@ const team = [
   { id: "nyx", name: "Nyx", isLead: false, cli: "codex", model: "" },
 ];
 const statuses = new Map<string, Record<string, unknown>>(team.map((a) => [a.id, { agentId: a.id, currentTaskId: null, session: { state: "running" } }]));
-const snap = { config: { team, workflow: { mode: "code" }, project: {} }, boards: [], tasks: [], messages: [], agents: [...statuses.values()] };
+const snap = { config: { team, workflow: { mode: "deliverables", review: { enabled: false } }, project: {} }, boards: [], tasks: [], messages: [], agents: [...statuses.values()] };
 const hub = {
   slug: "t", repo: { root: "/nonexistent" }, snap,
   cfg: (id: string) => team.find((a) => a.id === id),
@@ -30,17 +30,23 @@ const pushed: { to: string; text: string; kind?: string }[] = [];
 const inbox = { push: (to: string, item: { text: string; kind?: string }) => pushed.push({ to, text: item.text, kind: item.kind }), save: () => {} };
 const planner = new Planner(hub as never, inbox as never);
 planner.ask = async () => null; // no model calls in tests
+const createTask = (input: Parameters<typeof planner.createTask>[0], by: string) => {
+  const task = planner.createTask({ doneWhen: "Fixture acceptance verified", ...input }, by);
+  task.note = "Fixture checked.";
+  task.deliverablePath = "fixture.md";
+  return task;
+};
 
 // The lead assigns in the "wrong" order: the first task, then the one that waits on it.
-const t1 = planner.createTask({ title: "Write tips" } as never, "cipher");
-const t2 = planner.createTask({ title: "Review tips", needs: [t1.id] } as never, "cipher");
+const t1 = createTask({ title: "Write tips" } as never, "cipher");
+const t2 = createTask({ title: "Review tips", needs: [t1.id] } as never, "cipher");
 planner.assign(t1.id, "nyx", "cipher");
 planner.assign(t2.id, "nyx", "cipher");
 check("waiting task isn't announced as Start", /don't start it yet/.test(pushed[1]?.text ?? ""), pushed[1]?.text);
 check("current task stays the ready one", planner.currentTask("nyx")?.id === t1.id, planner.currentTask("nyx")?.id);
 
 planner.setStatus("nyx", "in-progress");
-planner.setStatus("nyx", "done");
+planner.setStatus("nyx", "done", "Fixture acceptance checked.");
 const start = pushed.find((p) => p.to === "nyx" && p.text.includes(`start ${t2.id}`));
 check("finishing the first tells the owner to start the second", !!start && /now/.test(start.text), pushed.map((p) => p.text).join(" | "));
 check("then the second is current", planner.currentTask("nyx")?.id === t2.id);
@@ -49,8 +55,8 @@ check("no fresh conversation when the next task builds on the one just done", !p
 // Lean mode: an unrelated next task starts in a fresh conversation, with the handoff in its brief.
 planner.setStatus("nyx", "in-progress");
 planner.setStatus("nyx", "done", "Reviewed tips; all three are accurate.");
-const t3 = planner.createTask({ title: "Write phone tips" } as never, "cipher");
-const t4 = planner.createTask({ title: "Check phone tips", needs: [t3.id] } as never, "cipher");
+const t3 = createTask({ title: "Write phone tips" } as never, "cipher");
+const t4 = createTask({ title: "Check phone tips", needs: [t3.id] } as never, "cipher");
 planner.assign(t3.id, "nyx", "cipher");
 const beforeDone = pushed.length;
 planner.setStatus("nyx", "in-progress");
@@ -63,14 +69,14 @@ check("brief carries the handoff it builds on", b.handoffs[0]?.note === "phone-t
 check("brief carries the agent's own last note", b.yourLastNote === "phone-tips.md written: 2 tips");
 
 // No reset for the lead, nor for a worker already mid-way through another task.
-const t5 = planner.createTask({ title: "Lead's own task" } as never, "cipher");
+const t5 = createTask({ title: "Lead's own task" } as never, "cipher");
 planner.assign(t5.id, "cipher", "cipher");
 const n0 = pushed.length;
 planner.setStatus("cipher", "in-progress");
-planner.setStatus("cipher", "done");
+planner.setStatus("cipher", "done", "Fixture acceptance checked.");
 check("the lead keeps its conversation", !pushed.slice(n0).some((p) => p.kind === "reset"));
-const t6 = planner.createTask({ title: "A" } as never, "cipher");
-const t7 = planner.createTask({ title: "B" } as never, "cipher");
+const t6 = createTask({ title: "A" } as never, "cipher");
+const t7 = createTask({ title: "B" } as never, "cipher");
 planner.assign(t6.id, "nyx", "cipher");
 planner.assign(t7.id, "nyx", "cipher");
 planner.updateTask(t7.id, { status: "in-progress" });
@@ -102,7 +108,7 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
 
 // Stall: a worker idle with its task in progress is nudged once, and the lead told.
 {
-  const tS = planner.createTask({ title: "Showcase" } as never, "cipher");
+  const tS = createTask({ title: "Showcase" } as never, "cipher");
   planner.assign(tS.id, "nyx", "cipher");
   planner.setStatus("nyx", "in-progress");
   Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date(Date.now() - 10 * 60_000).toISOString() });
@@ -116,7 +122,7 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
 
   // "Working" with no hooks for 20 min: lead is told, the busy agent isn't typed into.
-  const tW = planner.createTask({ title: "Hangs" } as never, "cipher");
+  const tW = createTask({ title: "Hangs" } as never, "cipher");
   planner.assign(tW.id, "nyx", "cipher");
   planner.setStatus("nyx", "in-progress");
   Object.assign(statuses.get("nyx")!, { state: "working", stateSince: new Date(Date.now() - 20 * 60_000).toISOString() });

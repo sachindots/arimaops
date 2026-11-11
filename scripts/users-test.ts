@@ -40,6 +40,9 @@ const throws = (fn: () => unknown, re: RegExp) => {
   const sam = u.firstOwner()!;
   check("the last owner can't be demoted, disabled or removed", throws(() => u.update(sam.id, { role: "operator" }), /at least one active owner/) && throws(() => u.update(sam.id, { disabled: true }), /owner/) && throws(() => u.remove(sam.id), /owner/));
   const { user: ana } = u.create({ name: "Ana", role: "operator", password: "another-password" });
+  const diskBeforeReset = readFileSync(join(HOME, "u1.json"), "utf8");
+  check("invalid reset rejects the entire patch", throws(() => u.update(ana.id, { role: "owner", disabled: true, password: "short", resetTotp: true }), /at least 10/));
+  check("invalid reset preserves password, role, enabled state and disk", u.verify("Ana", "another-password")?.role === "operator" && readFileSync(join(HOME, "u1.json"), "utf8") === diskBeforeReset);
   u.update(ana.id, { disabled: true });
   check("a disabled person can't sign in and isn't active", u.verify("Ana", "another-password") === null && u.active(ana.id) === null);
   const before = u.active(sam.id)!.totp;
@@ -67,7 +70,7 @@ const guard = new RemoteGuard(join(HOME, "guard"));
 const users = new Users(join(HOME, "users.json"));
 const calls: string[] = [];
 const hub = { snap: { config: { team: [] }, agents: [], environments: [] }, subscribe: () => () => {} };
-const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent") } };
+const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), removeAccount: async () => void calls.push("removeAccount"), setProxy: async () => void calls.push("setProxy"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent") } };
 const server = await startHttp({
   projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {}, unloadProject: async () => {},
   port: PORT, browserToken: "link-token-123", viewerToken: "viewer-token-456", host: "127.0.0.1",
@@ -123,6 +126,27 @@ check("an operator runs agents but can't change API keys", JSON.stringify(calls)
 calls.length = 0;
 await ws(sam.cookie, ["saveAccount"]);
 check("the owner can change API keys", JSON.stringify(calls) === JSON.stringify(["saveAccount"]));
+// Each pending command must pass the same authorization as a direct command.
+for (const pending of ["saveAccount", "removeAccount", "setProxy"]) {
+  const person = users.create({ name: `Operator-${pending}`, role: "operator", password: "operator-test-password" }).user;
+  const cookie = `hq_sid=${guard.addDevice("operator", "test", person.id)}`;
+  const sock = new WebSocket(`ws://127.0.0.1:${PORT}/ws`, { headers: { Cookie: cookie, Origin: LOCAL } });
+  await new Promise((res, rej) => (sock.once("open", res), sock.once("error", rej)));
+  const secret = users.active(person.id)!.totp;
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const c of secret) bits += alphabet.indexOf(c).toString(2).padStart(5, "0");
+  const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
+  const code = totp(key, Math.floor(Date.now() / 30_000));
+  calls.length = 0;
+  sock.send(JSON.stringify({ cmd: "elevate", args: [code, pending, []] }));
+  sock.send(JSON.stringify({ cmd: "startAgent", args: [] }));
+  await new Promise((res) => setTimeout(res, 150));
+  check(`operator TOTP cannot resume ${pending}; ordinary operator work still works`, JSON.stringify(calls) === JSON.stringify(["startAgent"]));
+  const audit = readFileSync(join(HOME, "guard", "audit.log"), "utf8");
+  check(`denied continuation ${pending} is audited`, audit.split("\n").some((line) => line.includes(`Operator-${pending}/operator`) && line.includes(pending) && line.includes("blocked")));
+  sock.close();
+}
 const anaId = ((await call("GET", "/api/users", { cookie: sam.cookie })).body.users as { id: string; name: string }[]).find((u) => u.name === "Ana")!.id;
 await call("PATCH", `/api/users/${anaId}`, { cookie: sam.cookie, body: { role: "viewer" } });
 calls.length = 0;

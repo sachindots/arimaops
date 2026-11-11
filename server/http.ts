@@ -35,6 +35,9 @@ import { homedir } from "node:os";
 import { BRAND } from "../src/data/brand";
 import { PushDevices, pushRegistrationBody } from "./push";
 import { z } from "zod";
+import { freeModelCatalog } from "./lib/freeHelper";
+import { accountModels } from "./models";
+import { isAgentCli } from "../src/data/types";
 
 const passwordChange = z.object({ currentPassword: z.string().max(200), newPassword: z.string().min(10).max(200) });
 
@@ -372,6 +375,18 @@ export function startHttp(o: Options) {
       }
     }
 
+    if (req.method === "GET" && url.pathname === "/api/models/account") {
+      if (!whoIs(req, url.searchParams.get("token") ?? "") || !okOrigin(req)) return send(res, 401, "not signed in");
+      const cli = url.searchParams.get("cli");
+      if (!isAgentCli(cli)) return send(res, 400, "unknown CLI");
+      try { return send(res, 200, JSON.stringify({ models: await accountModels(url.searchParams.get("account") ?? "", cli) }), "application/json"); }
+      catch (e) { return send(res, 503, JSON.stringify({ error: e instanceof Error ? e.message : "Catalog unavailable" }), "application/json"); }
+    }
+    if (req.method === "GET" && url.pathname === "/api/models/free") {
+      if (!whoIs(req, url.searchParams.get("token") ?? "") || !okOrigin(req)) return send(res, 401, "not signed in");
+      try { return send(res, 200, JSON.stringify({ models: await freeModelCatalog() }), "application/json"); }
+      catch { return send(res, 503, JSON.stringify({ error: "Free-model catalog unavailable. Helpers remain off." }), "application/json"); }
+    }
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");
 
     // Multi-Project CTO Overwatch REST API: the UI only (browser/viewer token or device cookie), never agents.
@@ -541,8 +556,8 @@ export function startHttp(o: Options) {
       if (watch) return;
       try {
         const msg = JSON.parse(String(raw)) as { cmd?: string; args?: unknown[] };
-        const cmd = String(msg.cmd ?? "");
-        const args = Array.isArray(msg.args) ? msg.args : [];
+        let cmd = String(msg.cmd ?? "");
+        let args = Array.isArray(msg.args) ? msg.args : [];
         const audit = (result: Parameters<RemoteGuard["audit"]>[0]["result"], c = cmd, a: unknown[] = args) =>
           o.guard.audit({ project: rt.slug, role: current()?.role ?? "-", user: who.userName, origin, remote, cmd: c, args: a, result });
         const me = current();
@@ -562,10 +577,11 @@ export function startHttp(o: Options) {
           audit("elevated", "elevate", []);
           sendEvent({ type: "remote.stepup", status: "ok", until: elevatedUntil });
           const pending = typeof args[1] === "string" ? args[1] : "";
-          if (!pending || !rt.commands[pending]) return;
+          if (!pending || pending === "elevate") return;
           const pArgs = Array.isArray(args[2]) ? args[2] : [];
-          await rt.commands[pending](...pArgs);
-          return audit("ok", pending, pArgs);
+          // A valid authenticator code proves identity, never permission for the pending command.
+          cmd = pending;
+          args = pArgs;
         }
 
         const fn = cmd ? rt.commands[cmd] : undefined;

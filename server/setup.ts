@@ -144,8 +144,8 @@ async function checkAgy(): Promise<Check> {
   return {
     ...base,
     status: "missing",
-    detail: "Not found on PATH. Install the `agy` CLI from Antigravity IDE (Command Palette → Install 'agy' command in PATH).",
-    fix: fix("agy --version", false, "https://antigravity.google"),
+    detail: "Not found on PATH. Install the Antigravity CLI, then sign in once in its runtime.",
+    fix: fix("curl -fsSL https://antigravity.google/cli/install.sh | bash", false, "https://antigravity.google/docs/getting-started/"),
   };
 }
 

@@ -15,7 +15,7 @@ ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node serve
 ```bash
 pnpm install
 pnpm build                                  # typecheck (UI + server), Vite build, server bundle
-for t in session-backend workspace auth limits inbox scope findings planner env usage loopguard persona container office office-input accounts credentials users rename; do npx tsx scripts/$t-test.ts; done
+for t in session-backend workspace auth limits inbox scope findings planner env usage loopguard persona container office office-input accounts credentials users rename company; do npx tsx scripts/$t-test.ts; done
 ```
 
 Local dev: `pnpm dev:hq` (HQ on :7420, UI on :5173). The server keeps state in `~/.arima/`.

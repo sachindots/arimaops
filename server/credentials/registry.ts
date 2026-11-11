@@ -61,6 +61,11 @@ export class Accounts {
     return this.list.find((a) => a.id === id);
   }
 
+  /** Server-side integrations only; verify the provider before opening a credential. */
+  keyFor(id: string, provider: Provider): string | null {
+    return this.get(id)?.provider === provider ? this.vault.get(secretRef(id)) : null;
+  }
+
   /** Adds or updates an account. A missing secret keeps the stored one; an empty name is refused. */
   save(input: AccountInput): AccountRecord {
     const id = cleanAccount(clip(input.id, 40));

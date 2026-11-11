@@ -19,7 +19,8 @@ export function readFacts(repoRoot: string): string[] {
   return readFileSync(file, "utf8")
     .split("\n")
     .map((l) => l.replace(/^\s*[-*]\s+/, "").trim())
-    .filter((l) => l && !l.startsWith("#"));
+    .filter((l) => l && !l.startsWith("#") && l.length <= MAX_LEN && !UNSAFE.test(l))
+    .slice(-MAX_FACTS);
 }
 
 /** Keeps the new facts that are short, safe and not already known; oldest drop off past the cap. */

@@ -8,9 +8,13 @@ import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
 import { CLEAR_COMMAND } from "./adapters";
 import { FACTS_PROMPT, mergeFacts, readFacts, writeFacts } from "./facts";
-import { askHaiku } from "./lib/haiku";
+import { askFreeHelper } from "./lib/freeHelper";
 import { diff } from "./usage";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
+import { assertTaskCompletion } from "./taskCompletion";
+import { z } from "zod";
+
+const factsAnswer = z.object({ facts: z.array(z.string()).max(2) });
 
 export interface NewTask {
   boardId?: string;
@@ -36,21 +40,19 @@ export class Planner {
 
   /** An agent's token total right now (set by the project; null when its CLI's logs can't be read). */
   usageOf: (agentId: string) => Tokens | null = () => null;
-  // shortcut: start totals live in memory, so a task running across an HQ restart gets no usage figure.
-  private usageAtStart = new Map<string, Tokens>();
 
   constructor(private hub: Hub, private inbox: Inbox) {}
 
   private meterStart(task: Task) {
     const now = task.ownerId ? this.usageOf(task.ownerId) : null;
-    if (now && !this.usageAtStart.has(task.id)) this.usageAtStart.set(task.id, now);
+    if (now && !task.usageStart) task.usageStart = now;
   }
 
   private meterEnd(task: Task) {
-    const start = this.usageAtStart.get(task.id);
+    const start = task.usageStart;
     const now = task.ownerId ? this.usageOf(task.ownerId) : null;
     if (start && now) task.usage = diff(now, start);
-    this.usageAtStart.delete(task.id);
+    delete task.usageStart;
   }
 
   private get snap() {
@@ -127,11 +129,13 @@ export class Planner {
     return task;
   }
 
-  updateTask(id: string, patch: TaskPatch): Task {
+  updateTask(id: string, patch: TaskPatch, reviewerId = "you"): Task {
     const task = this.task(id);
     if (!task) throw new Error(`No task ${id}`);
     const wasDone = task.status === "done";
-    Object.assign(task, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)));
+    const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    if (patch.status === "done" && !wasDone) assertTaskCompletion({ ...task, ...changes }, this.snap.config.workflow, this.snap.pullRequests ?? [], reviewerId);
+    Object.assign(task, changes);
     if (task.status === "done" && !wasDone) {
       this.meterEnd(task);
       for (const a of this.snap.agents) if (a.currentTaskId === task.id) this.hub.setStatus(a.agentId, { currentTaskId: null });
@@ -200,8 +204,10 @@ export class Planner {
   setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number, deliverablePath?: string): Task {
     const task = this.currentTask(agentId);
     if (!task) throw new Error("You have no task. Ask the lead for one.");
+    if (status === "done") assertTaskCompletion({ ...task, status, note: note ?? task.note, prNumber: prNumber ?? task.prNumber, deliverablePath: deliverablePath ?? task.deliverablePath }, this.snap.config.workflow, this.snap.pullRequests ?? [], agentId);
+    if (status === "in-progress" && this.waitingOn(task).length) throw new Error(`Wait for ${this.waitingOn(task).join(", ")} before starting this task.`);
     task.status = status;
-    task.note = note?.slice(0, 300) || null;
+    task.note = note?.slice(0, 300) || (status === "done" ? task.note ?? null : null);
     if (prNumber) task.prNumber = prNumber;
     if (deliverablePath) task.deliverablePath = deliverablePath.slice(0, 300);
     if (status === "in-progress") this.meterStart(task);
@@ -238,8 +244,8 @@ export class Planner {
     return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo" && ready(t)) ?? mine.find((t) => t.status === "todo") ?? mine[0];
   }
 
-  /** Haiku by default; tests swap it out. */
-  ask: typeof askHaiku = askHaiku;
+  /** No model calls unless the owner explicitly selects a free helper. */
+  ask = (prompt: string) => askFreeHelper(this.snap.config.workflow.lean?.helper, prompt, factsAnswer.parse);
 
   private lean = () => this.snap.config.workflow.lean?.clearBetweenTasks !== false;
 
@@ -258,9 +264,10 @@ export class Planner {
   }
 
   private async learnFacts(done: Task) {
+    if (!this.snap.config.workflow.lean?.helper) return;
     const root = this.hub.repo.root;
     const existing = readFacts(root);
-    const a = await this.ask<{ facts?: unknown }>(FACTS_PROMPT(done.title, done.note ?? "", done.files ?? [], existing));
+    const a = await this.ask(FACTS_PROMPT(done.title, done.note ?? "", done.files ?? [], existing));
     const proposed = Array.isArray(a?.json.facts) ? a.json.facts.filter((f): f is string => typeof f === "string").slice(0, 2) : [];
     const current = readFacts(root); // re-read: another task may have added some meanwhile
     const merged = mergeFacts(current, proposed);
@@ -275,7 +282,8 @@ export class Planner {
     const handoffs = task.needs
       .map((n) => this.task(n))
       .filter((d): d is Task => !!d?.note)
-      .map((d) => ({ task: d.id, by: d.ownerId ? this.hub.name(d.ownerId) : null, note: d.note }));
+      .slice(-8)
+      .map((d) => ({ task: d.id, by: d.ownerId ? this.hub.name(d.ownerId) : null, note: d.note?.slice(0, 300) }));
     const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id);
     return { handoffs, yourLastNote: mine.at(-1)?.note ?? null, repoFacts: readFacts(this.hub.repo.root) };
   }
@@ -358,6 +366,8 @@ export class Planner {
     if (!toId) throw new Error(`No agent "${toRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
     const clean = text.trim().slice(0, 2000);
     if (!clean) throw new Error("Empty message");
+    const duplicate = this.snap.messages.find((m) => m.fromId === fromId && m.toId === toId && m.text === clean && Date.now() - Date.parse(m.at) < 5 * 60_000);
+    if (duplicate) return toId;
     const msg = this.record(fromId, toId, clean);
     this.hub.activity("message", fromId === "you" ? null : fromId, `${this.hub.name(fromId)} → ${this.hub.name(toId)}: ${clean.slice(0, 80)}`);
     this.inbox.push(toId, { fromId, kind: "message", text: clean, msgId: msg.id });

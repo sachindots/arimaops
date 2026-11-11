@@ -70,6 +70,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             <div className="min-w-[165px]">
               <ModelSelect
                 cli={agent.cli}
+                account={agent.account}
                 value={agent.model}
                 compact
                 ariaLabel={`${agent.name} model`}
@@ -99,7 +100,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               placeholder="default"
               list={`accounts-${agent.id}`}
               aria-label={`${agent.name} subscription account`}
-              title="Which subscription this agent signs in with. Leave empty for your usual one. Agents on the same CLI and account share its usage limit; a new account signs in once in this agent's terminal."
+              title="Saved API account or named CLI sign-in. Leave empty for your usual subscription. API models are checked against the selected account before starting."
               onBlur={(e) => {
                 const v = e.target.value.trim();
                 if (v === (agent.account ?? "")) return;

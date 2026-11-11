@@ -36,13 +36,8 @@ const withGit = runArgs(agent as never, "hq-t-dwight", "/tmp/w", [], null, 7420,
 check("extra env (git identity) passed before the image", withGit.indexOf("GIT_AUTHOR_NAME=Ada") > 0 && withGit.indexOf("GIT_AUTHOR_NAME=Ada") < withGit.indexOf(IMAGE));
 check("sign-in container is named so the proxy lets it reach the CLI's sites", loginCommand("codex", 7420).includes("--name hq-login-codex"));
 check("runs the CLI with its args", args.slice(-4).join(" ") === `${IMAGE} claude --model opus`);
-let threw = false;
-try {
-  runArgs({ ...agent, cli: "agy" } as never, "x", "/tmp", [], null, 7420);
-} catch {
-  threw = true;
-}
-check("agy is refused in Container mode", threw);
+const agyArgs = runArgs({ ...agent, cli: "agy" } as never, "x", "/tmp", [], null, 7420);
+check("Antigravity has its own persistent auth volume", agyArgs.includes("hq-auth-agy:/home/agent/.gemini") && agyArgs.at(-1) === "agy");
 
 // ---------------------------------------------------------------- live proxy
 const docker = (await run("docker", ["image", "inspect", IMAGE], { timeoutMs: 8000 })).ok && (await ensureNetwork());

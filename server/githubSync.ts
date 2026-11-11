@@ -143,13 +143,13 @@ export class GitHubSync {
       for (const old of this.prev.values())
         if (!seen.has(old.number) && !old.merged && !old.closed) next.push(complete || recentlyClosed.has(old.number) ? { ...old, closed: true } : old);
 
+      this.hub.snap.pullRequests = next;
       for (const pr of next) {
         const old = this.prev.get(pr.number);
         if (JSON.stringify(old) !== JSON.stringify(pr)) this.hub.emit({ type: "pr.updated", pr: { ...pr } });
         if (!this.first) this.react(old, pr);
         this.syncTask(pr);
       }
-      this.hub.snap.pullRequests = next;
       this.prev = new Map(next.map((p) => [p.number, p]));
       this.first = false;
     } catch (err) {

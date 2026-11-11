@@ -14,7 +14,7 @@ import { AGENT_CLIS, type AgentCli } from "../src/data/types";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
-const ok = (value: unknown): Result => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }] });
+const ok = (value: unknown): Result => ({ content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }] });
 const fail = (msg: string): Result => ({ content: [{ type: "text", text: msg }], isError: true });
 
 /** Wraps a tool body: thrown errors become tool errors the agent can read. */
@@ -134,11 +134,13 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
         cli: z.enum(AGENT_CLIS).nullable().optional().describe("Runs on (null clears it)"),
         model: z.string().nullable().optional(),
+        note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
+        deliverablePath: z.string().max(300).optional(),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string }) => {
       leadOnly();
-      return ok(planner.updateTask(taskId, patch));
+      return ok(planner.updateTask(taskId, patch, me));
     }),
   );
 
@@ -161,11 +163,11 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     guard(() => {
       const t = planner.currentTask(me);
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
-      if (t.status === "todo") planner.setStatus(me, "in-progress");
       const blockedBy = planner.waitingOn(t);
+      if (t.status === "todo" && !blockedBy.length) planner.setStatus(me, "in-progress");
       const isDeliverables = hub.snap.config.workflow.mode === "deliverables";
       const rules = isDeliverables
-        ? `Work only on this task. Write your deliverable or changes to the listed files (or deliverables/${t.id}.md). When complete, call set_my_status with in-review (or done) and pass a summary in note and your output file path in deliverablePath.`
+        ? `Work only on this task. Write your output to the listed files (or deliverables/${t.id}.md). Submit in-review with verification results in note and your output path in deliverablePath. When review is enabled, a different reviewer must accept it.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
       const start = "Start from `brief`: the handoff notes of the tasks you build on, your own last note, and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
       return ok({ ...taskView(t.id), waitingOn: blockedBy, brief: planner.brief(me, t), rules: start + rules });
@@ -376,7 +378,7 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     },
     guard(({ projectId, taskId, ...patch }: { projectId: string; taskId: string; title?: string; description?: string; doneWhen?: string; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; ownerId?: string; note?: string }) => {
       leadOnly();
-      return ok(updateCrossProjectTask(projectId, taskId, patch));
+      return ok(updateCrossProjectTask(projectId, taskId, patch, me));
     }),
   );
 

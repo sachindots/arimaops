@@ -13,6 +13,10 @@ RUN apt-get update \
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli @github/copilot opencode-ai \
  && npm cache clean --force
 
+RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \
+ && bash /tmp/agy-install.sh --dir /usr/local/bin \
+ && rm /tmp/agy-install.sh
+
 # A user with your ids (the base image's "node" user may already own 1000). Login volumes mount over these folders;
 # an empty named volume takes the folder's owner from the image, so the CLIs can write their sign-in.
 RUN (getent group "$GID" >/dev/null || groupadd -g "$GID" agent) \

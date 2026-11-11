@@ -287,6 +287,7 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
         <Field label="Model">
           <ModelSelect
             cli={agent.cli}
+            account={agent.account}
             value={agent.model}
             className="field"
             ariaLabel={`${agent.name} model`}
