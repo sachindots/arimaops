@@ -106,6 +106,16 @@ const key = "sk-ant-api03-REDACTME-0000-wxyz";
 const r = new Redactor(() => [key, JSON.stringify({ accessKeyId: "AKIA1234567", secretAccessKey: "aws-secret-redact-me" })]);
 check("whole values and JSON parts are masked", r.redact(`a ${key} b aws-secret-redact-me c`) === "a ••••wxyz b ••••t-me c");
 check("short values aren't treated as secrets", secretsOf(["abc"]).length === 0);
+const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n";
+const serviceAccount = JSON.stringify({
+  type: "service_account", project_id: "arimaops-e47f0", private_key_id: "0123456789abcdef0123", private_key: pem,
+  client_email: "firebase-adminsdk@arimaops-e47f0.iam.gserviceaccount.com", auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  token_uri: "https://oauth2.googleapis.com/token", universe_domain: "googleapis.com",
+});
+const r2 = new Redactor(() => [serviceAccount]);
+check("a JSON key's secret fields are masked", !r2.redact(`id 0123456789abcdef0123 key ${pem}`).includes("0123456789abcdef0123") && !r2.redact(pem).includes("MIIEvQ"));
+const signIn = "https://accounts.google.com/o/oauth2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform";
+check("a JSON key's public fields (sign-in addresses, domains) stay readable", r2.redact(signIn) === signIn, r2.redact(signIn));
 const out: string[] = [];
 r.stream("x", `token: ${key.slice(0, 10)}`, (t) => out.push(t));
 r.stream("x", `${key.slice(10)} done`, (t) => out.push(t));

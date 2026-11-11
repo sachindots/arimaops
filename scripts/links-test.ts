@@ -19,6 +19,8 @@ check("OSC 8 link when no plain one", lastLink("\x1b]8;;https://example.com/x\x0
 const nested = "https://claude.ai/oauth/authorize?redirect_uri=https://console.anthropic.com/oauth/code/callback&state=x";
 check("a link inside another link's query", lastLink(`Use the url below:\r\n${nested}\r\n\r\nPaste code >`), nested);
 check("an encoded link inside the query", lastLink(`url:\r\n${long}&redirect_uri=https%3A%2F%2Fconsole.anthropic.com\r\n`), `${long}&redirect_uri=https%3A%2F%2Fconsole.anthropic.com`);
+const full = `${long}&scope=cloud-platform+userinfo.email+userinfo.profile+openid`;
+check("a link cut off by a short screen: the full hidden hyperlink wins", lastLink(`If not:\r\n ${full.slice(0, 70)}\r\n ${full.slice(70, 110)}\r\n (1–15 of 28 lines)\r\n\x1b]8;;${full}\x07→ Click here to authenticate\x1b]8;;\x07\r\n`), full);
 check("no link", lastLink("$ docker run hello\r\nDone\r\n"), null);
 check("not a web link", lastLink("file:///etc/passwd and javascript:alert(1)"), null);
 

@@ -27,6 +27,8 @@ export function lastLink(output: string): string | null {
     }
   }
   url = url.replace(/[).,;:!?]+$/, "");
+  // A screen too short for the whole link shows only its start; the hidden hyperlink (OSC 8) carries all of it.
+  if (osc && osc.length > url.length && osc.startsWith(url.slice(0, 40))) return osc;
   try {
     return new URL(url).protocol.startsWith("http") ? url : osc;
   } catch {

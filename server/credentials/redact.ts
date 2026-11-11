@@ -6,15 +6,20 @@
 const MIN_LEN = 8; // shorter values would hit ordinary text
 const FLUSH_MS = 80;
 
-/** Secrets to look for: each value, and for JSON credentials each long string inside it. */
+/** A JSON credential's field that holds a secret. The rest (sign-in URLs, domains, project and account ids) is public,
+ *  and masking it breaks ordinary output: a Google service account would mask every Google sign-in link. */
+const SECRET_FIELD = /key|secret|token|password|passphrase|private|credential/i;
+
+/** Secrets to look for: each value, and for JSON credentials each long string in a secret field. */
 export function secretsOf(values: string[]): string[] {
   const out = new Set<string>();
   for (const v of values) {
     if (v.length >= MIN_LEN) out.add(v);
     try {
-      const walk = (x: unknown) => {
-        if (typeof x === "string" && x.length >= MIN_LEN) out.add(x);
-        else if (x && typeof x === "object") Object.values(x).forEach(walk);
+      const walk = (x: unknown, field = "") => {
+        if (typeof x === "string") {
+          if (x.length >= MIN_LEN && SECRET_FIELD.test(field) && !/^https?:\/\//.test(x)) out.add(x);
+        } else if (x && typeof x === "object") for (const [k, y] of Object.entries(x)) walk(y, Array.isArray(x) ? field : k);
       };
       walk(JSON.parse(v));
     } catch {
