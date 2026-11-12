@@ -24,10 +24,8 @@ import { SbxMcp } from "./sbxMcp";
 import { Sessions } from "./sessions";
 import { runSetupChecks } from "./setup";
 import { loadConfig, loadPlan, slugOf } from "./store";
-import { askFreeHelper } from "./lib/freeHelper";
 import { containerLogHome } from "./containers";
-import { z } from "zod";
-import { JUDGE_PROMPT, LoopGuard, toolEvent } from "./loopguard";
+import { LoopGuard, toolEvent } from "./loopguard";
 import { resolveUserSkillFolders } from "./skills";
 import { UsageMeter } from "./usage";
 import { workspaceFor } from "./workspace";
@@ -165,11 +163,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     }
   };
   const guard = new LoopGuard(
-    async (digest) => {
-      const a = await askFreeHelper(hub.snap.config.workflow.lean?.helper, JUDGE_PROMPT + digest, z.object({ stuck: z.boolean(), confidence: z.number().min(0).max(1), reason: z.string().max(240) }).parse);
-      if (a) hub.activity("config", null, `Loop check (free helper): ${a.json.stuck ? "stuck" : "making progress"}`);
-      return a?.json ?? null;
-    },
+    async () => null, // no model judge: the repeated-failure rule decides
     (agentId, taskId, nudge, reason) => {
       planner.notify(agentId, nudge);
       const lead = hub.snap.config.team.find((a) => a.isLead);

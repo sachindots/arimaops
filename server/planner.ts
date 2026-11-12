@@ -7,14 +7,10 @@ import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
 import { CLEAR_COMMAND } from "./adapters";
-import { FACTS_PROMPT, mergeFacts, readFacts, writeFacts } from "./facts";
-import { askFreeHelper } from "./lib/freeHelper";
+import { readFacts } from "./facts";
 import { diff } from "./usage";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 import { assertTaskCompletion } from "./taskCompletion";
-import { z } from "zod";
-
-const factsAnswer = z.object({ facts: z.array(z.string()).max(2) });
 
 export interface NewTask {
   boardId?: string;
@@ -244,15 +240,11 @@ export class Planner {
     return mine.find((t) => t.status === "in-progress") ?? mine.find((t) => t.status === "todo" && ready(t)) ?? mine.find((t) => t.status === "todo") ?? mine[0];
   }
 
-  /** No model calls unless the owner explicitly selects a free helper. */
-  ask = (prompt: string) => askFreeHelper(this.snap.config.workflow.lean?.helper, prompt, factsAnswer.parse);
-
   private lean = () => this.snap.config.workflow.lean?.clearBetweenTasks !== false;
 
   /** Lean mode, once a task is done: its owner starts the next one in a fresh conversation, and the repo facts learn from it. */
   private afterDone(done: Task) {
     if (!this.lean()) return;
-    void this.learnFacts(done);
     const id = done.ownerId;
     const agent = id ? this.hub.cfg(id) : undefined;
     const cmd = agent && CLEAR_COMMAND[agent.cli];
@@ -261,20 +253,6 @@ export class Planner {
     // Mid-way through another task, or the next one builds on this one: keep the conversation.
     if (next && next.id !== done.id && (next.status === "in-progress" || next.needs.includes(done.id))) return;
     this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
-  }
-
-  private async learnFacts(done: Task) {
-    if (!this.snap.config.workflow.lean?.helper) return;
-    const root = this.hub.repo.root;
-    const existing = readFacts(root);
-    const a = await this.ask(FACTS_PROMPT(done.title, done.note ?? "", done.files ?? [], existing));
-    const proposed = Array.isArray(a?.json.facts) ? a.json.facts.filter((f): f is string => typeof f === "string").slice(0, 2) : [];
-    const current = readFacts(root); // re-read: another task may have added some meanwhile
-    const merged = mergeFacts(current, proposed);
-    const added = merged.filter((f) => !current.includes(f)).length;
-    if (!added) return;
-    writeFacts(root, merged);
-    this.hub.activity("config", null, `Repo facts: ${added} new from ${done.id} (facts.md)`);
   }
 
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */

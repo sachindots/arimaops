@@ -16,7 +16,6 @@ function broadcastAccounts() {
 }
 import { releasePortBlock } from "./ports";
 import { cleanAccount } from "./accounts";
-import { freeModelCatalog } from "./lib/freeHelper";
 import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
 import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -381,19 +380,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     updateWorkflow: async (patch) => {
       const p = (patch ?? {}) as WorkflowPatch;
       const wf = hub.snap.config.workflow;
-      if (p.lean?.helper) {
-        const h = p.lean.helper;
-        if (typeof h.account !== "string" || accounts().get(h.account)?.provider !== "openrouter") throw new Error("Choose a saved OpenRouter account for the free helper.");
-        if (typeof h.model !== "string" || !(await freeModelCatalog()).some((m) => m.id === h.model)) throw new Error("Choose a currently free model from the catalog. Paid models are disabled for HQ helpers.");
-      }
       const mergeBy = wf.merge.by;
       if (p.mode === "github-pr" || p.mode === "deliverables") wf.mode = p.mode;
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;
       Object.assign(wf.deploy, p.deploy ?? {});
       if (p.lean) wf.lean = { clearBetweenTasks: wf.lean?.clearBetweenTasks !== false,
-        ...wf.lean, ...(typeof p.lean.clearBetweenTasks === "boolean" ? { clearBetweenTasks: p.lean.clearBetweenTasks } : {}),
-        ...(p.lean.helper !== undefined ? { helper: p.lean.helper } : {}), };
+        ...wf.lean, ...(typeof p.lean.clearBetweenTasks === "boolean" ? { clearBetweenTasks: p.lean.clearBetweenTasks } : {}) };
       hub.configChanged();
       // The lead was told the old rule; tell it the new one now, so no restart is needed.
       const lead = hub.snap.config.team.find((a) => a.isLead);

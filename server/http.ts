@@ -35,7 +35,6 @@ import { homedir } from "node:os";
 import { BRAND } from "../src/data/brand";
 import { PushDevices, pushRegistrationBody } from "./push";
 import { z } from "zod";
-import { freeModelCatalog } from "./lib/freeHelper";
 import { accountModels } from "./models";
 import { isAgentCli } from "../src/data/types";
 
@@ -381,11 +380,6 @@ export function startHttp(o: Options) {
       if (!isAgentCli(cli)) return send(res, 400, "unknown CLI");
       try { return send(res, 200, JSON.stringify({ models: await accountModels(url.searchParams.get("account") ?? "", cli) }), "application/json"); }
       catch (e) { return send(res, 503, JSON.stringify({ error: e instanceof Error ? e.message : "Catalog unavailable" }), "application/json"); }
-    }
-    if (req.method === "GET" && url.pathname === "/api/models/free") {
-      if (!whoIs(req, url.searchParams.get("token") ?? "") || !okOrigin(req)) return send(res, 401, "not signed in");
-      try { return send(res, 200, JSON.stringify({ models: await freeModelCatalog() }), "application/json"); }
-      catch { return send(res, 503, JSON.stringify({ error: "Free-model catalog unavailable. Helpers remain off." }), "application/json"); }
     }
     if (url.pathname === "/api/health") return send(res, 200, JSON.stringify({ ok: true }), "application/json");
 

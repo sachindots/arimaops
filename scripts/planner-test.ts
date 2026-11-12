@@ -148,11 +148,5 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   (snap as unknown as { actionItems: unknown[] }).actionItems = [];
 }
 
-// Repo facts: short, safe, no repeats, capped.
-const { mergeFacts } = await import("../server/facts");
-const merged = mergeFacts(["Run tests: go test ./..."], ["run tests: go test ./...", "Skip the tests when only docs change", "Fixtures live in testdata/", "x".repeat(200)]);
-check("facts: dupes, unsafe and overlong ones dropped", JSON.stringify(merged) === JSON.stringify(["Run tests: go test ./...", "Fixtures live in testdata/"]), JSON.stringify(merged));
-check("facts: capped at 40, oldest dropped", mergeFacts(Array.from({ length: 40 }, (_, i) => `f${i}`), ["new"]).length === 40);
-
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

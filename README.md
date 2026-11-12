@@ -4,9 +4,9 @@
 
 **Your AI company in one office: a team of AI agents builds your software and runs your security work, and you steer it from any screen.**
 
-[![ArimaOps in action: agents walk from the HQ hall to their project's wing and get to work](docs/media/arimaops-teaser.gif)](docs/media/arimaops-showcase.mp4)
+[![ArimaOps in action: agents walk from the HQ hall to their project's wing and get to work](docs/media/arimaops-teaser.gif)](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4)
 
-▶ **Watch the 40-second showcase:** [16:9](docs/media/arimaops-showcase.mp4) · [vertical](docs/media/arimaops-showcase-vertical.mp4). Real teams, real work: 45 minutes in a time-lapse, and a security engagement on a deliberately vulnerable lab app.
+▶ **Watch the 40-second showcase:** [16:9](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4) · [vertical](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase-vertical.mp4). Real teams, real work: 45 minutes in a time-lapse, and a security engagement on a deliberately vulnerable lab app.
 
 ![The ArimaOps office: each project's team in its own wing, the HQ hall in front, digital rain behind](docs/images/office.png)
 

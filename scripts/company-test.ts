@@ -1,4 +1,4 @@
-// Regression checks for startup, free-only helpers, catalogs and completion gates. No paid requests.
+// Regression checks for startup, catalogs and completion gates. No paid requests.
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,6 @@ import { z } from "zod";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "arima-company-"));
 const { accounts } = await import("../server/credentials/registry");
-const { askFreeHelper, freeModels } = await import("../server/lib/freeHelper");
 const { accountModels, checkAccountModel, modelIds } = await import("../server/models");
 const { assertTaskCompletion } = await import("../server/taskCompletion");
 const { Sessions } = await import("../server/sessions");
@@ -20,43 +19,8 @@ const { mkdirSync, writeFileSync } = await import("node:fs");
 const { dirname } = await import("node:path");
 const { Planner } = await import("../server/planner");
 
-const catalog = { data: [
-  { id: "test/small:free", name: "Small free", pricing: { prompt: "0", completion: "0" }, architecture: { output_modalities: ["text"] } },
-  { id: "test/paid:free", name: "Misleading suffix", pricing: { prompt: "0", completion: "0.1" }, architecture: { output_modalities: ["text"] } },
-  { id: "test/paid", name: "Paid", pricing: { prompt: "1", completion: "1" }, architecture: { output_modalities: ["text"] } },
-  { id: "test/image:free", name: "Image fee", pricing: { prompt: "0", completion: "0", image: "0.5" }, architecture: { output_modalities: ["text"] } },
-  { id: "test/override:free", name: "Price override", pricing: { prompt: "0", completion: "0", overrides: [{ price: "1" }] }, architecture: { output_modalities: ["text"] } },
-] };
-assert.deepEqual(freeModels(catalog).map((m) => m.id), ["test/small:free"]);
-accounts().save({ id: "free-test", provider: "openrouter", secret: "test-key-not-real" });
 accounts().save({ id: "openai-test", provider: "openai", secret: "test-openai-not-real" });
 accounts().save({ id: "anthropic-test", provider: "anthropic", secret: "test-anthropic-not-real" });
-let requests = 0;
-let completions = 0;
-const fetcher: typeof fetch = async (url, init) => {
-  requests++;
-  if (String(url).endsWith("/models")) return Response.json(catalog);
-  completions++;
-  const body = JSON.parse(String(init?.body));
-  assert.equal(body.model, "test/small:free");
-  assert.equal(body.max_tokens, 512);
-  assert.equal(body.tools, undefined);
-  assert.deepEqual(body.provider, { max_price: { prompt: 0, completion: 0 }, allow_fallbacks: false });
-  return Response.json({ choices: [{ message: { content: '{"facts":["Run pnpm build"]}' } }] });
-};
-const parse = z.object({ facts: z.array(z.string()) }).parse;
-assert.equal(await askFreeHelper(null, "hello", parse, fetcher), null);
-assert.equal(requests, 0, "disabled helper makes no network request or CLI call");
-assert.equal(await askFreeHelper({ account: "free-test", model: "test/paid:free" }, "hello", parse, fetcher), null);
-assert.equal(completions, 0, "paid model rejected before inference");
-assert.deepEqual((await askFreeHelper({ account: "free-test", model: "test/small:free" }, "hello", parse, fetcher))?.json.facts, ["Run pnpm build"]);
-const before = requests;
-assert.equal(await askFreeHelper({ account: "openai-test", model: "test/small:free" }, "hello", parse, fetcher), null);
-assert.equal(requests, before, "wrong provider never receives a request");
-assert.equal(await askFreeHelper({ account: "free-test", model: "test/small:free" }, "x".repeat(12_001), parse, fetcher), null);
-assert.equal(await askFreeHelper({ account: "free-test", model: "test/small:free" }, "hello", parse, async () => new Response("rate limited", { status: 429 })), null);
-assert.equal(await askFreeHelper({ account: "free-test", model: "test/small:free" }, "hello", parse, async () => Response.json({ choices: [{ message: { content: '{"facts":false}' } }] })), null, "invalid model JSON is refused");
-console.log("✓ helpers: opt-in, live free pricing, zero-price ceiling, no paid fallback, bounded output, schema validation");
 
 assert.deepEqual(modelIds("openai", { data: [{ id: "gpt-test" }, { id: "text-embedding-test" }] }), ["gpt-test"]);
 assert.deepEqual(modelIds("google", { models: [{ name: "models/gemini-test", supportedGenerationMethods: ["generateContent"] }, { name: "models/embed", supportedGenerationMethods: ["embedContent"] }] }), ["gemini-test"]);

@@ -109,11 +109,3 @@ export class LoopGuard {
     this.windows.delete(agentId);
   }
 }
-
-/** The judge's instructions (adapted from TokenEconomizer's stuck judge: judge the workflow, favour sparing). */
-export const JUDGE_PROMPT = `You watch an AI coding agent partway through ONE task. A cheap rule flagged its recent tool calls as a possible unproductive loop.
-Decide whether it is genuinely STUCK (repeating the same edit/test/failure with no progress, unlikely to recover going the same way) or still making progress (changing failures, narrowing the problem, trying new ideas).
-Judge only the workflow below; don't solve the task. Prefer stuck=false when there is any sign of progress.
-Reply with only JSON: {"stuck": true|false, "confidence": 0.0-1.0, "reason": "<under 15 words>"}
-
-`;

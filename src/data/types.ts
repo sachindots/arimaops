@@ -125,7 +125,7 @@ export interface WorkflowConfig {
   merge: { by: "human" | "lead" };
   deploy: { enabled: boolean; tool: DeployTool; command: string; perAgentEnvironments: boolean };
   /** Token saving. clearBetweenTasks (default on): a worker starts each task in a fresh conversation. */
-  lean?: { clearBetweenTasks: boolean; helper?: { account: string; model: string } | null };
+  lean?: { clearBetweenTasks: boolean };
 }
 
 /** What kind of work the project is; decides its workflow (software: PRs; the others come in later phases). */
@@ -533,7 +533,7 @@ export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;
-  lean?: { clearBetweenTasks?: boolean; helper?: { account: string; model: string } | null };
+  lean?: { clearBetweenTasks?: boolean };
 }
 
 // ---------------------------------------------------------------- Multi-Project CTO Registry
