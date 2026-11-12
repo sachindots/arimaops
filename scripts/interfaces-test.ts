@@ -61,7 +61,7 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
     pullRequests: [],
     actionItems: [],
   };
-  const hub = { snap, cfg: (id: string) => team.find((a) => a.id === id), name: (id: string) => id, emit: () => {}, planChanged: () => {}, activity: () => {}, status: () => null, setStatus: () => {} };
+  const hub = { snap, repo: { root: mkdtempSync(join(tmpdir(), "arima-ifaces-repo-")) }, cfg: (id: string) => team.find((a) => a.id === id), name: (id: string) => id, emit: () => {}, planChanged: () => {}, activity: () => {}, status: () => null, setStatus: () => {} };
   const planner = new Planner(hub as never, { push: () => {} } as never);
   planner.memory = memory;
   const call = async (me: string, name: string, args: Record<string, unknown>) => {
@@ -84,6 +84,9 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   check("the lead revises an entry", !(await call("cipher", "ledger_revise", { id, text: "It's a race in the lexer" })).error && memory.ledger("mcp")[0].text === "It's a race in the lexer");
   const read = JSON.parse((await call("cipher", "read_ledger", {})).text);
   check("read_ledger returns the current task ledger", read.task.length === 1 && read.task[0].kind === "guess");
+  const mine = await call("ghost", "get_my_task", {});
+  const brief = mine.error ? "" : (JSON.parse(mine.text).brief as string);
+  check("get_my_task returns the brief, with the lead's ledger and the open gates", brief.startsWith("# B1-T01: Parser") && brief.includes("guess: It's a race in the lexer") && brief.includes("merged (pr-merged)"), mine.text.slice(0, 300));
 }
 
 // ---------------------------------------------------------------- GitHub events

@@ -228,7 +228,7 @@ The brief (1.4) is one function over these:
 function buildBrief(input: BriefInput, budget = 4000): { text: string; tokens: number; trimmed: string[] }
 ```
 
-Sections in order, each with a share of the budget: task (title, description, files, done-when), spec excerpt, handoffs, task-ledger excerpt, memory (empty until Phase 2), skill names, gates of the task's stage. Tokens are estimated at four characters each. When over budget it trims handoffs, then the ledger, then the spec, and names what it cut so the agent knows to call `recall`.
+As built (`server/brief.ts`): sections in order are the task (title, description, files, done-when), the gates still before done and what each needs, the spec excerpt (empty until specs exist), handoffs (the agent's own last note and the notes of the tasks it builds on), the lead's ledger for this task and the project, memory (empty until Phase 2), repo facts, and skill names. Tokens are estimated at four characters each. Over budget it cuts older handoffs, then older ledger entries, then memory, older repo facts, the spec and finally the task description, and says what it left out; the title, files, done-when and gates always stay. `get_my_task` returns the brief's text.
 
 ## 9. Old projects, read-only
 

@@ -236,12 +236,18 @@ export const BRIEF_BUDGET = 4000; // tokens
 
 export interface BriefInput {
   task: Pick<Task, "id" | "title" | "description" | "files" | "doneWhen">;
+  /** The excerpt of the approved spec this task implements; empty until specs exist (Phase 3). */
   spec: string;
+  /** Notes of the tasks this one builds on, and the agent's own last note. */
   handoffs: { taskId: string; by: string | null; note: string }[];
+  /** The lead's task ledger: entries for this task and for the whole project. */
   ledger: Pick<LedgerEntry, "kind" | "text">[];
   memory: string; // empty until Phase 2
+  /** Repo facts (.arima/facts.md): build and test commands, layout. */
+  facts: string[];
   skills: string[];
-  gates: Gate[];
+  /** The gates still between this task and done, and what each needs. */
+  gates: { id: string; kind: Gate["kind"]; needs: string }[];
 }
 
 // ── Validation ──

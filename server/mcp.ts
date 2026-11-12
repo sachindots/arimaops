@@ -172,10 +172,9 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       const rules = isDeliverables
         ? `Work only on this task. Write your output to the listed files (or deliverables/${t.id}.md). Submit in-review with verification results in note and your output path in deliverablePath. When review is enabled, a different reviewer must accept it.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
-      const start = "Start from `brief`: the handoff notes of the tasks you build on, your own last note, and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
+      const start = "Start from `brief`: the task, the gates before it's done, the handoff notes it builds on, the lead's ledger and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
       const stage = hub.snap.config.template?.flow.stages.find((s) => s.id === t.stageId);
-      const gates = planner.openGates(t, me).map((g) => ({ stage: g.stageId, gate: g.gate.id, kind: g.gate.kind, needs: g.why }));
-      return ok({ ...taskView(t.id), stage: stage?.name ?? null, gatesBeforeDone: gates, waitingOn: blockedBy, brief: planner.brief(me, t), rules: start + rules });
+      return ok({ ...taskView(t.id), stage: stage?.name ?? null, waitingOn: blockedBy, brief: planner.brief(me, t).text, rules: start + rules });
     }),
   );
 

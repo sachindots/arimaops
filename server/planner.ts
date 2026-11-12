@@ -14,6 +14,7 @@ import { assertTaskMove, gateContext, recordGate } from "./planStore";
 import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
+import { buildBrief, type Brief } from "./brief";
 import type { GateState } from "../src/data/model";
 
 export interface NewTask {
@@ -296,14 +297,26 @@ export class Planner {
   }
 
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */
-  brief(agentId: string, task: Task) {
-    const handoffs = task.needs
-      .map((n) => this.task(n))
-      .filter((d): d is Task => !!d?.note)
-      .slice(-8)
-      .map((d) => ({ task: d.id, by: d.ownerId ? this.hub.name(d.ownerId) : null, note: d.note?.slice(0, 300) }));
-    const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id);
-    return { handoffs, yourLastNote: mine.at(-1)?.note ?? null, repoFacts: readFacts(this.hub.repo.root) };
+  brief(agentId: string, task: Task): Brief {
+    // Least relevant first: the brief drops from the front when it is over budget.
+    const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id).at(-1);
+    const deps = task.needs.map((n) => this.task(n)).filter((d): d is Task => !!d?.note).slice(-8);
+    const handoffs = [...(mine ? [{ ...mine, ownerId: "you" }] : []), ...deps].map((d) => ({
+      taskId: d.id,
+      by: d.ownerId === "you" ? "your last task" : d.ownerId ? this.hub.name(d.ownerId) : null,
+      note: d.note!.slice(0, 600),
+    }));
+    const ledger = (this.memory?.ledger(this.snap.config.project.id, { ledger: "task" }) ?? []).filter((e) => e.taskId === task.id || e.taskId === null);
+    return buildBrief({
+      task,
+      spec: "",
+      handoffs,
+      ledger,
+      memory: "",
+      facts: readFacts(this.hub.repo.root),
+      skills: this.hub.cfg(agentId)?.skills ?? [],
+      gates: this.openGates(task, agentId).map((g) => ({ id: g.gate.id, kind: g.gate.kind, needs: g.why })),
+    });
   }
 
   private stallNudged = new Set<string>(); // agent:task, so each stall is reported once

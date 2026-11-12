@@ -68,8 +68,8 @@ const afterDone = pushed.slice(beforeDone);
 check("worker's finished task queues its CLI's new-conversation command", afterDone.some((p) => p.kind === "reset" && p.to === "nyx" && p.text === "/new"), JSON.stringify(afterDone));
 planner.assign(t4.id, "nyx", "cipher");
 const b = planner.brief("nyx", t4);
-check("brief carries the handoff it builds on", b.handoffs[0]?.note === "phone-tips.md written: 2 tips" && b.handoffs[0]?.task === t3.id, JSON.stringify(b));
-check("brief carries the agent's own last note", b.yourLastNote === "phone-tips.md written: 2 tips");
+check("brief carries the handoff it builds on", b.text.includes(`- ${t3.id} (`) && b.text.includes("phone-tips.md written: 2 tips"), b.text);
+check("brief carries the agent's own last note", b.text.includes("(your last task): phone-tips.md written: 2 tips"), b.text);
 
 // No reset for the lead, nor for a worker already mid-way through another task.
 const t5 = createTask({ title: "Lead's own task" } as never, "cipher");
