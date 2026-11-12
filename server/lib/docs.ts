@@ -15,8 +15,10 @@ export const BACKUP_SUFFIX = ".pre-sqlite.bak";
 
 const open = new Map<string, DatabaseSync>();
 
-function dbFor(file: string): DatabaseSync {
-  const dir = dirname(file);
+const dbFor = (file: string) => openDb(dirname(file));
+
+/** The arima.db of a folder, opened once and shared (docs, logs and server/lib/db.ts's tables). */
+export function openDb(dir: string): DatabaseSync {
   let db = open.get(dir);
   if (db) return db;
   mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -40,7 +42,7 @@ function dbFor(file: string): DatabaseSync {
   return db;
 }
 
-function tx(db: DatabaseSync, fn: () => void) {
+export function tx(db: DatabaseSync, fn: () => void) {
   db.exec("BEGIN IMMEDIATE");
   try {
     fn();
