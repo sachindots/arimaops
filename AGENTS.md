@@ -20,4 +20,4 @@ for t in session-backend workspace auth limits inbox scope findings planner env 
 
 Local dev: `pnpm dev:hq` (HQ on :7420, UI on :5173). The server keeps state in `~/.arima/`.
 
-## Current work: see HANDOFF.md (local only, gitignored; it holds server and device details)
+## Current work: see HANDOFF.md and ROADMAP.md (both local only, gitignored)
