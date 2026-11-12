@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-server
+.git
+.arima
+.hq
+.jsmhq
+android
+pack
+*.tgz
+.env
+HANDOFF.md
+ROADMAP.md

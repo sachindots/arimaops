@@ -1,0 +1,31 @@
+# ArimaOps HQ in Docker. On a fresh server:
+#   cp deploy/compose.env.example .env   # then edit it
+#   docker compose up -d
+# Update: docker compose pull && docker compose up -d   (or `build` instead of `pull` from a checkout)
+#
+# Your home folder is mounted at the same path inside, so HQ's files (~/.arima), sign-ins,
+# repos, and the folders it hands to agent containers all keep their real paths.
+# Note: agents run in tmux inside this container, so restarting it restarts them.
+
+services:
+  hq:
+    image: ${ARIMA_IMAGE:-arimaops:latest}
+    build:
+      context: .
+      dockerfile: docker/hq.Dockerfile
+    init: true
+    restart: unless-stopped
+    # Same as a native install: HQ listens on 127.0.0.1 (reach it with `tailscale serve 7420`),
+    # and the Container-mode egress proxy binds the Docker bridge.
+    network_mode: host
+    user: "${ARIMA_UID:?set ARIMA_UID}:${ARIMA_GID:?set ARIMA_GID}"
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID}"
+    environment:
+      HOME: ${ARIMA_HOME_DIR:?set ARIMA_HOME_DIR}
+      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:?set ARIMA_MASTER_KEY}
+    volumes:
+      - ${ARIMA_HOME_DIR}:${ARIMA_HOME_DIR}
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: ${ARIMA_HOME_DIR}
+    command: ["--repo", "${ARIMA_REPO:?set ARIMA_REPO}", "--port", "${ARIMA_PORT:-7420}", "--remote", "--no-open"]
