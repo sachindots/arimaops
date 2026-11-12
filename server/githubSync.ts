@@ -1,8 +1,9 @@
-// Polls GitHub, keeps the office's PRs in sync, and runs the review automations:
+// Keeps the office's PRs in sync with what GitHubEvents reports, and runs the review automations:
 // comments → tell the author; passed → tell the lead; merged → task done.
 
 import type { PullRequest } from "../src/data/types";
-import { branchAgent, fetchPrs, OPEN_LIMIT, RateLimited, taskIdOf, toPullRequest } from "./github";
+import { branchAgent, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
+import { GhPolling, type GitHubEvent, type GitHubEvents, type GitHubWatch } from "./githubEvents";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
 import type { Planner } from "./planner";
@@ -37,35 +38,29 @@ export function mergeByNotice(by: "human" | "lead", waiting: number[], reviewed 
   return `The user changed the workflow: you now merge PRs once they pass review.${list}`;
 }
 
-const MIN_POLL_MS = 20_000; // never more often than this (nudges included)
-const MAX_POLL_MS = 5 * 60_000;
-const HQ_BUDGET = 1200; // GraphQL points per hour HQ may use; the rest of the 5,000 is left for the agents' gh commands
-const LOW_REMAINING = 800; // below this, poll at most every 2 minutes
 const label = { coderabbit: "CodeRabbit", greptile: "Greptile", copilot: "Copilot", human: "The reviewer", custom: "The review check" } as const;
 
 export class GitHubSync {
   private prev = new Map<number, PullRequest>();
   private first = true;
-  private timer: NodeJS.Timeout | null = null;
-  private nudgeTimer: NodeJS.Timeout | null = null;
-  private busy = false;
-  private running = false; // start/stop can repeat (project pause/resume)
+  private watch: GitHubWatch | null = null;
   private subscribed = false;
   private lastError: string | null = null;
-  private lastFetch = 0;
-  private interval = MIN_POLL_MS;
-  private pausedUntil = 0;
 
-  constructor(private hub: Hub, private planner: Planner, private repo: string | null) {}
+  constructor(
+    private hub: Hub,
+    private planner: Planner,
+    private repo: string | null,
+    private events: GitHubEvents = new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok")),
+  ) {}
 
   start() {
     if (!this.repo) {
       log.warn("No GitHub remote: PRs and reviews are off.");
       return;
     }
-    if (this.running) return;
-    this.running = true;
-    void this.tick();
+    if (this.watch) return;
+    this.watch = this.events.watch(this.repo, (e) => this.onEvent(e));
     if (this.subscribed) return;
     this.subscribed = true;
     // Check sooner when an agent finishes a turn (it may have run `gh pr create`)
@@ -85,91 +80,64 @@ export class GitHubSync {
   }
 
   stop() {
-    this.running = false;
-    if (this.timer) clearTimeout(this.timer);
-    if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
+    this.watch?.stop();
+    this.watch = null;
   }
 
-  /** One poll, then schedule the next at the current interval. */
-  private async tick() {
-    await this.refresh();
-    if (!this.running) return;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.tick(), Math.max(this.interval, this.pausedUntil - Date.now()));
-  }
-
-  /** Refresh soon (debounced): an agent just opened a PR or finished a turn. Still respects the minimum gap and any pause. */
+  /** Look again soon: an agent just opened a PR or finished a turn. */
   nudge(delayMs = 3000) {
-    if (!this.repo || !this.running) return;
-    if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
-    const wait = Math.max(delayMs, this.lastFetch + MIN_POLL_MS - Date.now(), this.pausedUntil - Date.now());
-    this.nudgeTimer = setTimeout(() => void this.refresh(), wait);
+    this.watch?.nudge(delayMs);
   }
 
-  /** Poll often enough to stay within HQ's share of the budget; slow down when it runs low. */
-  private pace(rate: { cost: number; remaining: number } | null) {
-    if (!rate) return;
-    const forBudget = Math.ceil((Math.max(1, rate.cost) * 3_600_000) / HQ_BUDGET);
-    const low = rate.remaining < LOW_REMAINING ? 120_000 : 0;
-    this.interval = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, forBudget, low));
-  }
-
-  async refresh() {
-    if (!this.repo || this.busy || Date.now() < this.pausedUntil) return;
-    // Never closer together than the minimum gap (a nudge can land right after a regular poll).
-    if (Date.now() - this.lastFetch < MIN_POLL_MS - 1000) return;
-    if (!this.hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok")) return;
-    this.busy = true;
-    this.lastFetch = Date.now();
-    try {
-      const { open, merged, closed, rate } = await fetchPrs(this.repo);
-      if (this.lastError) log.info("GitHub reachable again");
-      this.lastError = null;
-      this.pace(rate);
-      const wf = this.hub.snap.config.workflow;
-      const team = new Set(this.hub.snap.config.team.map((a) => a.id));
-      const next = [...open, ...merged].map((gh) => {
-        const taskId = taskIdOf(gh);
-        const task = taskId ? this.planner.task(taskId) : undefined;
-        const fromBranch = branchAgent(gh.headRefName);
-        const authorId = task?.ownerId ?? (fromBranch && team.has(fromBranch) ? fromBranch : "");
-        return toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
-      });
-      // PRs we showed as open that are now neither open nor recently merged were closed. A full page of
-      // open PRs may have left older ones out, so then only the recently-closed list proves it.
-      const seen = new Set(next.map((p) => p.number));
-      const complete = open.length < OPEN_LIMIT;
-      const recentlyClosed = new Set(closed);
-      for (const old of this.prev.values())
-        if (!seen.has(old.number) && !old.merged && !old.closed) next.push(complete || recentlyClosed.has(old.number) ? { ...old, closed: true } : old);
-
-      this.hub.snap.pullRequests = next;
-      for (const pr of next) {
-        const old = this.prev.get(pr.number);
-        if (JSON.stringify(old) !== JSON.stringify(pr)) this.hub.emit({ type: "pr.updated", pr: { ...pr } });
-        if (!this.first) this.react(old, pr);
-        this.syncTask(pr);
+  /** What GitHub reported. Exported for tests: the source is the only other caller. */
+  onEvent(e: GitHubEvent) {
+    if (e.type === "rate-limited") {
+      const at = e.until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const msg = `GitHub API rate limit reached (shared with your agents' gh commands). PR sync paused until ${at}.`;
+      if (msg !== this.lastError) {
+        log.warn(msg);
+        this.hub.activity("config", null, msg);
       }
-      this.prev = new Map(next.map((p) => [p.number, p]));
-      this.first = false;
-    } catch (err) {
-      if (err instanceof RateLimited) {
-        this.pausedUntil = err.resetAt.getTime() + 5000;
-        const at = err.resetAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const msg = `GitHub API rate limit reached (shared with your agents' gh commands). PR sync paused until ${at}.`;
-        if (msg !== this.lastError) {
-          log.warn(msg);
-          this.hub.activity("config", null, msg);
-        }
-        this.lastError = msg;
-        return;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg !== this.lastError) log.warn(`GitHub: ${msg}`);
       this.lastError = msg;
-    } finally {
-      this.busy = false;
+      return;
     }
+    if (e.type === "error") {
+      log.warn(`GitHub: ${e.message}`);
+      this.lastError = e.message;
+      return;
+    }
+    this.lastError = null;
+    const { open, merged, closed } = e;
+    const wf = this.hub.snap.config.workflow;
+    const team = new Set(this.hub.snap.config.team.map((a) => a.id));
+    const next = [...open, ...merged].map((gh) => {
+      const taskId = taskIdOf(gh);
+      const task = taskId ? this.planner.task(taskId) : undefined;
+      const fromBranch = branchAgent(gh.headRefName);
+      const authorId = task?.ownerId ?? (fromBranch && team.has(fromBranch) ? fromBranch : "");
+      return toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+    });
+    // PRs we showed as open that are now neither open nor recently merged were closed. A full page of
+    // open PRs may have left older ones out, so then only the recently-closed list proves it.
+    const seen = new Set(next.map((p) => p.number));
+    const complete = open.length < OPEN_LIMIT;
+    const recentlyClosed = new Set(closed);
+    for (const old of this.prev.values())
+      if (!seen.has(old.number) && !old.merged && !old.closed) next.push(complete || recentlyClosed.has(old.number) ? { ...old, closed: true } : old);
+
+    this.hub.snap.pullRequests = next;
+    for (const pr of next) {
+      const old = this.prev.get(pr.number);
+      if (JSON.stringify(old) !== JSON.stringify(pr)) this.hub.emit({ type: "pr.updated", pr: { ...pr } });
+      if (!this.first) this.react(old, pr);
+      try {
+        this.syncTask(pr);
+      } catch (err) {
+        log.warn(`GitHub: couldn't update ${pr.taskId}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    this.prev = new Map(next.map((p) => [p.number, p]));
+    this.first = false;
   }
 
   /** Keep the task board in line with its PR. */

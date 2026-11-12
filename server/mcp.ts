@@ -11,7 +11,8 @@ import { requestAccess } from "./access";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
 import { AGENT_CLIS, type AgentCli } from "../src/data/types";
-import { ASSET_KINDS, EVIDENCE_KINDS } from "../src/data/model";
+import { ASSET_KINDS, EVIDENCE_KINDS, type LedgerEntry } from "../src/data/model";
+import { LEAD_KINDS } from "./memory";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -29,7 +30,7 @@ function guard<A>(fn: (args: A) => Result) {
   };
 }
 
-function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
+export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   const server = new McpServer({ name: "hq", version: "0.1.0" });
   const myCfg = hub.cfg(me);
   const isLead = !!myCfg?.isLead;
@@ -316,6 +317,63 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       leadOnly();
       if (!planner.findings) throw new Error("Findings aren't available.");
       return ok(planner.findings.update(id, patch, me));
+    }),
+  );
+
+  // ---------------------------------------------------------------- Lead: task ledger
+  const memory = () => {
+    if (!planner.memory) throw new Error("The ledger isn't available.");
+    return planner.memory;
+  };
+  const projectId = hub.snap.config.project.id;
+
+  server.registerTool(
+    "ledger_add",
+    {
+      description:
+        "Lead only. Write to your task ledger: a fact you verified, a guess you haven't, a step of the plan, or a note. Tie it to a task, or leave taskId out for the whole project. The ledger outlives your context; read it back with read_ledger.",
+      inputSchema: {
+        kind: z.enum(LEAD_KINDS),
+        text: z.string().max(2000),
+        taskId: z.string().optional(),
+      },
+    },
+    guard(({ kind, text, taskId }: { kind: (typeof LEAD_KINDS)[number]; text: string; taskId?: string }) => {
+      leadOnly();
+      if (taskId && !planner.task(taskId)) throw new Error(`No task ${taskId}.`);
+      const e = memory().addLedger({ projectId, taskId: taskId ?? null, ledger: "task", kind, text, by: me });
+      return ok(`Ledger entry ${e.id} (${e.kind}) added.`);
+    }),
+  );
+
+  server.registerTool(
+    "ledger_revise",
+    {
+      description: "Lead only. Replace a task-ledger entry's text (a guess you confirmed or disproved, a changed plan). The old entry is kept as history.",
+      inputSchema: { id: z.number().int(), text: z.string().max(2000) },
+    },
+    guard(({ id, text }: { id: number; text: string }) => {
+      leadOnly();
+      const old = memory().ledger(projectId, { ledger: "task" }).find((e) => e.id === id);
+      if (!old) throw new Error(`No current task-ledger entry ${id}.`);
+      const e = memory().reviseLedger(projectId, id, text, me);
+      return ok(`Entry ${id} revised as ${e.id}.`);
+    }),
+  );
+
+  server.registerTool(
+    "read_ledger",
+    {
+      description: "Lead only. Your task ledger (facts, guesses, plan, notes) and HQ's progress ledger (stalls it saw), current entries only. Filter by task.",
+      inputSchema: { taskId: z.string().optional() },
+    },
+    guard(({ taskId }: { taskId?: string }) => {
+      leadOnly();
+      const view = (e: LedgerEntry) => ({ id: e.id, task: e.taskId, kind: e.kind, text: e.text, by: e.by, at: e.at });
+      return ok({
+        task: memory().ledger(projectId, { ledger: "task", taskId }).map(view),
+        progress: memory().ledger(projectId, { ledger: "progress", taskId }).slice(-20).map(view),
+      });
     }),
   );
 

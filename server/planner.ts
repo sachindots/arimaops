@@ -13,6 +13,7 @@ import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 import { assertTaskMove, gateContext, recordGate } from "./planStore";
 import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
+import type { MemoryStore } from "./memory";
 import type { GateState } from "../src/data/model";
 
 export interface NewTask {
@@ -36,6 +37,8 @@ export class Planner {
   actions: ActionItems | null = null;
   /** Set by project.ts: security findings (Team MCP report_finding). */
   findings: Findings | null = null;
+  /** Set by main: ledgers and, from Phase 2, the team's memory. */
+  memory: MemoryStore | null = null;
 
 
   constructor(private hub: Hub, private inbox: Inbox) {}
@@ -335,6 +338,7 @@ export class Planner {
         this.stallNudged.add(key);
         const mins = Math.round(quietMs / 60_000);
         if (lead) this.notify(lead.id, `${a.name} shows Working on ${task.id} but has done nothing visible for ${mins} min (a command may be hanging). Check its terminal in HQ, or ask the user to.`);
+        this.progress(task.id, `${a.name} silent ${mins} min while working`);
         this.hub.activity("agent.needs-input", a.id, `${a.name} silent for ${mins} min while working on ${task.id}`);
         continue;
       }
@@ -343,7 +347,17 @@ export class Planner {
       const mins = Math.round((now - Date.parse(st.stateSince)) / 60_000);
       this.notify(a.id, `HQ: you've been idle ${mins} min but ${task.id} is still in progress. If you were waiting on a background command or job, it won't wake you: check it now and continue in the foreground. If you're blocked, call set_my_status blocked with the reason.`);
       if (lead) this.notify(lead.id, `${a.name} has been idle ${mins} min with ${task.id} still in progress. HQ nudged it; check on it if it doesn't move.`);
+      this.progress(task.id, `${a.name} idle ${mins} min with the task in progress; nudged`);
       this.hub.activity("agent.needs-input", a.id, `${a.name} stalled on ${task.id} (idle ${mins} min)`);
+    }
+  }
+
+  /** HQ's progress ledger: each stall it saw, so the lead (and Phase 3's replanning) can count them. */
+  private progress(taskId: string, text: string) {
+    try {
+      this.memory?.addLedger({ projectId: this.snap.config.project.id, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
+    } catch {
+      /* the ledger is a record, never a reason to stop a stall check */
     }
   }
 

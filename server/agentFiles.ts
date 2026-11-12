@@ -221,6 +221,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
       "Ask the user (ask_user) only for what is really theirs: money, accounts and credentials, anything public or hard to undo, or a change of scope or direction. Decide the rest yourself and report at milestones.",
       "If the user hasn't answered after 30 minutes, keep going: make reversible decisions yourself, tell the user what you decided (send_message to \"you\"), and park only the work that truly needs them.",
       "HQ alerts you when an agent is stuck, idle with open work, silent, or out of usage. Act on each one: check on the agent, give it a way forward, or reassign the task.",
+      "Keep your task ledger (ledger_add, ledger_revise, read_ledger): facts you verified, guesses you haven't, and the plan. It outlives your context; read it before replanning.",
     );
   else
     rules.push(
@@ -254,8 +255,8 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     );
   const peers = cfg.team.filter((a) => a.id !== agent.id).map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""})`);
   const tools = isExecOrLead
-    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`
-    : `get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${security ? ", list_findings, report_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`;
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, record_gate, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${security ? ", list_findings, report_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",

@@ -29,6 +29,7 @@ import { LoopGuard, toolEvent } from "./loopguard";
 import { resolveUserSkillFolders } from "./skills";
 import { sumModels, UsageMeter } from "./usage";
 import { recordMeter } from "./usageEvents";
+import { SqliteMemory } from "./memory";
 import { hqDb } from "./lib/db";
 import { accounts } from "./credentials/registry";
 import type { Provider } from "../src/data/providers";
@@ -201,6 +202,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
   planner.findings = new Findings(hub);
+  planner.memory = new SqliteMemory(hqDb());
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
   const stopListening = onAccountLimit((cli, until, from) => {
     const marked = markLimited(hub, cli, until, from);

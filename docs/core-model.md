@@ -203,10 +203,10 @@ interface ModelRunner {          // every one-shot model call; always writes a u
 // Implementations: CliRunner (claude -p, codex exec, gemini -p; the owner's sign-ins)
 //                  ApiKeyRunner (vault key, provider HTTP API; customers)
 
-interface GitHubEvents {         // PR opened, review, checks, merged, comments
-  watch(projectId: string, repo: string, on: (e: GitHubEvent) => void): () => void;
+interface GitHubEvents {         // PR snapshots, rate limits, errors
+  watch(repo: string, on: (e: GitHubEvent) => void): { nudge(delayMs?: number): void; stop(): void };
 }
-// Implementation now: GhPolling (today's GitHubSync loop). Phase 3 adds GitHubAppWebhooks.
+// Implementation now: GhPolling (the paced `gh` poll). GitHubSync only listens. Phase 3 adds GitHubAppWebhooks.
 
 interface MemoryStore {
   addLedger(e: Omit<LedgerEntry, "id" | "at">): LedgerEntry;
@@ -216,6 +216,11 @@ interface MemoryStore {
 }
 // Implementation now: SqliteMemory. Phase 2: Neo4jMemory.
 ```
+
+As built (`server/memory.ts`, `server/githubEvents.ts`, `server/modelRunner.ts`):
+
+- `MemoryStore` also has `reviseLedger`: a revision is a new entry and the old one points at it. The lead's tools are `ledger_add` (fact, guess, plan, note), `ledger_revise` and `read_ledger`, all lead-only; stall entries are HQ's.
+- `ModelRunner` is `MeteredRunner`, which records every run as a usage event and picks the way in by account: a CLI sign-in runs `claude -p` with no tools, no MCP servers and no saved session, in an empty folder; an Anthropic API-key account runs the Messages API through `@anthropic-ai/sdk`. OpenAI and Google keys, and non-Claude models on a CLI sign-in, are refused until a caller needs them. Nothing calls it yet: the first caller is memory extraction (Phase 2.4).
 
 The brief (1.4) is one function over these:
 
