@@ -17,3 +17,6 @@ prototypes/
 docs/archive/
 docs/initial-idea.md
 *.tsbuildinfo
+
+# Owner-only notes: server, devices, accounts (kept off the public repo)
+HANDOFF.md

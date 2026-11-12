@@ -108,8 +108,8 @@ check("whole values and JSON parts are masked", r.redact(`a ${key} b aws-secret-
 check("short values aren't treated as secrets", secretsOf(["abc"]).length === 0);
 const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n";
 const serviceAccount = JSON.stringify({
-  type: "service_account", project_id: "arimaops-e47f0", private_key_id: "0123456789abcdef0123", private_key: pem,
-  client_email: "firebase-adminsdk@arimaops-e47f0.iam.gserviceaccount.com", auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  type: "service_account", project_id: "example-project", private_key_id: "0123456789abcdef0123", private_key: pem,
+  client_email: "firebase-adminsdk@example-project.iam.gserviceaccount.com", auth_uri: "https://accounts.google.com/o/oauth2/auth",
   token_uri: "https://oauth2.googleapis.com/token", universe_domain: "googleapis.com",
 });
 const r2 = new Redactor(() => [serviceAccount]);
