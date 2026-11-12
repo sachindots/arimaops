@@ -1,3 +1,4 @@
+import type { Role, TeamTemplate, ToolRules } from "./model";
 import type { StackConfig } from "./stack";
 // Domain types shared by the data source, the store, the office and the HUD.
 
@@ -62,17 +63,17 @@ export const CLI_MODELS: Record<AgentCli, string[]> = {
   copilot: ["claude-opus-4.6", "claude-sonnet-4.6", "gpt-5.4", "gemini-3.1-pro"],
 };
 
-export const DEPARTMENT_IDS = ["exec", "eng", "design", "qa-ops", "marketing", "red-team"] as const;
-export type DepartmentId = (typeof DEPARTMENT_IDS)[number];
-
-export const isDepartmentId = (v: unknown): v is DepartmentId =>
-  typeof v === "string" && (DEPARTMENT_IDS as readonly string[]).includes(v);
-
+/**
+ * An agent as the rest of HQ sees it. In a template project it is a seat (src/data/model.ts Seat) with
+ * role, isLead, cli, model, skills and roleMd filled in from its role at load; only the seat is saved.
+ * Projects made before templates have no roleId and keep these fields as they were saved (read-only).
+ */
 export interface AgentConfig {
   id: string; // "john"
   name: string; // "John"
-  role: string; // "Lead" | "CTO" | "Senior Dev" | "Junior Dev" | "UI/UX Designer" | "Red Teamer" | anything
-  department?: DepartmentId; // department pod ("exec", "eng", "design", "qa-ops", "marketing", "red-team")
+  /** The template role this agent is a seat of. */
+  roleId?: string;
+  role: string; // the role's title
   isLead: boolean;
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
@@ -128,16 +129,6 @@ export interface WorkflowConfig {
   lean?: { clearBetweenTasks: boolean };
 }
 
-/** What kind of work the project is; decides its workflow (software: PRs; the others come in later phases). */
-export type ProjectType = "software" | "security" | "research" | "ops";
-export const PROJECT_TYPES: { id: ProjectType; label: string }[] = [
-  { id: "software", label: "Software" },
-  { id: "security", label: "Security engagement" },
-  { id: "research", label: "Research / docs" },
-  { id: "ops", label: "Ops / infra" },
-];
-export const isProjectType = (v: unknown): v is ProjectType => PROJECT_TYPES.some((t) => t.id === v);
-
 export interface ProjectConfig {
   /** Fixed once created: names sandboxes, tmux sessions and ~/.arima/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
@@ -147,7 +138,6 @@ export interface ProjectConfig {
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
   officeName?: string; // the sign on the office wall; empty = ".HQ"
-  type: ProjectType;
   /** Security engagements: what agents may touch. */
   scope?: Scope;
 }
@@ -184,6 +174,11 @@ export interface Finding {
 export interface HqConfig {
   project: ProjectConfig;
   team: AgentConfig[];
+  /** The project's own copy of its template; null for a project made before templates (read-only). Not saved in config.json. */
+  template: TeamTemplate | null;
+  /** The template's tool rules, or what a pre-template project's type implied. Not saved in config.json. */
+  rules: ToolRules;
+  /** Derived from the flow (step 5 replaces it with gates). */
   workflow: WorkflowConfig;
   /** Optional: what the project is built with (plan 009). */
   stack?: StackConfig;
@@ -502,34 +497,28 @@ export interface ActionItem {
 
 export interface NewAgentInput {
   name: string;
-  role: string;
-  department?: DepartmentId;
-  cli?: AgentCli;
-  model?: string;
+  roleId: string;
   mode: AgentMode;
-  skills?: string[];
-  roleMd?: string;
 }
 
 /** First-run choices from the welcome screen. */
 export interface WelcomeInput {
   projectName: string;
   officeName?: string;
-  lead: { name: string; role?: string; department?: DepartmentId; cli: AgentCli; model?: string };
-  workers: { name: string; role: string; department?: DepartmentId; cli: AgentCli; model?: string }[];
-  workflowMode?: WorkflowMode;
+  templateId: string;
   reviewTool: ReviewTool;
   reviewEnabled: boolean;
   /** Optional: what the project is built with. */
   stack?: StackConfig;
 }
 
-export type AgentPatch = Partial<
-  Pick<AgentConfig, "name" | "role" | "department" | "cli" | "model" | "mode" | "color" | "skills" | "roleMd" | "workspacePath" | "account">
->;
+/** Changes to one seat. CLI, model, skills and role text belong to the role (RolePatch). */
+export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account">>;
+
+/** Changes to one role of the project's template; every seat of the role picks them up at its next start. */
+export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">>;
 
 export interface WorkflowPatch {
-  mode?: WorkflowMode;
   review?: Partial<WorkflowConfig["review"]>;
   merge?: Partial<WorkflowConfig["merge"]>;
   deploy?: Partial<WorkflowConfig["deploy"]>;
@@ -552,11 +541,16 @@ export interface ProjectOverview {
   archived: boolean;
   /** Always false from the server (it serves every project); the UI sets it for the project you're viewing. */
   isCurrent: boolean;
-  type: ProjectType;
+  /** Made before templates: read-only. */
+  readOnly: boolean;
+  /** Its template's name; null when read-only. */
+  templateName: string | null;
+  /** Security work (findings and scope): the office gets its SOC room. */
+  secure: boolean;
   workflowMode: WorkflowMode;
   officeName?: string;
   lastUpdatedAt: string;
-  team: { id: string; name: string; role: string; department?: DepartmentId; isLead: boolean; cli: AgentCli; model: string }[];
+  team: { id: string; name: string; roleId?: string; role: string; isLead: boolean; cli: AgentCli; model: string }[];
   boards: Board[];
   tasks: Task[];
   counts: {

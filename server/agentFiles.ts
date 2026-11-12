@@ -7,7 +7,6 @@ import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
 import { run } from "./lib/exec";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
-import { ESCALATION, personaFor } from "../src/data/personas";
 import { stackRoleMd } from "../src/data/stack";
 import type { AgentConfig, HqConfig } from "../src/data/types";
 
@@ -15,7 +14,7 @@ import type { AgentConfig, HqConfig } from "../src/data/types";
 export const MCP_CONFIG = ".claude/hq-mcp.json";
 /** Antigravity (agy) & Gemini CLI settings file. */
 export const GEMINI_SETTINGS = ".gemini/settings.json";
-/** Antigravity (agy) always-on rule file for the agent's persona and Team MCP instructions. */
+/** Antigravity (agy) always-on rule file for the agent's role and Team MCP instructions. */
 export const AGY_RULE_FILE = ".agent/rules/hq-role.md";
 export const AGYS_RULE_FILE = ".agents/rules/hq-role.md";
 export const AGY_HOOKS_FILE = ".agents/hooks.json";
@@ -163,24 +162,34 @@ export function hqUrl(agent: AgentConfig, port: number): string {
   return agent.mode === "sandbox" ? `http://host.docker.internal:${port}` : `http://127.0.0.1:${port}`;
 }
 
+/** How everyone handles trouble. These habits prevent the stalls HQ has seen. */
+const ESCALATION: string[] = [
+  "Never stop, restart, remove or reconfigure services, containers or processes you didn't start yourself; they belong to the user. If a port or resource is taken, use another one.",
+  "Never wait on a background job or a long command and end your turn; nothing wakes you when it finishes. Run it in the foreground with a timeout, or check on it yourself.",
+  "If a command takes over two minutes, stop and find out why (a download, a prompt, a port in use) before trying again.",
+  "Stuck for 10 minutes on the same problem: tell the lead what you tried and what you need, with set_my_status blocked.",
+  "Unsure about scope or which files you may touch: ask before building, not after.",
+  "Same error three times: change approach, don't retry the same thing.",
+];
+
 export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {}): string {
   const team = cfg.team
-    .map((a) => `- ${a.name} — [${(a.department ?? "eng").toUpperCase()}] ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`)
+    .map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`)
     .join("\n");
   const isDeliverables = cfg.workflow.mode === "deliverables";
-  const isExecOrLead = !!(agent.isLead || agent.department === "exec" || agent.role.toLowerCase().includes("cto"));
+  const isExecOrLead = agent.isLead;
 
   const rules = isExecOrLead
     ? isDeliverables
       ? [
-          "You plan the mission and assign tasks to the team across department pods. You coordinate and review deliverables rather than executing worker tasks yourself.",
+          "You plan the mission and assign tasks to the team. You coordinate and review deliverables rather than executing worker tasks yourself.",
           "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
           "Assign only to agents that are running and free (check `list_workers`).",
           "When a worker marks a task `in-review`, inspect the deliverable against doneWhen. Accept with `update_task` done and a concrete verification note, or send revision feedback. Never accept your own work when review is enabled.",
           "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
         ]
       : [
-          "You plan the work and assign it to the team across department pods. You never write app code.",
+          "You plan the work and assign it to the team. You never write app code.",
           "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
           "Assign only to agents that are running and free (check list_workers).",
           cfg.workflow.merge.by === "lead"
@@ -220,9 +229,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   rules.push(
     "When you need the user to do something outside your sandbox (create an account, database or API key, change a setting in a dashboard, put a value in your env file), call ask_user with a short title and clear steps, then keep working on what you can. Never put secret values in it; name the variable instead. Variables reach you through HQ: ask the user to add NAME to your App variables in HQ (Settings → Sandbox → App variables) and restart you; there is no env file inside your sandbox to edit.",
   );
-  // Project type: what this engagement allows and how work is approved.
+  // Tool rules: what this engagement allows and how work is approved.
   const project = cfg.project;
-  if (project.type === "security") {
+  const security = cfg.rules.findings;
+  if (security) {
     const sc = project.scope;
     rules.push(
       `This is an authorized security engagement. Touch ONLY in-scope targets. In scope: ${sc?.inScope.join(", ") || "(not set yet: don't scan anything; ask the user for the scope)"}. Out of scope (never touch, even if linked from in-scope pages): ${sc?.outOfScope.join(", ") || "none listed"}.`,
@@ -230,12 +240,11 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
       "No denial of service, no destructive actions, no data exfiltration beyond the minimum proof; redact secrets and personal data in evidence. If something looks out of scope or risky, stop and ask the user (ask_user).",
       "Record each vulnerability with report_finding (severity, in-scope target, reproducible evidence, remediation). Check list_findings first to avoid duplicates. HQ writes deliverables/security-report.md from them.",
     );
-  } else if (project.type === "ops") {
+  }
+  if (cfg.rules.plans) {
     rules.push(
-      "This is an ops / infra project: before changing any system, call submit_plan with the exact commands, hosts, impact and rollback, then WAIT. Execute only after HQ tells you the user approved it; if rejected, revise and resubmit. Read-only investigation is fine meanwhile.",
+      "Before changing any system, call submit_plan with the exact commands, hosts, impact and rollback, then WAIT. Execute only after HQ tells you the user approved it; if rejected, revise and resubmit. Read-only investigation is fine meanwhile.",
     );
-  } else if (project.type === "research") {
-    rules.push("This is a research / docs project: deliver well-sourced documents. Cite sources with links, separate facts from your conclusions, and say what you couldn't verify.");
   }
   rules.push("Keep context small: read the task brief first, search before reading whole files, and limit tool output to the relevant lines. Handoff only changed paths, verification results, and blockers. Do not repeat status messages or send acknowledgements. After three identical failures, stop retrying that approach and report the blocker. Use another agent only for a distinct task; do not have the whole team reread the same context.");
   // Sandboxes block most sites; the agent asks instead of working around it.
@@ -243,13 +252,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
-  const persona = personaFor(agent.role, agent.isLead);
-  const peers = cfg.team
-    .filter((a) => a.id !== agent.id)
-    .map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""}): ask about ${personaFor(a.role, a.isLead).askMeAbout}.`);
+  const peers = cfg.team.filter((a) => a.id !== agent.id).map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""})`);
   const tools = isExecOrLead
-    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding, update_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`
-    : `get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${project.type === "security" ? ", list_findings, report_finding" : ""}${project.type === "ops" ? ", submit_plan" : ""}`;
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${security ? ", list_findings, report_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",
@@ -261,14 +267,10 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     `## Workflow Mode: ${isDeliverables ? "Deliverables (Universal Mission Mode — no GitHub PR required)" : "GitHub Pull Requests (1 task = 1 branch = 1 PR)"}`,
     ...rules.map((r) => `- ${r}`),
     "",
-    `## How you work (${persona.kind})`,
-    persona.trait,
-    ...persona.style.map((x) => `- ${x}`),
+    "## Always",
     "- Smallest complete change: reuse what the codebase already has, add no dependency or option nobody asked for, and verify against the real thing (tests, a real run) before set_my_status.",
     "- No AI slop in code or prose: no narrating comments, no filler words, no hype.",
-    "",
-    "## How you talk",
-    `${persona.voice} Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.`,
+    "- Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.",
     "",
     "## Working with teammates",
     "Message a teammate directly (send_message to their name) when your question is about their work; list_tasks shows who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",

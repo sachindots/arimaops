@@ -31,7 +31,7 @@ function guard<A>(fn: (args: A) => Result) {
 function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   const server = new McpServer({ name: "hq", version: "0.1.0" });
   const myCfg = hub.cfg(me);
-  const isLead = !!(myCfg?.isLead || myCfg?.department === "exec" || myCfg?.role.toLowerCase().includes("cto"));
+  const isLead = !!myCfg?.isLead;
   const leadOnly = () => {
     if (!isLead) throw new Error("Only the Lead or CTO can do this. Ask the lead with send_message.");
   };
@@ -315,7 +315,8 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
           path: p.path,
           online: p.online,
           isCurrent: p.id === hub.snap.config.project.id,
-          type: p.type,
+          template: p.templateName,
+          readOnly: p.readOnly,
           workflowMode: p.workflowMode,
           counts: p.counts,
           team: p.team.map((a) => `${a.name} (${a.role}, ${a.cli}${a.model ? `:${a.model}` : ""})`),

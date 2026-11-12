@@ -3,7 +3,7 @@ import type { AgentStatus } from "../src/data/types";
 import { besideSeat, IsoBot, modeOf, seatOf, startTile, targetFor, update, type Mode } from "../src/office/iso/behaviour";
 import { arrange, generateBuilding, remoteId, ROW_GAP, SPINE, splitRemoteId } from "../src/office/iso/building";
 import { EventDiff } from "../src/office/iso/events";
-import { generateIsoLayout, HALL_D, hasSoc, type TeamMember } from "../src/office/iso/layout";
+import { generateIsoLayout, HALL_D, type TeamMember } from "../src/office/iso/layout";
 import { depth, toScreen, toTile } from "../src/office/iso/proj";
 
 let fails = 0;
@@ -27,15 +27,15 @@ check("depth: nearer tiles sort later, height breaks ties", depth(3, 4) < depth(
 
 // ---------------------------------------------------------------- layouts
 const dev: TeamMember[] = [
-  { id: "cipher", role: "Tech Lead", isLead: true, department: "exec" },
-  { id: "nyx", role: "Go Developer", isLead: false, department: "eng" },
-  { id: "lyra", role: "Docs Writer", isLead: false, department: "eng" },
-  { id: "ghost", role: "Go Developer", isLead: false, department: "eng" },
+  { id: "cipher", role: "Tech Lead", isLead: true },
+  { id: "nyx", role: "Go Developer", isLead: false },
+  { id: "lyra", role: "Docs Writer", isLead: false },
+  { id: "ghost", role: "Go Developer", isLead: false },
 ];
 const sec: TeamMember[] = [
-  { id: "vega", role: "Red Team Commander", isLead: true, department: "exec" },
-  { id: "rook", role: "Red Teamer", isLead: false, department: "red-team" },
-  { id: "ada", role: "Blue Team", isLead: false, department: "qa-ops" },
+  { id: "vega", role: "Red Team Commander", isLead: true },
+  { id: "rook", role: "Red Teamer", isLead: false },
+  { id: "ada", role: "Blue Team", isLead: false },
 ];
 const big: TeamMember[] = [
   { id: "l1", role: "CTO", isLead: true },
@@ -43,8 +43,8 @@ const big: TeamMember[] = [
   ...Array.from({ length: 9 }, (_, i) => ({ id: `w${i}`, role: "Developer", isLead: false })),
 ];
 
-for (const [name, team, type] of [["dev team", dev, "software"], ["security team", sec, "security"], ["big team, two leads", big, "software"]] as const) {
-  const l = generateIsoLayout(team, type);
+for (const [name, team, secure] of [["dev team", dev, false], ["security team", sec, true], ["big team, two leads", big, false]] as const) {
+  const l = generateIsoLayout(team, secure);
   const nbrs = ([x, y]: [number, number]) => [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]] as [number, number][];
   const workers = team.filter((a) => !a.isLead);
   const leads = team.filter((a) => a.isLead);
@@ -58,13 +58,13 @@ for (const [name, team, type] of [["dev team", dev, "software"], ["security team
   check(`${name}: every lead has a seat in the lead office`, leads.every((a) => seatOf(a.id)?.zone === "lead"));
   check(`${name}: no two agents share a seat`, new Set(l.seats.map((s) => s.tile.join())).size === team.length);
   const soc = l.zones.find((z) => z.kind === "soc");
-  check(`${name}: SOC room iff security work or a red team`, !!soc === hasSoc(team, type) && !!soc === (type === "security"));
-  if (soc) check(`${name}: red-team workers sit in the SOC`, workers.filter((a) => a.department === "red-team").every((a) => seatOf(a.id)?.zone === "soc"));
+  check(`${name}: SOC room iff security work`, !!soc === secure);
+  if (soc) check(`${name}: security workers sit in the SOC`, workers.every((a) => seatOf(a.id)?.zone === "soc"));
   const reach = (t: [number, number]) => (t[0] === l.door[0] && t[1] === l.door[1]) || l.grid.find(l.door[0], l.door[1], t[0], t[1]).length > 0;
   check(`${name}: every zone is reachable from the door`, l.zones.every((z) => l.grid.ok(...z.anchor) && reach(z.anchor)), l.zones.filter((z) => !reach(z.anchor)).map((z) => z.kind).join());
   check(`${name}: every seat is reachable from the door`, l.seats.every((s) => reach(s.tile)));
   check(`${name}: items stay inside the building`, l.items.every((it) => it.x >= 0 && it.y >= 0 && it.x < l.W && it.y < l.H));
-  const again = generateIsoLayout(team, type);
+  const again = generateIsoLayout(team, secure);
   check(`${name}: deterministic`, JSON.stringify({ ...l, grid: [...l.grid.cells] }) === JSON.stringify({ ...again, grid: [...again.grid.cells] }));
 }
 
@@ -77,7 +77,7 @@ check("mode: a usage-limited agent is stuck", modeOf(status("working", "running"
 check("mode: no status means stopped", modeOf(undefined) === "stopped");
 
 {
-  const l = generateIsoLayout(dev, "software");
+  const l = generateIsoLayout(dev, false);
   const seat = seatOf(l, "nyx") as [number, number];
   const rand = (() => {
     let n = 7;
@@ -165,15 +165,15 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
 {
   const ns = (p: string, team: TeamMember[]) => team.map((a) => ({ ...a, id: remoteId(p, a.id) }));
   const lab: TeamMember[] = [
-    { id: "vega", role: "Red Team Commander", isLead: true, department: "exec" },
-    { id: "rook", role: "Red Teamer", isLead: false, department: "red-team" },
+    { id: "vega", role: "Red Team Commander", isLead: true },
+    { id: "rook", role: "Red Teamer", isLead: false },
   ];
   const b = generateBuilding([
-    { project: "exposecheck", name: "ExposeCheck", type: "software", team: dev },
-    { project: "lab", name: "Lab Engagement", type: "security", team: ns("lab", lab) },
+    { project: "exposecheck", name: "ExposeCheck", secure: false, team: dev },
+    { project: "lab", name: "Lab Engagement", secure: true, team: ns("lab", lab) },
   ]);
-  const solo = generateIsoLayout(dev, "software");
-  const one = generateBuilding([{ project: "exposecheck", name: "ExposeCheck", type: "software", team: dev }]);
+  const solo = generateIsoLayout(dev, false);
+  const one = generateBuilding([{ project: "exposecheck", name: "ExposeCheck", secure: false, team: dev }]);
   check("building: one project is its office plus the HQ hall in front", one.wings[0].x1 + 1 === solo.W && one.wings[0].y1 + 1 === solo.H && one.hall.y0 === solo.H + ROW_GAP && one.seats.every((s, i) => s.tile.join() === solo.seats[i].tile.join()));
   check("building: wings side by side, same depth, corridor east", b.wings.length === 2 && b.wings[1].x0 === b.wings[0].x1 + 1 && b.W === b.wings[1].x1 + 1 + SPINE);
   {
@@ -221,9 +221,8 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
       id: remoteId(`p${p}`, `a${i}`),
       role: i === 0 ? "Tech Lead" : sec ? "Red Teamer" : "Developer",
       isLead: i === 0,
-      department: i === 0 ? "exec" : sec ? "red-team" : "eng",
     }));
-    return { project: `p${p}`, name: `P${p}`, type: (sec ? "security" : "software") as "security" | "software", team };
+    return { project: `p${p}`, name: `P${p}`, secure: sec, team };
   });
   const b = generateBuilding(teams);
   const rows = new Set(b.wings.map((w) => w.y0)).size;
@@ -243,7 +242,7 @@ check("mode: no status means stopped", modeOf(undefined) === "stopped");
 // ---------------------------------------------------------------- events
 {
   const base = {
-    config: { team: [{ id: "cipher", isLead: true }, { id: "nyx", isLead: false }, { id: "lyra", isLead: false }], project: { type: "security" } },
+    config: { team: [{ id: "cipher", isLead: true }, { id: "nyx", isLead: false }, { id: "lyra", isLead: false }], project: {}, rules: { findings: true } },
     activity: [{ id: "a1", type: "pr.merged", agentId: "nyx", at: "", text: "" }],
     messages: [{ id: "m1", fromId: "cipher", toId: "nyx" }],
     pullRequests: [{ number: 3, authorId: "nyx", merged: false }],

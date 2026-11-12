@@ -1,7 +1,6 @@
 import { BRAND } from "../../data/brand";
 import { useState } from "react";
 import { DEFAULT_OFFICE_NAME, OFFICE_NAME_MAX } from "../../data/names";
-import { PROJECT_TYPES, type ProjectType } from "../../data/types";
 import { FONT_STYLES, savedFont, setFont, type FontStyle } from "../../theme/fonts";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
@@ -72,6 +71,7 @@ function ScopeEditor() {
 
 export function ProjectSettings() {
   const project = useOffice((s) => s.snap?.config.project);
+  const snap = useOffice((s) => s.snap);
   if (!project) return null;
   return (
     <div className="flex flex-col gap-5">
@@ -83,14 +83,8 @@ export function ProjectSettings() {
         <Field label="Name">
           <CommitInput className="field" value={project.name} onCommit={(v) => v.trim() && officeActions.updateProject({ name: v.trim() })} />
         </Field>
-        <Field label="Project type" hint="Decides the workflow. Software uses branches and PRs; the other types get their own flow in a later update.">
-          <select className="field" value={project.type} onChange={(e) => officeActions.updateProject({ type: e.target.value as ProjectType })}>
-            {PROJECT_TYPES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+        <Field label="Team template" hint="Roles, flow and rules come from the template this project was made from. Edit roles in Settings → Team.">
+          <div className="field text-muted">{snap?.config.template ? `${snap.config.template.name} (v${snap.config.template.version})` : "None: made before templates, read-only"}</div>
         </Field>
         <Field label="Office name" hint={`The sign on the office wall. Up to ${OFFICE_NAME_MAX} characters; letters and numbers read best.`}>
           <CommitInput
@@ -118,7 +112,7 @@ export function ProjectSettings() {
           />
         </Field>
       </section>
-      {project.type === "security" && <ScopeEditor />}
+      {snap?.config.rules.findings && <ScopeEditor />}
       <section>
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />

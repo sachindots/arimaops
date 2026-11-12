@@ -297,7 +297,7 @@ async function checkHqReach(imageOk: boolean, hqPort: number): Promise<Check> {
  * so this stays a reminder with the exact commands (re-run them after changing the scope or the team).
  */
 async function checkScopeFirewall(project: ProjectConfig, team: AgentConfig[]): Promise<Check | null> {
-  if (project.type !== "security") return null;
+  if (!project.scope?.inScope.length) return null; // only security engagements set a scope
   const agents = team.filter((a) => a.mode === "container");
   if (!agents.length) return null;
   const base = { id: "scope-firewall" as const, label: "Engagement targets reachable by raw tools", neededFor: "container" as const };

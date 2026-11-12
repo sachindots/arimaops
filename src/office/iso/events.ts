@@ -57,7 +57,7 @@ export class EventDiff {
       if (fresh(this.findings, f.id)) out.push({ kind: "finding", id: f.id, severity: f.severity, agentId: f.reporterId });
     }
     for (const t of snap.tasks) {
-      if (t.status === "done" && REPORT_TASK.test(t.title) && fresh(this.doneTasks, t.id) && snap.config.project.type === "security") out.push({ kind: "report" });
+      if (t.status === "done" && REPORT_TASK.test(t.title) && fresh(this.doneTasks, t.id) && snap.config.rules.findings) out.push({ kind: "report" });
     }
     this.first = false;
     return out;

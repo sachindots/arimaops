@@ -1,8 +1,7 @@
 import { agentPalette } from "../../theme/tokens";
-import { defaultRoleMdFor, defaultSkillsForRole } from "../roles";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
-import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
+import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -233,18 +232,20 @@ export function createMockSource(): OfficeDataSource {
       const color = agentPalette.find((c) => !used.has(c)) ?? agentPalette[team.length % agentPalette.length];
       const lead = world.lead();
       const name = input.name.trim() || "Agent";
-      const role = input.role.trim() || "Developer";
+      const role = world.snap.config.template?.roles.find((r) => r.id === input.roleId && !r.isLead);
+      if (!role) return;
       const agent: AgentConfig = {
         id,
         name,
-        role,
+        roleId: role.id,
+        role: role.title,
         isLead: false,
-        cli: input.cli ?? "claude",
-        model: input.model ?? "",
+        cli: role.cli,
+        model: role.model,
         mode: input.mode,
         color,
-        skills: input.skills ?? defaultSkillsForRole(role, false),
-        roleMd: input.roleMd ?? defaultRoleMdFor(name, role, false),
+        skills: [...role.skills],
+        roleMd: role.roleMd,
         sandbox: structuredClone(lead.sandbox),
         workspacePath: null,
       };
@@ -267,6 +268,16 @@ export function createMockSource(): OfficeDataSource {
       const agent = world.cfg(id);
       if (!agent) return;
       Object.assign(agent, patch);
+      world.configChanged();
+    },
+
+    updateRole(roleId, patch: RolePatch) {
+      const t = world.snap.config.template;
+      const role = t?.roles.find((r) => r.id === roleId);
+      if (!t || !role) return;
+      Object.assign(role, structuredClone(patch));
+      for (const a of world.snap.config.team)
+        if (a.roleId === roleId) Object.assign(a, { role: role.title, cli: role.cli, model: role.model, skills: [...role.skills], roleMd: role.roleMd });
       world.configChanged();
     },
 
@@ -415,7 +426,6 @@ export function createMockSource(): OfficeDataSource {
 
     updateWorkflow(patch: WorkflowPatch) {
       const wf = world.snap.config.workflow;
-      if (patch.mode) wf.mode = patch.mode;
       Object.assign(wf.review, patch.review);
       Object.assign(wf.merge, patch.merge);
       Object.assign(wf.deploy, patch.deploy);

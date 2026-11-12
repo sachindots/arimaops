@@ -28,28 +28,8 @@ export function WorkflowSettings() {
     <div className="flex flex-col gap-6">
       <section className="border-[3px] border-ink bg-white p-3">
         <SectionTitle>Mission Workflow Mode</SectionTitle>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Mission workflow mode">
-          <button
-            type="button"
-            className="btn text-[14px]"
-            role="radio"
-            aria-checked={mode === "github-pr"}
-            aria-pressed={mode === "github-pr"}
-            onClick={() => officeActions.updateWorkflow({ mode: "github-pr" })}
-          >
-            GitHub Pull Requests (Software Dev)
-          </button>
-          <button
-            type="button"
-            className="btn text-[14px]"
-            role="radio"
-            aria-checked={mode === "deliverables"}
-            aria-pressed={mode === "deliverables"}
-            onClick={() => officeActions.updateWorkflow({ mode: "deliverables" })}
-          >
-            Universal Deliverables (Any Task / Non-PR)
-          </button>
-        </div>
+        <p className="text-[14px] font-semibold">{isDeliverables ? "Deliverables (any task, no PRs)" : "GitHub pull requests"}</p>
+        <p className="mt-1 text-[13px] text-muted">Set by the project's team template: its flow decides how a task is finished.</p>
         <p className="mt-2 text-[13px] text-muted">
           {isDeliverables
             ? "Universal Deliverables mode works in any folder without requiring GitHub PRs. Operators write reports, security audits, research dossiers, content, or local code directly to task files and report completion to the Lead."

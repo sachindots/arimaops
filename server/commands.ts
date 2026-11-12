@@ -1,6 +1,6 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
-import { isAgentCli, isAgentMode, isDepartmentId, isProjectType, SERVICE_KEYS, type AgentCli, type AgentConfig, type AgentPatch, type DepartmentId, type ReviewTool, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
 import type { AccountInput } from "../src/data/types";
@@ -16,20 +16,21 @@ function broadcastAccounts() {
 }
 import { releasePortBlock } from "./ports";
 import { cleanAccount } from "./accounts";
-import { LEAD_NAME, OFFICE_NAME_MAX } from "../src/data/names";
-import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
+import { OFFICE_NAME_MAX } from "../src/data/names";
+import type { TeamTemplate } from "../src/data/model";
+import { hqDb } from "./lib/db";
+import { isReadOnly, READ_ONLY_COMMANDS } from "./legacy";
+import { applyTemplate, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
 import { ensureSkillCache } from "./skills";
 import { run } from "./lib/exec";
-import { agentPalette } from "../src/theme/tokens";
 import { Hub } from "./hub";
 import type { Inbox } from "./inbox";
 import type { Planner } from "./planner";
 import type { Sbx } from "./sbx";
 import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
-import { newAgent } from "./store";
 import { mergeByNotice } from "./githubSync";
 import { cleanEntry } from "./scope";
 
@@ -74,6 +75,28 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
   };
   const team = () => hub.snap.config.team;
 
+  /** Runs a template change; a refused template is reported, not thrown at the browser. */
+  const guardTemplate = (fn: () => void) => {
+    try {
+      fn();
+    } catch (e) {
+      if (!(e instanceof TemplateError)) throw e;
+      hub.activity("config", null, `Template not saved: ${e.message}`);
+    }
+  };
+  const afterTemplate = (t: TeamTemplate, note: string) => {
+    applyTemplate(hub.snap.config, t);
+    hub.configChanged();
+    void sessions.recheckSetup(); // a role's CLI may have changed
+    hub.activity("config", null, note);
+  };
+  const setTemplate = (t: TeamTemplate, note: string) =>
+    guardTemplate(() => {
+      const missing = team().filter((a) => !t.roles?.some((r) => r.id === a.roleId));
+      if (missing.length) throw new TemplateError(`${missing.map((a) => a.name).join(", ")} would have no role. Move or remove them first.`);
+      afterTemplate(updateProjectTemplate(hqDb(), hub.slug, t), note);
+    });
+
   const commands: Record<string, (...args: unknown[]) => unknown> = {
     sendTerminalInput: (id, data) => sessions.input(str(id, 80), str(data, 100_000)),
     openShell: (id) => sessions.openShell(str(id, 80)),
@@ -101,26 +124,26 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     sendMessage: (toId, text) => planner.message("you", str(toId, 80), str(text, 2000)),
 
     addAgent: (raw) => {
+      const t = hub.snap.config.template;
+      if (!t) return;
       const input = (raw ?? {}) as Partial<NewAgentInput>;
+      const role = t.roles.find((r) => r.id === input.roleId && !r.isLead);
+      if (!role) return hub.activity("config", null, "Pick a role from the project's template for the new agent (the lead's seat is taken).");
       const name = str(input.name, 40).trim() || "Agent";
       let id = slug(name);
       for (let i = 2; team().some((a) => a.id === id); i++) id = `${slug(name)}-${i}`;
-      const used = new Set(team().map((a) => a.color));
-      const color = agentPalette.find((c) => !used.has(c)) ?? agentPalette[team().length % agentPalette.length];
-      const role = str(input.role, 40).trim() || "Developer";
-      const agent = newAgent(id, name, role, color, false);
-      agent.department = isDepartmentId(input.department) ? input.department : inferDepartmentForRole(role, false);
-      agent.cli = isAgentCli(input.cli) ? input.cli : "claude";
-      agent.model = str(input.model, 60).trim();
-      agent.mode = isAgentMode(input.mode) ? input.mode : "sandbox";
-      if (Array.isArray(input.skills) && input.skills.length) {
-        agent.skills = input.skills.map((s) => str(s, 80)).filter(Boolean);
-      }
-      if (typeof input.roleMd === "string" && input.roleMd.trim()) {
-        agent.roleMd = str(input.roleMd, 8000);
-      }
       const lead = team().find((a) => a.isLead);
-      if (lead) agent.sandbox = structuredClone(lead.sandbox);
+      const agent = resolveSeat(t, {
+        id,
+        name,
+        roleId: role.id,
+        color: freeColor(role.color, team().map((a) => a.color)),
+        mode: isAgentMode(input.mode) ? input.mode : "sandbox",
+        account: "",
+        workspacePath: null,
+        sandbox: lead ? structuredClone(lead.sandbox) : defaultSandbox(),
+        mcp: [],
+      });
       team().push(agent);
       const status = Hub.freshStatus(id);
       hub.snap.agents.push(status);
@@ -131,43 +154,65 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
 
     updateAgent: (id, patch) => {
+      const t = hub.snap.config.template;
       const agent = hub.cfg(str(id));
-      if (!agent) return;
+      if (!agent || !t) return;
       const p = (patch ?? {}) as AgentPatch;
       const before = `${agent.cli}/${agent.mode}/${agent.account ?? ""}`;
-      const oldName = agent.name;
-      const oldRole = agent.role;
-      const hadDefaultRoleMd = agent.roleMd.trim() === defaultRoleMdFor(oldName, oldRole, agent.isLead).trim();
-      const hadDefaultSkills = JSON.stringify(agent.skills) === JSON.stringify(defaultSkillsForRole(oldRole, agent.isLead));
-      for (const k of ["name", "role", "model", "color", "roleMd"] as const) if (typeof p[k] === "string") agent[k] = str(p[k], 8000);
-      if (isDepartmentId(p.department)) {
-        agent.department = p.department;
-      } else if (p.role !== undefined) {
-        agent.department = inferDepartmentForRole(agent.role, agent.isLead, agent.department);
-      }
-      if (p.roleMd === undefined && (p.name !== undefined || p.role !== undefined) && hadDefaultRoleMd) {
-        agent.roleMd = defaultRoleMdFor(agent.name, agent.role, agent.isLead);
-      }
-      if (p.skills === undefined && p.role !== undefined && hadDefaultSkills) {
-        agent.skills = defaultSkillsForRole(agent.role, agent.isLead);
-      }
-      if (isAgentMode(p.mode)) agent.mode = p.mode;
-      if (isAgentCli(p.cli) && p.cli !== agent.cli) {
-        agent.cli = p.cli;
-        // Model names don't carry over between CLIs.
-        if (typeof p.model !== "string") agent.model = "";
-      }
-      if (Array.isArray(p.skills)) agent.skills = p.skills.map((s) => str(s, 80)).filter(Boolean);
+      const seat = seatOf(agent);
+      if (typeof p.name === "string" && p.name.trim()) seat.name = str(p.name, 40).trim();
+      if (typeof p.color === "string") seat.color = str(p.color, 20);
+      if (isAgentMode(p.mode)) seat.mode = p.mode;
+      // A seat can move to another worker role; the lead's seat stays the lead's.
+      const role = t.roles.find((r) => r.id === p.roleId);
+      if (role && !role.isLead && !agent.isLead) seat.roleId = role.id;
       if (typeof p.account === "string") {
         const acct = cleanAccount(p.account);
-        if (acct && acct !== "default") agent.account = acct;
-        else delete agent.account;
+        seat.account = acct && acct !== "default" ? acct : "";
       }
-      if (p.workspacePath !== undefined) agent.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
+      if (p.workspacePath !== undefined) seat.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
+      Object.assign(agent, resolveSeat(t, seat));
+      if (!agent.account) delete agent.account;
       hub.configChanged();
       // Non-Claude CLIs and named container accounts add their own setup checks.
       if (`${agent.cli}/${agent.mode}/${agent.account ?? ""}` !== before) void sessions.recheckSetup();
     },
+
+    /** Edits one role of this project's template; every seat of it picks the change up at its next start. */
+    updateRole: (roleId, patch) => {
+      const t = hub.snap.config.template;
+      const role = t?.roles.find((r) => r.id === str(roleId, 40));
+      if (!t || !role) return;
+      const p = (patch ?? {}) as RolePatch;
+      const next = structuredClone(role);
+      for (const k of ["title", "model", "roleMd", "color"] as const) if (typeof p[k] === "string") next[k] = str(p[k], 8000);
+      if (isAgentCli(p.cli) && p.cli !== next.cli) {
+        next.cli = p.cli;
+        if (typeof p.model !== "string") next.model = ""; // model names don't carry over between CLIs
+      }
+      if (Array.isArray(p.skills)) next.skills = p.skills.map((x) => str(x, 80)).filter(Boolean);
+      if (typeof p.onDemand === "boolean") next.onDemand = p.onDemand;
+      if (p.fallback === null) next.fallback = null;
+      else if (p.fallback && isAgentCli(p.fallback.cli)) next.fallback = { cli: p.fallback.cli, model: str(p.fallback.model, 80) };
+      setTemplate({ ...t, roles: t.roles.map((r) => (r.id === role.id ? next : r)) }, `Role ${next.title} updated. Restart its agents to give them the change.`);
+    },
+
+    /** Replaces this project's template copy (roles, flow, rules). The library is untouched. */
+    updateProjectTemplate: (raw) => setTemplate(raw as TeamTemplate, "Project template updated. Restart agents to give them the change."),
+
+    /** Takes the library's current version of this project's template, on purpose. */
+    resyncTemplate: () =>
+      guardTemplate(() => {
+        const t = resyncProject(hqDb(), hub.slug);
+        afterTemplate(t, `Template re-synced to ${t.name} v${t.version}. Restart agents to give them the change.`);
+      }),
+
+    /** Saves a template to this machine's library (built-in ones are saved under a new id). */
+    saveTemplate: (raw) =>
+      guardTemplate(() => {
+        const t = saveTemplate(hqDb(), raw as TeamTemplate, "you");
+        hub.activity("config", null, `Saved template ${t.name} (v${t.version}) to the library.`);
+      }),
 
     inspectWorkspace: async (id) => {
       const info = await sessions.inspectWorkspace(str(id, 80));
@@ -317,47 +362,21 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     completeWelcome: async (raw) => {
       if (!hub.snap.welcome) return;
       const input = (raw ?? {}) as Partial<WelcomeInput>;
-      const cli = (c: unknown): AgentCli => (isAgentCli(c) ? c : "claude");
-      const used = new Set<string>();
-      const make = (
-        name: string,
-        role: string,
-        dept: unknown,
-        agentCli: AgentCli,
-        model: unknown,
-        isLead: boolean,
-      ): AgentConfig => {
-        const clean = str(name, 40).trim() || (isLead ? "Lead" : "Agent");
-        let id = slug(clean);
-        for (let i = 2; used.has(id); i++) id = `${slug(clean)}-${i}`;
-        used.add(id);
-        const cleanRole = str(role, 40).trim() || (isLead ? "CTO" : "Developer");
-        const agent = newAgent(id, clean, cleanRole, agentPalette[used.size - 1] ?? agentPalette[0], isLead);
-        agent.department = isDepartmentId(dept) ? (dept as DepartmentId) : inferDepartmentForRole(cleanRole, isLead);
-        agent.cli = agentCli;
-        agent.model = str(model, 60).trim();
-        return agent;
-      };
-      const lead = make(
-        input.lead?.name ?? LEAD_NAME,
-        input.lead?.role ?? "CTO",
-        input.lead?.department,
-        cli(input.lead?.cli),
-        input.lead?.model,
-        true,
-      );
-      const workers = (Array.isArray(input.workers) ? input.workers : [])
-        .slice(0, 11)
-        .map((w) => make(w?.name ?? "", w?.role ?? "", w?.department, cli(w?.cli), w?.model, false));
-      if (!workers.length) return hub.activity("config", null, "Add at least one worker to the team.");
+      let template: TeamTemplate;
+      try {
+        forgetProjectTemplate(hqDb(), hub.slug); // left over from a deleted project with the same id
+        template = copyToProject(hqDb(), hub.slug, str(input.templateId, 40));
+      } catch (e) {
+        return hub.activity("config", null, e instanceof Error ? e.message : String(e));
+      }
       const cfg = hub.snap.config;
       if (typeof input.projectName === "string" && input.projectName.trim()) cfg.project.name = str(input.projectName, 80).trim();
       if (typeof input.officeName === "string") {
         const sign = input.officeName.trim().slice(0, OFFICE_NAME_MAX);
         if (sign) cfg.project.officeName = sign;
       }
-      cfg.team = [lead, ...workers];
-      if (input.workflowMode === "github-pr" || input.workflowMode === "deliverables") cfg.workflow.mode = input.workflowMode;
+      cfg.team = seatsFor(template).map((s) => resolveSeat(template, s));
+      applyTemplate(cfg, template);
       const tools: ReviewTool[] = ["coderabbit", "greptile", "copilot", "human", "custom"];
       if (tools.includes(input.reviewTool as ReviewTool)) cfg.workflow.review.tool = input.reviewTool as ReviewTool;
       if (typeof input.reviewEnabled === "boolean") cfg.workflow.review.enabled = input.reviewEnabled;
@@ -368,20 +387,31 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         if (specs.length) void ensureSkillCache(hub.slug, specs).catch(() => {}); // retried on Start
       }
       hub.snap.agents = cfg.team.map((a) => Hub.freshStatus(a.id));
+      if (template.starter.boards.length) hub.snap.boards = structuredClone(template.starter.boards);
+      hub.snap.tasks = template.starter.tasks.map((x) => ({
+        id: x.id,
+        boardId: x.boardId,
+        title: x.title,
+        ownerId: null,
+        status: "todo",
+        needs: [...x.needs],
+        prNumber: null,
+        description: x.description,
+        doneWhen: x.doneWhen,
+      }));
       hub.snap.welcome = false;
       hub.configChanged(); // saves .arima/config.json for the first time
       hub.planChanged();
       await sessions.recheckSetup();
       await sbx.refresh();
       hub.emit({ type: "snapshot", snapshot: structuredClone(hub.snap) });
-      hub.activity("config", null, `Welcome! Team created: ${cfg.team.map((a) => a.name).join(", ")}. Press Start team when you're ready.`);
+      hub.activity("config", null, `Welcome! ${template.name} created: ${cfg.team.map((a) => `${a.name} (${a.role})`).join(", ")}. Press Start team when you're ready.`);
     },
 
     updateWorkflow: async (patch) => {
       const p = (patch ?? {}) as WorkflowPatch;
       const wf = hub.snap.config.workflow;
       const mergeBy = wf.merge.by;
-      if (p.mode === "github-pr" || p.mode === "deliverables") wf.mode = p.mode;
       Object.assign(wf.review, p.review ?? {});
       if (p.merge?.by === "human" || p.merge?.by === "lead") wf.merge.by = p.merge.by;
       Object.assign(wf.deploy, p.deploy ?? {});
@@ -406,15 +436,6 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         if (name) project.officeName = name;
         else delete project.officeName;
       }
-      if (isProjectType(p.type) && p.type !== project.type) {
-        project.type = p.type;
-        // The type decides the workflow: software ships PRs, the others ship deliverables (reports, docs, runbooks).
-        const mode = p.type === "software" ? "github-pr" : "deliverables";
-        if (hub.snap.config.workflow.mode !== mode) {
-          hub.snap.config.workflow.mode = mode;
-          hub.activity("config", null, `Project type: ${p.type}. Workflow set to ${mode === "github-pr" ? "GitHub pull requests" : "deliverables"}; change it in Settings → Workflow if you need to. Restart agents to give them the new instructions.`);
-        }
-      }
       let scopeChanged = false;
       if (p.scope && typeof p.scope === "object") {
         // Only valid domains / IPs / CIDRs are kept; anything else is dropped (and reported).
@@ -432,7 +453,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         hub.planChanged();
         hub.activity("config", null, "Plan export on: HQ writes docs/plan.md whenever the plan changes.");
       }
-      if (scopeChanged || isProjectType(p.type)) {
+      if (scopeChanged) {
         for (const a of hub.snap.config.team) void sbx.syncRules(a.id);
         void sessions.recheckSetup(); // the scope firewall commands depend on scope and team
         const lead = hub.snap.config.team.find((a) => a.isLead);
@@ -449,5 +470,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
   };
 
+  // A project made before templates is read-only: only commands that watch, answer or stop what already runs.
+  for (const [name, fn] of Object.entries(commands)) {
+    if (READ_ONLY_COMMANDS.has(name) || name === "completeWelcome") continue;
+    commands[name] = (...args) => {
+      if (!isReadOnly(hub.snap.config) || hub.snap.welcome) return fn(...args);
+      hub.activity("config", null, "This project was made before templates and is read-only. You can watch, answer and stop its agents.");
+    };
+  }
   return commands;
 }

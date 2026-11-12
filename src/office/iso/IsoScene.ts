@@ -206,7 +206,7 @@ export class IsoScene {
       this.layout = null;
     }
     this.currentProject = wings.find((w) => w.current)?.project ?? null;
-    const inputs: WingInput[] = wings.map((w) => ({ project: w.project, name: w.name, type: w.snap.config.project.type, team: w.snap.config.team }));
+    const inputs: WingInput[] = wings.map((w) => ({ project: w.project, name: w.name, secure: w.snap.config.rules.findings, team: w.snap.config.team }));
     const fresh = this.layout?.key !== buildingKey(inputs);
     if (fresh) this.rebuild(generateBuilding(inputs), wings);
     const l = this.layout as Building;

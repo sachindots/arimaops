@@ -101,7 +101,7 @@ export const DEV_TEMPLATE: TeamTemplate = {
     ],
   },
   starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },
-  rules: { scopeRequired: false, labMode: false, outbound: "none", egress: [] },
+  rules: { findings: false, plans: false, scopeRequired: false, labMode: false, outbound: "none", egress: [] },
   memoryTypes: [],
 };
 
@@ -125,7 +125,7 @@ export const BLANK_TEMPLATE: TeamTemplate = {
     ],
   },
   starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },
-  rules: { scopeRequired: false, labMode: false, outbound: "none", egress: [] },
+  rules: { findings: false, plans: false, scopeRequired: false, labMode: false, outbound: "none", egress: [] },
   memoryTypes: [],
 };
 

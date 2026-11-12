@@ -237,6 +237,7 @@ export const officeActions = {
   sendMessage: (toId: string, text: string) => source.sendMessage(toId, text),
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),
+  updateRole: source.updateRole.bind(source),
   removeAgent: (id: string, opts?: RemoveAgentOptions) => source.removeAgent(id, opts),
   inspectWorkspace: (id: string) => source.inspectWorkspace(id),
   updateSandbox: source.updateSandbox.bind(source),

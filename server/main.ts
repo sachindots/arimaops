@@ -25,6 +25,8 @@ import { migrateHome, startProject, type Runtime } from "./project";
 import { dropLiveProject, readRegistry } from "./projectsRegistry";
 import { detectRepo } from "./repo";
 import { slugOf } from "./store";
+import { hqDb } from "./lib/db";
+import { seedBuiltins } from "./templates";
 import { RemoteGuard, startPushNotifier } from "./remote";
 
 function arg(name: string): string | undefined {
@@ -76,6 +78,7 @@ async function main() {
   const paths = [...(launch ? [launch] : []), ...registered.map((e) => e.path)];
   const pausedPaths = new Set(registered.filter((e) => e.paused).map((e) => resolve(e.path)));
 
+  seedBuiltins(hqDb()); // the template library ships with this version's built-ins
   const projects = new Map<string, Runtime>();
   const seenRoots = new Set<string>();
   let launchSlug: string | null = null;

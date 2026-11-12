@@ -1,10 +1,9 @@
 import { BRAND } from "../../data/brand";
 import { useCallback, useEffect, useState } from "react";
-import { inferDepartmentForRole } from "../../data/roles";
-import { PROJECT_TYPES, type ProjectOverview, type TaskStatus } from "../../data/types";
+import { type ProjectOverview, type TaskStatus } from "../../data/types";
 import { isViewer, officeActions, openProject, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
-import { DepartmentBadge, Field, Portrait, SectionTitle } from "../kit";
+import { Field, Portrait, SectionTitle } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done", "blocked"];
@@ -56,15 +55,17 @@ export function CtoDrawer() {
           paused: false,
           archived: false,
           isCurrent: true,
-          type: snap.config.project.type,
+          readOnly: !snap.config.template,
+          templateName: snap.config.template?.name ?? null,
+          secure: snap.config.rules.findings,
           workflowMode: snap.config.workflow.mode ?? "github-pr",
           officeName: snap.config.project.officeName,
           lastUpdatedAt: new Date().toISOString(),
           team: snap.config.team.map((a) => ({
             id: a.id,
             name: a.name,
+            roleId: a.roleId,
             role: a.role,
-            department: inferDepartmentForRole(a.role, a.isLead, a.department),
             isLead: a.isLead,
             cli: a.cli,
             model: a.model,
@@ -320,7 +321,7 @@ export function CtoDrawer() {
                         </span>
                       )}
                       <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                        {PROJECT_TYPES.find((t) => t.id === p.type)?.label ?? p.type}
+                        {p.templateName ?? "Read-only (made before templates)"}
                       </span>
                       {live && !p.isCurrent && p.online && (
                         <button
@@ -398,7 +399,6 @@ export function CtoDrawer() {
                           className="inline-flex items-center gap-1 border border-ink bg-cream px-1.5 py-0.5 font-mono text-[10px]"
                           title={`${m.name} — ${m.role} (${m.cli}${m.model ? `:${m.model}` : ""})`}
                         >
-                          <DepartmentBadge role={m.role} isLead={m.isLead} department={m.department} compact />
                           <span>{m.name}</span>
                         </span>
                       ))}

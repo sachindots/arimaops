@@ -11,7 +11,10 @@ const { accountModels, checkAccountModel, modelIds } = await import("../server/m
 const { assertTaskCompletion } = await import("../server/taskCompletion");
 const { Sessions } = await import("../server/sessions");
 const { adapters } = await import("../server/adapters");
-const { newAgent } = await import("../server/store");
+const { resolveSeat, seatsFor } = await import("../server/templates");
+const { DEV_TEMPLATE } = await import("../src/data/templates");
+const developer = seatsFor(DEV_TEMPLATE).find((s) => s.roleId === "developer")!;
+const newAgent = (id: string, name: string) => resolveSeat(DEV_TEMPLATE, { ...developer, id, name });
 const { runArgs, loginCommand, containerLogHome } = await import("../server/containers");
 const { UsageMeter, claudeDirKey } = await import("../server/usage");
 const { readFacts, factsPath } = await import("../server/facts");
@@ -33,7 +36,7 @@ assert.deepEqual(await accountModels("openai-test", "codex", async (_url, init) 
 }), ["gpt-test"]);
 console.log("✓ provider catalogs: authenticated server-side, embedding models excluded, account/model mismatches rejected");
 
-const worker = newAgent("worker", "Kavin", "Developer", "#00ff66", false);
+const worker = newAgent("worker", "Kavin");
 worker.mode = "container"; worker.account = "anthropic-test"; worker.model = "";
 worker.workspacePath = mkdtempSync(join(tmpdir(), "arima-start-"));
 const status = { agentId: worker.id, state: "idle", session: { state: "stopped", detail: "" } };

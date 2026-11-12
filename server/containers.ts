@@ -217,7 +217,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
     // Security engagement: in scope is allowed on any port; explicitly out of scope is never allowed.
     const project = who.rt.hub.snap.config.project;
-    if (project.type === "security" && project.scope) {
+    if (who.rt.hub.snap.config.rules.findings && project.scope) {
       const s = checkScope(project.scope, `${host}:${port}`);
       if (s.ok) return { ok: true, why: "" };
       if (s.why.includes("explicitly")) return { ok: false, why: s.why };

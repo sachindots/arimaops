@@ -170,7 +170,7 @@ function ChatList({ onOpen }: { onOpen: (agentId: string) => void }) {
                 <div className="flex items-center gap-2">
                   <b className="text-[16px]">{a.name}</b>
                   <span className="truncate text-[12px] text-muted">
-                    {a.isLead ? "Lead · " : ""}
+                    {a.isLead && !/lead/i.test(a.role) ? "Lead · " : ""}
                     {a.role}
                   </span>
                   {last && <span className="ml-auto shrink-0 font-term text-[14px] text-muted">{ago(last.at, now)}</span>}
@@ -270,7 +270,7 @@ function More() {
   }, []);
   const choice = useUi((s) => s.layoutChoice);
   const auth = useAuth((s) => s.status);
-  const security = useOffice((s) => s.snap?.config.project.type === "security");
+  const security = useOffice((s) => !!s.snap?.config.rules.findings);
   const open = useOffice((s) => (s.snap?.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length);
   const item = (label: string, sub: string, onClick: () => void, show = true): ReactNode =>
     show && (

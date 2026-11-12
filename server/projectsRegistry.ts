@@ -8,12 +8,11 @@ import { readDoc, writeDoc } from "./lib/docs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
-import { inferDepartmentForRole } from "../src/data/roles";
 import type { Board, HqConfig, ProjectOverview, Task, TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
-import { loadConfig, loadPlan, saveConfig, savePlan } from "./store";
+import { loadConfig, loadPlan, resolveSaved, saveConfig, savePlan } from "./store";
 import { assertTaskCompletion } from "./taskCompletion";
 
 export interface RegistryEntry {
@@ -66,7 +65,8 @@ function writeRegistry(entries: RegistryEntry[]) {
 
 function readRepoConfig(repoRoot: string): HqConfig | null {
   try {
-    return readDoc<HqConfig>(join(repoDirOf(repoRoot), "config.json"));
+    const raw = readDoc<HqConfig>(join(repoDirOf(repoRoot), "config.json"));
+    return raw && resolveSaved(raw);
   } catch {
     return null;
   }
@@ -181,15 +181,17 @@ export function listProjectsOverview(): ProjectOverview[] {
         paused: loaded.paused,
         archived: false,
         isCurrent: false,
-        type: cfg.project.type ?? "software",
+        readOnly: !cfg.template,
+        templateName: cfg.template?.name ?? null,
+        secure: cfg.rules.findings,
         workflowMode: cfg.workflow.mode ?? "github-pr",
         officeName: cfg.project.officeName,
         lastUpdatedAt: new Date().toISOString(),
         team: cfg.team.map((a) => ({
           id: a.id,
           name: a.name,
+          roleId: a.roleId,
           role: a.role,
-          department: inferDepartmentForRole(a.role, a.isLead, a.department),
           isLead: a.isLead,
           cli: a.cli,
           model: a.model,
@@ -214,15 +216,17 @@ export function listProjectsOverview(): ProjectOverview[] {
       paused: false,
       archived: !!entry.archived,
       isCurrent: false,
-      type: cfg.project.type ?? "software",
+      readOnly: !cfg.template,
+      templateName: cfg.template?.name ?? null,
+      secure: cfg.rules.findings,
       workflowMode: cfg.workflow.mode ?? "github-pr",
       officeName: cfg.project.officeName,
       lastUpdatedAt: entry.lastUpdatedAt,
       team: (cfg.team ?? []).map((a) => ({
         id: a.id,
         name: a.name,
+        roleId: a.roleId,
         role: a.role,
-        department: inferDepartmentForRole(a.role, a.isLead, a.department),
         isLead: a.isLead,
         cli: a.cli,
         model: a.model ?? "",

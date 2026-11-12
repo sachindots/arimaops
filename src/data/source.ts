@@ -12,6 +12,7 @@ import type {
   ActivityEvent,
   AgentMessage,
   AgentPatch,
+  RolePatch,
   AgentStatus,
   Board,
   Environment,
@@ -112,6 +113,8 @@ export interface OfficeDataSource {
 
   addAgent(input: NewAgentInput): void;
   updateAgent(id: string, patch: AgentPatch): void;
+  /** Changes a role of the project's template: every seat of it, at its next start. */
+  updateRole(roleId: string, patch: RolePatch): void;
   /** Stops the agent and removes it from the team; optionally deletes its sandbox and HQ-made folder. Ignored for the lead. */
   removeAgent(id: string, opts?: RemoveAgentOptions): void;
   /** Asks what removing would delete; answered with a `workspace.info` event. */

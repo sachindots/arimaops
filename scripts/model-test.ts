@@ -30,7 +30,7 @@ const valid = (): TeamTemplate => ({
       { id: "T2", boardId: "B1", stageId: "implement", title: "Second", description: "", doneWhen: "", needs: ["T1"] },
     ],
   },
-  rules: { scopeRequired: false, labMode: false, outbound: "none", egress: [] },
+  rules: { findings: false, plans: false, scopeRequired: false, labMode: false, outbound: "none", egress: [] },
   memoryTypes: ["Asset"],
 });
 

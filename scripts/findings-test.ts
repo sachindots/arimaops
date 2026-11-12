@@ -29,7 +29,7 @@ const hub = {
   slug: "acme",
   repo: { root: repo },
   snap: {
-    config: { project: { name: "Acme", type: "security", scope: { inScope: ["*.acme.test", "10.20.0.0/24"], outOfScope: ["vpn.acme.test"], rules: "No DoS." } }, team: [] },
+    config: { rules: { findings: true }, project: { name: "Acme", scope: { inScope: ["*.acme.test", "10.20.0.0/24"], outOfScope: ["vpn.acme.test"], rules: "No DoS." } }, team: [] },
     findings: undefined as unknown,
     actionItems: [] as unknown[],
   },
@@ -60,7 +60,7 @@ report = readFileSync(join(repo, "deliverables", "security-report.md"), "utf8");
 check("false positives move to their own section", report.includes("## Ruled out") && !report.includes("### F-003"));
 check("unknown id refused", throws(() => findings.update("F-999", { status: "fixed" }), /No finding/));
 
-hub.snap.config.project.type = "software";
+hub.snap.config.rules.findings = false;
 check("non-security projects don't track findings", throws(() => findings.report("ghost", null, good), /isn't a security engagement/));
 
 // Ops: a submitted plan is Approve/Reject and tells the agent which.

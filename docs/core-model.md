@@ -67,6 +67,8 @@ interface Role {
 }
 
 interface ToolRules {
+  findings: boolean;          // security work: findings tools and the findings report
+  plans: boolean;             // agents submit a plan and wait for the owner before changing a system
   scopeRequired: boolean;     // red and purple: no start without a scope (or lab mode)
   labMode: boolean;           // CTFs and practice ranges; skips the scope requirement
   outbound: "none" | "drafts-only";   // marketing and sales: drafts only
@@ -78,7 +80,9 @@ interface ToolRules {
 - **A project owns a copy.** Creating a project copies the template into `projects_model`. Later edits to the library don't touch running projects; a project can be re-synced on purpose.
 - **Phase 1 ships two built-in templates as data:** `dev` (today's software team and the `github-pr` flow) and `blank` (one lead, the `deliverables` flow). The four launch templates are Phase 4 and only add data.
 - **Who edits:** owner, and operators after the authenticator step-up. `saveTemplate`, `updateRole`, `updateFlow` join `RISKY_COMMANDS` in `server/remote.ts`; the role check stays on the server.
-- **The office without departments:** desks group by role instead (`layout.ts` keys on `roleId`). Carpets take the role's colour. Rooms per flow stage are Phase 5.
+- **At load,** `config.json` holds only the seats. HQ fills in each seat's role title, CLI, model, skills and role text from the project's template copy (`resolveSeat`), in place, so the rest of HQ keeps reading `AgentConfig`. Role edits go through `updateRole` and reach every seat of the role at its next start.
+- **The welcome screen** offers the built-in templates. Saved library templates join the picker with template import and export (Phase 4.4).
+- **The office without departments:** the team panel groups agents by role. The office has one SOC room for security work (`rules.findings`), where all its workers sit. Rooms per flow stage are Phase 5.
 
 ## 4. Flow and gates (1.2)
 
@@ -218,7 +222,7 @@ A project whose config has no `roleId` on its agents is a legacy project.
 
 - The snapshot carries `readOnly: true`. The UI shows the board, findings, history and terminals, with a "Read-only (made before templates)" banner.
 - The server refuses every command that changes it, except stop, archive, restore and delete. The check is one list next to `RISKY_COMMANDS`, so a new command is refused by default.
-- Legacy types are kept only in `server/legacy.ts`, the one module that reads old `config.json` and `plan.json`.
+- `server/legacy.ts` maps an old project type to tool rules (security: findings and scope; ops: plans) and holds the list of commands a read-only project still takes. Old `config.json` files are saved back unchanged.
 
 ## 10. Open core (1.8)
 

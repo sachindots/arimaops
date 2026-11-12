@@ -27,6 +27,8 @@ import {
 } from "./projectsRegistry";
 import { run } from "./lib/exec";
 import { releasePortBlock } from "./ports";
+import { hqDb } from "./lib/db";
+import { forgetProjectTemplate } from "./templates";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
 import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
@@ -455,6 +457,7 @@ export function startHttp(o: Options) {
           }
           if (existsSync(p.path)) await run("git", ["worktree", "prune"], { cwd: p.path });
           for (const a of p.team) releasePortBlock(p.id, a.id);
+          forgetProjectTemplate(hqDb(), p.id);
           removeFromRegistry(p.path);
           log.info(`deleted project ${p.id} (repo files kept at ${p.path})`);
           return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");

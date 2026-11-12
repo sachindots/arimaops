@@ -406,7 +406,7 @@ export class Sbx {
     const name = this.name(agentId);
     // Security engagement: in-scope domains are allowed and out-of-scope ones denied for every sandbox.
     const project = this.hub.snap.config.project;
-    const sec = project.type === "security";
+    const sec = this.hub.snap.config.rules.findings;
     const allow = [...agent.sandbox.allow, ...(sec ? scopeDomains(project.scope) : [])];
     const deny = [...agent.sandbox.deny, ...(sec ? outOfScopeDomains(project.scope) : [])];
     const want = new Set([...allow.map((r) => key("allow", r)), ...deny.map((r) => key("deny", r))]);

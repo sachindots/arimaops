@@ -2,10 +2,11 @@
 // both rows in .arima/arima.db (see lib/docs.ts). An older .hq/ or .jsmhq/ is read where it is (see paths.repoDirOf).
 
 import { join } from "node:path";
-import { defaultRoleMdFor, defaultSkillsForRole, inferDepartmentForRole } from "../src/data/roles";
-import { isAgentCli, isDepartmentId, isProjectType, type AgentConfig, type Board, type HqConfig, type SandboxSettings, type Task } from "../src/data/types";
-import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
+import { isAgentCli, type Board, type HqConfig, type Task } from "../src/data/types";
+import { hqDb } from "./lib/db";
 import { readDoc, writeDoc } from "./lib/docs";
+import { legacyRules } from "./legacy";
+import { applyTemplate, projectTemplate, seatOf } from "./templates";
 import { repoDirOf, slugify } from "./paths";
 import type { RepoInfo } from "./repo";
 
@@ -17,35 +18,12 @@ export interface PlanFile {
 const dir = (root: string) => repoDirOf(root);
 
 
-export const defaultSandbox = (): SandboxSettings => ({
-  resources: { cpus: null, memoryGb: null }, // sbx's own defaults
-  allow: [],
-  deny: [],
-});
-
-export function newAgent(id: string, name: string, role: string, color: string, isLead: boolean): AgentConfig {
-  return {
-    id,
-    name,
-    role,
-    department: inferDepartmentForRole(role, isLead),
-    isLead,
-    cli: "claude",
-    model: "", // the CLI's default; users can pick with /model or "Start with model"
-    mode: "sandbox",
-    color,
-    skills: defaultSkillsForRole(role, isLead),
-    roleMd: defaultRoleMdFor(name, role, isLead),
-    sandbox: defaultSandbox(),
-    workspacePath: null,
-    mcp: [],
-  };
-}
-
 function defaultConfig(repo: RepoInfo, port: number): HqConfig {
   return {
-    project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port, type: "software" },
-    team: [newAgent(slugify(LEAD_NAME), LEAD_NAME, "CTO", "#ff1744", true), newAgent(slugify(WORKER_NAMES[0]), WORKER_NAMES[0], "Senior Dev", "#00ff66", false)],
+    project: { id: slugify(repo.name), name: repo.name, repo: repo.github ?? repo.name, path: repo.root, hqPort: port },
+    team: [], // the welcome screen picks a template, which makes the seats
+    template: null,
+    rules: legacyRules(null),
     workflow: {
       mode: repo.github ? "github-pr" : "deliverables",
       review: { enabled: true, tool: repo.hasCodeRabbit ? "coderabbit" : "human", command: "" },
@@ -64,10 +42,6 @@ export function loadConfig(repo: RepoInfo, port: number): { config: HqConfig; is
     for (const a of found.team) {
       a.workspacePath ??= null;
       a.mcp ??= [];
-      if (!isAgentCli(a.cli)) a.cli = "claude";
-      a.department = isDepartmentId(a.department) ? a.department : inferDepartmentForRole(a.role, a.isLead);
-      a.skills ??= defaultSkillsForRole(a.role, a.isLead);
-      if (!a.roleMd?.trim()) a.roleMd = defaultRoleMdFor(a.name, a.role, a.isLead);
       a.sandbox.resources ??= { cpus: null, memoryGb: null };
       // Phase D: policy level, proxy and secret names moved to sbx itself.
       const old = a.sandbox as unknown as Record<string, unknown>;
@@ -80,10 +54,27 @@ export function loadConfig(repo: RepoInfo, port: number): { config: HqConfig; is
     // Slugified again in case the file was edited by hand: it ends up in paths and sandbox names.
     found.project.id = slugify(found.project.id ?? found.project.name);
     found.project.path = repo.root;
-    if (!isProjectType(found.project.type)) found.project.type = "software";
-    return { config: found, isNew: false };
+    return { config: resolveSaved(found), isNew: false };
   }
   return { config: defaultConfig(repo, port), isNew: true };
+}
+
+/** Fills in what config.json doesn't keep: the template, its rules, and each seat's role. */
+export function resolveSaved(found: HqConfig): HqConfig {
+  const template = found.team.some((a) => a.roleId) ? projectTemplate(hqDb(), slugify(found.project.id ?? found.project.name)) : null;
+  if (template) {
+    applyTemplate(found, template);
+    return found;
+  }
+  // Made before templates: read-only, with the rules its old type implied.
+  found.template = null;
+  found.rules = legacyRules((found.project as { type?: unknown }).type);
+  for (const a of found.team) {
+    if (!isAgentCli(a.cli)) a.cli = "claude";
+    a.skills ??= [];
+    a.roleMd ??= "";
+  }
+  return found;
 }
 
 /** The project's id (slug) as loadConfig will set it, read before anything is migrated. */
@@ -100,7 +91,10 @@ export function slugOf(repo: RepoInfo): string {
 export function saveConfig(root: string, cfg: HqConfig) {
   // The path is machine-specific; teammates get their own.
   const { path: _path, ...project } = cfg.project;
-  writeDoc(join(dir(root), "config.json"), { ...cfg, project: { ...project, path: "" } });
+  const { template, rules: _rules, ...rest } = cfg;
+  // A template project keeps only its seats here; roles live in the project's template copy.
+  const team = template ? cfg.team.map(seatOf) : cfg.team;
+  writeDoc(join(dir(root), "config.json"), { ...rest, team, project: { ...project, path: "" } });
 }
 
 export function loadPlan(root: string): PlanFile {

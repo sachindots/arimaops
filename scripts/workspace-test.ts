@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { managedWorkspace } from "../server/paths";
 import { detectRepo } from "../server/repo";
-import { newAgent } from "../server/store";
+import { resolveSeat, seatsFor } from "../server/templates";
+import { DEV_TEMPLATE } from "../src/data/templates";
 import { ensureWorkspace } from "../server/workspace";
 import type { AgentConfig } from "../src/data/types";
 
@@ -51,7 +52,7 @@ git(plainConfig, source, "-c", "user.name=test", "-c", "user.email=test@example.
 const repo = await detectRepo(source);
 
 const SLUG = "test";
-const agent = (id: string, patch: Partial<AgentConfig> = {}): AgentConfig => ({ ...newAgent(id, id, "Developer", "#ffffff", false), ...patch });
+const agent = (id: string, patch: Partial<AgentConfig> = {}): AgentConfig => ({ ...resolveSeat(DEV_TEMPLATE, { ...seatsFor(DEV_TEMPLATE).find((s) => s.roleId === "developer")!, id, name: id }), ...patch });
 
 const tests: [string, () => Promise<void>][] = [
   [

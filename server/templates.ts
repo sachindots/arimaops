@@ -5,10 +5,17 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { type Role, type Seat, type TeamTemplate, templateErrors } from "../src/data/model";
+import type { AgentConfig, HqConfig, SandboxSettings, WorkflowMode } from "../src/data/types";
 import { LEAD_NAME, nextAgentName } from "../src/data/names";
 import { BUILTIN_TEMPLATES } from "../src/data/templates";
+import { agentPalette } from "../src/theme/tokens";
 import { slugify } from "./paths";
-import { defaultSandbox } from "./store";
+
+export const defaultSandbox = (): SandboxSettings => ({
+  resources: { cpus: null, memoryGb: null }, // sbx's own defaults
+  allow: [],
+  deny: [],
+});
 
 const BUILTIN_IDS = new Set(BUILTIN_TEMPLATES.map((t) => t.id));
 
@@ -69,6 +76,11 @@ export function copyToProject(db: DatabaseSync, projectId: string, templateId: s
   return t;
 }
 
+/** Drops a project's template copy: when the project is deleted, or a welcome starts over. */
+export function forgetProjectTemplate(db: DatabaseSync, projectId: string) {
+  db.prepare("DELETE FROM projects_model WHERE project_id = ?").run(projectId);
+}
+
 /** The project's own template, or null for a project made before templates (read-only). */
 export function projectTemplate(db: DatabaseSync, projectId: string): TeamTemplate | null {
   const row = db.prepare("SELECT body FROM projects_model WHERE project_id = ?").get(projectId) as { body: string } | undefined;
@@ -95,19 +107,28 @@ export function resyncProject(db: DatabaseSync, projectId: string): TeamTemplate
   return t;
 }
 
+/** The role's colour while no one else wears it, else the first free palette colour. */
+export function freeColor(want: string, taken: string[]): string {
+  if (!taken.includes(want)) return want;
+  return agentPalette.find((c) => !taken.includes(c)) ?? agentPalette[taken.length % agentPalette.length];
+}
+
 /** The seats a new project starts with: each role's seat count, the lead first, with default names. */
 export function seatsFor(t: TeamTemplate): Seat[] {
   const taken: string[] = [];
+  const colors: string[] = [];
   const roles = [...t.roles].sort((a, b) => Number(b.isLead) - Number(a.isLead));
   return roles.flatMap((r) =>
     Array.from({ length: r.seats }, () => {
       const name = r.isLead && !taken.includes(LEAD_NAME) ? LEAD_NAME : nextAgentName(taken);
       taken.push(name);
+      const color = freeColor(r.color, colors);
+      colors.push(color);
       return {
         id: slugify(name),
         name,
         roleId: r.id,
-        color: r.color,
+        color,
         mode: "sandbox",
         account: "",
         workspacePath: null,
@@ -123,4 +144,31 @@ export function roleOf(t: TeamTemplate, seat: Pick<Seat, "roleId">): Role {
   const r = t.roles.find((x) => x.id === seat.roleId);
   if (!r) throw new TemplateError(`No role "${seat.roleId}" in template "${t.id}".`);
   return r;
+}
+
+const SEAT_KEYS = ["id", "name", "roleId", "color", "mode", "account", "workspacePath", "sandbox", "mcp"] as const;
+
+/** What config.json keeps of an agent in a template project. */
+export function seatOf(a: AgentConfig): Seat {
+  const s = Object.fromEntries(SEAT_KEYS.map((k) => [k, a[k]])) as unknown as Seat;
+  return { ...s, account: a.account ?? "", mcp: a.mcp ?? [] };
+}
+
+/** The agent HQ runs for a seat: the seat plus its role's title, CLI, model, skills and role text. */
+export function resolveSeat(t: TeamTemplate, seat: Seat): AgentConfig {
+  const r = roleOf(t, seat);
+  return { ...seat, role: r.title, isLead: r.isLead, cli: r.cli, model: r.model, skills: [...r.skills], roleMd: r.roleMd };
+}
+
+/** Until gates replace it (step 5): a flow that waits for a merged PR works in pull requests. */
+export const flowMode = (t: TeamTemplate): WorkflowMode =>
+  t.flow.stages.some((s) => s.gates.some((g) => g.kind === "pr-merged")) ? "github-pr" : "deliverables";
+
+/** Puts a project on its template: rules, workflow mode and every seat resolved from it. */
+export function applyTemplate(cfg: HqConfig, t: TeamTemplate) {
+  cfg.template = t;
+  cfg.rules = t.rules;
+  cfg.workflow.mode = flowMode(t);
+  // In place: other parts of HQ hold these agent objects.
+  for (const a of cfg.team) Object.assign(a, resolveSeat(t, seatOf(a)));
 }

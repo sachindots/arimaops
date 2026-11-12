@@ -10,8 +10,6 @@
 //       │ lobby (door, reception)  │ break (sofa, coffee)     │
 //        ────────────── front wall (low, cut away) ──────────
 
-import { inferDepartmentForRole } from "../../data/roles";
-import type { DepartmentId, ProjectType } from "../../data/types";
 import { WalkGrid, type Tile } from "../engine/path";
 import { HALF_H, HALF_W } from "./proj";
 
@@ -19,7 +17,7 @@ export interface TeamMember {
   id: string;
   role: string;
   isLead: boolean;
-  department?: DepartmentId;
+  roleId?: string;
 }
 
 export type ZoneKind = "lobby" | "floor" | "lead" | "scrum" | "break" | "soc";
@@ -106,13 +104,9 @@ const Y_WALL = 6; // back rooms span y = 1..5
 const Y_DESK0 = 8; // y = 7 is the corridor
 const LOBBY_D = 4;
 
-export function isoLayoutKey(team: TeamMember[], type: ProjectType): string {
-  return JSON.stringify([type, team.map((a) => [a.id, a.role, a.department ?? "", a.isLead])]);
+export function isoLayoutKey(team: TeamMember[], secure: boolean): string {
+  return JSON.stringify([secure, team.map((a) => [a.id, a.role, a.roleId ?? "", a.isLead])]);
 }
-
-export const hasSoc = (team: TeamMember[], type: ProjectType) => type === "security" || team.some((a) => dept(a) === "red-team");
-
-const dept = (a: TeamMember) => inferDepartmentForRole(a.role, a.isLead, a.department);
 
 type WallStyle = Omit<Item, "kind" | "x" | "y" | "dir">;
 
@@ -222,11 +216,12 @@ export function generateCommons(W: number, openings: number[]): { items: Item[];
   return { items, zones, grid, door, commons: { wander: wander.filter(ok), coffee: coffee.filter(ok), rest: rest.filter(ok) } };
 }
 
-export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: IsoOptions = {}): IsoLayout {
+/** `secure`: security work; its workers sit in the SOC (rooms per flow stage come in Phase 5). */
+export function generateIsoLayout(team: TeamMember[], secure: boolean, opts: IsoOptions = {}): IsoLayout {
   const leads = team.filter((a) => a.isLead);
   const workers = team.filter((a) => !a.isLead);
-  const soc = hasSoc(team, type);
-  const socWorkers = soc ? workers.filter((a) => dept(a) === "red-team") : [];
+  const soc = secure;
+  const socWorkers = soc ? workers : [];
   const floorWorkers = workers.filter((a) => !socWorkers.includes(a));
 
   // ---------------------------------------------------------- widths
@@ -334,7 +329,7 @@ export function generateIsoLayout(team: TeamMember[], type: ProjectType, opts: I
 
   const origin = { x: H * HALF_W + PAD, y: PAD + WALL_H + 24 };
   return {
-    key: isoLayoutKey(team, type),
+    key: isoLayoutKey(team, secure),
     W,
     H,
     origin,

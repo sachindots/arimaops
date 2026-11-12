@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { DEPARTMENT_META, inferDepartmentForRole } from "../../data/roles";
-import { CLI_LABEL, DEPARTMENT_IDS, type DepartmentId } from "../../data/types";
+import { CLI_LABEL } from "../../data/types";
 import { selectTeam, useOffice, type AgentView } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { stateStyle } from "../../theme/tokens";
-import { ago, DepartmentBadge, Portrait, StateChip, TokensChip, useNow } from "../kit";
+import { ago, RoleBadge, Portrait, StateChip, TokensChip, useNow } from "../kit";
 
 function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: number; now: number }) {
   const snap = useOffice((s) => s.snap);
@@ -26,8 +25,7 @@ function AgentCard({ a, focused, n, now }: { a: AgentView; focused: boolean; n: 
       </div>
       <div className="flex min-w-0 items-center gap-1.5">
         <b className="text-[16px] leading-tight">{a.config.name}</b>
-        <DepartmentBadge role={a.config.role} isLead={a.config.isLead} department={a.config.department} compact />
-        <span className="truncate text-[12px] text-muted">{a.config.role}</span>
+        <RoleBadge role={a.config.role} color={a.config.color} compact />
         <span className="kbd ml-auto px-1 text-[12px] leading-none">{n}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -78,23 +76,22 @@ export function TeamPanel() {
   const needs = team.filter((a) => a.status.state === "needs-input").length;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  // Group operators by Department Pod while preserving their 1..N shortcut index
-  const indexedTeam = team.map((a, idx) => ({
-    a,
-    n: idx + 1,
-    dept: inferDepartmentForRole(a.config.role, a.config.isLead, a.config.department),
-  }));
-
-  const pods = DEPARTMENT_IDS.map((deptId: DepartmentId) => ({
-    meta: DEPARTMENT_META[deptId],
-    members: indexedTeam.filter((x) => x.dept === deptId),
-  })).filter((p) => p.members.length > 0);
+  // Group agents by role, in the template's role order, keeping their 1..N shortcut index.
+  const roles = snap?.config.template?.roles ?? [];
+  const indexedTeam = team.map((a, idx) => ({ a, n: idx + 1, key: a.config.roleId ?? a.config.role }));
+  const pods = [...new Set(indexedTeam.map((x) => x.key))]
+    .sort((x, y) => roles.findIndex((r) => r.id === x) - roles.findIndex((r) => r.id === y))
+    .map((key) => {
+      const members = indexedTeam.filter((x) => x.key === key);
+      const role = roles.find((r) => r.id === key);
+      return { meta: { id: key, label: role?.title ?? members[0].a.config.role, color: role?.color ?? members[0].a.config.color }, members };
+    });
 
   return (
     <section aria-label="Team" className="hq-team fixed bottom-[250px] left-4 top-[74px] z-10 [@media(max-height:760px)]:bottom-[160px] flex w-[288px] flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-1.5 px-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-ink [text-shadow:0_2px_0_#040508]">
         <span>
-          Org · {team.length} ops · {pods.length} {pods.length === 1 ? "pod" : "pods"}
+          Team · {team.length} · {pods.length} {pods.length === 1 ? "role" : "roles"}
           {needs > 0 && <span className="ml-2 text-red">{needs} need you</span>}
         </span>
         <span className="flex w-full gap-1">
@@ -102,7 +99,7 @@ export function TeamPanel() {
             ▦ Command center
           </button>
           <button className="btn min-h-[34px] px-2 text-[12px] normal-case tracking-normal text-ink [text-shadow:none]" onClick={() => ui.openSettings("team")}>
-            + Pod / Agent
+            + Agent
           </button>
         </span>
       </div>
@@ -118,10 +115,7 @@ export function TeamPanel() {
                 className="flex items-center justify-between border-2 border-ink bg-[#0a0d16]/90 px-2 py-1 text-left font-mono text-[10px] font-bold uppercase tracking-wider"
                 style={{ borderLeftWidth: 4, borderLeftColor: meta.color }}
               >
-                <span className="flex items-center gap-1.5">
-                  <span style={{ color: meta.color }}>[{meta.short}]</span>
-                  <span className="truncate text-ink">{meta.label}</span>
-                </span>
+                <span className="truncate" style={{ color: meta.color }}>{meta.label}</span>
                 <span className="text-muted">
                   {workingCount > 0 ? <span className="text-green">{workingCount} active · </span> : null}
                   {members.length} {isCollapsed ? "▸" : "▾"}

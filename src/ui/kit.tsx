@@ -1,37 +1,21 @@
 // Small shared HUD pieces.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { DEPARTMENT_META, inferDepartmentForRole } from "../data/roles";
-import type { AgentState, DepartmentId, ReviewState, SessionState, Tokens } from "../data/types";
+import type { AgentState, ReviewState, SessionState, Tokens } from "../data/types";
 import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
 import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 
-export function DepartmentBadge({
-  role,
-  isLead = false,
-  department,
-  compact = false,
-}: {
-  role: string;
-  isLead?: boolean;
-  department?: DepartmentId;
-  compact?: boolean;
-}) {
-  const deptId = inferDepartmentForRole(role, isLead, department);
-  const meta = DEPARTMENT_META[deptId];
+/** The agent's role, in its colour. */
+export function RoleBadge({ role, color, compact = false }: { role: string; color: string; compact?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center border font-mono font-bold uppercase tracking-wider ${
+      className={`inline-flex max-w-[14ch] items-center truncate border font-mono font-bold uppercase tracking-wider ${
         compact ? "px-1 py-0 text-[9px] leading-[14px]" : "px-1.5 py-0.5 text-[10px] leading-tight"
       }`}
-      style={{
-        color: meta.color,
-        borderColor: `${meta.color}66`,
-        backgroundColor: `${meta.color}18`,
-      }}
-      title={meta.label}
+      style={{ color, borderColor: `${color}66`, backgroundColor: `${color}18` }}
+      title={role}
     >
-      {meta.short}
+      {role}
     </span>
   );
 }

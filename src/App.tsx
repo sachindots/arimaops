@@ -124,6 +124,8 @@ export function App() {
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
+  const readOnly = useOffice((s) => s.live && !!s.snap && !s.snap.welcome && !s.snap.config.template);
+  const readOnlyNote = "Read-only: this project was made before team templates. You can watch, answer and stop its agents.";
   const compact = useUi((s) => s.compact);
   const view = useUi((s) => s.view);
   const solo = useUi((s) => s.solo);
@@ -166,6 +168,7 @@ export function App() {
       <>
         <ConnectionBanner />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
+        {readOnly && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{readOnlyNote}</div>}
         {ready && (
           <>
             <CompactApp />
@@ -187,6 +190,7 @@ export function App() {
       )}
       <ConnectionBanner />
       {pushError && <div role="status" className="fixed top-0 z-50 bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
+      {readOnly && <div role="status" className="panel fixed bottom-2 left-1/2 z-40 -translate-x-1/2 px-4 py-1.5 text-sm text-muted">{readOnlyNote}</div>}
       {ready && (
         <>
           <TopBar />

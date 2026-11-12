@@ -43,6 +43,10 @@ export const OUTBOUND = ["none", "drafts-only"] as const;
 export type Outbound = (typeof OUTBOUND)[number];
 
 export interface ToolRules {
+  /** Security work: agents get the findings tools and HQ writes the findings report. */
+  findings: boolean;
+  /** Agents submit a plan (commands, hosts, rollback) and wait for the owner before changing a system. */
+  plans: boolean;
   /** No agent starts before the project has a scope (red and purple teams), unless lab mode is on. */
   scopeRequired: boolean;
   /** CTFs and practice ranges: lifts the scope requirement. */

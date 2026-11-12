@@ -1,4 +1,4 @@
-import { defaultRoleMdFor, defaultSkillsForRole } from "../roles";
+import type { Role, TeamTemplate } from "../model";
 import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
 
 export interface Preset {
@@ -39,12 +39,26 @@ function agent(
     model: isLead ? "Opus" : "Sonnet",
     mode: "sandbox",
     color,
-    skills: defaultSkillsForRole(role, isLead),
-    roleMd: defaultRoleMdFor(name, role, isLead),
+    roleId: role.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    skills: [],
+    roleMd: `You are the team's ${role}.`,
     sandbox: sandbox(isLead ? {} : { allow: ["registry.npmjs.org", "console.instacloud.com"] }),
     workspacePath: null,
     ...opts,
   };
+}
+
+/** Demo projects get a template made from their own team: one role per role title, as its first agent has it. */
+function demoConfig({ secure = false, ...cfg }: Omit<HqConfig, "template" | "rules"> & { secure?: boolean }): HqConfig {
+  const roles: Role[] = [];
+  for (const a of cfg.team)
+    if (!roles.some((r) => r.id === a.roleId))
+      roles.push({ id: a.roleId!, title: a.role, isLead: a.isLead, roleMd: a.roleMd, cli: a.cli, model: a.model, fallback: null, skills: [], onDemand: false, seats: 0, color: a.color });
+  for (const r of roles) r.seats = cfg.team.filter((a) => a.roleId === r.id).length;
+  const stages = [{ id: "build", name: "Build", roleIds: roles.map((r) => r.id), gates: [] }];
+  const rules = { findings: secure, plans: false, scopeRequired: false, labMode: false, outbound: "none" as const, egress: [] };
+  const template: TeamTemplate = { id: "demo", version: 1, name: "Demo team", description: "", roles, flow: { stages }, starter: { boards: [], tasks: [] }, rules, memoryTypes: [] };
+  return { ...cfg, template, rules };
 }
 
 function doneTasks(boardId: string, titles: [string, string][], startPr: number): Task[] {
@@ -64,8 +78,8 @@ function doneTasks(boardId: string, titles: [string, string][], startPr: number)
 const askwell: Preset = {
   id: "askwell",
   label: "Askwell · 3 agents",
-  config: {
-    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420, type: "software" },
+  config: demoConfig({
+    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
       agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -77,7 +91,7 @@ const askwell: Preset = {
       merge: { by: "human" },
       deploy: { enabled: true, tool: "instacloud", command: "", perAgentEnvironments: true },
     },
-  },
+  }),
   boards: [
     { id: "P0", title: "Phase 0 — Setup", status: "done", order: 0 },
     { id: "P1", title: "Phase 1 — Foundation", status: "done", order: 1 },
@@ -119,8 +133,9 @@ const askwell: Preset = {
 const redCell: Preset = {
   id: "red-cell",
   label: "RedCell · 5 agents (Cybersec)",
-  config: {
-    project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420, type: "security" },
+  config: demoConfig({
+    project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
+    secure: true,
     team: [
       agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),
@@ -134,7 +149,7 @@ const redCell: Preset = {
       merge: { by: "lead" },
       deploy: { enabled: false, tool: "custom", command: "", perAgentEnvironments: false },
     },
-  },
+  }),
   boards: [
     { id: "REC", title: "Phase 1 — Recon & Attack Surface", status: "active", order: 0 },
     { id: "AUD", title: "Phase 2 — Exploit Validation & Triage", status: "active", order: 1 },
@@ -165,8 +180,8 @@ const redCell: Preset = {
 const bigTeam: Preset = {
   id: "big-team",
   label: "Shipyard · 7 agents",
-  config: {
-    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420, type: "software" },
+  config: demoConfig({
+    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
     team: [
       agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -182,7 +197,7 @@ const bigTeam: Preset = {
       merge: { by: "lead" },
       deploy: { enabled: true, tool: "vercel", command: "", perAgentEnvironments: false },
     },
-  },
+  }),
   boards: [
     { id: "WEB", title: "Web app", status: "active", order: 0 },
     { id: "API", title: "API", status: "active", order: 1 },
@@ -217,8 +232,8 @@ const bigTeam: Preset = {
 const duo: Preset = {
   id: "duo",
   label: "Notely · 2 agents",
-  config: {
-    project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420, type: "software" },
+  config: demoConfig({
+    project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420 },
     team: [
       agent("ada", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("max", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -229,7 +244,7 @@ const duo: Preset = {
       merge: { by: "human" },
       deploy: { enabled: false, tool: "custom", command: "", perAgentEnvironments: false },
     },
-  },
+  }),
   boards: [{ id: "MVP", title: "MVP", status: "active", order: 0 }],
   tasks: [
     { id: "MVP-T01", boardId: "MVP", title: "Markdown editor", ownerId: "max", status: "todo", needs: [], prNumber: null },

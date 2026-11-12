@@ -5,7 +5,7 @@ import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type A
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { RemoveAgentDialog } from "../settings/RemoveAgentDialog";
 import { ui, type AgentTab } from "../../store/ui";
-import { ago, DepartmentBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
+import { ago, RoleBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
 import { ModelSelect } from "../primitives/ModelSelect";
 import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
@@ -46,8 +46,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <b className="text-[18px]">{agent.name}</b>
-            <DepartmentBadge role={agent.role} isLead={agent.isLead} department={agent.department} />
-            <span className="font-mono text-[12px] text-muted">{agent.role}</span>
+            <RoleBadge role={agent.role} color={agent.color} />
             <StateChip state={status.state} session={status.session.state} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
@@ -58,7 +57,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               onChange={(e) => {
                 const nextCli = e.target.value as AgentCli;
                 const defaultModel = CLI_MODELS[nextCli]?.[0] ?? "";
-                officeActions.updateAgent(agent.id, { cli: nextCli, model: defaultModel });
+                if (agent.roleId) officeActions.updateRole(agent.roleId, { cli: nextCli, model: defaultModel });
                 if (isRunning) setPendingRestart(true);
               }}
             >
@@ -76,7 +75,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 compact
                 ariaLabel={`${agent.name} model`}
                 onChange={(model) => {
-                  officeActions.updateAgent(agent.id, { model });
+                  if (agent.roleId) officeActions.updateRole(agent.roleId, { model });
                   if (isRunning) setPendingRestart(true);
                 }}
               />

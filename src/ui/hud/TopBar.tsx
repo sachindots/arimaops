@@ -115,7 +115,7 @@ export function TopBar() {
         <button className="btn text-[14px]" onClick={() => ui.openBoards()}>
           Boards
         </button>
-        {snap.config.project.type === "security" ? (
+        {snap.config.rules.findings ? (
           <button className="btn text-[14px]" onClick={() => ui.openFindings()}>
             Findings{openFindings ? ` · ${openFindings}` : ""}
           </button>

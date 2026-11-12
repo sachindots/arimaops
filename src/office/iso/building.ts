@@ -6,7 +6,6 @@
 // Agents from other projects carry namespaced ids ("<project>/<agent>"), so a
 // building is just a bigger IsoLayout plus where each wing is. Pure.
 
-import type { ProjectType } from "../../data/types";
 import { WalkGrid, type Tile } from "../engine/path";
 import { generateCommons, generateIsoLayout, HALL_D, isoLayoutKey, PAD, WALL_H, type IsoLayout, type Spots, type TeamMember } from "./layout";
 import { HALF_H, HALF_W } from "./proj";
@@ -14,7 +13,7 @@ import { HALF_H, HALF_W } from "./proj";
 export interface WingInput {
   project: string;
   name: string;
-  type: ProjectType;
+  secure: boolean;
   team: TeamMember[];
 }
 
@@ -65,7 +64,7 @@ export function arrange(widths: number[], depth: number): number[][] {
   return best;
 }
 
-export const buildingKey = (wings: WingInput[]) => JSON.stringify(wings.map((w) => [w.project, w.name, isoLayoutKey(w.team, w.type)]));
+export const buildingKey = (wings: WingInput[]) => JSON.stringify(wings.map((w) => [w.project, w.name, isoLayoutKey(w.team, w.secure)]));
 
 /**
  * Every project's wing in rows, a walkway in front of each row, a corridor down the east side,
@@ -74,8 +73,8 @@ export const buildingKey = (wings: WingInput[]) => JSON.stringify(wings.map((w) 
 export function generateBuilding(inputs: WingInput[]): Building {
   const sign = (w: WingInput, i: number) => (inputs.length === 1 && i === 0 ? undefined : w.name);
   // Two passes: the deepest office sets the depth for all.
-  const minH = inputs.length ? Math.max(...inputs.map((w, i) => generateIsoLayout(w.team, w.type, { sign: sign(w, i) }).H)) : 0;
-  const parts = inputs.map((w, i) => generateIsoLayout(w.team, w.type, { minH, sign: sign(w, i) }));
+  const minH = inputs.length ? Math.max(...inputs.map((w, i) => generateIsoLayout(w.team, w.secure, { sign: sign(w, i) }).H)) : 0;
+  const parts = inputs.map((w, i) => generateIsoLayout(w.team, w.secure, { minH, sign: sign(w, i) }));
   const rows = inputs.length ? arrange(parts.map((p) => p.W), minH) : [];
   const wingsW = rows.length ? Math.max(...rows.map((r) => r.reduce((t, i) => t + parts[i].W, 0))) : 0;
   const W = Math.max(wingsW + (rows.length ? SPINE : 0), HALL_MIN_W);

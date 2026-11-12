@@ -12,12 +12,12 @@ export const wantsDemo = () => {
   }
 };
 
-const EXTRA: Pick<AgentConfig, "id" | "name" | "role" | "color" | "department">[] = [
-  { id: "demo-echo", name: "Echo", role: "Developer", color: "#c9b6ff", department: "eng" },
-  { id: "demo-sol", name: "Sol", role: "QA", color: "#ff9f1c", department: "qa-ops" },
-  { id: "demo-ivy", name: "Ivy", role: "Designer", color: "#ff2a85", department: "eng" },
-  { id: "demo-kit", name: "Kit", role: "Developer", color: "#00e5ff", department: "eng" },
-  { id: "demo-rex", name: "Rex", role: "Reviewer", color: "#00ff66", department: "qa-ops" },
+const EXTRA: Pick<AgentConfig, "id" | "name" | "role" | "color">[] = [
+  { id: "demo-echo", name: "Echo", role: "Developer", color: "#c9b6ff" },
+  { id: "demo-sol", name: "Sol", role: "QA", color: "#ff9f1c" },
+  { id: "demo-ivy", name: "Ivy", role: "Designer", color: "#ff2a85" },
+  { id: "demo-kit", name: "Kit", role: "Developer", color: "#00e5ff" },
+  { id: "demo-rex", name: "Rex", role: "Reviewer", color: "#00ff66" },
 ];
 // Worker states in seat order: typing, wandering, "?", "!", walking in from the door.
 const STATES: [AgentStatus["state"], SessionState][] = [["working", "running"], ["idle", "running"], ["needs-input", "running"], ["working", "failed"], ["working", "starting"]];
@@ -72,7 +72,6 @@ export function demoOthers(base: OfficeSnapshot, n: number): { id: string; name:
       id: `a${i}`,
       name: `${NAMES[p % NAMES.length].slice(0, 3)}${i}`,
       role: i === 0 ? (security ? "Red Team Commander" : "Tech Lead") : security ? "Red Teamer" : ROLES[(p + i) % 4],
-      department: i === 0 ? "exec" : security ? "red-team" : "eng",
       isLead: i === 0,
       color: COLORS[(p + i) % COLORS.length],
     }));
@@ -84,7 +83,7 @@ export function demoOthers(base: OfficeSnapshot, n: number): { id: string; name:
     const name = `${NAMES[p % NAMES.length]}${p >= NAMES.length ? ` ${p}` : ""}`;
     const snap: OfficeSnapshot = {
       ...base,
-      config: { ...base.config, team, project: { ...base.config.project, id, name, officeName: name, type: security ? "security" : "software" } },
+      config: { ...base.config, team, project: { ...base.config.project, id, name, officeName: name }, rules: { ...base.config.rules, findings: security } },
       agents, messages: [], activity: [], pullRequests: [], findings: [], tasks: [],
     };
     return { id, name, snap };

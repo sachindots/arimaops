@@ -102,7 +102,7 @@ export class Findings {
   /** From an agent. Refused when the project isn't a security engagement or the target is out of scope. */
   report(reporterId: string, taskId: string | null, input: { title?: unknown; severity?: unknown; target?: unknown; description?: unknown; evidence?: unknown; remediation?: unknown }): Finding {
     const project = this.hub.snap.config.project;
-    if (project.type !== "security") throw new Error("This project isn't a security engagement, so findings aren't tracked here. Write it as a deliverable instead.");
+    if (!this.hub.snap.config.rules.findings) throw new Error("This project isn't a security engagement, so findings aren't tracked here. Write it as a deliverable instead.");
     const target = clip(input.target, 300);
     const s = checkScope(project.scope, target);
     if (!s.ok) {

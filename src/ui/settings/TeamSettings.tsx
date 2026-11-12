@@ -1,37 +1,15 @@
 import { BRAND } from "../../data/brand";
 import { useState } from "react";
+import type { Role } from "../../data/model";
 import { nextAgentName } from "../../data/names";
-import {
-  defaultRoleMdFor,
-  defaultSkillsForRole,
-  DEPARTMENT_META,
-  DEPARTMENT_PODS,
-  findRoleTemplate,
-  inferDepartmentForRole,
-  ORG_PRESETS,
-  PERSONA_DOMAINS,
-  ROLE_TEMPLATES,
-  type DepartmentPodPreset,
-  type OrgPreset,
-} from "../../data/roles";
 import { BUILTIN_SKILLS } from "../../data/skillCatalog";
-import {
-  AGENT_CLIS,
-  CLI_MODELS,
-  DEPARTMENT_IDS,
-  type AgentCli,
-  type AgentConfig,
-  type AgentMode,
-  type DepartmentId,
-  cliPickerLabel,
-} from "../../data/types";
+import { AGENT_CLIS, CLI_MODELS, type AgentCli, type AgentConfig, type AgentMode, cliPickerLabel } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
-import { DepartmentBadge, Field, Portrait, SectionTitle } from "../kit";
+import { Field, Portrait, RoleBadge, SectionTitle } from "../kit";
 import { ModelSelect } from "../primitives/ModelSelect";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
-import { ask } from "../dialog";
 
 export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: AgentCli) => void }) {
   return (
@@ -45,264 +23,155 @@ export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: 
   );
 }
 
-export function DepartmentSelect({
-  value,
-  onChange,
-}: {
-  value: DepartmentId;
-  onChange: (v: DepartmentId) => void;
-}) {
+function ModeSelect({ value, onChange }: { value: AgentMode; onChange: (v: AgentMode) => void }) {
   return (
-    <select
-      className="field font-mono text-[12px]"
-      value={value}
-      onChange={(e) => onChange(e.target.value as DepartmentId)}
-      aria-label="Department Pod"
-    >
-      {DEPARTMENT_IDS.map((id) => (
-        <option key={id} value={id}>
-          [{DEPARTMENT_META[id].short}] {DEPARTMENT_META[id].label}
-        </option>
-      ))}
+    <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentMode)} aria-label="Runs in">
+      <option value="sandbox">Sandbox</option>
+      <option value="container">Container</option>
+      <option value="local">Local</option>
     </select>
   );
 }
 
-export const ROLE_SUGGESTIONS = ROLE_TEMPLATES.map((r) => r.title);
-
 export function TeamSettings() {
   const snap = useOffice((s) => s.snap);
-  const team = snap?.config.team;
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<AgentConfig | null>(null);
-  if (!team || !snap) return null;
+  if (!snap) return null;
+  const { team, template } = snap.config;
 
-  const defaultMode: AgentMode = snap.setup.sandboxReady ? "sandbox" : "local";
-
-  const resetRolesToTemplates = () => {
-    for (const a of team) {
-      const roleMd = defaultRoleMdFor(a.name, a.role, a.isLead);
-      const defaultSkills = defaultSkillsForRole(a.role, a.isLead);
-      const mergedSkills = [...new Set([...defaultSkills, ...a.skills])].filter((s) => s !== "caveman"); // personas set the voice now
-      const department = inferDepartmentForRole(a.role, a.isLead, a.department);
-      officeActions.updateAgent(a.id, { roleMd, skills: mergedSkills, department });
-    }
-  };
-
-  const addDepartmentPod = (pod: DepartmentPodPreset) => {
-    const existingNames = new Set(team.map((a) => a.name.toLowerCase()));
-    for (const member of pod.members) {
-      let finalName = member.name;
-      if (existingNames.has(finalName.toLowerCase())) {
-        finalName = nextAgentName([...existingNames]);
-      }
-      existingNames.add(finalName.toLowerCase());
-      officeActions.addAgent({
-        name: finalName,
-        role: member.role,
-        department: member.department,
-        cli: member.cli,
-        model: member.model,
-        mode: defaultMode,
-        skills: defaultSkillsForRole(member.role, false),
-        roleMd: defaultRoleMdFor(finalName, member.role, false),
-      });
-    }
-  };
-
-  const applyOrgPreset = async (org: OrgPreset) => {
-    if (
-      !(await ask.confirm(
-        `Load "${org.label}" (${1 + org.workers.length} operators)?`,
-        `This will update your Lead to ${org.lead.name} (${org.lead.role}), replace current non-lead workers with the ${org.label} roster, and set the War-Room sign to "${org.officeName}".`,
-        { ok: "Load" },
-      ))
-    ) {
-      return;
-    }
-    const lead = team.find((a) => a.isLead);
-    if (lead) {
-      officeActions.updateAgent(lead.id, {
-        name: org.lead.name,
-        role: org.lead.role,
-        department: org.lead.department,
-        cli: org.lead.cli,
-        model: org.lead.model,
-        skills: defaultSkillsForRole(org.lead.role, true),
-        roleMd: defaultRoleMdFor(org.lead.name, org.lead.role, true),
-      });
-    }
-    for (const w of team.filter((a) => !a.isLead)) {
-      officeActions.removeAgent(w.id, { deleteSandbox: false, deleteFolder: false });
-    }
-    for (const w of org.workers) {
-      officeActions.addAgent({
-        name: w.name,
-        role: w.role,
-        department: w.department,
-        cli: w.cli,
-        model: w.model,
-        mode: defaultMode,
-        skills: defaultSkillsForRole(w.role, false),
-        roleMd: defaultRoleMdFor(w.name, w.role, false),
-      });
-    }
-    officeActions.updateProject({ officeName: org.officeName });
-    officeActions.updateWorkflow({ mode: org.workflowMode });
-  };
+  if (!template)
+    return (
+      <section className="flex flex-col gap-2">
+        <SectionTitle>Team · {team.length} agents · read-only</SectionTitle>
+        <p className="text-[13px] text-muted">This project was made before team templates. You can watch, answer and stop its agents, but not change the team.</p>
+        {team.map((a) => (
+          <div key={a.id} className="flex items-center gap-2 border-[3px] border-ink bg-white p-2">
+            <Portrait color={a.color} lead={a.isLead} />
+            <b>{a.name}</b>
+            <RoleBadge role={a.role} color={a.color} compact />
+            <span className="font-mono text-[12px] text-muted">
+              {a.cli}
+              {a.model ? `:${a.model}` : ""}
+            </span>
+          </div>
+        ))}
+      </section>
+    );
 
   return (
     <div className="flex flex-col gap-5">
-      <section className="border-[3px] border-ink bg-cream p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <SectionTitle>Organization War-Room Templates &amp; Department Pods</SectionTitle>
-            <p className="text-[12px] text-muted">
-              Load a complete Product Company or Red Team Cybersec Center, or click a Department Pod to append specialized operators to your current team.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn px-2.5 py-1 text-[12px]"
-            title="Replace every agent's role text with HQ's template for its role (adds the role's default skills). Personas, peer rules and escalation habits are added automatically."
-            onClick={resetRolesToTemplates}
-          >
-            ↺ Reset roles to templates
-          </button>
-        </div>
-
-        <div className="mb-3">
-          <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
-            1. Full Organization Templates (Replaces Roster &amp; Sets War-Room Sign)
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {ORG_PRESETS.map((org) => (
-              <button
-                key={org.id}
-                type="button"
-                className="flex flex-col items-start border-2 border-ink bg-white p-2 text-left transition hover:border-red"
-                onClick={() => void applyOrgPreset(org)}
-              >
-                <div className="flex w-full items-center justify-between gap-2">
-                  <b className="text-[13px]">{org.label}</b>
-                  <span className="border border-red bg-[rgba(255,23,68,0.14)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-red">
-                    {org.badge}
-                  </span>
-                </div>
-                <span className="mt-1 text-[11px] leading-snug text-muted">{org.description}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-1 font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
-            2. Modular Department Pods (Appends Operators to Current Team)
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {DEPARTMENT_PODS.map((pod) => (
-              <button
-                key={pod.id}
-                type="button"
-                className="btn px-2.5 py-1 font-mono text-[12px]"
-                style={{ borderColor: pod.color }}
-                title={`${pod.description} (${pod.members.map((m) => `${m.name}: ${m.role}`).join(", ")})`}
-                onClick={() => addDepartmentPod(pod)}
-              >
-                <span style={{ color: pod.color }}>{pod.short}</span>
-                <span className="ml-1 text-[10px] text-muted">({pod.members.length})</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section>
-        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <SectionTitle>Active Roster · {team.length} operators</SectionTitle>
-        </div>
-        <p className="mb-3 text-[13px] text-muted">
-          Pick any operator's <b>Agent CLI</b> and <b>Model</b> (<code>claude-opus-5-5</code>, <code>claude-sonnet-5-5</code>, <code>gpt-6.1-sol</code>, <code>gemini-4-argon-high</code>, or custom ID) directly below.
-        </p>
+        <SectionTitle>
+          Roles · {template.name} v{template.version}
+        </SectionTitle>
+        <p className="mb-3 text-[13px] text-muted">A role sets the CLI, model, skills and instructions for every agent in it. Changes reach each agent at its next start.</p>
         <div className="flex flex-col gap-2">
-          {team.map((a) => (
-            <AgentRow key={a.id} agent={a} expanded={open === a.id} onToggle={() => setOpen(open === a.id ? null : a.id)} onRemove={() => setRemoving(a)} />
+          {template.roles.map((r) => (
+            <RoleRow key={r.id} role={r} seats={team.filter((a) => a.roleId === r.id).length} expanded={open === `role:${r.id}`} onToggle={() => setOpen(open === `role:${r.id}` ? null : `role:${r.id}`)} />
           ))}
         </div>
       </section>
-      <AddAgent />
+      <section>
+        <SectionTitle>Agents · {team.length}</SectionTitle>
+        <div className="flex flex-col gap-2">
+          {team.map((a) => (
+            <SeatRow key={a.id} agent={a} roles={template.roles} expanded={open === a.id} onToggle={() => setOpen(open === a.id ? null : a.id)} onRemove={() => setRemoving(a)} />
+          ))}
+        </div>
+      </section>
+      <AddAgent roles={template.roles.filter((r) => !r.isLead)} defaultMode={snap.setup.sandboxReady ? "sandbox" : "local"} />
       {removing && <RemoveAgentDialog agent={removing} onClose={() => setRemoving(null)} />}
     </div>
   );
 }
 
-function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig; expanded: boolean; onToggle: () => void; onRemove: () => void }) {
-  const snapSkills = useOffice((s) => s.snap?.customSkills);
-  const set = (patch: Parameters<typeof officeActions.updateAgent>[1]) => officeActions.updateAgent(agent.id, patch);
-  const matchedTemplate = findRoleTemplate(agent.role);
-  const domainBadge = matchedTemplate ? PERSONA_DOMAINS.find((d) => d.id === matchedTemplate.domain)?.badge : "USR";
-  const deptId = inferDepartmentForRole(agent.role, agent.isLead, agent.department);
-
-  const toggleSkill = (skillId: string) => {
-    const has = agent.skills.includes(skillId);
-    const next = has ? agent.skills.filter((s) => s !== skillId) : [...agent.skills, skillId];
-    set({ skills: next });
-  };
-
-  const applyTemplate = (roleTitle: string) => {
-    const roleMd = defaultRoleMdFor(agent.name, roleTitle, agent.isLead);
-    const skills = defaultSkillsForRole(roleTitle, agent.isLead);
-    const department = inferDepartmentForRole(roleTitle, agent.isLead);
-    set({ role: roleTitle, department, roleMd, skills });
-  };
+function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: number; expanded: boolean; onToggle: () => void }) {
+  const customSkills = useOffice((s) => s.snap?.customSkills);
+  const set = (patch: Parameters<typeof officeActions.updateRole>[1]) => officeActions.updateRole(role.id, patch);
+  const toggleSkill = (id: string) => set({ skills: role.skills.includes(id) ? role.skills.filter((s) => s !== id) : [...role.skills, id] });
 
   return (
     <div className="border-[3px] border-ink bg-white">
-      <div className="grid grid-cols-[40px_minmax(100px,1fr)_minmax(130px,1.2fr)_145px_150px_110px_auto] items-end gap-2 p-2.5">
+      <div className="grid grid-cols-[minmax(120px,1fr)_160px_170px_auto] items-end gap-2 p-2.5">
+        <Field label={`Role · ${seats} ${seats === 1 ? "agent" : "agents"}${role.isLead ? " · lead" : ""}`}>
+          <CommitInput className="field" value={role.title} onCommit={(v) => v.trim() && set({ title: v.trim() })} />
+        </Field>
+        <Field label="Agent CLI">
+          <CliSelect value={role.cli} onChange={(cli) => set({ cli, model: CLI_MODELS[cli]?.[0] ?? "" })} />
+        </Field>
+        <Field label="Model">
+          <ModelSelect cli={role.cli} value={role.model} className="field" ariaLabel={`${role.title} model`} onChange={(model) => set({ model })} />
+        </Field>
+        <button className="btn px-2 text-[13px]" aria-expanded={expanded} onClick={onToggle}>
+          {expanded ? "Less" : "More"}
+        </button>
+      </div>
+      {expanded && (
+        <div className="flex flex-col gap-3 border-t-[3px] border-ink bg-cream p-3">
+          {!role.isLead && (
+            <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={role.onDemand} onChange={(e) => set({ onDemand: e.target.checked })} />
+              On demand: started for a task and stopped after it (from Phase 3)
+            </label>
+          )}
+          <Field label="Skills" hint="Built-in skill ids, your own skills, or skills.sh specs, comma-separated.">
+            <CommitInput
+              className="field mb-2"
+              value={role.skills.join(", ")}
+              placeholder="threat-modeling, vuln-triage, deep-research…"
+              onCommit={(v) => set({ skills: v.split(",").map((s) => s.trim()).filter(Boolean) })}
+            />
+            <div className="flex flex-wrap gap-1">
+              {[...(customSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.arima/skills or .arima/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
+                const on = role.skills.includes(sk.id);
+                return (
+                  <button key={sk.id} type="button" className="btn px-1.5 py-0.5 font-term text-[14px]" aria-pressed={on} title={sk.description} onClick={() => toggleSkill(sk.id)}>
+                    {on ? "✓ " : "+ "}
+                    {sk.id}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <Field
+            label="Role instructions"
+            hint={`What every agent in this role does and how. ${BRAND.name} adds the agent's name, the team, workflow rules and tools when it starts.`}
+          >
+            <CommitInput multiline className="field h-[160px] resize-y font-term text-[17px] leading-tight" value={role.roleMd} onCommit={(v) => set({ roleMd: v })} />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentConfig; roles: Role[]; expanded: boolean; onToggle: () => void; onRemove: () => void }) {
+  const set = (patch: Parameters<typeof officeActions.updateAgent>[1]) => officeActions.updateAgent(agent.id, patch);
+  return (
+    <div className="border-[3px] border-ink bg-white">
+      <div className="grid grid-cols-[40px_minmax(100px,1fr)_minmax(130px,1fr)_120px_auto] items-end gap-2 p-2.5">
         <Portrait color={agent.color} lead={agent.isLead} />
         <Field label="Name">
           <CommitInput className="field" value={agent.name} onCommit={(v) => v.trim() && set({ name: v.trim() })} />
         </Field>
-        <Field label={`Role (${domainBadge})`}>
-          <div className="flex items-center gap-1.5">
-            <DepartmentBadge role={agent.role} isLead={agent.isLead} department={agent.department} compact />
-            <CommitInput
-              className="field flex-1"
-              value={agent.role}
-              list="role-suggestions"
-              onCommit={(v) => {
-                const nextRole = v.trim();
-                if (!nextRole) return;
-                set({
-                  role: nextRole,
-                  department: inferDepartmentForRole(nextRole, agent.isLead),
-                });
-              }}
-            />
-          </div>
-        </Field>
-        <Field label="Agent CLI">
-          <CliSelect
-            value={agent.cli}
-            onChange={(cli) => set({ cli, model: CLI_MODELS[cli]?.[0] ?? "" })}
-          />
-        </Field>
-        <Field label="Model">
-          <ModelSelect
-            cli={agent.cli}
-            account={agent.account}
-            value={agent.model}
-            className="field"
-            ariaLabel={`${agent.name} model`}
-            onChange={(model) => set({ model })}
-          />
+        <Field label="Role">
+          {agent.isLead ? (
+            <div className="field text-muted">{agent.role}</div>
+          ) : (
+            <select className="field" value={agent.roleId} onChange={(e) => set({ roleId: e.target.value })} aria-label={`${agent.name} role`}>
+              {roles
+                .filter((r) => !r.isLead)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+            </select>
+          )}
         </Field>
         <Field label="Runs in">
-          <select className="field" value={agent.mode} onChange={(e) => set({ mode: e.target.value as AgentMode })}>
-            <option value="sandbox">Sandbox</option>
-            <option value="container">Container</option>
-            <option value="local">Local</option>
-          </select>
+          <ModeSelect value={agent.mode} onChange={(mode) => set({ mode })} />
         </Field>
         <div className="flex gap-1.5">
           <button className="btn px-2 text-[13px]" aria-expanded={expanded} onClick={onToggle}>
@@ -322,9 +191,6 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
       )}
       {expanded && (
         <div className="grid grid-cols-2 gap-3 border-t-[3px] border-ink bg-cream p-3">
-          <Field label="Department Pod">
-            <DepartmentSelect value={deptId} onChange={(department) => set({ department })} />
-          </Field>
           <Field label="Colour">
             <div className="flex flex-wrap gap-1.5 pt-1">
               {agentPalette.map((c) => (
@@ -338,176 +204,58 @@ function AgentRow({ agent, expanded, onToggle, onRemove }: { agent: AgentConfig;
               ))}
             </div>
           </Field>
-
-          <div className="col-span-2">
-            <Field label="Persona Preset Templates" hint="Click a preset to load its role title, department pod, specialized instructions (ROLE.md), and default skills.">
-              <div className="flex flex-wrap gap-1.5">
-                {ROLE_TEMPLATES.filter((r) => (agent.isLead ? r.isLead : !r.isLead)).map((tpl) => {
-                  const active = agent.role.toLowerCase() === tpl.title.toLowerCase();
-                  return (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      className="btn px-2 py-0.5 text-[12px]"
-                      aria-pressed={active}
-                      title={tpl.summary}
-                      onClick={() => applyTemplate(tpl.title)}
-                    >
-                      {tpl.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-          </div>
-
-          <div className="col-span-2">
-            <Field
-              label="Skills"
-              hint="Comma-separated built-in skill IDs, custom skill names, or external skills.sh specs. Installed into .claude/skills, .agents/skills, and .agent/skills."
-            >
-              <CommitInput
-                className="field mb-2"
-                value={agent.skills.join(", ")}
-                placeholder="threat-modeling, vuln-triage, deep-research…"
-                onCommit={(v) => set({ skills: v.split(",").map((s) => s.trim()).filter(Boolean) })}
-              />
-              <div className="flex flex-wrap gap-1">
-                {[...(snapSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.arima/skills or .arima/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
-                  const on = agent.skills.includes(sk.id);
-                  return (
-                    <button
-                      key={sk.id}
-                      type="button"
-                      className="btn px-1.5 py-0.5 font-term text-[14px]"
-                      aria-pressed={on}
-                      title={sk.description}
-                      onClick={() => toggleSkill(sk.id)}
-                    >
-                      {on ? "✓ " : "+ "}
-                      {sk.id}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-          </div>
-
-          <div className="col-span-2">
-            <Field label="Folder" hint={`Leave empty and ${BRAND.name} keeps its own isolated workspace for this agent. Or enter an existing folder path.`}>
-              <CommitInput
-                className="field font-term text-[17px]"
-                value={agent.workspacePath ?? ""}
-                placeholder={`HQ-managed: ~/.arima/…/${agent.id}`}
-                onCommit={(v) => set({ workspacePath: v.trim() || null })}
-              />
-            </Field>
-          </div>
-          <div className="col-span-2">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-[12px] font-bold uppercase tracking-[0.04em] text-muted">ROLE.md (Persona Instructions)</span>
-              <button
-                type="button"
-                className="text-[12px] text-green underline"
-                onClick={() => set({ roleMd: defaultRoleMdFor(agent.name, agent.role, agent.isLead) })}
-              >
-                Reset to {agent.role} template
-              </button>
-            </div>
-            <Field
-              label=""
-              hint={`Who this agent is and how they operate. ${BRAND.name} adds the team, workflow rules and MCP tools, writes it to .arima-role.md and .agent/rules/hq-role.md (never committed), and loads it when the session starts.`}
-            >
-              <CommitInput multiline className="field h-[140px] resize-y font-term text-[17px] leading-tight" value={agent.roleMd} onCommit={(v) => set({ roleMd: v })} />
-            </Field>
-          </div>
+          <Field label="Folder" hint={`Leave empty and ${BRAND.name} keeps its own isolated workspace for this agent. Or enter an existing folder path.`}>
+            <CommitInput
+              className="field font-term text-[17px]"
+              value={agent.workspacePath ?? ""}
+              placeholder={`HQ-managed: ~/.arima/…/${agent.id}`}
+              onCommit={(v) => set({ workspacePath: v.trim() || null })}
+            />
+          </Field>
         </div>
       )}
     </div>
   );
 }
 
-function AddAgent() {
+function AddAgent({ roles, defaultMode }: { roles: Role[]; defaultMode: AgentMode }) {
   const [name, setName] = useState("");
-  const [role, setRole] = useState("Senior Dev");
-  const [department, setDepartment] = useState<DepartmentId>("eng");
-  const [cli, setCli] = useState<AgentCli>("claude");
-  const [model, setModel] = useState<string>("claude-sonnet-5-5");
-  const [mode, setMode] = useState<AgentMode>("sandbox");
+  const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
+  const [mode, setMode] = useState<AgentMode>(defaultMode);
   const team = useOffice((s) => s.snap?.config.team) ?? [];
   const suggested = nextAgentName(team.map((a) => a.name));
-  const add = () => {
-    officeActions.addAgent({
-      name: name.trim() || suggested,
-      role,
-      department,
-      cli,
-      model,
-      mode,
-    });
-    setName("");
-  };
+  if (!roles.length)
+    return <p className="text-[13px] text-muted">This template has only the lead role. Add a worker role to the template to add agents.</p>;
   return (
     <section className="border-[3px] border-dashed border-ink p-3">
-      <SectionTitle>Add an operator</SectionTitle>
+      <SectionTitle>Add an agent</SectionTitle>
       <form
-        className="grid grid-cols-[minmax(100px,1fr)_minmax(120px,1.1fr)_150px_145px_150px_105px_auto] items-end gap-2"
+        className="grid grid-cols-[minmax(100px,1fr)_minmax(130px,1fr)_120px_auto] items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          add();
+          officeActions.addAgent({ name: name.trim() || suggested, roleId: roleId || roles[0].id, mode });
+          setName("");
         }}
       >
         <Field label="Name">
           <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
         </Field>
-        <Field label="Role / Persona">
-          <input
-            className="field"
-            value={role}
-            list="role-suggestions"
-            onChange={(e) => {
-              const r = e.target.value;
-              setRole(r);
-              setDepartment(inferDepartmentForRole(r, false));
-            }}
-            placeholder="Senior Dev, UI/UX Designer, Red Teamer…"
-          />
-        </Field>
-        <Field label="Department Pod">
-          <DepartmentSelect value={department} onChange={setDepartment} />
-        </Field>
-        <Field label="Agent CLI">
-          <CliSelect
-            value={cli}
-            onChange={(nextCli) => {
-              setCli(nextCli);
-              setModel(CLI_MODELS[nextCli]?.[0] ?? "");
-            }}
-          />
-        </Field>
-        <Field label="Model">
-          <ModelSelect cli={cli} value={model} className="field" onChange={setModel} />
+        <Field label="Role">
+          <select className="field" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.title}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Runs in">
-          <select className="field" value={mode} onChange={(e) => setMode(e.target.value as AgentMode)}>
-            <option value="sandbox">Sandbox</option>
-            <option value="container">Container</option>
-            <option value="local">Local</option>
-          </select>
+          <ModeSelect value={mode} onChange={setMode} />
         </Field>
         <button className="btn" type="submit">
           Add
         </button>
       </form>
-      <p className="mt-2 text-[12px] text-muted">
-        Selecting a built-in role automatically populates tailored instructions, department pod, and default skills for that persona.
-      </p>
-      <datalist id="role-suggestions">
-        {ROLE_SUGGESTIONS.map((r) => (
-          <option key={r} value={r} />
-        ))}
-      </datalist>
     </section>
   );
 }
-
