@@ -24,8 +24,30 @@ services:
     environment:
       HOME: ${ARIMA_HOME_DIR:?set ARIMA_HOME_DIR}
       ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:?set ARIMA_MASTER_KEY}
+      ARIMA_NEO4J_URL: bolt://127.0.0.1:${ARIMA_NEO4J_PORT:-7687}
+      ARIMA_NEO4J_PASSWORD: ${ARIMA_NEO4J_PASSWORD:?set ARIMA_NEO4J_PASSWORD}
     volumes:
       - ${ARIMA_HOME_DIR}:${ARIMA_HOME_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
     working_dir: ${ARIMA_HOME_DIR}
+    depends_on: [neo4j]
     command: ["--repo", "${ARIMA_REPO:?set ARIMA_REPO}", "--port", "${ARIMA_PORT:-7420}", "--remote", "--no-open"]
+
+  # The team's memory (docs/memory-core.md). Neo4j Community is GPLv3 and runs as its own program;
+  # HQ only talks to it over Bolt. Both ports bind to this machine only (reach the Browser over Tailscale).
+  neo4j:
+    image: neo4j:2026.10.2-community
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ARIMA_NEO4J_PORT:-7687}:7687"
+      - "127.0.0.1:${ARIMA_NEO4J_HTTP_PORT:-7474}:7474"
+    environment:
+      NEO4J_AUTH: neo4j/${ARIMA_NEO4J_PASSWORD:?set ARIMA_NEO4J_PASSWORD}
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j-data:/data
+
+volumes:
+  neo4j-data:

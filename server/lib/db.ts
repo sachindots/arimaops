@@ -147,6 +147,31 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, agent_id, model)
   );
   `,
+  // Phase 2 step 1: the ledgers move into Neo4j (docs/memory-core.md). Writes go through this outbox, so
+  // they survive a Neo4j outage and replay in order. The old ledger rows are queued once, here.
+  `
+  CREATE TABLE memory_outbox (
+    id INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    op TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    failed TEXT
+  );
+  CREATE INDEX memory_outbox_project ON memory_outbox (project_id);
+
+  -- Ledger ids keep counting from the SQLite ledger, whether Neo4j is up or not.
+  CREATE TABLE memory_ids (id INTEGER PRIMARY KEY AUTOINCREMENT);
+  INSERT INTO memory_ids (id) SELECT max(id) FROM ledger WHERE id IS NOT NULL HAVING max(id) IS NOT NULL;
+
+  INSERT INTO memory_outbox (project_id, op, at)
+    SELECT project_id, json_object('op', 'ledger', 'e', json_object(
+      'id', id, 'projectId', project_id, 'taskId', task_id, 'ledger', ledger, 'kind', kind,
+      'text', text, 'by', by, 'at', strftime('%Y-%m-%dT%H:%M:%fZ', at / 1000.0, 'unixepoch'))), at
+    FROM ledger ORDER BY id;
+  INSERT INTO memory_outbox (project_id, op, at)
+    SELECT project_id, json_object('op', 'supersede', 'id', id, 'by', superseded_by), at
+    FROM ledger WHERE superseded_by IS NOT NULL ORDER BY id;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

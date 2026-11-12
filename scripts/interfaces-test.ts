@@ -7,7 +7,7 @@ import type { GhPr } from "../server/github";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "arima-ifaces-"));
 const { hqDb } = await import("../server/lib/db");
-const { SqliteMemory } = await import("../server/memory");
+const { Neo4jMemory } = await import("../server/memory");
 const { buildServer } = await import("../server/mcp");
 const { Planner } = await import("../server/planner");
 const { GitHubSync } = await import("../server/githubSync");
@@ -32,8 +32,8 @@ const rejects = async (p: Promise<unknown>, mention: RegExp) => {
 };
 const db = hqDb();
 
-// ---------------------------------------------------------------- memory
-const memory = new SqliteMemory(db);
+// ---------------------------------------------------------------- memory (Neo4j not configured: everything stays queued; memory-test covers a real Neo4j)
+const memory = new Neo4jMemory(db, () => null);
 const plan = memory.addLedger({ projectId: "p", taskId: "T1", ledger: "task", kind: "plan", text: "Ship the parser first", by: "lead" });
 memory.addLedger({ projectId: "p", taskId: null, ledger: "task", kind: "fact", text: "CI runs on Node 24", by: "lead" });
 memory.addLedger({ projectId: "other", taskId: null, ledger: "task", kind: "fact", text: "elsewhere", by: "lead" });

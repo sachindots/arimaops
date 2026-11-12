@@ -459,6 +459,7 @@ export interface OfficeSnapshot {
   mcp?: McpState;
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
+  memory?: MemoryState;
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
@@ -556,6 +557,26 @@ export interface AccountsState {
   masterSource: "env" | "keychain" | "file" | null;
   /** Set when the vault exists but can't be opened (wrong or missing master key). */
   error?: string;
+}
+
+/** Where the team's memory (Neo4j) is and whether HQ reaches it. Never carries the password. */
+export interface MemoryState {
+  /** "env": set by compose (ARIMA_NEO4J_*), read-only here. "settings": saved in Settings → Memory. */
+  source: "env" | "settings" | null;
+  url: string;
+  user: string;
+  passwordSet: boolean;
+  status: "unconfigured" | "offline" | "online";
+  error?: string;
+  /** Writes waiting for Neo4j. */
+  queued: number;
+}
+
+export interface MemoryInput {
+  url: string;
+  user: string;
+  /** Empty keeps the stored one. */
+  password?: string;
 }
 
 /** What the Accounts form sends; the secret is optional when updating. */

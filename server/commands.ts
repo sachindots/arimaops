@@ -3,8 +3,9 @@
 import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
-import type { AccountInput } from "../src/data/types";
+import type { AccountInput, MemoryInput } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
+import { memoryState, saveMemorySettings } from "./memory";
 
 /** Sends the accounts list (no secrets) to every loaded project. */
 function broadcastAccounts() {
@@ -12,6 +13,15 @@ function broadcastAccounts() {
   for (const h of liveHubs()) {
     h.snap.accounts = state;
     h.emit({ type: "accounts.updated", accounts: state });
+  }
+}
+
+/** Sends where memory is and whether it answers to every loaded project. */
+export function broadcastMemory() {
+  const state = memoryState();
+  for (const h of liveHubs()) {
+    h.snap.memory = state;
+    h.emit({ type: "memory.updated", memory: state });
   }
 }
 import { releasePortBlock } from "./ports";
@@ -334,6 +344,16 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         hub.activity("config", null, `Saved the ${rec.id} account (${PROVIDER_SPECS[rec.provider].label}). Agents using it pick up a new key on their next start.`);
       } catch (e) {
         hub.activity("config", null, `Couldn't save the account: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    saveMemory: (raw) => {
+      try {
+        void saveMemorySettings(raw as MemoryInput);
+        redactor().refresh(); // the Neo4j password is masked in terminal output like any vault secret
+        broadcastMemory();
+        hub.activity("config", null, "Saved the memory settings. HQ is connecting to Neo4j.");
+      } catch (e) {
+        hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
       }
     },
     removeAccount: (id) => {

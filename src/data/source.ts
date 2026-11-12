@@ -32,6 +32,8 @@ import type {
   WorkflowPatch,
   AccountInput,
   AccountsState,
+  MemoryInput,
+  MemoryState,
 } from "./types";
 
 export type OfficeEvent =
@@ -54,6 +56,7 @@ export type OfficeEvent =
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
+  | { type: "memory.updated"; memory: MemoryState }
   | { type: "action.updated"; item: ActionItem }
   | { type: "finding.updated"; finding: Finding }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
@@ -133,6 +136,7 @@ export interface OfficeDataSource {
   // Accounts (machine-wide): API keys and cloud credentials, stored encrypted on the server
   saveAccount(input: AccountInput): void;
   removeAccount(id: string): void;
+  saveMemory(input: MemoryInput): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;
