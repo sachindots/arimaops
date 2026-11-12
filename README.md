@@ -59,7 +59,7 @@ Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
 
 | What | Why |
 | --- | --- |
-| Node.js 20+ | Runs HQ |
+| Node.js 22+ | Runs HQ |
 | git | Each agent works on its own copy of the repo |
 | tmux (macOS, Linux) | Agents keep running if you close HQ |
 | GitHub CLI (`gh`), optional | Pull requests and reviews |

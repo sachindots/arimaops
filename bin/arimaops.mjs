@@ -27,9 +27,10 @@ ArimaOps checks all of this on start and shows how to fix anything missing.`);
   process.exit(0);
 }
 
-const major = Number(process.versions.node.split(".")[0]);
-if (major < 20) {
-  console.error(`ArimaOps needs Node.js 20 or newer (you have ${process.versions.node}).`);
+// 22.13 is the first 22.x where node:sqlite loads without a flag.
+const [major, minor] = process.versions.node.split(".").map(Number);
+if (major < 22 || (major === 22 && minor < 13)) {
+  console.error(`ArimaOps needs Node.js 22.13 or newer (you have ${process.versions.node}).`);
   process.exit(1);
 }
 
