@@ -35,6 +35,7 @@ export const RISKY_COMMANDS = new Set([
   "saveAccount",
   "removeAccount",
   "saveMemory",
+  "restoreMemory",
   "removeSecret",
   "setProxy",
   "openEnvFile",

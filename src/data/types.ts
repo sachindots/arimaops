@@ -570,6 +570,8 @@ export interface MemoryState {
   error?: string;
   /** Writes waiting for Neo4j. */
   queued: number;
+  /** This project's nightly memory backups, newest first (dates). */
+  backups: string[];
 }
 
 export interface MemoryInput {

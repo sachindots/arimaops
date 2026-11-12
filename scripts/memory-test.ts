@@ -3,7 +3,8 @@
 // a write Neo4j rejects. Starts a throwaway Neo4j container; skips when Docker or the image is missing.
 // Run: npx tsx scripts/memory-test.ts
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +12,7 @@ process.env.HOME = mkdtempSync(join(tmpdir(), "arima-memory-"));
 process.env.ARIMA_MASTER_KEY = "11".repeat(32);
 const { hqDb, migrate, MIGRATIONS } = await import("../server/lib/db");
 const { Neo4jMemory, memoryState, neo4jConfig, saveMemorySettings } = await import("../server/memory");
+const { backupAll, backupProject, exportProject, importProject, listBackups, nextBackupAt, parseBackup, restoreProject, KEEP_DAYS } = await import("../server/memoryBackup");
 const neo4j = (await import("neo4j-driver")).default;
 
 const IMAGE = "neo4j:2026.10.2-community"; // the version compose.yaml pins
@@ -30,6 +32,14 @@ const rejects = (f: () => unknown, mention: RegExp) => {
     return mention.test((e as Error).message);
   }
 };
+
+// ---------------------------------------------------------------- backups that need no Neo4j
+check("backups run at 03:00 tonight, or tomorrow once it's past", nextBackupAt(new Date(2026, 10, 12, 2, 0)).getTime() === new Date(2026, 10, 12, 3, 0).getTime() && nextBackupAt(new Date(2026, 10, 12, 3, 0)).getTime() === new Date(2026, 10, 13, 3, 0).getTime());
+const head = JSON.stringify({ v: 1, projectId: "bk", at: "x" });
+check("a backup of another project is refused", rejects(() => parseBackup(JSON.stringify({ v: 1, projectId: "other", at: "x" }), "bk"), /not bk/));
+check("a label that could inject Cypher is refused", rejects(() => parseBackup(`${head}\n${JSON.stringify({ n: 0, labels: ["X`) DETACH DELETE n //"], p: {} })}`, "bk"), /bad label/));
+check("an edge to a missing node is refused", rejects(() => parseBackup(`${head}\n${JSON.stringify({ n: 0, labels: ["Lesson"], p: {} })}\n${JSON.stringify({ r: "ABOUT", from: 0, to: 7, p: {} })}`, "bk"), /isn't in it/));
+check("a node's project id comes from the restore, not the file", parseBackup(`${head}\n${JSON.stringify({ n: 0, labels: ["Lesson"], p: { projectId: "other" } })}`, "bk").nodes[0].p.projectId === "bk");
 
 // ---------------------------------------------------------------- Settings → Memory (no Neo4j needed)
 const noEnv = {};
@@ -137,6 +147,47 @@ try {
   await memory.flush();
   const failed = db.prepare("SELECT count(*) AS n FROM memory_outbox WHERE failed IS NOT NULL").get() as { n: number };
   check("a rejected write is set aside and doesn't block the next", failed.n === 1 && (await count("MATCH (e:LedgerEntry {text: 'after the bad one'}) RETURN count(e)")) === 1);
+
+  // ---------------------------------------------------------------- backup and restore
+  const root = mkdtempSync(join(tmpdir(), "arima-backups-"));
+  const keep = memory.addLedger({ projectId: "bk", taskId: "T1", ledger: "task", kind: "plan", text: "Keep the parser", by: "lead" });
+  memory.reviseLedger("bk", keep.id, "Keep the lexer", "lead");
+  memory.addLedger({ projectId: "bk", taskId: null, ledger: "progress", kind: "stall", text: "Kavin idle 7 min", by: "hq" });
+  memory.addLedger({ projectId: "bystander", taskId: null, ledger: "task", kind: "fact", text: "untouched", by: "lead" });
+  await memory.flush();
+  // Two nodes types and an edge with a property, as later steps will write.
+  await probe.executeQuery("CREATE (:Lesson {projectId: 'bk', id: 'L1', text: 'gh needs statusCheckRollup', tags: ['gh', 'ci'], certified: true})-[:ABOUT {weight: 2}]->(:Component {projectId: 'bk', path: 'server/github.ts'})");
+  const shape = async (p: string) => {
+    const nodes = (await probe.executeQuery("MATCH (n {projectId: $p}) RETURN labels(n) AS l, properties(n) AS p", { p })).records.map((r) => JSON.stringify([r.get("l"), Object.entries(r.get("p")).sort()])).sort();
+    const edges = (await probe.executeQuery("MATCH (a {projectId: $p})-[r]->(b {projectId: $p}) RETURN type(r) AS t, properties(r) AS rp, properties(a) AS a, properties(b) AS b", { p })).records
+      .map((r) => JSON.stringify([r.get("t"), r.get("rp"), Object.entries(r.get("a")).sort(), Object.entries(r.get("b")).sort()])).sort();
+    return JSON.stringify({ nodes, edges });
+  };
+  const before = await shape("bk");
+  const file = await backupProject(memory, "bk", root, new Date(2026, 10, 12, 3));
+  check("tonight's backup is a private file", existsSync(file) && (statSync(file).mode & 0o077) === 0 && listBackups("bk", root).join() === "2026-11-12");
+  const text = await exportProject(probe, "bk");
+  check("the export holds every node and edge", text.trim().split("\n").length === 1 + 5 + 2, String(text.trim().split("\n").length));
+
+  await probe.executeQuery("MATCH (n {projectId: 'bk'}) DETACH DELETE n");
+  memory.addLedger({ projectId: "bk", taskId: null, ledger: "task", kind: "note", text: "written after the backup", by: "lead" });
+  await memory.flush();
+  await restoreProject(memory, "bk", "2026-11-12", root);
+  check("export, wipe, import gives the same nodes and edges", (await shape("bk")) === before, `${await shape("bk")}\n${before}`);
+  check("no restore marks are left on nodes", (await count("MATCH (n) WHERE n._restore IS NOT NULL RETURN count(n)")) === 0);
+  check("the ledger HQ reads is the restored one", memory.ledger("bk").map((e) => e.text).join("|") === "Keep the lexer|Kavin idle 7 min", memory.ledger("bk").map((e) => e.text).join("|"));
+  check("other projects are untouched", memory.ledger("bystander").length === 1 && (await count("MATCH (n {projectId: 'bystander'}) RETURN count(n)")) === 1);
+
+  const badLine = gzipSync(`${JSON.stringify({ v: 1, projectId: "bk", at: "x" })}\n${JSON.stringify({ n: 0, labels: ["Lesson"], p: {} })}\n${JSON.stringify({ r: "ABOUT", from: 0, to: 9, p: {} })}\n`);
+  writeFileSync(join(root, "bk", "2026-11-11.jsonl.gz"), badLine);
+  check("a broken backup is refused before anything is deleted", (await restoreProject(memory, "bk", "2026-11-11", root).then(() => false, (e: Error) => /isn't in it/.test(e.message))) && (await shape("bk")) === before);
+
+  for (let d = 1; d <= 9; d++) await backupProject(memory, "bk", root, new Date(2026, 10, 12 + d, 3));
+  check(`only the newest ${KEEP_DAYS} backups are kept`, listBackups("bk", root).length === KEEP_DAYS && listBackups("bk", root)[0] === "2026-11-21");
+  const all = await backupAll(memory, root, new Date(2026, 10, 30, 3));
+  check("the nightly job backs up every project with memory", all.failed.length === 0 && ["bk", "bystander", "p"].every((p) => all.done.includes(p)), JSON.stringify(all));
+  await importProject(probe, "bystander", gunzipSync(readFileSync(join(root, "bystander", "2026-11-30.jsonl.gz"))).toString());
+  check("importing twice doesn't duplicate", (await count("MATCH (n {projectId: 'bystander'}) RETURN count(n)")) === 1);
 
   // ---------------------------------------------------------------- forget
   memory.forgetProject("p");

@@ -359,6 +359,7 @@ export function createMockSource(): OfficeDataSource {
     saveAccount() {},
     removeAccount() {},
     saveMemory() {},
+    restoreMemory() {},
     refreshMcp() {
       if (world.snap.mcp) world.emit({ type: "mcp.updated", mcp: structuredClone(world.snap.mcp) });
     },

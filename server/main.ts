@@ -30,6 +30,9 @@ import { seedBuiltins } from "./templates";
 import { loadEe, startFeatures } from "./features";
 import { readLicense } from "./license";
 import { RemoteGuard, startPushNotifier } from "./remote";
+import { memoryStore } from "./memory";
+import { scheduleBackups } from "./memoryBackup";
+import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -134,6 +137,7 @@ async function main() {
   // Container mode: the agents' network, HQ on its gateway, and the allowlist proxy. Skipped without Docker.
   const containers = (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok && (await ensureNetwork());
   if (containers) startEgressProxy(projects, port);
+  scheduleBackups(memoryStore(), broadcastMemory);
   await startHttp({
     projects,
     defaultProject,

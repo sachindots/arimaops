@@ -259,6 +259,7 @@ export const officeActions = {
   saveAccount: (input: AccountInput) => source.saveAccount(input),
   removeAccount: (id: string) => source.removeAccount(id),
   saveMemory: (input: MemoryInput) => source.saveMemory(input),
+  restoreMemory: (date: string) => source.restoreMemory(date),
   refreshMcp: () => source.refreshMcp(),
   addMcp: (input: NewMcpServer) => source.addMcp(input),
   authMcp: (name: string) => source.authMcp(name),

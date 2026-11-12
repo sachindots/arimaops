@@ -3,9 +3,10 @@
 import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
-import type { AccountInput, MemoryInput } from "../src/data/types";
+import type { AccountInput, MemoryInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
-import { memoryState, saveMemorySettings } from "./memory";
+import { memoryState, memoryStore, saveMemorySettings } from "./memory";
+import { listBackups, restoreProject } from "./memoryBackup";
 
 /** Sends the accounts list (no secrets) to every loaded project. */
 function broadcastAccounts() {
@@ -16,12 +17,23 @@ function broadcastAccounts() {
   }
 }
 
-/** Sends where memory is and whether it answers to every loaded project. */
+/** Where memory is, whether it answers, and the project's backups. */
+export function projectMemoryState(projectId: string, state = memoryState()): MemoryState {
+  let backups: string[] = [];
+  try {
+    backups = listBackups(projectId);
+  } catch {
+    /* an id that can't name a folder has no backups */
+  }
+  return { ...state, backups };
+}
+
+/** Sends the memory state to every loaded project. */
 export function broadcastMemory() {
   const state = memoryState();
   for (const h of liveHubs()) {
-    h.snap.memory = state;
-    h.emit({ type: "memory.updated", memory: state });
+    h.snap.memory = projectMemoryState(h.snap.config.project.id, state);
+    h.emit({ type: "memory.updated", memory: h.snap.memory });
   }
 }
 import { releasePortBlock } from "./ports";
@@ -355,6 +367,15 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       } catch (e) {
         hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
       }
+    },
+    restoreMemory: (date) => {
+      const day = str(date, 10);
+      const projectId = hub.snap.config.project.id;
+      hub.activity("config", null, `Restoring this project's memory from the ${day} backup…`);
+      restoreProject(memoryStore(), projectId, day)
+        .then(() => hub.activity("config", null, `Memory restored from the ${day} backup. Ledger entries written since then are gone.`))
+        .catch((e) => hub.activity("config", null, `Couldn't restore memory: ${e instanceof Error ? e.message : String(e)}`))
+        .finally(broadcastMemory);
     },
     removeAccount: (id) => {
       const acct = str(id, 40);

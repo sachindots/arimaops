@@ -147,6 +147,19 @@ export class Neo4jMemory implements MemoryStore {
     }));
   }
 
+  /** The live connection, for whole-graph jobs (backups), after sending what's queued. Throws while Neo4j is unreachable. */
+  async connected(): Promise<Driver> {
+    await this.flush();
+    if (!this.loaded || !this.driver) throw new Error(`Memory is offline${this.lastError ? `: ${this.lastError}` : ""}.`);
+    return this.driver;
+  }
+
+  /** Re-reads the ledgers from Neo4j (after a restore). */
+  async reload() {
+    this.loaded = false;
+    await this.flush();
+  }
+
   /** Stops retrying and closes the connection (tests, shutdown). */
   async close() {
     this.closed = true;
@@ -279,7 +292,7 @@ export function memoryStore(): Neo4jMemory {
 const settingsFile = () => join(homeRoot(), "memory.json");
 
 /** What the browser sees: where Neo4j is and whether it answers. Never the password. */
-export function memoryState(env = process.env): MemoryState {
+export function memoryState(env = process.env): Omit<MemoryState, "backups"> {
   const fromEnv = !!(env.ARIMA_NEO4J_URL && env.ARIMA_NEO4J_PASSWORD);
   const saved = readDoc<{ url?: string; user?: string }>(settingsFile());
   const cfg = neo4jConfig(env);

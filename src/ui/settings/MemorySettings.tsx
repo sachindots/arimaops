@@ -13,6 +13,7 @@ const STATUS = {
 export function MemorySettings() {
   const state = useOffice((s) => s.snap?.memory);
   const [form, setForm] = useState<{ url: string; user: string; password: string } | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   if (!state) return <p className="m-0 text-[14px] text-muted">Memory settings aren't available from this server.</p>;
   const f = form ?? { url: state.url || "bolt://127.0.0.1:7687", user: state.user || "neo4j", password: "" };
   const canSave = /^(bolt|neo4j)(\+s|\+ssc)?:\/\/\S+$/.test(f.url.trim()) && (state.passwordSet || f.password.length >= 8);
@@ -35,6 +36,41 @@ export function MemorySettings() {
           {state.queued > 0 && <span className="text-muted">{state.queued} write{state.queued === 1 ? "" : "s"} waiting</span>}
         </p>
         {state.status === "offline" && state.error && <p className="m-0 mt-2 break-words text-[12px] text-muted">{state.error}</p>}
+      </section>
+
+      <section>
+        <SectionTitle>Backups</SectionTitle>
+        <p className="m-0 mb-2 text-[13px] text-muted">
+          HQ saves this project's memory every night at 03:00 and keeps the last 7 nights. Restoring puts the project's memory back as it was that
+          night; anything written since is lost.
+        </p>
+        {state.backups.length === 0 ? (
+          <p className="m-0 text-[13px] text-muted">No backups yet.</p>
+        ) : (
+          <div className="border-[3px] border-ink">
+            {state.backups.map((d) => (
+              <div key={d} className="flex flex-wrap items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
+                <b className="font-mono text-[14px]">{d}</b>
+                <span className="flex-1" />
+                {!isViewer &&
+                  (restoring === d ? (
+                    <>
+                      <button className="btn border-red px-2 text-[12px] text-red" disabled={state.status !== "online"} onClick={() => (officeActions.restoreMemory(d), setRestoring(null))}>
+                        Replace memory with {d}
+                      </button>
+                      <button className="btn px-2 text-[12px]" onClick={() => setRestoring(null)}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button className="btn px-2 text-[12px]" disabled={state.status !== "online"} onClick={() => setRestoring(d)}>
+                      Restore
+                    </button>
+                  ))}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {state.source === "env" ? (
