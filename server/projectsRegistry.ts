@@ -3,7 +3,8 @@
 // knows which are loaded in this server, and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
 // inspect and update tasks across every project from a single command center.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { readDoc, writeDoc } from "./lib/docs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
@@ -48,17 +49,11 @@ export function dropLiveProject(root: string) {
 /** Hubs of every project loaded in this HQ (for machine-wide limits). */
 export const liveHubs = (): Hub[] => [...live.values()].map((p) => p.hub);
 
-const registryFile = () => {
-  const dir = join(homedir(), BRAND.homeDir);
-  mkdirSync(dir, { recursive: true });
-  return join(dir, "projects.json");
-};
+const registryFile = () => join(homedir(), BRAND.homeDir, "projects.json");
 
 export function readRegistry(): RegistryEntry[] {
-  const file = registryFile();
-  if (!existsSync(file)) return [];
   try {
-    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    const parsed = readDoc<RegistryEntry[]>(registryFile());
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -66,22 +61,12 @@ export function readRegistry(): RegistryEntry[] {
 }
 
 function writeRegistry(entries: RegistryEntry[]) {
-  const file = registryFile();
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(entries, null, 2) + "\n");
-  renameSync(tmp, file);
-}
-
-function findConfigFile(repoRoot: string): string | null {
-  const file = join(repoDirOf(repoRoot), "config.json");
-  return existsSync(file) ? file : null;
+  writeDoc(registryFile(), entries);
 }
 
 function readRepoConfig(repoRoot: string): HqConfig | null {
-  const f = findConfigFile(repoRoot);
-  if (!f) return null;
   try {
-    return JSON.parse(readFileSync(f, "utf8")) as HqConfig;
+    return readDoc<HqConfig>(join(repoDirOf(repoRoot), "config.json"));
   } catch {
     return null;
   }

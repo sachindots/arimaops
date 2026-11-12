@@ -1,6 +1,6 @@
 import { readPref, writePref } from "../lib/prefs";
 // UI font styles for panels, drawers, settings and agent terminals. The office
-// canvas keeps its pixel font. Saved per browser, not in .arima/config.json,
+// canvas keeps its pixel font. Saved per browser, not in .arima/arima.db,
 // because it's a personal choice, not a team setting.
 
 export type FontStyle = "pixel" | "clean" | "mono";

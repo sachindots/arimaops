@@ -4,6 +4,7 @@ const require = createRequire(import.meta.url);
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readDoc, readLines } from "../server/lib/docs";
 
 const HOME = mkdtempSync(join(tmpdir(), "arima-users-"));
 process.env.HOME = HOME;
@@ -33,16 +34,16 @@ const throws = (fn: () => unknown, re: RegExp) => {
   check("short passwords are refused", throws(() => u.create({ name: "Sam", role: "owner", password: "short" }), /at least 10/));
   const { otpauth } = u.create({ name: "Sam", role: "owner", password: "long-enough-pw" });
   check("the authenticator link names the person", otpauth.startsWith("otpauth://totp/") && otpauth.includes("Sam"));
-  const raw = readFileSync(join(HOME, "u1.json"), "utf8");
+  const raw = JSON.stringify(readDoc(join(HOME, "u1.json")));
   check("the file holds a hash, never the password", !raw.includes("long-enough-pw") && raw.includes('"hash"'));
   check("right password signs in (name is case-insensitive); wrong doesn't", u.verify("sam", "long-enough-pw")?.name === "Sam" && u.verify("Sam", "wrong-password!") === null && u.verify("Nobody", "long-enough-pw") === null);
   check("names are unique", throws(() => u.create({ name: "SAM", role: "viewer", password: "long-enough-pw" }), /already/));
   const sam = u.firstOwner()!;
   check("the last owner can't be demoted, disabled or removed", throws(() => u.update(sam.id, { role: "operator" }), /at least one active owner/) && throws(() => u.update(sam.id, { disabled: true }), /owner/) && throws(() => u.remove(sam.id), /owner/));
   const { user: ana } = u.create({ name: "Ana", role: "operator", password: "another-password" });
-  const diskBeforeReset = readFileSync(join(HOME, "u1.json"), "utf8");
+  const diskBeforeReset = JSON.stringify(readDoc(join(HOME, "u1.json")));
   check("invalid reset rejects the entire patch", throws(() => u.update(ana.id, { role: "owner", disabled: true, password: "short", resetTotp: true }), /at least 10/));
-  check("invalid reset preserves password, role, enabled state and disk", u.verify("Ana", "another-password")?.role === "operator" && readFileSync(join(HOME, "u1.json"), "utf8") === diskBeforeReset);
+  check("invalid reset preserves password, role, enabled state and disk", u.verify("Ana", "another-password")?.role === "operator" && JSON.stringify(readDoc(join(HOME, "u1.json"))) === diskBeforeReset);
   u.update(ana.id, { disabled: true });
   check("a disabled person can't sign in and isn't active", u.verify("Ana", "another-password") === null && u.active(ana.id) === null);
   const before = u.active(sam.id)!.totp;
@@ -143,7 +144,7 @@ for (const pending of ["saveAccount", "removeAccount", "setProxy"]) {
   sock.send(JSON.stringify({ cmd: "startAgent", args: [] }));
   await new Promise((res) => setTimeout(res, 150));
   check(`operator TOTP cannot resume ${pending}; ordinary operator work still works`, JSON.stringify(calls) === JSON.stringify(["startAgent"]));
-  const audit = readFileSync(join(HOME, "guard", "audit.log"), "utf8");
+  const audit = readLines(join(HOME, "guard", "audit.log")).join("\n");
   check(`denied continuation ${pending} is audited`, audit.split("\n").some((line) => line.includes(`Operator-${pending}/operator`) && line.includes(pending) && line.includes("blocked")));
   sock.close();
 }
@@ -197,11 +198,11 @@ const closed = new Promise((res) => oldSocket.once("close", res));
 oldSocket.send(JSON.stringify({ cmd: "sendMessage", args: [] }));
 await closed;
 check("a revoked open socket cannot run commands", calls.length === 0);
-check("passwords stay out of the user file", !/old-mobile-password|new-mobile-password/.test(readFileSync(join(HOME, "users.json"), "utf8")));
+check("passwords stay out of the user file", !/old-mobile-password|new-mobile-password/.test(JSON.stringify(readDoc(join(HOME, "users.json")))));
 for (let i = 0; i < 5; i++) await change(changedCookie, "wrong", "next-mobile-password");
 check("guessing a current password is throttled", (await change(changedCookie, "new-mobile-password", "next-mobile-password")).status === 429);
 
-const log = readFileSync(join(HOME, "guard", "audit.log"), "utf8");
+const log = readLines(join(HOME, "guard", "audit.log")).join("\n");
 check("the audit log names the person and never holds a password", /\tSam\/owner\t/.test(log) && /bad-password/.test(log) && !/sams-password|anas-password|wrong-password|old-mobile-password|new-mobile-password/.test(log), log.slice(-400));
 
 server.close();

@@ -316,7 +316,7 @@ export function CtoDrawer() {
                         <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">{p.paused ? "PAUSED" : "RUNNING"}</span>
                       ) : (
                         <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                          NOT LOADED (.arima/plan.json)
+                          NOT LOADED (.arima/arima.db)
                         </span>
                       )}
                       <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
@@ -585,7 +585,7 @@ export function CtoDrawer() {
               <div className="flex-1">
                 <Field
                   label="Repository / Project Path on Disk"
-                  hint="Adds the folder to ~/.arima/projects.json and loads it into this server (a new folder gets a fresh .arima/config.json)."
+                  hint="Adds the folder to ~/.arima/projects.json and loads it into this server (a new folder gets a fresh .arima/arima.db)."
                 >
                   <input
                     className="field font-mono text-[12px]"

@@ -5,6 +5,7 @@ import { createHmac } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readDoc } from "../server/lib/docs";
 import WebSocket from "ws";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-auth-"));
@@ -104,7 +105,7 @@ const login = await fetch(`${BASE}/api/login`, { method: "POST", headers: { Orig
 const setCookie = login.headers.get("set-cookie") ?? "";
 const sid = /hq_sid=([0-9a-f]+)/.exec(setCookie)?.[1] ?? "";
 check("login sets an HttpOnly SameSite=Strict cookie", login.status === 200 && !!sid && /HttpOnly/.test(setCookie) && /SameSite=Strict/.test(setCookie), setCookie);
-check("device is persisted to devices.json", readFileSync(join(process.env.HOME, ".hq", "devices.json"), "utf8").includes(sid));
+check("device is persisted (devices.json row)", JSON.stringify(readDoc(join(process.env.HOME, ".hq", "devices.json"))).includes(sid));
 
 // ---------------------------------------------------------------- WebSocket
 type Ev = { type: string; status?: string };

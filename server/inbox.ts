@@ -1,15 +1,15 @@
 // Delivery to agents. If the agent is idle at its prompt, HQ types the message
 // into its terminal. If it's busy, the message waits and is handed over by the
 // agent's Stop hook when its turn ends (Claude Code then continues with it).
-// The queue and the message history are saved in ~/.arima/<project>/messages.json, so an
+// The queue and the message history are saved in ~/.arima/<project>/arima.db (messages.json row), so an
 // HQ restart loses nothing: queued messages are delivered once the agent is back.
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentMessage } from "../src/data/types";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
 import { projectHome } from "./paths";
+import { readDoc, writeDoc } from "./lib/docs";
 
 export interface InboxItem {
   fromId: string; // agent id or "you"
@@ -62,9 +62,9 @@ export class Inbox {
   }
 
   private load() {
-    if (!existsSync(this.file)) return;
     try {
-      const data = JSON.parse(readFileSync(this.file, "utf8")) as { queues?: Record<string, InboxItem[]>; messages?: AgentMessage[] };
+      const data = readDoc<{ queues?: Record<string, InboxItem[]>; messages?: AgentMessage[] }>(this.file);
+      if (!data) return;
       for (const [id, q] of Object.entries(data.queues ?? {})) if (q.length && this.hub.cfg(id)) this.queues.set(id, q);
       this.hub.snap.messages = (data.messages ?? []).slice(0, HISTORY);
       const waiting = [...this.queues.values()].reduce((n, q) => n + q.length, 0);
@@ -85,9 +85,7 @@ export class Inbox {
     this.saveTimer = null;
     const data = { queues: Object.fromEntries([...this.queues].filter(([, q]) => q.length)), messages: this.hub.snap.messages.slice(0, HISTORY) };
     try {
-      const tmp = `${this.file}.tmp`;
-      writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
-      renameSync(tmp, this.file);
+      writeDoc(this.file, data);
     } catch (err) {
       log.warn(`couldn't save messages: ${err instanceof Error ? err.message : err}`);
     }

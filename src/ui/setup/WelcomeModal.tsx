@@ -302,7 +302,7 @@ export function WelcomeModal() {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
-          <span className="text-[12px] text-muted">Saved to .arima/config.json. Operators don't start until you press Start.</span>
+          <span className="text-[12px] text-muted">Saved to .arima/arima.db. Operators don't start until you press Start.</span>
           <button className="btn" disabled={!valid || sending} onClick={submit}>
             {sending ? "Creating…" : "Create team"}
           </button>

@@ -3,13 +3,12 @@
 // Agents add them with the Team MCP tool `ask_user`; the user closes them in HQ,
 // and HQ tells the agent so it can continue. Kept on this Mac, never committed.
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ActionItem } from "../src/data/types";
 import type { Hub } from "./hub";
-import { parseCliJson } from "./lib/json";
 import { projectHome } from "./paths";
 import type { Planner } from "./planner";
+import { readDoc, writeDoc } from "./lib/docs";
 
 const KEEP_CLOSED = 100;
 
@@ -19,7 +18,8 @@ export class ActionItems {
 
   constructor(private hub: Hub, private planner: Planner) {
     this.file = join(projectHome(hub.slug), "action-items.json");
-    const saved = existsSync(this.file) ? parseCliJson<ActionItem[]>(readFileSync(this.file, "utf8")) : null;
+    let saved: ActionItem[] | null = null;
+    try { saved = readDoc<ActionItem[]>(this.file); } catch { /* unreadable: start empty, as before */ }
     hub.snap.actionItems = Array.isArray(saved) ? saved : [];
   }
 
@@ -31,10 +31,7 @@ export class ActionItems {
     const open = this.items.filter((i) => i.status === "open");
     const closed = this.items.filter((i) => i.status !== "open").slice(0, KEEP_CLOSED);
     this.hub.snap.actionItems = [...open, ...closed].sort((a, b) => b.at.localeCompare(a.at));
-    // Write a temp file and rename it over, so a crash mid-save can't leave a half-written list.
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.hub.snap.actionItems, null, 2));
-    renameSync(tmp, this.file);
+    writeDoc(this.file, this.hub.snap.actionItems);
   }
 
   add(fromId: string, title: string, details: string, waiting: boolean, kind: "request" | "plan" = "request"): ActionItem {

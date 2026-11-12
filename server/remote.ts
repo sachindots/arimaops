@@ -1,18 +1,19 @@
 // Remote control safety (tablet/phone):
 //  - Push: ntfy notification when something waits on you (action item, sandbox approval, access request).
 //  - Step-up: risky commands from a non-local client need a TOTP code (authenticator app), once a day per device.
-//  - Devices: logging in with a link token sets a cookie stored in ~/.arima/devices.json, so links survive restarts.
-//  - Audit: every UI command is appended to ~/.arima/audit.log (never terminal input or secret values).
+//  - Devices: logging in with a link token sets a cookie stored in ~/.arima/arima.db (devices.json row), so links survive restarts.
+//  - Audit: every UI command is appended to the audit.log table in ~/.arima/arima.db (never terminal input or secret values).
 //  One server serves every project, so the TOTP secret, devices and audit log are server-wide (~/.arima/).
 
 import { createHmac, randomBytes } from "node:crypto";
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
 import type { OfficeEvent } from "../src/data/source";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
+import { appendLine, readDoc, writeDoc } from "./lib/docs";
 import { projectHome } from "./paths";
 
 /** Commands that can run code on the host, leak secrets, widen the sandbox or approve agent requests. */
@@ -132,7 +133,7 @@ export class RemoteGuard {
     this.auditFile = join(home, "audit.log");
     this.devicesFile = join(home, "devices.json");
     try {
-      this.devices = JSON.parse(readFileSync(this.devicesFile, "utf8")) as Record<string, Device>;
+      this.devices = readDoc<Record<string, Device>>(this.devicesFile) ?? {};
     } catch {
       this.devices = {};
     }
@@ -142,13 +143,13 @@ export class RemoteGuard {
 
   private saveDevices() {
     try {
-      writeFileSync(this.devicesFile, JSON.stringify(this.devices, null, 2), { mode: 0o600 });
+      writeDoc(this.devicesFile, this.devices);
     } catch (err) {
       log.warn("devices write failed:", err instanceof Error ? err.message : err);
     }
   }
 
-  /** New device session after a valid link token. Returns the cookie value. Revoke by deleting it from devices.json and restarting. */
+  /** New device session after a valid link token. Returns the cookie value. Revoke by signing the device out. */
   addDevice(role: Role, label: string, userId?: string): string {
     const id = randomBytes(32).toString("hex");
     const now = Date.now();
@@ -249,7 +250,7 @@ export class RemoteGuard {
     }
     const line = `${new Date().toISOString()}\t${entry.result}\t${entry.user ? `${entry.user.replace(/\s/g, "_")}/` : ""}${entry.role}${entry.remote ? "@remote" : ""}\t${entry.origin || "-"}\t${entry.project ?? "-"}\t${entry.cmd}\t${argStr}\n`;
     try {
-      appendFileSync(this.auditFile, line, { mode: 0o600 });
+      appendLine(this.auditFile, line);
     } catch (err) {
       log.warn("audit write failed:", err instanceof Error ? err.message : err);
     }

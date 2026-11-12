@@ -1,13 +1,12 @@
 // People who use this HQ: owner (everything, including accounts and people),
 // operator (runs the teams), viewer (watches and chats). Passwords are scrypt
 // hashes; each person has their own authenticator secret for the remote
-// step-up. Stored in ~/.arima/users.json (0600). Agents never use these.
+// step-up. Stored in ~/.arima/arima.db (users.json row, 0600). Agents never use these.
 
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { base32Encode } from "./remote";
+import { readDoc, writeDoc } from "./lib/docs";
 
 export const USER_ROLES = ["owner", "operator", "viewer"] as const;
 export type UserRole = (typeof USER_ROLES)[number];
@@ -53,7 +52,7 @@ export class Users {
 
   constructor(private readonly file: string) {
     try {
-      this.list = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as User[]) : [];
+      this.list = readDoc<User[]>(file) ?? [];
     } catch {
       this.list = [];
     }
@@ -153,10 +152,7 @@ export class Users {
   }
 
   private save() {
-    mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.list, null, 2) + "\n", { mode: 0o600 });
-    renameSync(tmp, this.file);
+    writeDoc(this.file, this.list);
   }
 }
 

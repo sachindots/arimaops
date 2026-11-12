@@ -1,7 +1,7 @@
 import { createPrivateKey, sign } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { z } from "zod";
 import { BRAND } from "../src/data/brand";
 import type { OfficeEvent } from "../src/data/source";
@@ -9,6 +9,7 @@ import type { Hub } from "./hub";
 import type { UserRole } from "./users";
 import { credentialsVault, redactor } from "./credentials/registry";
 import { log } from "./lib/log";
+import { readDoc, writeDoc } from "./lib/docs";
 
 const serviceAccount = z.object({
   type: z.literal("service_account"),
@@ -122,7 +123,7 @@ export class PushDevices {
     private readonly sender = new FcmSender(() => existsSync(join(homedir(), BRAND.homeDir, "vault.json")) ? credentialsVault().get("push:fcm") : null),
     private readonly file = join(homedir(), BRAND.homeDir, "push-devices.json"),
   ) {
-    this.devices = existsSync(file) ? z.array(registration).parse(JSON.parse(readFileSync(file, "utf8"))) : [];
+    this.devices = z.array(registration).parse(readDoc(file) ?? []);
   }
 
   register(input: Registration) {
@@ -185,8 +186,6 @@ export class PushDevices {
   }
 
   private save() {
-    mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
-    writeFileSync(`${this.file}.tmp`, JSON.stringify(this.devices), { mode: 0o600 });
-    renameSync(`${this.file}.tmp`, this.file);
+    writeDoc(this.file, this.devices);
   }
 }

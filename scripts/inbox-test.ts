@@ -2,6 +2,7 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readDoc } from "../server/lib/docs";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-inbox-"));
 const { Inbox } = await import("../server/inbox");
@@ -31,7 +32,7 @@ function fakeHub() {
 const typed: string[] = [];
 const keys = { type: async (_id: string, text: string) => (typed.push(text), true), enter: async () => true };
 const file = join(projectHome("inboxtest"), "messages.json");
-const saved = () => JSON.parse(readFileSync(file, "utf8")) as { queues: Record<string, { msgId: string }[]>; messages: Msg[] };
+const saved = () => readDoc(file) as { queues: Record<string, { msgId: string }[]>; messages: Msg[] };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // The agent is stopped: the message waits, and is saved.
@@ -40,7 +41,7 @@ const inbox1 = new Inbox(hub1 as never, keys);
 hub1.snap.messages.unshift({ id: "m1", at: new Date().toISOString(), fromId: "you", toId: "dwight", text: "Please rebase", delivered: "queued" });
 inbox1.push("dwight", { fromId: "you", kind: "message", text: "Please rebase", msgId: "m1" });
 await wait(400);
-check("queued message is saved to disk", existsSync(file) && saved().queues.dwight?.[0]?.msgId === "m1");
+check("queued message is saved to disk", saved() && saved().queues.dwight?.[0]?.msgId === "m1");
 check("nothing typed into a stopped agent", typed.length === 0);
 inbox1.stop();
 

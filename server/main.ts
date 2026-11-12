@@ -159,7 +159,7 @@ async function main() {
       `  Risky commands from remote (terminal, approvals, secrets, settings) need a 6-digit code once a day per device.`,
       `    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`,
       `    (or type the key manually: ${guard.secretB32})`,
-      `  Audit log: ~/.arima/audit.log`,
+      `  Audit log: ~/.arima/arima.db (log table, audit.log)`,
     );
     log.info(lines.join("\n") + "\n");
   }

@@ -2,6 +2,7 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readDoc } from "../server/lib/docs";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-find-"));
 const repo = mkdtempSync(join(tmpdir(), "hq-find-repo-"));
@@ -47,8 +48,8 @@ check("unlisted target refused", throws(() => findings.report("ghost", null, { .
 check("IP in range accepted", findings.report("ghost", null, { ...good, title: "Open Redis", severity: "critical", target: "10.20.0.9:6379" }).id === "F-002");
 check("unknown severity becomes info", findings.report("ghost", null, { ...good, title: "Banner", severity: "spicy", target: "x.acme.test" }).severity === "info");
 
-const json = JSON.parse(readFileSync(join(repo, ".arima", "findings.json"), "utf8")) as { id: string }[];
-check("saved to .arima/findings.json", json.length === 3);
+const json = readDoc<{ id: string }[]>(join(repo, ".arima", "findings.json"))!;
+check("saved to .arima/arima.db (findings.json)", json.length === 3);
 let report = readFileSync(join(repo, "deliverables", "security-report.md"), "utf8");
 check("report lists scope and summary", report.includes("In scope: *.acme.test, 10.20.0.0/24") && report.includes("| high | 1 |") && report.includes("| critical | 1 |"));
 check("report orders most severe first", report.indexOf("F-002") < report.indexOf("F-001") && report.indexOf("F-001") < report.indexOf("F-003"));
@@ -73,7 +74,7 @@ check("approving tells the agent to execute", /APPROVED/.test(told[0] ?? ""));
 const plan2 = actions.add("ghost", "Drop old DB", "DROP DATABASE legacy", true, "plan");
 actions.resolve(plan2.id, "dismissed", "Back it up first");
 check("rejecting tells the agent not to, with your note", /REJECTED/.test(told[1] ?? "") && told[1].includes("Back it up first"));
-check("action items file written", existsSync(join(process.env.HOME, ".arima", "acme", "action-items.json")));
+check("action items file written", readDoc(join(process.env.HOME, ".arima", "acme", "action-items.json")) !== null);
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);
