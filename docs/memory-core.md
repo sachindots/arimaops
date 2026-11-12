@@ -84,10 +84,11 @@ interface MemoryStore {          // Phase 1 methods stay as they are
 
 ## 8. Certify (2.6)
 
-- New uncertified memories become **Action items** of a new kind, `memory`, grouped one item per task ("4 memories from T-12"), with Certify / Reject per memory and **Certify all**.
-- **Daily digest:** one push at 09:00 local with the count waiting. **Urgent:** a memory of kind `Decision` or `DeadEnd` that a running task's brief would include, and that contradicts a certified one, pushes at once.
-- Owner and operators certify (operators after the TOTP step-up, like other risky commands); viewers can't.
-- Done when: a batch of memories is certified from the tablet (browser pane at tablet size, landscape and portrait).
+- Every new memory (extraction, an agent's `remember`) is filed into an **Action item** of kind `memory`, one open item per task ("3 memories from T-12 to check"), from "Team memory". Each memory has **Certify** and **Reject**; the item has **Certify all**. Certified memories rank first and never fade; rejected ones are deleted (a certified one can't be rejected afterwards). An item closes when its last memory is decided, with a tally. On project load and before each digest, the items are lined up with the graph: memories made while the project wasn't loaded are added, merged or faded ones dropped (`server/memoryReview.ts`).
+- **Pushes:** memory items aren't pushed one by one. A **daily digest** at 09:00 local says how many wait. **Urgent:** a new Decision or DeadEnd about the same file or component as a certified memory of its type is flagged on the item ("May contradict certified M-17: …") and pushed at once. That is an approximation of "contradicts": telling a real contradiction apart needs a model call, so the user decides with both texts side by side. Both the Firebase push and ntfy carry them.
+- **Who:** owner and operators certify (operators after the authenticator step-up from a remote device, like other risky commands); viewers see the items without buttons. Commands don't carry the signed-in person, so memories record `certifiedBy: "user"`; the audit log names who sent the command.
+- Settings → Memory also lists the project's **keep-out names**, with a field to add one.
+- Done when: a batch of memories is certified from the tablet (browser pane at tablet size, landscape and portrait). Checked with the demo data, which now includes a memory item.
 
 ## 9. Forget project (2.8) and Browser (2.9)
 

@@ -33,6 +33,7 @@ import { RemoteGuard, startPushNotifier } from "./remote";
 import { memoryStore } from "./memory";
 import { scheduleBackups } from "./memoryBackup";
 import { memoryWorker } from "./memoryJobs";
+import { daily, DIGEST_HOUR } from "./memoryReview";
 import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
@@ -143,6 +144,12 @@ async function main() {
     void memoryWorker().nightly().catch((err) => log.warn(`memory: nightly tidy skipped: ${err instanceof Error ? err.message : err}`));
   });
   memoryWorker().extractPending(); // summaries left from before a restart
+  daily(DIGEST_HOUR, async () => {
+    for (const rt of projects.values()) {
+      await rt.memoryReview.sync();
+      rt.memoryReview.digest();
+    }
+  });
   await startHttp({
     projects,
     defaultProject,

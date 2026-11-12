@@ -31,6 +31,7 @@ import { sumModels, UsageMeter } from "./usage";
 import { recordMeter } from "./usageEvents";
 import { memoryStore, setMemoryScope } from "./memory";
 import { memoryWorker } from "./memoryJobs";
+import { MemoryReview } from "./memoryReview";
 import { hqDb } from "./lib/db";
 import { accounts } from "./credentials/registry";
 import type { Provider } from "../src/data/providers";
@@ -59,6 +60,8 @@ export interface Runtime {
   /** Project secret; each agent's token is derived from it (paths.agentTokenFor). */
   agentSecret: string;
   commands: Record<string, (...args: unknown[]) => unknown>;
+  /** Memories waiting for the user's check, and their pushes. */
+  memoryReview: MemoryReview;
   isNew: boolean;
   paused: boolean;
   recheckSetup(): Promise<void>;
@@ -202,6 +205,8 @@ export async function startProject(path: string, port: number, paused: boolean):
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
+  const memoryReview = new MemoryReview(hub, planner.actions, memoryStore());
+  void memoryReview.sync();
   planner.findings = new Findings(hub);
   planner.memory = memoryStore();
   memoryStore().onChange ??= broadcastMemory;
@@ -266,11 +271,13 @@ export async function startProject(path: string, port: number, paused: boolean):
       setLiveProject(repo.root, rt);
     },
     screens: (lines) => sessions.screens(lines),
+    memoryReview,
     shutdown() {
       rt.pause();
       inbox.stop();
       clearInterval(usageTimer);
       stopListening();
+      memoryReview.stop();
       sessions.shutdown();
     },
   };

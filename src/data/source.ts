@@ -57,6 +57,8 @@ export type OfficeEvent =
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
   | { type: "memory.updated"; memory: MemoryState }
+  /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
+  | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
   | { type: "finding.updated"; finding: Finding }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
@@ -139,6 +141,8 @@ export interface OfficeDataSource {
   saveMemory(input: MemoryInput): void;
   restoreMemory(date: string): void;
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
+  decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
+  keepOutOfMemory(name: string): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

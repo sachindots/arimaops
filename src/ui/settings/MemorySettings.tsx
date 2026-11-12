@@ -15,6 +15,7 @@ export function MemorySettings() {
   const keys = (useOffice((s) => s.snap?.accounts?.list) ?? []).filter((a) => a.provider === "anthropic");
   const [form, setForm] = useState<{ url: string; user: string; password: string } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [name, setName] = useState("");
   if (!state) return <p className="m-0 text-[14px] text-muted">Memory settings aren't available from this server.</p>;
   const f = form ?? { url: state.url || "bolt://127.0.0.1:7687", user: state.user || "neo4j", password: "" };
   const canSave = /^(bolt|neo4j)(\+s|\+ssc)?:\/\/\S+$/.test(f.url.trim()) && (state.passwordSet || f.password.length >= 8);
@@ -69,6 +70,38 @@ export function MemorySettings() {
             ))}
           </select>
         </Field>
+      </section>
+
+      <section className="flex max-w-[560px] flex-col gap-2">
+        <SectionTitle>Keep out of memory</SectionTitle>
+        <p className="m-0 text-[13px] text-muted">
+          People's names and handles this project's memory never keeps (OSINT, sales, logs). Adding one also removes it from what memory already
+          holds. Emails, phone numbers and secrets are always removed. Findings and reports keep their evidence.
+        </p>
+        {state.keepOut.length > 0 && (
+          <p className="m-0 flex flex-wrap gap-1.5">
+            {state.keepOut.map((n) => (
+              <span key={n} className="chip text-[12px]">
+                {n}
+              </span>
+            ))}
+          </p>
+        )}
+        {!isViewer && (
+          <div className="flex gap-2">
+            <input className="field min-w-0 flex-1" value={name} placeholder="A name or handle" autoComplete="off" onChange={(e) => setName(e.target.value)} />
+            <button
+              className="btn"
+              disabled={name.trim().length < 2}
+              onClick={() => {
+                officeActions.keepOutOfMemory(name.trim());
+                setName("");
+              }}
+            >
+              Keep out
+            </button>
+          </div>
+        )}
       </section>
 
       <section>

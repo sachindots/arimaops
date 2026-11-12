@@ -26,7 +26,7 @@ export function projectMemoryState(projectId: string, state = memoryState()): Me
   } catch {
     /* an id that can't name a folder has no backups */
   }
-  return { ...state, backups };
+  return { ...state, backups, keepOut: memoryStore().keptOut(projectId) };
 }
 
 /** Sends the memory state to every loaded project. */
@@ -330,6 +330,31 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
     refreshSbx: () => sbx.refresh(),
 
+    // The user's check of new memories: owner and operators (step-up from a remote device); viewers can't.
+    decideMemories: (itemId, raw) => {
+      if (!planner.actions) return;
+      const decisions = Object.fromEntries(
+        Object.entries((raw ?? {}) as Record<string, unknown>).filter(([k, v]) => /^M-\d+$/.test(k) && (v === "certify" || v === "reject")),
+      ) as Record<string, "certify" | "reject">;
+      try {
+        const projectId = hub.snap.config.project.id;
+        const r = planner.actions.decideMemories(str(itemId, 40), decisions);
+        memoryStore().certify(projectId, r.certify, "user"); // the audit log records who
+        memoryStore().reject(projectId, r.reject);
+        hub.activity("config", null, `Memories checked: ${r.certify.length} certified, ${r.reject.length} rejected.`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't check those memories: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    keepOutOfMemory: (name) => {
+      try {
+        memoryStore().keepOut(hub.snap.config.project.id, str(name, 120), "user");
+        broadcastMemory();
+        hub.activity("config", null, "Added a name to this project's keep-out list; it's removed from what memory already holds.");
+      } catch (e) {
+        hub.activity("config", null, `Couldn't keep that name out: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
     resolveActionItem: (id, decision, note) => {
       const d = decision === "done" || decision === "dismissed" ? decision : null;
       if (d) planner.actions?.resolve(str(id, 40), d, typeof note === "string" ? str(note, 1000) : undefined);

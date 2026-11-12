@@ -91,7 +91,12 @@ export function pushAlert(hub: Pick<Hub, "slug" | "snap">, event: OfficeEvent): 
   });
   if (event.type === "agent.updated" && event.agent.state === "needs-input")
     return alert(`agent:${event.agent.agentId}:${event.agent.stateSince}`, "Agent needs you", event.agent.note ?? "Open HQ to check the agent.", `agent:${event.agent.agentId}`, true);
-  if (event.type === "action.updated" && event.item.status === "open")
+  if (event.type === "memory.digest")
+    return event.urgent
+      ? alert(`memory:${event.key}`, "A memory to check now", event.urgent, "actions", true)
+      : alert(`memory:${event.key}`, "Memories to check", `${event.count} new memor${event.count === 1 ? "y waits" : "ies wait"} for your check.`, "actions", true);
+  // Memories to check are pushed as a daily digest (memory.digest), not one by one.
+  if (event.type === "action.updated" && event.item.status === "open" && event.item.kind !== "memory")
     return alert(`action:${event.item.id}`, "Action needed", event.item.title, "actions", true);
   if (event.type === "access.updated" && event.request.status === "pending")
     return alert(`access:${event.request.id}`, "Access requested", event.request.reason || event.request.domain, `agent:${event.request.agentId}`, true);

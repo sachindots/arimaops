@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ActionItem } from "../../data/types";
-import { officeActions, selectAttention, useOffice } from "../../store/office";
+import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { ago, Dot, SectionTitle, useNow } from "../kit";
 import { DrawerHeader } from "./Drawer";
@@ -34,7 +34,7 @@ export function ActionItemsDrawer() {
         ) : (
           <ul className="mb-4 flex flex-col gap-2">
             {open.map((item) => (
-              <Item key={item.id} item={item} from={agent(item.fromId)} now={now} />
+              item.kind === "memory" ? <MemoryItem key={item.id} item={item} now={now} /> : <Item key={item.id} item={item} from={agent(item.fromId)} now={now} />
             ))}
           </ul>
         )}
@@ -84,7 +84,7 @@ export function ActionItemsDrawer() {
               <ul className="mt-2 flex flex-col gap-1 text-[13px] text-muted">
                 {closed.map((i) => (
                   <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
-                    <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {agent(i.fromId)?.name ?? i.fromId} ·{" "}
+                    <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? i.fromId)} ·{" "}
                     {i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
@@ -156,6 +156,62 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {item.kind === "plan" ? "Reject" : "Dismiss"}
         </button>
       </div>
+    </li>
+  );
+}
+
+const TYPE_COLOR: Record<string, string> = { Decision: "#00e5ff", Lesson: "#00ff66", DeadEnd: "#ff4d6d" };
+
+/** New memories from one task: certify or reject each, or certify them all at once. */
+function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
+  const list = item.memories ?? [];
+  const decide = (decisions: Record<string, "certify" | "reject">) => officeActions.decideMemories(item.id, decisions);
+  return (
+    <li className="border-[3px] border-ink bg-white px-3 py-2 shadow-[0_3px_0_rgba(36,26,46,0.35)]">
+      <div className="flex flex-wrap items-start gap-2">
+        <b className="flex-1 text-[15px]">{item.title}</b>
+        {!isViewer && list.length > 1 && (
+          <button className="btn shrink-0 border-green px-2 text-[12px] text-green" onClick={() => decide(Object.fromEntries(list.map((m) => [m.id, "certify" as const])))}>
+            Certify all {list.length}
+          </button>
+        )}
+      </div>
+      <div className="mb-1 text-[12px] text-muted">
+        Team memory{item.taskId ? ` · ${item.taskId}` : ""} · {ago(item.at, now)} ago
+      </div>
+      <ul className="flex flex-col">
+        {list.map((m) => (
+          <li key={m.id} className="flex flex-col gap-1 border-t-2 border-dashed border-cream-3 py-2 first:border-t-0">
+            <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+              <span className="chip chip-dot text-[11px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#c04dff" }}>
+                {m.type}
+              </span>
+              <span className="font-mono text-muted">{m.id}</span>
+              {m.about.map((a) => (
+                <span key={a} className="font-mono text-muted">
+                  {a}
+                </span>
+              ))}
+            </div>
+            <p className="m-0 text-[14px]">{m.text}</p>
+            {m.conflict && (
+              <p className="m-0 border-l-[3px] border-orange pl-2 text-[12px]">
+                May contradict certified {m.conflict.id}: “{m.conflict.text}”
+              </p>
+            )}
+            {!isViewer && (
+              <div className="flex gap-2">
+                <button className="btn border-green px-3 text-[12px] text-green" onClick={() => decide({ [m.id]: "certify" })}>
+                  Certify
+                </button>
+                <button className="btn px-3 text-[12px]" onClick={() => decide({ [m.id]: "reject" })}>
+                  Reject
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
     </li>
   );
 }

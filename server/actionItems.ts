@@ -4,7 +4,8 @@
 // and HQ tells the agent so it can continue. Kept on this Mac, never committed.
 
 import { join } from "node:path";
-import type { ActionItem } from "../src/data/types";
+import type { Memory } from "../src/data/model";
+import type { ActionItem, PendingMemory } from "../src/data/types";
 import type { Hub } from "./hub";
 import { projectHome } from "./paths";
 import type { Planner } from "./planner";
@@ -68,6 +69,7 @@ export class ActionItems {
     item.closedAt = new Date().toISOString();
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
+    if (item.kind === "memory") return; // dismissed memories stay uncertified and fade; no agent to tell
     const n = item.note ? ` Note from the user: ${item.note}` : "";
     if (item.kind === "plan") {
       if (decision === "done") this.planner.notify(item.fromId, `The user APPROVED your plan "${item.title}".${n} Go ahead and execute it, exactly as planned.`);
@@ -76,5 +78,95 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  // ---------------------------------------------------------------- memories to check (docs/memory-core.md section 8)
+
+  private memoryItems(): ActionItem[] {
+    return this.items.filter((i) => i.kind === "memory" && i.status === "open");
+  }
+
+  /** Memories still waiting for a check, across this project's items. */
+  pendingMemories(): number {
+    return this.memoryItems().reduce((n, i) => n + (i.memories?.length ?? 0), 0);
+  }
+
+  private retitle(item: ActionItem) {
+    const n = item.memories?.length ?? 0;
+    item.title = `${n} memor${n === 1 ? "y" : "ies"} from ${item.taskId ?? "the project"} to check`;
+  }
+
+  /** Files a new memory under its task's open item (one item per task). */
+  addMemory(m: Pick<Memory, "id" | "type" | "text" | "about" | "taskId">) {
+    if (this.memoryItems().some((i) => i.memories?.some((p) => p.id === m.id))) return;
+    let item = this.memoryItems().find((i) => i.taskId === m.taskId);
+    if (!item) {
+      item = {
+        id: `ai${Date.now().toString(36)}${++this.seq}`,
+        fromId: "hq",
+        taskId: m.taskId,
+        title: "",
+        details: "What the team learned. Certify what is right (it ranks first in briefs and never fades); reject what is wrong (it is deleted). Unchecked memories fade after 30 days unused.",
+        waiting: false,
+        kind: "memory",
+        memories: [],
+        status: "open",
+        note: null,
+        at: new Date().toISOString(),
+        closedAt: null,
+      };
+      this.items.unshift(item);
+    }
+    item.memories!.push({ id: m.id, type: m.type, text: m.text, about: m.about, conflict: null });
+    this.retitle(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+  }
+
+  /** Marks a pending memory that may contradict a certified one. Returns false when it isn't pending any more. */
+  setConflict(memoryId: string, conflict: { id: string; text: string }): boolean {
+    const item = this.memoryItems().find((i) => i.memories?.some((p) => p.id === memoryId));
+    const pending = item?.memories?.find((p) => p.id === memoryId);
+    if (!item || !pending) return false;
+    pending.conflict = conflict;
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return true;
+  }
+
+  /** The user's check on some of an item's memories. Returns the ids to certify and to reject; closes the item when none are left. */
+  decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): { certify: string[]; reject: string[] } {
+    const item = this.memoryItems().find((i) => i.id === itemId);
+    if (!item) throw new Error("Those memories were already checked.");
+    const out = { certify: [] as string[], reject: [] as string[] };
+    for (const p of item.memories ?? []) {
+      const d = decisions[p.id];
+      if (d === "certify" || d === "reject") out[d].push(p.id);
+    }
+    const decided = new Set([...out.certify, ...out.reject]);
+    item.memories = (item.memories ?? []).filter((p) => !decided.has(p.id));
+    const tally = item.note?.match(/^(\d+) certified, (\d+) rejected$/);
+    const [c, r] = tally ? [Number(tally[1]), Number(tally[2])] : [0, 0];
+    item.note = `${c + out.certify.length} certified, ${r + out.reject.length} rejected`;
+    if (item.memories.length) this.retitle(item);
+    else (item.status = "done"), (item.closedAt = new Date().toISOString());
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return out;
+  }
+
+  /** Brings the open items in line with the graph's uncertified memories: adds missing ones, drops merged, faded or deleted ones. */
+  syncMemories(uncertified: Pick<Memory, "id" | "type" | "text" | "about" | "taskId">[]) {
+    const live = new Set(uncertified.map((m) => m.id));
+    for (const item of this.memoryItems()) {
+      const before = item.memories?.length ?? 0;
+      item.memories = (item.memories ?? []).filter((p: PendingMemory) => live.has(p.id));
+      if (item.memories.length === before) continue;
+      if (item.memories.length) this.retitle(item);
+      else (item.status = "dismissed"), (item.closedAt = new Date().toISOString()), (item.note = "Merged or faded before it was checked.");
+      this.save();
+      this.hub.emit({ type: "action.updated", item: { ...item } });
+    }
+    for (const m of uncertified) this.addMemory(m);
   }
 }

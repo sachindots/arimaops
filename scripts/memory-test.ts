@@ -22,6 +22,17 @@ const { Planner } = await import("../server/planner");
 const { DEV_TEMPLATE } = await import("../src/data/templates");
 const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
 const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+const { ActionItems } = await import("../server/actionItems");
+const { MemoryReview, nextAt } = await import("../server/memoryReview");
+const { pushAlert } = await import("../server/push");
+type OfficeEvent = import("../src/data/source").OfficeEvent;
+/** A project's hub, as much of it as the action items and the review use. */
+const fakeHub = (projectId: string) => {
+  const events: OfficeEvent[] = [];
+  const hub = { slug: projectId, snap: { actionItems: [] as import("../src/data/types").ActionItem[], config: { team: [], project: { id: projectId, name: projectId } } },
+    emit: (e: OfficeEvent) => events.push(e), activity: () => {}, name: (id: string) => id };
+  return { hub, events, actions: new ActionItems(hub as never, { currentTask: () => undefined, notify: () => {} } as never) };
+};
 /** A model that answers from a script, and remembers what it was asked. */
 const fakeRunner = (reply: (req: RunRequest) => string) => {
   const asked: RunRequest[] = [];
@@ -73,6 +84,32 @@ check("near-duplicates look alike, different facts don't", similarity("Codex sen
 const pairs = candidatePairs([mem("a", "Lesson", "Codex sends no Stop hook so idle polling fails"), mem("b", "Lesson", "idle polling fails: Codex sends no Stop hook"),
   mem("c", "DeadEnd", "Codex sends no Stop hook so idle polling fails"), mem("d", "Lesson", "Codex sends no Stop hook so idle polling fails", true), mem("e", "Lesson", "Codex sends no Stop hook, idle polling fails", true)]);
 check("only same-type pairs are asked about, never two certified ones", pairs.length > 0 && pairs.every(([a, b]) => a.type === b.type && !(a.certified && b.certified)) && !pairs.some(([a, b]) => a.id === "c" || b.id === "c"));
+
+// ---------------------------------------------------------------- memories to check (2.6), no Neo4j
+{
+  const { hub, events, actions } = fakeHub("review-unit");
+  const m = (id: string, taskId: string | null, type = "Lesson") => ({ id, type, text: `memory ${id} with enough words in it`, about: ["src/a.ts"], taskId });
+  actions.addMemory(m("M-1", "T1"));
+  actions.addMemory(m("M-2", "T1"));
+  actions.addMemory(m("M-3", "T2"));
+  actions.addMemory(m("M-1", "T1"));
+  const open = hub.snap.actionItems.filter((i) => i.kind === "memory" && i.status === "open");
+  check("new memories group into one item per task, never twice", open.length === 2 && open.find((i) => i.taskId === "T1")?.memories?.length === 2 && open.find((i) => i.taskId === "T1")?.title === "2 memories from T1 to check");
+  check("there are 3 to check", actions.pendingMemories() === 3);
+  const t1 = open.find((i) => i.taskId === "T1")!;
+  const first = actions.decideMemories(t1.id, { "M-1": "reject" });
+  check("one memory decided: the item stays open with the rest", first.reject.join() === "M-1" && t1.status === "open" && t1.title === "1 memory from T1 to check");
+  const rest = actions.decideMemories(t1.id, { "M-2": "certify", "M-9": "certify" });
+  check("deciding the last one closes the item, with a tally; unknown ids are ignored", rest.certify.join() === "M-2" && t1.status === "done" && t1.note === "1 certified, 1 rejected");
+  check("a closed item can't be decided again", rejects(() => actions.decideMemories(t1.id, { "M-2": "certify" }), /already checked/));
+  actions.syncMemories([m("M-4", "T3")]);
+  const t2 = hub.snap.actionItems.find((i) => i.taskId === "T2")!;
+  check("a memory merged or faded away leaves its item; new ones from the graph are added", t2.status === "dismissed" && hub.snap.actionItems.some((i) => i.taskId === "T3" && i.status === "open"));
+  check("memory items aren't pushed one by one", events.filter((e) => e.type === "action.updated").every((e) => pushAlert(hub as never, e) === null));
+  const digest = pushAlert(hub as never, { type: "memory.digest", key: "digest:x", count: 3, urgent: null });
+  check("the digest is one push, to owners and operators, opening Action items", !!digest && /3 new memories wait/.test(digest.body) && digest.operatorsOnly && digest.path.includes("open=actions"));
+  check("the digest runs at 09:00: today before nine, tomorrow after", nextAt(new Date(2026, 10, 12, 8, 59), 9).getDate() === 12 && nextAt(new Date(2026, 10, 12, 9, 0), 9).getDate() === 13);
+}
 
 // ---------------------------------------------------------------- backups that need no Neo4j
 check("backups run at 03:00 tonight, or tomorrow once it's past", nextBackupAt(new Date(2026, 10, 12, 2, 0)).getTime() === new Date(2026, 10, 12, 3, 0).getTime() && nextBackupAt(new Date(2026, 10, 12, 3, 0)).getTime() === new Date(2026, 10, 13, 3, 0).getTime());
@@ -403,6 +440,45 @@ try {
     await e2e.flush();
     check("a name kept out over MCP leaves memory", (await count("MATCH (m:Memory {projectId: 'brief'}) WHERE m.text CONTAINS 'Rhea' RETURN count(m)")) === 0);
     await e2e.close();
+  }
+
+  // ---------------------------------------------------------------- certify (2.6), on Neo4j
+  {
+    const rv = new Neo4jMemory(db, () => cfg);
+    const { hub, events, actions } = fakeHub("certify");
+    const review = new MemoryReview(hub as never, actions, rv);
+    const old = rv.remember({ projectId: "certify", type: "DeadEnd", text: "Caching the gh token in a file broke when it rotated", about: ["server/github.ts"], taskId: "T1", by: "hq" });
+    const keep = rv.remember({ projectId: "certify", type: "Lesson", text: "gh pr view needs statusCheckRollup for the CI state", taskId: "T1", by: "hq" });
+    const drop = rv.remember({ projectId: "certify", type: "Lesson", text: "Polling GitHub every second is fine for rate limits", taskId: "T1", by: "hq" });
+    rv.remember({ projectId: "elsewhere", type: "Lesson", text: "Another project's memory never shows up here", by: "hq" });
+    await rv.flush();
+    const item = hub.snap.actionItems.find((i) => i.kind === "memory")!;
+    check("every new memory lands in the project's Action items, others' don't", item?.memories?.map((p) => p.id).join() === [old.id, keep.id, drop.id].join() && hub.snap.actionItems.length === 1);
+    const r = actions.decideMemories(item.id, { [old.id]: "certify", [keep.id]: "certify", [drop.id]: "reject" });
+    rv.certify("certify", r.certify, "user");
+    rv.reject("certify", r.reject);
+    await rv.flush();
+    check("batch certify marks them certified; reject deletes", (await count("MATCH (m:Memory {projectId: 'certify', certified: true, certifiedBy: 'user'}) RETURN count(m)")) === 2 &&
+      (await count("MATCH (m:Memory {id: $id}) RETURN count(m)", { id: drop.id })) === 0 && item.status === "done");
+    rv.reject("certify", [keep.id]);
+    await rv.flush();
+    check("a certified memory can't be rejected afterwards", (await count("MATCH (m:Memory {id: $id}) RETURN count(m)", { id: keep.id })) === 1);
+    check("certified memories rank first in recall", (await rv.recall("certify", "gh token rotated statusCheckRollup")).every((m) => m.certified));
+
+    const clash = rv.remember({ projectId: "certify", type: "DeadEnd", text: "Caching the gh token in a file works fine across rotations", about: ["server/github.ts"], taskId: "T2", by: "arul" });
+    await new Promise((res) => setTimeout(res, 300)); // the conflict check runs after the write is sent
+    await rv.flush();
+    await review.checkConflict(clash);
+    const pending = hub.snap.actionItems.find((i) => i.taskId === "T2")?.memories?.[0];
+    const urgent = events.find((e) => e.type === "memory.digest" && e.urgent);
+    check("a new dead end on the same file as a certified one is flagged and pushed at once", pending?.conflict?.id === old.id && !!urgent && urgent.type === "memory.digest" && urgent.urgent!.includes(old.id), JSON.stringify({ pending, urgent }));
+    review.digest(new Date(2026, 10, 13, 9));
+    check("the daily digest counts what still waits", events.some((e) => e.type === "memory.digest" && e.key === "digest:2026-11-13" && e.count === 1));
+    await probe.executeQuery("MATCH (m:Memory {id: $id}) DETACH DELETE m", { id: clash.id });
+    await review.sync();
+    check("sync drops a memory that left the graph (merged, faded)", actions.pendingMemories() === 0);
+    review.stop();
+    await rv.close();
   }
 
   // ---------------------------------------------------------------- backup and restore

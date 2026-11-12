@@ -46,6 +46,9 @@ export interface MemoryStore {
   summary(projectId: string, taskId: string): TaskSummary | null;
   /** Keeps a name (a person, a handle) out of the project's memory, and scrubs it from what is stored. */
   keepOut(projectId: string, term: string, by: string): void;
+  /** The user's check: certified memories rank first and never fade; rejected ones are deleted. */
+  certify(projectId: string, ids: string[], by: string): void;
+  reject(projectId: string, ids: string[]): void;
 }
 
 export interface RememberInput {
@@ -80,6 +83,8 @@ type Op =
   | { op: "task"; t: Pick<TaskSummary, "taskId" | "title" | "stageId" | "ownerId" | "needs" | "files" | "finishedAt"> }
   | { op: "scrub"; term: string }
   | { op: "merge"; keep: string; drop: string; text: string | null }
+  | { op: "certify"; ids: string[]; by: string; at: string }
+  | { op: "reject"; ids: string[] }
   | { op: "forget" };
 
 /** How a task points at what it produced (docs/memory-core.md section 3). */
@@ -127,6 +132,9 @@ const CYPHER: { [K in Exclude<Op["op"], "scrub">]: string } = {
           WITH k, l
           CALL (k, l) { MATCH (l)-[:ABOUT]->(c:Component) MERGE (k)-[:ABOUT]->(c) }
           CALL (k, l) { MATCH (t:Task)-[r]->(l) WHERE type(r) IN ['DECIDED', 'LEARNED', 'HIT', 'NOTED'] MERGE (t)-[:$(type(r))]->(k) }`,
+  certify: `MATCH (m:Memory) WHERE m.projectId = $projectId AND m.id IN $ids SET m.certified = true, m.certifiedBy = $by, m.certifiedAt = $at`,
+  // Only an uncertified memory can be rejected (deleted); a certified one stays until forget project.
+  reject: `MATCH (m:Memory) WHERE m.projectId = $projectId AND m.id IN $ids AND m.certified = false DETACH DELETE m`,
   touch: `MATCH (m:Memory) WHERE m.projectId = $projectId AND m.id IN $ids SET m.lastUsedAt = $at`,
   supersede: `MATCH (old:LedgerEntry {id: $id}), (new:LedgerEntry {id: $by})
               SET old.supersededBy = $by
@@ -178,6 +186,12 @@ export class Neo4jMemory implements MemoryStore {
   private retry: NodeJS.Timeout | null = null;
   private lastError = "";
   private closed = false;
+  /** Told about every new memory (the project files it for the user's check). */
+  private rememberListeners = new Set<(m: Memory) => void>();
+  onRemember(fn: (m: Memory) => void): () => void {
+    this.rememberListeners.add(fn);
+    return () => this.rememberListeners.delete(fn);
+  }
   /** Called after each attempt to reach Neo4j (the server tells every open browser). */
   onChange: (() => void) | null = null;
 
@@ -252,6 +266,13 @@ export class Neo4jMemory implements MemoryStore {
       out = { ...m, certified: false, certifiedBy: null, lastUsedAt: m.createdAt };
     });
     this.kick();
+    for (const fn of this.rememberListeners) {
+      try {
+        fn(out);
+      } catch (err) {
+        log.warn(`memory: a listener failed on ${out.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
     return out;
   }
 
@@ -311,6 +332,29 @@ export class Neo4jMemory implements MemoryStore {
   summary(projectId: string, taskId: string): TaskSummary | null {
     const row = this.db.prepare("SELECT body FROM task_summaries WHERE project_id = ? AND task_id = ?").get(projectId, taskId) as { body: string } | undefined;
     return row ? (JSON.parse(row.body) as TaskSummary) : null;
+  }
+
+  certify(projectId: string, ids: string[], by: string) {
+    if (!ids.length) return;
+    tx(this.db, () => this.queue(projectId, { op: "certify", ids: [...new Set(ids)], by, at: new Date().toISOString() }));
+    this.kick();
+  }
+
+  reject(projectId: string, ids: string[]) {
+    if (!ids.length) return;
+    tx(this.db, () => this.queue(projectId, { op: "reject", ids: [...new Set(ids)] }));
+    this.kick();
+  }
+
+  /** Certified memories of `type` about any of `about` (a new one may contradict them). Needs Neo4j. */
+  async certifiedAbout(projectId: string, type: string, about: string[]): Promise<Memory[]> {
+    if (!about.length) return [];
+    const { records } = await (await this.connected()).executeQuery(
+      `MATCH (m:Memory {projectId: $p, certified: true})-[:ABOUT]->(c:Component) WHERE $type IN labels(m) AND c.name IN $about AND m.supersededBy IS NULL
+       WITH DISTINCT m RETURN ${MEMORY_RETURN} ORDER BY m.createdAt`,
+      { p: projectId, type, about },
+    );
+    return records.map((r) => toMemory(r.get("m")));
   }
 
   /** Summaries extraction hasn't read yet (at most 3 tries each), oldest first. */
@@ -579,7 +623,7 @@ export function memoryStore(): Neo4jMemory {
 const settingsFile = () => join(homeRoot(), "memory.json");
 
 /** What the browser sees: where Neo4j is and whether it answers. Never the password. */
-export function memoryState(env = process.env): Omit<MemoryState, "backups"> {
+export function memoryState(env = process.env): Omit<MemoryState, "backups" | "keepOut"> {
   const fromEnv = !!(env.ARIMA_NEO4J_URL && env.ARIMA_NEO4J_PASSWORD);
   const saved = readDoc<{ url?: string; user?: string }>(settingsFile());
   const cfg = neo4jConfig(env);

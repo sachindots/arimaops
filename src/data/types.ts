@@ -464,6 +464,15 @@ export interface OfficeSnapshot {
   findings?: Finding[];
 }
 
+/** A memory waiting for the user's check. `conflict`: a certified memory of the same type about the same thing. */
+export interface PendingMemory {
+  id: string;
+  type: string;
+  text: string;
+  about: string[];
+  conflict?: { id: string; text: string } | null;
+}
+
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
 export interface ActionItem {
   id: string;
@@ -473,8 +482,11 @@ export interface ActionItem {
   details: string; // steps; never secret values
   waiting: boolean; // the agent can't continue without it
   status: "open" | "done" | "dismissed";
-  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes. */
-  kind?: "request" | "plan";
+  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
+   *  memory = new memories from one task, waiting to be certified or rejected (from "hq"). */
+  kind?: "request" | "plan" | "memory";
+  /** kind memory: the memories still to decide. */
+  memories?: PendingMemory[];
   note: string | null; // the user's note when closing it
   at: string;
   closedAt: string | null;
@@ -572,6 +584,8 @@ export interface MemoryState {
   queued: number;
   /** Claude Haiku reads finished tasks into memories (spends usage on `account`). */
   extraction: { enabled: boolean; account: string };
+  /** Names this project keeps out of memory. */
+  keepOut: string[];
   /** This project's nightly memory backups, newest first (dates). */
   backups: string[];
 }

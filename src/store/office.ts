@@ -173,6 +173,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, accounts: e.accounts };
     case "memory.updated":
       return { ...snap, memory: e.memory };
+    case "memory.digest":
+      return snap;
     case "mcp.updated":
       return { ...snap, mcp: e.mcp };
     case "remote.stepup":
@@ -261,6 +263,8 @@ export const officeActions = {
   saveMemory: (input: MemoryInput) => source.saveMemory(input),
   restoreMemory: (date: string) => source.restoreMemory(date),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
+  decideMemories: (itemId: string, decisions: Record<string, "certify" | "reject">) => source.decideMemories(itemId, decisions),
+  keepOutOfMemory: (name: string) => source.keepOutOfMemory(name),
   refreshMcp: () => source.refreshMcp(),
   addMcp: (input: NewMcpServer) => source.addMcp(input),
   authMcp: (name: string) => source.authMcp(name),

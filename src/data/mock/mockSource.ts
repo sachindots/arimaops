@@ -361,6 +361,21 @@ export function createMockSource(): OfficeDataSource {
     saveMemory() {},
     restoreMemory() {},
     setMemoryExtraction() {},
+    decideMemories(itemId, decisions) {
+      const item = world.snap.actionItems?.find((i) => i.id === itemId && i.status === "open");
+      if (!item) return;
+      item.memories = (item.memories ?? []).filter((m) => !decisions[m.id]);
+      const n = item.memories.length;
+      item.title = `${n} memor${n === 1 ? "y" : "ies"} to check`;
+      if (!n) (item.status = "done"), (item.closedAt = new Date().toISOString()), (item.note = "Checked");
+      world.emit({ type: "action.updated", item: structuredClone(item) });
+    },
+    keepOutOfMemory(name) {
+      const m = world.snap.memory;
+      if (!m || m.keepOut.includes(name)) return;
+      m.keepOut = [...m.keepOut, name].sort();
+      world.emit({ type: "memory.updated", memory: structuredClone(m) });
+    },
     refreshMcp() {
       if (world.snap.mcp) world.emit({ type: "mcp.updated", mcp: structuredClone(world.snap.mcp) });
     },

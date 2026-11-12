@@ -3,6 +3,7 @@
 
 import type { OfficeEvent, SimSpeed } from "../source";
 import type {
+  ActionItem,
   ActivityType,
   SbxState,
   SessionInfo,
@@ -139,7 +140,7 @@ export class World {
       actionItems: preset.config.team
         .filter((a) => !a.isLead)
         .slice(0, 2)
-        .map((a, n) => ({
+        .map((a, n): ActionItem => ({
           id: `ai-demo-${n}`,
           fromId: a.id,
           taskId: null,
@@ -153,7 +154,38 @@ export class World {
           note: null,
           at: now(),
           closedAt: null,
-        })),
+        }))
+        .concat([
+          {
+            id: "ai-demo-memory",
+            fromId: "hq",
+            taskId: tasks.find((t) => t.status === "done")?.id ?? null,
+            title: "3 memories to check",
+            details: "",
+            waiting: false,
+            kind: "memory" as const,
+            memories: [
+              { id: "M-41", type: "DeadEnd", text: "Polling Clerk's session endpoint for sign-out missed revoked sessions; the webhook is the only reliable signal.", about: ["app/api/webhooks/clerk/route.ts"], conflict: null },
+              { id: "M-42", type: "Decision", text: "Rate limits live in middleware.ts, before auth, so anonymous floods never reach the database.", about: ["middleware.ts"], conflict: { id: "M-17", text: "Rate limits run per route handler so each route sets its own budget." } },
+              { id: "M-43", type: "Lesson", text: "Supabase row-level security must be enabled before seeding, or the seed script writes rows nobody can read back.", about: ["supabase/seed.sql"], conflict: null },
+            ],
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+        ]),
+      memory: {
+        source: "env" as const,
+        url: "bolt://127.0.0.1:7687",
+        user: "neo4j",
+        passwordSet: true,
+        status: "online" as const,
+        queued: 0,
+        extraction: { enabled: true, account: "default" },
+        keepOut: ["Ravi Kumar"],
+        backups: [0, 1, 2].map((d) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10)),
+      },
       mcp: {
         servers: [
           { name: "supabase-dev", transport: "remote http", status: "ready", nextStep: null },
