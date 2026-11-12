@@ -1,5 +1,6 @@
 // Bundles the HQ server into one ESM file for the npm package. node_modules
 // stay external (installed as the package's runtime dependencies).
+import { existsSync } from "node:fs";
 import { build } from "esbuild";
 
 await build({
@@ -14,3 +15,19 @@ await build({
   logLevel: "warning",
 });
 console.log("built dist-server/main.mjs");
+
+// ee/ (commercial) builds on its own: the core bundle never contains it, and loads it only if present.
+if (existsSync("ee/index.ts")) {
+  await build({
+    entryPoints: ["ee/index.ts"],
+    outfile: "dist-server/ee.mjs",
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    packages: "external",
+    sourcemap: false,
+    logLevel: "warning",
+  });
+  console.log("built dist-server/ee.mjs");
+}

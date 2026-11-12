@@ -27,6 +27,8 @@ import { detectRepo } from "./repo";
 import { slugOf } from "./store";
 import { hqDb } from "./lib/db";
 import { seedBuiltins } from "./templates";
+import { loadEe, startFeatures } from "./features";
+import { readLicense } from "./license";
 import { RemoteGuard, startPushNotifier } from "./remote";
 
 function arg(name: string): string | undefined {
@@ -79,6 +81,11 @@ async function main() {
   const pausedPaths = new Set(registered.filter((e) => e.paused).map((e) => resolve(e.path)));
 
   seedBuiltins(hqDb()); // the template library ships with this version's built-ins
+  const ee = await loadEe();
+  if (Object.keys(ee).length) {
+    const report = await startFeatures(ee, readLicense(), (msg) => log.info(msg));
+    for (const s of report.skipped) log.info(`licensed feature ${s.name} off: ${s.why}`);
+  }
   const projects = new Map<string, Runtime>();
   const seenRoots = new Set<string>();
   let launchSlug: string | null = null;

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
 // Security findings for an engagement (docs/core-model.md section 5): agents file them with the Team
 // MCP tool report_finding (in-scope assets only); you and the lead triage and verify them. Template
 // projects keep them in the HQ database; projects made before templates show theirs read-only.

@@ -1,0 +1,25 @@
+ArimaOps Commercial License
+
+DRAFT, not yet reviewed by a lawyer. Replace or confirm before selling a licence.
+
+Copyright (c) 2026 Sachin Dot. All rights reserved.
+
+The software in this ee/ folder ("Commercial Features") is not open source.
+
+1. You may use the Commercial Features in production only while you hold a
+   valid ArimaOps licence file for them, within the tier, seats, features
+   and dates it states.
+
+2. Without a licence, you may read, copy and change the Commercial Features
+   only to develop and test ArimaOps itself, not to use them in production.
+
+3. You may not sell, sublicense, publish or otherwise distribute the
+   Commercial Features, changed or not, or remove or work around the licence
+   check, except as a licence or a separate written agreement allows.
+
+4. The Commercial Features are provided "as is", without warranty of any
+   kind. To the extent the law allows, the copyright holder is not liable
+   for any damages arising from their use.
+
+Everything outside this folder is licensed as LICENSE in the repository's
+root folder says.

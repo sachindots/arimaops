@@ -2,7 +2,7 @@
   "name": "arimaops",
   "version": "0.8.0",
   "description": "Lead the pride: your AI company in one office. AI agents build your software and run your security work while you steer from desk, tablet or phone.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "homepage": "https://github.com/sachindots/arimaops#readme",
   "repository": {
@@ -43,6 +43,7 @@
     "dist-server",
     "scripts/fix-node-pty.mjs",
     "LICENSE",
+    "LICENSES",
     "TRADEMARKS.md",
     "README.md",
     "NOTICE",
