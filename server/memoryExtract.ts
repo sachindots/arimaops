@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { CORE_MEMORY_TYPES, type Memory, type TaskSummary } from "../src/data/model";
 import { log } from "./lib/log";
-import type { Neo4jMemory } from "./memory";
+import { STOPWORDS, type Neo4jMemory } from "./memory";
 import type { ModelRunner } from "./modelRunner";
 
 export const EXTRACT_MODEL = "claude-haiku-5-5";
@@ -67,7 +67,7 @@ export function extractionPrompt(s: TaskSummary, types: string[]): { system: str
   return { system, prompt: `<summary>\n${JSON.stringify(body, null, 2)}\n</summary>` };
 }
 
-const STOP = new Set("the and for with that this from into was were are has have had not but its it's when then than also only after before about there their they them".split(" "));
+const STOP = new Set([...STOPWORDS, "it's"]);
 const words = (t: string) => new Set((t.toLowerCase().match(/[\p{L}\p{N}_./-]{3,}/gu) ?? []).filter((w) => !STOP.has(w)));
 export function similarity(a: string, b: string): number {
   const x = words(a);

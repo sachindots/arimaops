@@ -66,6 +66,9 @@ export interface RememberInput {
 export const LEAD_KINDS = ["fact", "guess", "plan", "note"] as const satisfies readonly LedgerKind[];
 
 const MAX_TEXT = 2000;
+export const STOPWORDS = new Set(
+  "the and for with that this from into was were are has have had not but its when then than also only after before about there their they them what which who how why can could should would will does did our your you all any each more most some such too very just over under again once here where while".split(" "),
+);
 const RETRY_MS = 30_000;
 
 export interface Neo4jConfig {
@@ -278,7 +281,8 @@ export class Neo4jMemory implements MemoryStore {
 
   async recall(projectId: string, query: string, opts: { limit?: number; types?: string[] } = {}): Promise<Memory[]> {
     // Words only: Lucene's query syntax (quotes, wildcards, field:) never reaches the index from an agent.
-    const words = [...new Set(String(query).toLowerCase().match(/[\p{L}\p{N}_]{2,}/gu) ?? [])].slice(0, 20);
+    // Filler words ("the", "with") would match nearly every memory: only the words that carry meaning are searched.
+    const words = [...new Set(String(query).toLowerCase().match(/[\p{L}\p{N}_]{3,}/gu) ?? [])].filter((w) => !STOPWORDS.has(w)).slice(0, 20);
     if (!words.length) return [];
     const driver = await this.connected();
     const { records } = await driver.executeQuery(

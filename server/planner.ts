@@ -318,7 +318,9 @@ export class Planner {
       ]);
       const seen = new Map<string, Memory>();
       for (const m of lists.flat()) if (!seen.has(m.id)) seen.set(m.id, m);
-      const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified)).slice(0, 12);
+      // Certified first; then dead ends (the brief says not to repeat them), decisions, and the rest.
+      const rank = (m: Memory) => (m.type === "DeadEnd" ? 0 : m.type === "Decision" ? 1 : 2);
+      const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified) || rank(a) - rank(b)).slice(0, 12);
       return picked
         .map((m) => `- ${m.type}${m.certified ? " (certified)" : ""}${m.taskId ? `, from ${m.taskId}` : ""}: ${m.text}${m.about.length ? ` [${m.about.join(", ")}]` : ""} (${m.id})`)
         .join("\n");

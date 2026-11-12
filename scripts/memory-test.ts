@@ -417,6 +417,7 @@ try {
       return { error: !!r.isError, text: r.content.map((c) => c.text).join("") };
     };
     const DEAD = "Tokenizing with one big regex was too slow on 1 MB files";
+    await call("ghost", "remember", { type: "Lesson", text: "The lexer's tests live in test/lexer and run with pnpm test lexer", about: ["src/lexer.ts"] });
     const said = await call("ghost", "remember", { type: "DeadEnd", text: DEAD, about: ["src/lexer.ts"] });
     check("an agent remembers a dead end on its current task", !said.error && /uncertified/.test(said.text), said.text);
     // B1-T01 finishes: the planner writes its summary (planner-test covers both ways a task finishes).
@@ -431,6 +432,7 @@ try {
     };
     const followUp = await briefOf("devi");
     check("a follow-up task's brief carries the dead end of the task it builds on, unasked", followUp.includes("## Memory") && followUp.includes(DEAD) && followUp.includes("from B1-T01"), followUp);
+    check("dead ends come first among the brief's memories", followUp.indexOf(DEAD) < followUp.indexOf("tests live in test/lexer"));
     const sameFile = await briefOf("cipher");
     check("a task on the same file gets it too", sameFile.includes(DEAD));
     snap.tasks[2].status = "done";
@@ -438,9 +440,9 @@ try {
     check("an unrelated task's brief doesn't", !unrelated.includes(DEAD) && !unrelated.includes("## Memory"), unrelated);
 
     const recalled = JSON.parse((await call("devi", "recall", { query: "regex tokenizer slow" })).text) as { id: string; type: string }[];
-    check("recall over MCP finds it", recalled[0]?.type === "DeadEnd");
+    check("recall over MCP finds it", recalled.some((m) => m.type === "DeadEnd"));
     const rel = JSON.parse((await call("devi", "related", { path: "src/lexer.ts" })).text) as { id: string }[];
-    check("related over MCP finds it by file", rel.some((m) => m.id === recalled[0].id));
+    check("related over MCP finds it by file", rel.some((m) => m.id === recalled.find((x) => x.type === "DeadEnd")!.id));
     await call("devi", "remember", { type: "Lesson", text: "Rhea Thomas reviews every parser change before merge", taskId: "B1-T02" });
     await call("devi", "keep_out_of_memory", { name: "Rhea Thomas" });
     await e2e.flush();

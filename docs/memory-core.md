@@ -1,6 +1,6 @@
 # Memory core (Phase 2)
 
-What the team remembers across tasks, and how it is kept, searched, certified and forgotten. Builds on the Phase 1 `MemoryStore` and `ModelRunner` interfaces (`docs/core-model.md` section 8). Status: **owner's decisions taken 2026-11-12** (section 10); the `neo4j-driver` dependency waits for approval.
+What the team remembers across tasks, and how it is kept, searched, certified and forgotten. Builds on the Phase 1 `MemoryStore` and `ModelRunner` interfaces (`docs/core-model.md` section 8). Status: **built locally 2026-11-13**, waiting for the owner's approval (decisions in section 10). The Tailscale half of 2.9 and a real Haiku extraction run are not checked yet.
 
 ## 1. What changes
 
@@ -104,7 +104,7 @@ interface MemoryStore {          // Phase 1 methods stay as they are
 2. **Ledgers move into Neo4j.** Accepted cost: while Neo4j is down the lead can't read its ledger; writes queue.
 3. **Recall is full-text only** this phase. No embedding provider.
 4. **Forget project leaves no backup of it.** Done by deleting that project's backup files, possible because backups are per project.
-5. **Open:** the new dependency `neo4j-driver` (Apache-2.0).
+5. **New dependency** `neo4j-driver` 6.3.0 (Apache-2.0), approved by the owner on 2026-11-12.
 
 ## 11. Work order
 
