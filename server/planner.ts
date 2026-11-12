@@ -1,14 +1,14 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus, type Tokens } from "../src/data/types";
+import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
 import { HISTORY, type Inbox } from "./inbox";
 import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
-import { diff } from "./usage";
+import { taskUsage } from "./usageEvents";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 import { assertTaskMove, gateContext, recordGate } from "./planStore";
 import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
@@ -37,21 +37,12 @@ export class Planner {
   /** Set by project.ts: security findings (Team MCP report_finding). */
   findings: Findings | null = null;
 
-  /** An agent's token total right now (set by the project; null when its CLI's logs can't be read). */
-  usageOf: (agentId: string) => Tokens | null = () => null;
 
   constructor(private hub: Hub, private inbox: Inbox) {}
 
-  private meterStart(task: Task) {
-    const now = task.ownerId ? this.usageOf(task.ownerId) : null;
-    if (now && !task.usageStart) task.usageStart = now;
-  }
-
+  /** The tokens recorded against this task while it was its owner's current task. */
   private meterEnd(task: Task) {
-    const start = task.usageStart;
-    const now = task.ownerId ? this.usageOf(task.ownerId) : null;
-    if (start && now) task.usage = diff(now, start);
-    delete task.usageStart;
+    task.usage = taskUsage(hqDb(), this.snap.config.project.id).get(task.id) ?? null;
   }
 
   private get snap() {
@@ -253,7 +244,6 @@ export class Planner {
     task.note = note?.slice(0, 300) || (status === "done" ? task.note ?? null : null);
     if (prNumber) task.prNumber = prNumber;
     if (deliverablePath) task.deliverablePath = deliverablePath.slice(0, 300);
-    if (status === "in-progress") this.meterStart(task);
     if (status === "done") this.meterEnd(task);
     if (status === "done") this.hub.setStatus(agentId, { currentTaskId: null });
     else this.hub.setStatus(agentId, { currentTaskId: task.id });

@@ -173,9 +173,10 @@ interface UsageEvent {
 }
 ```
 
-- `UsageMeter` already reads totals from the CLI logs. It records the **delta** since its last read as one event, per model (Claude Code logs carry the model per message).
-- `server/prices.ts`: one price table per provider and model, dated. Estimates only; the provider's bill is the truth.
-- Stage E (spend caps, Phase 3.7) sums this table. Nothing else keeps a token count.
+- `UsageMeter.readByModel` reads totals per model from the CLI logs (Claude Code logs the model per message; a Codex rollout names its model once). Only Claude Code and Codex logs are metered today.
+- Every 30-second poll, `recordMeter` (`server/usageEvents.ts`) writes what grew since the last **mark** (`usage_marks`, per project, agent and model) as one event per model, tagged with the agent's current task. The mark always moves to the new totals, so logs that shrink restart the count instead of hiding new work. The first poll after an agent's logs appear records everything they already hold.
+- `server/prices.ts`: Anthropic's prices as of 2026-11-03, with Claude Code's aliases (`opus`, `sonnet`…). Estimates only; the provider's bill is the truth. A model without a row (GPT, Gemini) gets `costUsd: null`, never a guess. Cache writes count at the plain input rate, and Haiku 5.5's long-prompt rate isn't applied.
+- A task's usage is the sum of its events; tasks no longer store start and end snapshots. `spend()` sums tokens and cost by project or account for the Phase 3 caps. Nothing else keeps a token count.
 
 ## 7. Ledgers and memory (1.5, 1.7)
 

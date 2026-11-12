@@ -245,10 +245,8 @@ export interface Task {
   cli?: AgentCli | null;
   /** Preferred model for the task (applied when the agent next starts). */
   model?: string | null;
-  /** Tokens its owner used between starting and finishing it. */
+  /** Tokens recorded against it while it was its owner's current task (usage events). */
   usage?: Tokens | null;
-  /** Persisted baseline while running, so HQ restarts preserve task usage. */
-  usageStart?: Tokens | null;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";

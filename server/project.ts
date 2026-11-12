@@ -27,7 +27,23 @@ import { loadConfig, loadPlan, slugOf } from "./store";
 import { containerLogHome } from "./containers";
 import { LoopGuard, toolEvent } from "./loopguard";
 import { resolveUserSkillFolders } from "./skills";
-import { UsageMeter } from "./usage";
+import { sumModels, UsageMeter } from "./usage";
+import { recordMeter } from "./usageEvents";
+import { hqDb } from "./lib/db";
+import { accounts } from "./credentials/registry";
+import type { Provider } from "../src/data/providers";
+import type { AgentCli } from "../src/data/types";
+
+/** The CLIs whose logs HQ can meter, and whose model provider they bill. */
+const METERED: Partial<Record<AgentCli, Provider>> = { claude: "anthropic", codex: "openai" };
+/** An API-key or cloud account's provider; null for a subscription sign-in. */
+const accountProvider = (id: string): Provider | null => {
+  try {
+    return accounts().get(id)?.provider ?? null;
+  } catch {
+    return null; // vault not open: fall back to the CLI's provider
+  }
+};
 import { workspaceFor } from "./workspace";
 
 export interface Runtime {
@@ -145,11 +161,12 @@ export async function startProject(path: string, port: number, paused: boolean):
   void mcp.refresh();
   const planner = new Planner(hub, inbox);
   const meter = new UsageMeter();
-  const usageOf = (id: string) => {
+  const byModelOf = (id: string) => {
     const a = hub.cfg(id);
-    return a ? meter.read(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), a.mode === "container" ? containerLogHome(sessionName(slug, a.id)) : accountHome(a.cli, accountOf(a))) : null;
+    if (!a) return null;
+    const home = a.mode === "container" ? containerLogHome(sessionName(slug, a.id)) : accountHome(a.cli, accountOf(a));
+    return meter.readByModel(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), home, a.model || a.cli);
   };
-  planner.usageOf = usageOf;
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
   inbox.isStale = (agentId, taskId) => {
     const t = planner.task(taskId);
@@ -158,8 +175,17 @@ export async function startProject(path: string, port: number, paused: boolean):
   const refreshUsage = () => {
     planner.checkStalls(Date.now());
     for (const a of hub.snap.config.team) {
-      const u = usageOf(a.id);
+      const m = byModelOf(a.id);
+      const u = m && sumModels(m);
       if (JSON.stringify(u) !== JSON.stringify(hub.status(a.id)?.usage ?? null)) hub.setStatus(a.id, { usage: u });
+      const provider = METERED[a.cli];
+      if (!m || !provider) continue;
+      const account = accountOf(a);
+      try {
+        recordMeter(hqDb(), { projectId: slug, agentId: a.id, taskId: hub.status(a.id)?.currentTaskId ?? null, account, provider: accountProvider(account) ?? provider, cli: a.cli }, m);
+      } catch (err) {
+        log.warn(`couldn't record usage for ${a.id}: ${err instanceof Error ? err.message : err}`);
+      }
     }
   };
   const guard = new LoopGuard(

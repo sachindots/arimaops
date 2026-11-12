@@ -24,32 +24,49 @@ export const diff = (now: Tokens, before: Tokens): Tokens => ({
 /** Claude Code names a project's log folder after its path, every non-alphanumeric character as "-". */
 export const claudeDirKey = (path: string) => path.replace(/[^a-zA-Z0-9]/g, "-");
 
-/** Sum of a Claude Code transcript. A message can be logged more than once while it streams: count each id once. */
-export function claudeTokens(jsonl: string): Tokens {
-  const seen = new Map<string, Tokens>();
+/** Totals per model, and the sum of several. */
+export type ByModel = Record<string, Tokens>;
+export const sumModels = (m: ByModel): Tokens => Object.values(m).reduce(add, ZERO);
+const addTo = (m: ByModel, model: string, t: Tokens) => void (m[model] = add(m[model] ?? ZERO, t));
+
+/** A Claude Code transcript per model. A message can be logged more than once while it streams: count each id once. */
+export function claudeByModel(jsonl: string): ByModel {
+  const seen = new Map<string, { model: string; t: Tokens }>();
   for (const line of jsonl.split("\n")) {
     if (!line.includes('"usage"')) continue;
     try {
-      const m = (JSON.parse(line) as { message?: { id?: string; usage?: Record<string, number> } }).message;
+      const m = (JSON.parse(line) as { message?: { id?: string; model?: string; usage?: Record<string, number> } }).message;
       const u = m?.usage;
       if (!u) continue;
       seen.set(m.id ?? `line${seen.size}`, {
-        input: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0),
-        cached: u.cache_read_input_tokens ?? 0,
-        output: u.output_tokens ?? 0,
+        model: m.model || "unknown",
+        t: { input: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), cached: u.cache_read_input_tokens ?? 0, output: u.output_tokens ?? 0 },
       });
     } catch {
       /* a line still being written */
     }
   }
-  return [...seen.values()].reduce(add, ZERO);
+  const out: ByModel = {};
+  for (const { model, t } of seen.values()) addTo(out, model, t);
+  return out;
 }
 
+/** Sum of a Claude Code transcript. */
+export const claudeTokens = (jsonl: string): Tokens => sumModels(claudeByModel(jsonl));
+
 /** A Codex rollout's folder (from session_meta) and its final running total. */
-export function codexRollout(jsonl: string): { cwd: string | null; tokens: Tokens } {
+export function codexRollout(jsonl: string): { cwd: string | null; model: string | null; tokens: Tokens } {
   let cwd: string | null = null;
+  let model: string | null = null;
   let tokens = ZERO;
   for (const line of jsonl.split("\n")) {
+    if (!model && line.includes('"model"') && (line.includes('"turn_context"') || line.includes('"session_meta"'))) {
+      try {
+        model = (JSON.parse(line) as { payload?: { model?: string } }).payload?.model || null;
+      } catch {
+        /* ignore */
+      }
+    }
     if (!cwd && line.includes('"session_meta"')) {
       try {
         cwd = (JSON.parse(line) as { payload?: { cwd?: string } }).payload?.cwd ?? null;
@@ -67,7 +84,7 @@ export function codexRollout(jsonl: string): { cwd: string | null; tokens: Token
       /* ignore */
     }
   }
-  return { cwd, tokens };
+  return { cwd, model, tokens };
 }
 
 const jsonlIn = (dir: string) =>
@@ -91,11 +108,26 @@ export class UsageMeter {
   /** Total tokens an agent's CLI has used in `dir` (its workspace), or null when HQ can't read that CLI's logs. */
   /** `cliHome`: another account's config folder (CLAUDE_CONFIG_DIR / CODEX_HOME); null = the CLI's usual one. */
   read(cli: AgentCli, dir: string, cliHome: string | null = null): Tokens | null {
+    const m = this.readByModel(cli, dir, cliHome);
+    return m && sumModels(m);
+  }
+
+  /** The same totals per model. Codex logs without a model name count under `fallbackModel`. */
+  readByModel(cli: AgentCli, dir: string, cliHome: string | null = null, fallbackModel = "unknown"): ByModel | null {
     // The same folder under its earlier paths (~/.hq before the move to ~/.arima): the CLIs filed those logs by path.
     const dirs = [dir, ...LEGACY_HOMES.map((h) => dir.replace(`/${BRAND.homeDir}/`, `/${h}/`)).filter((d) => d !== dir)];
     try {
-      if (cli === "claude") return dirs.flatMap((d) => jsonlIn(join(cliHome ?? join(this.home, ".claude"), "projects", claudeDirKey(d)))).map((f) => this.cached(f, claudeTokens)).reduce(add, ZERO);
-      if (cli === "codex") return this.codexFiles(cliHome).map((f) => this.cached(f, codexRollout)).filter((r) => !!r.cwd && dirs.includes(r.cwd)).map((r) => r.tokens).reduce(add, ZERO);
+      const out: ByModel = {};
+      if (cli === "claude") {
+        for (const f of dirs.flatMap((d) => jsonlIn(join(cliHome ?? join(this.home, ".claude"), "projects", claudeDirKey(d)))))
+          for (const [model, t] of Object.entries(this.cached(f, claudeByModel))) addTo(out, model, t);
+        return out;
+      }
+      if (cli === "codex") {
+        for (const r of this.codexFiles(cliHome).map((f) => this.cached(f, codexRollout)))
+          if (r.cwd && dirs.includes(r.cwd)) addTo(out, r.model ?? fallbackModel, r.tokens);
+        return out;
+      }
     } catch {
       /* unreadable log: treat as unknown */
     }

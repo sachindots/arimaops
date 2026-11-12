@@ -4,8 +4,9 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { Actor, GateEvent, GateState, TeamTemplate } from "../src/data/model";
-import type { Board, HqConfig, PullRequest, Task, Tokens } from "../src/data/types";
+import type { Board, HqConfig, PullRequest, Task } from "../src/data/types";
 import { hqDb } from "./lib/db";
+import { taskUsage } from "./usageEvents";
 import { tx } from "./lib/docs";
 import { assertGates, OBSERVED_GATES, PERSON_GATES, type GateContext } from "./gates";
 
@@ -18,16 +19,14 @@ interface TaskRow {
   id: string; board_id: string; stage_id: string; title: string; owner_id: string | null; status: Task["status"];
   needs: string; files: string; description: string | null; done_when: string | null; note: string | null;
   pr_number: number | null; deliverable_path: string | null; cli: Task["cli"]; model: string | null;
-  usage: string | null; usage_start: string | null;
 }
-
-const json = <T>(v: string | null): T | null => (v ? (JSON.parse(v) as T) : null);
 
 /** The project's plan, or null before its first save. */
 export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | null {
   const boards = (db.prepare("SELECT id, title, status, ord FROM boards WHERE project_id = ? ORDER BY ord, id").all(projectId) as { id: string; title: string; status: Board["status"]; ord: number }[])
     .map((b) => ({ id: b.id, title: b.title, status: b.status, order: b.ord }));
   if (!boards.length) return null;
+  const used = taskUsage(db, projectId);
   const tasks = (db.prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY rowid").all(projectId) as unknown as TaskRow[]).map(
     (r): Task => ({
       id: r.id,
@@ -45,8 +44,7 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       deliverablePath: r.deliverable_path,
       cli: r.cli,
       model: r.model,
-      usage: json<Tokens>(r.usage),
-      usageStart: json<Tokens>(r.usage_start),
+      usage: used.get(r.id) ?? null,
     }),
   );
   return { boards, tasks };
@@ -60,12 +58,11 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
      ON CONFLICT (project_id, id) DO UPDATE SET title = excluded.title, status = excluded.status, ord = excluded.ord`,
   );
   const task = db.prepare(
-    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, usage, usage_start, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (project_id, id) DO UPDATE SET board_id = excluded.board_id, stage_id = excluded.stage_id, title = excluded.title, owner_id = excluded.owner_id,
        status = excluded.status, needs = excluded.needs, files = excluded.files, description = excluded.description, done_when = excluded.done_when, note = excluded.note,
-       pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, usage = excluded.usage,
-       usage_start = excluded.usage_start, updated_at = excluded.updated_at`,
+       pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, updated_at = excluded.updated_at`,
   );
   const keep = (ids: string[]) => JSON.stringify(ids);
   tx(db, () => {
@@ -73,8 +70,7 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
     for (const t of plan.tasks)
       task.run(
         projectId, t.id, t.boardId, t.stageId ?? firstStage, t.title, t.ownerId, t.status, JSON.stringify(t.needs ?? []), JSON.stringify(t.files ?? []),
-        t.description ?? null, t.doneWhen ?? null, t.note ?? null, t.prNumber ?? null, t.deliverablePath ?? null, t.cli ?? null, t.model ?? null,
-        t.usage ? JSON.stringify(t.usage) : null, t.usageStart ? JSON.stringify(t.usageStart) : null, now,
+        t.description ?? null, t.doneWhen ?? null, t.note ?? null, t.prNumber ?? null, t.deliverablePath ?? null, t.cli ?? null, t.model ?? null, now,
       );
     db.prepare("DELETE FROM tasks WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.tasks.map((t) => t.id)));
     db.prepare("DELETE FROM boards WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.boards.map((b) => b.id)));

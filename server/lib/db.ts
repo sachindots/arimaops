@@ -54,8 +54,6 @@ export const MIGRATIONS: readonly string[] = [
     deliverable_path TEXT,
     cli TEXT,
     model TEXT,
-    usage TEXT,
-    usage_start TEXT,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (project_id, id),
     FOREIGN KEY (project_id, board_id) REFERENCES boards (project_id, id) ON DELETE CASCADE
@@ -136,6 +134,18 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX usage_project ON usage_events (project_id, at);
   CREATE INDEX usage_account ON usage_events (account, at);
+  CREATE INDEX usage_task ON usage_events (project_id, task_id);
+
+  -- The meter totals HQ last turned into events, per agent and model; the next read records only what's new.
+  CREATE TABLE usage_marks (
+    project_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input INTEGER NOT NULL,
+    cached INTEGER NOT NULL,
+    output INTEGER NOT NULL,
+    PRIMARY KEY (project_id, agent_id, model)
+  );
   `,
 ];
 
