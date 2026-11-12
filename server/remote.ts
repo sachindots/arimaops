@@ -26,6 +26,7 @@ export const RISKY_COMMANDS = new Set([
   "removeAgent",
   "updateAgent",
   "updateRole",
+  "recordGate",
   "updateProjectTemplate",
   "resyncTemplate",
   "saveTemplate",

@@ -243,6 +243,8 @@ export type TaskStatus = "todo" | "in-progress" | "in-review" | "done" | "blocke
 export interface Task {
   id: string; // "P3-T02"
   boardId: string;
+  /** Where the task is in its template's flow; missing in projects made before templates. */
+  stageId?: string;
   title: string;
   ownerId: string | null;
   status: TaskStatus;

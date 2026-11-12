@@ -119,6 +119,15 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     // You → agent: same delivery path as the lead's assign_task / send_message.
     assignTask: (taskId, agentId) => planner.assign(str(taskId, 40), str(agentId, 80), "you"),
     updateFinding: (id, patch) => planner.findings?.update(str(id, 20), (patch ?? {}) as Record<string, unknown>),
+    recordGate: (taskId, gateId, state, note) => {
+      const s = state === "passed" || state === "failed" || state === "waived" || state === "reset" ? state : null;
+      if (!s) return;
+      try {
+        planner.recordGate(str(taskId, 40), str(gateId, 40), s, "you", { note: str(note, 300) || undefined });
+      } catch (e) {
+        hub.activity("config", null, e instanceof Error ? e.message : String(e));
+      }
+    },
     setTaskRunsOn: (taskId, cli, model) =>
       planner.updateTask(str(taskId, 40), { cli: isAgentCli(cli) ? cli : null, model: typeof model === "string" && model.trim() ? str(model, 80) : null }),
     sendMessage: (toId, text) => planner.message("you", str(toId, 80), str(text, 2000)),
@@ -391,6 +400,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       hub.snap.tasks = template.starter.tasks.map((x) => ({
         id: x.id,
         boardId: x.boardId,
+        stageId: x.stageId,
         title: x.title,
         ownerId: null,
         status: "todo",

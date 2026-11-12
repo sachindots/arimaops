@@ -5,6 +5,9 @@ import { join } from "node:path";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-plan-"));
 const { Planner } = await import("../server/planner");
+const { BLANK_TEMPLATE } = await import("../src/data/templates");
+// Review off, as this test had it: a task finishes once its file is delivered.
+const template = { ...BLANK_TEMPLATE, flow: { stages: [{ ...BLANK_TEMPLATE.flow.stages[0], gates: [{ id: "delivered", kind: "file-delivered" as const }] }] } };
 
 let fails = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -13,11 +16,11 @@ const check = (name: string, ok: boolean, detail = "") => {
 };
 
 const team = [
-  { id: "cipher", name: "Cipher", isLead: true, cli: "codex", model: "" },
-  { id: "nyx", name: "Nyx", isLead: false, cli: "codex", model: "" },
+  { id: "cipher", name: "Cipher", roleId: "lead", isLead: true, cli: "codex", model: "" },
+  { id: "nyx", name: "Nyx", roleId: "lead", isLead: false, cli: "codex", model: "" },
 ];
 const statuses = new Map<string, Record<string, unknown>>(team.map((a) => [a.id, { agentId: a.id, currentTaskId: null, session: { state: "running" } }]));
-const snap = { config: { team, workflow: { mode: "deliverables", review: { enabled: false } }, project: {} }, boards: [], tasks: [], messages: [], agents: [...statuses.values()] };
+const snap = { config: { team, template, workflow: { mode: "deliverables", review: { enabled: false } }, project: { id: "plan-test" } }, boards: [], tasks: [], messages: [], agents: [...statuses.values()] };
 const hub = {
   slug: "t", repo: { root: "/nonexistent" }, snap,
   cfg: (id: string) => team.find((a) => a.id === id),

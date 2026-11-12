@@ -9,11 +9,12 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
 import type { Board, HqConfig, ProjectOverview, Task, TaskStatus } from "../src/data/types";
+import type { TeamTemplate } from "../src/data/model";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
 import { loadConfig, loadPlan, resolveSaved, saveConfig, savePlan } from "./store";
-import { assertTaskCompletion } from "./taskCompletion";
+import { assertTaskMove } from "./planStore";
 
 export interface RegistryEntry {
   id: string;
@@ -141,7 +142,7 @@ export function registerProjectPath(rawPath: string, create = false): ProjectOve
     );
     cfg = loaded.config;
     saveConfig(cleanPath, cfg);
-    savePlan(cleanPath, loadPlan(cleanPath));
+    savePlan(cleanPath, loadPlan(cleanPath, cfg), cfg);
   }
   registerProjectInRegistry(cleanPath, cfg);
   const all = listProjectsOverview();
@@ -205,7 +206,7 @@ export function listProjectsOverview(): ProjectOverview[] {
 
     const cfg = readRepoConfig(p);
     if (!cfg) continue;
-    const plan = loadPlan(p);
+    const plan = loadPlan(p, cfg);
     out.push({
       id: slugify(cfg.project.id || cfg.project.name || entry.id),
       name: cfg.project.name || entry.name,
@@ -240,7 +241,8 @@ export function listProjectsOverview(): ProjectOverview[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function resolveTargetProject(projectIdOrName: string): { live?: LiveProject; path: string; config: HqConfig } {
+/** A project another project's lead may change. Projects made before templates are read-only. */
+function resolveTargetProject(projectIdOrName: string): { live?: LiveProject; path: string; config: HqConfig & { template: TeamTemplate } } {
   const q = projectIdOrName.trim().toLowerCase();
   const projects = listProjectsOverview();
   const match = projects.find(
@@ -250,10 +252,10 @@ function resolveTargetProject(projectIdOrName: string): { live?: LiveProject; pa
     throw new Error(`Project "${projectIdOrName}" not found. Known projects: ${projects.map((p) => `${p.id} (${p.name})`).join(", ") || "none"}`);
   }
   const loaded = live.get(resolve(match.path));
-  if (loaded) return { live: loaded, path: match.path, config: loaded.hub.snap.config };
-  const cfg = readRepoConfig(match.path);
+  const cfg = loaded ? loaded.hub.snap.config : readRepoConfig(match.path);
   if (!cfg) throw new Error(`Could not read config for project "${match.name}" at ${match.path}`);
-  return { path: match.path, config: cfg };
+  if (!cfg.template) throw new Error(`${match.name} was made before templates and is read-only.`);
+  return { live: loaded, path: match.path, config: { ...cfg, template: cfg.template } };
 }
 
 /** Creates a task in any registered project (live via Planner if current, or directly in `<projectPath>/.arima/plan.json`). */
@@ -284,7 +286,7 @@ export function createCrossProjectTask(
     return task;
   }
 
-  const plan = loadPlan(target.path);
+  const plan = loadPlan(target.path, target.config);
   let board: Board | undefined = args.boardId
     ? plan.boards.find((b) => b.id === args.boardId)
     : plan.boards.find((b) => b.status === "active") ?? plan.boards[0];
@@ -315,8 +317,8 @@ export function createCrossProjectTask(
     ...(args.files?.length ? { files: args.files } : {}),
     ...(args.doneWhen ? { doneWhen: args.doneWhen } : {}),
   };
-  plan.tasks.push(task);
-  savePlan(target.path, plan);
+  plan.tasks.push({ ...task, stageId: target.config.template.flow.stages[0].id });
+  savePlan(target.path, plan, target.config);
   registerProjectInRegistry(target.path, target.config);
   return task;
 }
@@ -362,10 +364,13 @@ export function updateCrossProjectTask(
     return t;
   }
 
-  const plan = loadPlan(target.path);
+  const plan = loadPlan(target.path, target.config);
   const task = plan.tasks.find((t) => t.id.toLowerCase() === taskId.trim().toLowerCase());
   if (!task) throw new Error(`Task "${taskId}" not found in project "${target.config.project.name}".`);
-  if (patch.status === "done" && task.status !== "done") assertTaskCompletion({ ...task, ...patch }, target.config.workflow, [], reviewerId);
+  if (patch.status === "done" && task.status !== "done") {
+    assertTaskMove(target.config, { ...task, ...patch }, null, reviewerId, []);
+    task.stageId = target.config.template.flow.stages.at(-1)!.id;
+  }
   if (patch.title !== undefined) task.title = patch.title;
   if (patch.description !== undefined) task.description = patch.description;
   if (patch.doneWhen !== undefined) task.doneWhen = patch.doneWhen;
@@ -381,7 +386,7 @@ export function updateCrossProjectTask(
       task.ownerId = matched ? matched.id : patch.ownerId;
     }
   }
-  savePlan(target.path, plan);
+  savePlan(target.path, plan, target.config);
   registerProjectInRegistry(target.path, target.config);
   return task;
 }

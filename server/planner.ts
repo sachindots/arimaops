@@ -10,7 +10,10 @@ import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
 import { diff } from "./usage";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
-import { assertTaskCompletion } from "./taskCompletion";
+import { assertTaskMove, gateContext, recordGate } from "./planStore";
+import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
+import { hqDb } from "./lib/db";
+import type { GateState } from "../src/data/model";
 
 export interface NewTask {
   boardId?: string;
@@ -23,7 +26,7 @@ export interface NewTask {
   model?: string | null;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId">>;
 
 const now = () => new Date().toISOString();
 
@@ -83,7 +86,36 @@ export class Planner {
 
   // ------------------------------------------------------------ boards
 
+  /** Projects made before templates are read-only: their plan never changes, whoever asks. */
+  private writable() {
+    if (!this.snap.config.template) throw new Error("This project was made before templates and is read-only.");
+    return this.snap.config.template;
+  }
+
+  /** Throws with every unmet gate when the task can't move to `toStageId` (null: finish it). */
+  private assertMove(task: Task, toStageId: string | null, byId: string) {
+    assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? []);
+  }
+
+  /** What still stands between `byId` finishing this task: the unmet gates of its stage and the ones after it. */
+  openGates(task: Task, byId: string): UnmetGate[] {
+    const t = this.snap.config.template;
+    if (!t) return [];
+    return unmetGates(stagesLeft(t.flow, task.stageId, null), gateContext(this.snap.config, task, byId, this.snap.pullRequests ?? []));
+  }
+
+  /** Records gate evidence from an agent (its id) or a person ("you"). */
+  recordGate(taskId: string, gateId: string, state: GateState, byId: string, proof: { url?: string; note?: string } = {}) {
+    const template = this.writable();
+    const task = this.task(taskId);
+    if (!task) throw new Error(`No task ${taskId}`);
+    const by = byId === "you" ? ({ kind: "user", id: byId } as const) : ({ kind: "agent", id: byId } as const);
+    recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state, by, proof });
+    this.hub.activity(state === "passed" ? "review.passed" : state === "failed" ? "review.changes" : "config", byId === "you" ? null : byId, `${this.hub.name(byId)} marked gate ${gateId} of ${task.id} ${state}${proof.note ? `: ${proof.note.slice(0, 120)}` : ""}`);
+  }
+
   createBoard(title: string, status: Board["status"] = "planned"): Board {
+    this.writable();
     const clean = title.trim().slice(0, 80) || "Board";
     const base = clean.split(/\s+/).map((w) => w[0]).join("").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 3) || "B";
     let id = base;
@@ -96,6 +128,7 @@ export class Planner {
   }
 
   updateBoard(id: string, patch: Partial<Pick<Board, "title" | "status">>) {
+    this.writable();
     const board = this.snap.boards.find((b) => b.id === id);
     if (!board) throw new Error(`No board ${id}`);
     if (patch.title?.trim()) board.title = patch.title.trim().slice(0, 80);
@@ -108,13 +141,14 @@ export class Planner {
   // ------------------------------------------------------------ tasks
 
   createTask(input: NewTask, byId: string): Task {
+    const template = this.writable();
     const board = input.boardId ? this.snap.boards.find((b) => b.id === input.boardId) : this.defaultBoard();
     if (!board) throw new Error(`No board ${input.boardId}. Boards: ${this.snap.boards.map((b) => b.id).join(", ")}`);
     let n = this.snap.tasks.filter((t) => t.boardId === board.id).length + 1;
     let id = `${board.id}-T${String(n).padStart(2, "0")}`;
     while (this.task(id)) id = `${board.id}-T${String(++n).padStart(2, "0")}`;
     const task: Task = {
-      id, boardId: board.id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
+      id, boardId: board.id, stageId: template.flow.stages[0].id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
     };
@@ -126,11 +160,19 @@ export class Planner {
   }
 
   updateTask(id: string, patch: TaskPatch, reviewerId = "you"): Task {
+    const flow = this.writable().flow;
     const task = this.task(id);
     if (!task) throw new Error(`No task ${id}`);
     const wasDone = task.status === "done";
-    const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
-    if (patch.status === "done" && !wasDone) assertTaskCompletion({ ...task, ...changes }, this.snap.config.workflow, this.snap.pullRequests ?? [], reviewerId);
+    const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as TaskPatch;
+    const next = { ...task, ...changes, stageId: task.stageId };
+    const at = (id?: string) => flow.stages.findIndex((s) => s.id === id);
+    if (changes.stageId !== undefined && at(changes.stageId) < 0) throw new Error(`No stage "${changes.stageId}". Stages: ${flow.stages.map((s) => s.id).join(", ")}.`);
+    if (changes.stageId !== undefined && at(changes.stageId) > at(task.stageId)) this.assertMove(next, changes.stageId, reviewerId);
+    if (changes.status === "done" && !wasDone) {
+      this.assertMove(next, null, reviewerId);
+      changes.stageId = flow.stages.at(-1)!.id; // finishing leaves every stage
+    }
     Object.assign(task, changes);
     if (task.status === "done" && !wasDone) {
       this.meterEnd(task);
@@ -146,6 +188,7 @@ export class Planner {
 
   /** Gives a task to an agent and tells them to start. */
   assign(taskId: string, agentRef: string, byId: string): Task {
+    this.writable();
     const task = this.task(taskId);
     const agentId = this.agentId(agentRef);
     if (!task) throw new Error(`No task ${taskId}`);
@@ -198,9 +241,13 @@ export class Planner {
   }
 
   setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number, deliverablePath?: string): Task {
+    const flow = this.writable().flow;
     const task = this.currentTask(agentId);
     if (!task) throw new Error("You have no task. Ask the lead for one.");
-    if (status === "done") assertTaskCompletion({ ...task, status, note: note ?? task.note, prNumber: prNumber ?? task.prNumber, deliverablePath: deliverablePath ?? task.deliverablePath }, this.snap.config.workflow, this.snap.pullRequests ?? [], agentId);
+    if (status === "done") {
+      this.assertMove({ ...task, status, note: note ?? task.note, prNumber: prNumber ?? task.prNumber, deliverablePath: deliverablePath ?? task.deliverablePath }, null, agentId);
+      task.stageId = flow.stages.at(-1)!.id;
+    }
     if (status === "in-progress" && this.waitingOn(task).length) throw new Error(`Wait for ${this.waitingOn(task).join(", ")} before starting this task.`);
     task.status = status;
     task.note = note?.slice(0, 300) || (status === "done" ? task.note ?? null : null);

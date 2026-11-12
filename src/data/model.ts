@@ -3,7 +3,7 @@
 // gates, findings, ledgers, usage events and briefs. Storage is in server/lib/db.ts.
 
 import type { Provider } from "./providers";
-import type { AgentCli, AgentMode, Board, FindingStatus, SandboxSettings, Severity, TaskStatus, Tokens } from "./types";
+import type { AgentCli, AgentMode, Board, FindingStatus, SandboxSettings, Severity, Task, Tokens } from "./types";
 import { AGENT_CLIS, isAgentCli } from "./types";
 
 // ── Team template (1.1) ──
@@ -145,25 +145,6 @@ export interface GateEvent {
   at: string;
 }
 
-/** A task of a template-based project. */
-export interface FlowTask {
-  id: string;
-  boardId: string;
-  stageId: string;
-  title: string;
-  ownerId: string | null;
-  status: TaskStatus;
-  needs: string[];
-  files: string[];
-  description: string | null;
-  doneWhen: string | null;
-  note: string | null;
-  prNumber: number | null;
-  deliverablePath: string | null;
-  cli: AgentCli | null;
-  model: string | null;
-}
-
 // ── Finding (1.3) ──
 
 export const ASSET_KINDS = ["url", "host", "ip", "repo", "cloud", "app"] as const;
@@ -254,7 +235,7 @@ export interface LedgerEntry {
 export const BRIEF_BUDGET = 4000; // tokens
 
 export interface BriefInput {
-  task: Pick<FlowTask, "id" | "title" | "description" | "files" | "doneWhen">;
+  task: Pick<Task, "id" | "title" | "description" | "files" | "doneWhen">;
   spec: string;
   handoffs: { taskId: string; by: string | null; note: string }[];
   ledger: Pick<LedgerEntry, "kind" | "text">[];

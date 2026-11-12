@@ -7,7 +7,7 @@ The data shapes every later phase builds on, designed once (ROADMAP rule 1). Sta
 | Today | After Phase 1 |
 |---|---|
 | Personas (`src/data/personas.ts`), persona domains, departments and pods, org presets, project types (`src/data/roles.ts`, `types.ts`) | **Deleted.** A project runs one **team template**: roles, a flow, a starter board, tool and scope rules, memory node types. |
-| `WorkflowMode` (`github-pr` / `deliverables`) and `assertTaskCompletion` | A **flow** of stages, each with **gates**. `checkGates` replaces `taskCompletion.ts`. Today's two modes become two flows. |
+| `WorkflowMode` (`github-pr` / `deliverables`) and `assertTaskCompletion` | A **flow** of stages, each with **gates**. `server/gates.ts` replaces `taskCompletion.ts`. Today's two modes become two flows. |
 | `Finding` with severity, target, free-text evidence | One finding schema with CVSS 4.0, SSVC, ATT&CK, D3FEND, WSTG, CWE, asset, evidence list, verified flag. Six exports read it. |
 | `planner.brief()` returns handoffs and facts | `buildBrief()`, one function, about 4k tokens, fixed sections. |
 | Token totals per agent, in memory | `usage_events` table: every model run, with account, model, tokens and estimated cost. |
@@ -118,7 +118,11 @@ interface GateEvent {        // one row of gate_events
 ```
 
 - `Task` gains `stageId`. `status` stays (todo, in-progress, in-review, done, blocked): stage says where the task is in the flow, status says what is happening inside the stage.
-- `checkGates(task, stage, events): UnmetGate[]` is pure and replaces `assertTaskCompletion`. A task moves to the next stage, or to done after the last one, only when the list is empty. The server records evidence it can see itself (PR merged, CI green, file exists) as `by: hq`; people and agents record the rest.
+- `server/gates.ts` is pure: `gateProblem` says why one gate isn't met, `unmetGates` lists them for a set of stages, `assertGates` throws with all of them. It replaces `assertTaskCompletion`.
+- **Moving and finishing.** A new task starts in the first stage. Moving it forward needs the gates of the stages it leaves; moving back is free. Finishing it needs the gates of its stage and every stage after, and puts it in the last stage. The planner enforces this for people, agents, GitHub sync and other projects' leads alike.
+- **Observed gates.** HQ checks `pr-merged`, `file-delivered` and `scope-set` itself; nobody records evidence for them. The rest need a `gate_events` row: agents record theirs with the `record_gate` tool, people with the `recordGate` command. Only a person passes `owner-approval` and `spec-approved`, and only a person waives a gate. Nobody passes the review of their own task.
+- `workflow.mode` stays, derived from the flow (a `pr-merged` gate means pull requests), because it still words the agents' instructions. The Phase 3 gate engine replaces it.
+- **Not yet in the UI.** Gate states show to agents (`get_my_task` lists the gates a task still needs) but not in the browser; the flow canvas (Phase 5) shows and approves them. The built-in templates have no person-only gates, so nothing waits on that UI yet.
 - Events are append-only, so a lead's approval (Phase 3) is undone by a `reset` row and the history stays.
 - Phase 1 builds the check and the evidence store. Phase 3 builds the engine that collects evidence automatically for every gate kind.
 
@@ -250,7 +254,7 @@ Each step is one commit on a branch and ends with `pnpm build` and `pnpm test` g
 | 2 | `src/data/model.ts`: every type above, plus `validateTemplate` | Bad templates rejected: no lead, two leads, unknown role in a stage, duplicate gate ids |
 | 3 | Built-in `dev` and `blank` templates; template library and project copy on the server | A new project from `dev` starts its seats with the role's CLI and model |
 | 4 | Delete personas, domains, departments, pods, presets and project types; agents become seats; legacy read-only; template picker in the welcome flow; office groups by role | `grep` finds none of the five; an old project opens read-only and refuses edits |
-| 5 | Flow and gates: `checkGates`, `gate_events`, tasks in tables with `stageId` | Every gate kind has a passing and a failing case; `taskCompletion.ts` is gone |
+| 5 | Flow and gates: `server/gates.ts`, `gate_events`, tasks in tables with `stageId` | Every gate kind has a passing and a failing case; `taskCompletion.ts` is gone |
 | 6 | Finding schema, CVSS 4.0 scoring, SSVC, exports | Known vectors give FIRST's scores; SARIF validates against the 2.1.0 schema |
 | 7 | `usage_events`, `prices.ts`, the meter writes deltas | Two meter reads write one delta; unknown model gives `costUsd: null` |
 | 8 | `ModelRunner`, `GitHubEvents`, `MemoryStore`; ledgers and lead tools | `GitHubSync` runs only through `GitHubEvents`; a non-lead's `ledger_add` is refused |

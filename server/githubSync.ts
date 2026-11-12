@@ -175,8 +175,8 @@ export class GitHubSync {
   /** Keep the task board in line with its PR. */
   private syncTask(pr: PullRequest) {
     const task = pr.taskId ? this.planner.task(pr.taskId) : undefined;
-    if (!task || pr.closed) return;
-    if (pr.merged && task.status !== "done") this.planner.updateTask(task.id, { status: "done", prNumber: pr.number });
+    if (!task || pr.closed || !this.hub.snap.config.template) return; // a read-only project's board never changes
+    if (pr.merged && task.status !== "done") this.planner.updateTask(task.id, { status: "done", prNumber: pr.number }, "github");
     else if (!pr.merged && (task.status === "todo" || task.status === "in-progress")) this.planner.updateTask(task.id, { status: "in-review", prNumber: pr.number });
     else if (!pr.merged && task.prNumber !== pr.number) this.planner.updateTask(task.id, { prNumber: pr.number });
   }

@@ -54,6 +54,8 @@ export const MIGRATIONS: readonly string[] = [
     deliverable_path TEXT,
     cli TEXT,
     model TEXT,
+    usage TEXT,
+    usage_start TEXT,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY (project_id, id),
     FOREIGN KEY (project_id, board_id) REFERENCES boards (project_id, id) ON DELETE CASCADE

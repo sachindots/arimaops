@@ -2,7 +2,8 @@
 // both rows in .arima/arima.db (see lib/docs.ts). An older .hq/ or .jsmhq/ is read where it is (see paths.repoDirOf).
 
 import { join } from "node:path";
-import { isAgentCli, type Board, type HqConfig, type Task } from "../src/data/types";
+import { isAgentCli, type HqConfig } from "../src/data/types";
+import { loadPlanTables, savePlanTables, type PlanFile } from "./planStore";
 import { hqDb } from "./lib/db";
 import { readDoc, writeDoc } from "./lib/docs";
 import { legacyRules } from "./legacy";
@@ -10,10 +11,7 @@ import { applyTemplate, projectTemplate, seatOf } from "./templates";
 import { repoDirOf, slugify } from "./paths";
 import type { RepoInfo } from "./repo";
 
-export interface PlanFile {
-  boards: Board[];
-  tasks: Task[];
-}
+export type { PlanFile };
 
 const dir = (root: string) => repoDirOf(root);
 
@@ -97,10 +95,15 @@ export function saveConfig(root: string, cfg: HqConfig) {
   writeDoc(join(dir(root), "config.json"), { ...rest, team, project: { ...project, path: "" } });
 }
 
-export function loadPlan(root: string): PlanFile {
-  return readDoc<PlanFile>(join(dir(root), "plan.json")) ?? { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] };
+type PlanOwner = Pick<HqConfig, "project" | "template">;
+
+/** A template project's plan is in the HQ database; an older project's is its plan.json row. */
+export function loadPlan(root: string, cfg: PlanOwner): PlanFile {
+  const saved = cfg.template ? loadPlanTables(hqDb(), cfg.project.id) : readDoc<PlanFile>(join(dir(root), "plan.json"));
+  return saved ?? { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] };
 }
 
-export function savePlan(root: string, plan: PlanFile) {
-  writeDoc(join(dir(root), "plan.json"), plan);
+export function savePlan(root: string, plan: PlanFile, cfg: PlanOwner) {
+  if (cfg.template) savePlanTables(hqDb(), cfg.project.id, plan, cfg.template.flow.stages[0].id);
+  else writeDoc(join(dir(root), "plan.json"), plan);
 }

@@ -116,7 +116,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const bad = setup.checks.filter((c) => c.status !== "ok");
   log.info(`project ${slug}  ${repo.root}${bad.length ? `  (${bad.length} setup checks need attention)` : ""}`);
 
-  const hub = new Hub(repo, slug, config, loadPlan(repo.root), setup);
+  const hub = new Hub(repo, slug, config, loadPlan(repo.root, config), setup);
   hub.snap.accounts = accountsState();
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();

@@ -141,7 +141,7 @@ export class Hub {
 
   planChanged() {
     const plan = { boards: this.snap.boards, tasks: this.snap.tasks };
-    savePlan(this.repo.root, plan);
+    savePlan(this.repo.root, plan, this.snap.config);
     try {
       registerProjectInRegistry(this.repo.root, this.snap.config);
     } catch {

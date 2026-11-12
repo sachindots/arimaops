@@ -136,9 +136,10 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         model: z.string().nullable().optional(),
         note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
         deliverablePath: z.string().max(300).optional(),
+        stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string }) => {
       leadOnly();
       return ok(planner.updateTask(taskId, patch, me));
     }),
@@ -170,7 +171,28 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         ? `Work only on this task. Write your output to the listed files (or deliverables/${t.id}.md). Submit in-review with verification results in note and your output path in deliverablePath. When review is enabled, a different reviewer must accept it.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
       const start = "Start from `brief`: the handoff notes of the tasks you build on, your own last note, and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
-      return ok({ ...taskView(t.id), waitingOn: blockedBy, brief: planner.brief(me, t), rules: start + rules });
+      const stage = hub.snap.config.template?.flow.stages.find((s) => s.id === t.stageId);
+      const gates = planner.openGates(t, me).map((g) => ({ stage: g.stageId, gate: g.gate.id, kind: g.gate.kind, needs: g.why }));
+      return ok({ ...taskView(t.id), stage: stage?.name ?? null, gatesBeforeDone: gates, waitingOn: blockedBy, brief: planner.brief(me, t), rules: start + rules });
+    }),
+  );
+
+  server.registerTool(
+    "record_gate",
+    {
+      description:
+        "Record evidence for a flow gate of a task: a review you did, a second opinion, the analyze check, tests and CI, a findings report. You can't pass gates of your own task's review, and only the owner approves or waives. get_my_task lists the gates a task still needs.",
+      inputSchema: {
+        taskId: z.string(),
+        gateId: z.string(),
+        state: z.enum(["passed", "failed", "reset"]),
+        note: z.string().max(300).optional().describe("What you checked and what you found"),
+        url: z.string().max(300).optional().describe("Link to the proof: a PR, a CI run, a report"),
+      },
+    },
+    guard(({ taskId, gateId, state, note, url }: { taskId: string; gateId: string; state: "passed" | "failed" | "reset"; note?: string; url?: string }) => {
+      planner.recordGate(taskId, gateId, state, me, { note, url });
+      return ok(`Recorded: ${gateId} of ${taskId} ${state}.`);
     }),
   );
 
