@@ -182,6 +182,16 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, task_id)
   );
   `,
+  // Phase 2 step 5: names (people, handles) a project keeps out of memory.
+  `
+  CREATE TABLE memory_keep_out (
+    project_id TEXT NOT NULL,
+    term TEXT NOT NULL COLLATE NOCASE,
+    by TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, term)
+  );
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

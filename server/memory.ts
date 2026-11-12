@@ -17,8 +17,9 @@ import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { BRAND } from "../src/data/brand";
 import { CORE_MEMORY_TYPES, LEDGER_KINDS, type LedgerEntry, type LedgerKind, type LedgerName, type Memory, type TaskSummary } from "../src/data/model";
-import type { MemoryInput, MemoryState } from "../src/data/types";
-import { credentialsVault } from "./credentials/registry";
+import type { MemoryInput, MemoryState, Scope } from "../src/data/types";
+import { credentialsVault, redactor } from "./credentials/registry";
+import { cleanMemory, saysSomething, type MemoryContext } from "./memoryClean";
 import { hqDb } from "./lib/db";
 import { readDoc, tx, writeDoc } from "./lib/docs";
 import { log } from "./lib/log";
@@ -74,13 +75,14 @@ type Op =
   | { op: "remember"; m: Omit<Memory, "certified" | "certifiedBy" | "lastUsedAt">; edge: string }
   | { op: "touch"; ids: string[]; at: string }
   | { op: "task"; t: Pick<TaskSummary, "taskId" | "title" | "stageId" | "ownerId" | "needs" | "files" | "finishedAt"> }
+  | { op: "scrub"; term: string }
   | { op: "forget" };
 
 /** How a task points at what it produced (docs/memory-core.md section 3). */
 const TASK_EDGE: Record<string, string> = { Decision: "DECIDED", Lesson: "LEARNED", DeadEnd: "HIT" };
 const MAX_ABOUT = 20;
 
-const CYPHER: { [K in Op["op"]]: string } = {
+const CYPHER: { [K in Exclude<Op["op"], "scrub">]: string } = {
   ledger: `MERGE (e:LedgerEntry {id: $e.id})
            ON CREATE SET e.projectId = $e.projectId, e.taskId = $e.taskId, e.ledger = $e.ledger, e.kind = $e.kind,
                          e.text = $e.text, e.by = $e.by, e.at = $e.at
@@ -170,7 +172,12 @@ export class Neo4jMemory implements MemoryStore {
     private db: DatabaseSync,
     private config: () => Neo4jConfig | null,
     /** The project template's own memory types (beyond the core ones). */
-    private templateTypes: (projectId: string) => string[] = () => [],
+    private project: {
+      /** The project template's own memory types (beyond the core ones). */
+      templateTypes?: (projectId: string) => string[];
+      /** The vault's redactor and the project's scope, for cleanMemory. */
+      context?: (projectId: string) => Omit<MemoryContext, "keepOut">;
+    } = {},
   ) {
     // Until Neo4j answers, reads see what is still queued here.
     for (const r of this.db.prepare("SELECT project_id, op FROM memory_outbox WHERE failed IS NULL ORDER BY id").all() as { project_id: string; op: string }[])
@@ -217,11 +224,13 @@ export class Neo4jMemory implements MemoryStore {
   }
 
   remember(input: RememberInput): Memory {
-    const types: string[] = [...CORE_MEMORY_TYPES, ...this.templateTypes(input.projectId)];
+    const types: string[] = [...CORE_MEMORY_TYPES, ...(this.project.templateTypes?.(input.projectId) ?? [])];
     if (!types.includes(input.type)) throw new Error(`"${input.type}" isn't a memory type in this project. Types: ${types.join(", ")}.`);
-    const text = String(input.text ?? "").trim().slice(0, MAX_TEXT);
-    if (!text) throw new Error("A memory needs text.");
-    const about = [...new Set((input.about ?? []).map((a) => String(a).trim().slice(0, 300)).filter(Boolean))].slice(0, MAX_ABOUT);
+    if (!String(input.text ?? "").trim()) throw new Error("A memory needs text.");
+    const clean = this.cleaner(input.projectId);
+    const text = clean(String(input.text).trim()).slice(0, MAX_TEXT);
+    if (!saysSomething(text)) throw new Error("Nothing is left to remember once secrets and personal data are taken out.");
+    const about = [...new Set((input.about ?? []).map((a) => clean(String(a).trim()).slice(0, 300)).filter((a) => a && !/\[(secret|email|phone|ip|name)\]/.test(a)))].slice(0, MAX_ABOUT);
     let out!: Memory;
     tx(this.db, () => {
       const { id } = this.db.prepare("INSERT INTO memory_ids DEFAULT VALUES RETURNING id").get() as { id: number };
@@ -263,7 +272,19 @@ export class Neo4jMemory implements MemoryStore {
   }
 
   summarise(t: TaskSummary) {
-    const s: TaskSummary = { ...t, needs: [...new Set(t.needs)], files: [...new Set(t.files.map((f) => f.trim()).filter(Boolean))].slice(0, MAX_ABOUT * 5) };
+    const clean = this.cleaner(t.projectId);
+    const opt = (v: string | null) => (v === null ? null : clean(v));
+    const s: TaskSummary = {
+      ...t,
+      title: clean(t.title),
+      description: opt(t.description),
+      doneWhen: opt(t.doneWhen),
+      note: opt(t.note),
+      deliverablePath: opt(t.deliverablePath),
+      ledger: t.ledger.map((e) => ({ kind: e.kind, text: clean(e.text) })),
+      needs: [...new Set(t.needs)],
+      files: [...new Set(t.files.map((f) => clean(f.trim())).filter(Boolean))].slice(0, MAX_ABOUT * 5),
+    };
     tx(this.db, () => {
       this.db
         .prepare("INSERT INTO task_summaries (project_id, task_id, body, finished_at) VALUES (?, ?, ?, ?) ON CONFLICT (project_id, task_id) DO UPDATE SET body = excluded.body, finished_at = excluded.finished_at")
@@ -277,6 +298,33 @@ export class Neo4jMemory implements MemoryStore {
   summary(projectId: string, taskId: string): TaskSummary | null {
     const row = this.db.prepare("SELECT body FROM task_summaries WHERE project_id = ? AND task_id = ?").get(projectId, taskId) as { body: string } | undefined;
     return row ? (JSON.parse(row.body) as TaskSummary) : null;
+  }
+
+  /** Names (people, handles) never to keep, in this project. Adding one also scrubs what is already stored. */
+  keepOut(projectId: string, term: string, by: string) {
+    const t = String(term ?? "").trim().replace(/\s+/g, " ").slice(0, 120);
+    if (t.length < 2) throw new Error("Give a name of at least 2 characters.");
+    tx(this.db, () => {
+      this.db.prepare("INSERT INTO memory_keep_out (project_id, term, by, at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").run(projectId, t, by, Date.now());
+      const clean = this.cleaner(projectId);
+      // Summaries live here, not in the graph: scrub them in place.
+      for (const r of this.db.prepare("SELECT task_id, body FROM task_summaries WHERE project_id = ?").all(projectId) as { task_id: string; body: string }[]) {
+        const b = JSON.parse(r.body) as TaskSummary;
+        const next = { ...b, title: clean(b.title), description: b.description && clean(b.description), doneWhen: b.doneWhen && clean(b.doneWhen), note: b.note && clean(b.note), ledger: b.ledger.map((e) => ({ ...e, text: clean(e.text) })) };
+        if (JSON.stringify(next) !== r.body) this.db.prepare("UPDATE task_summaries SET body = ? WHERE project_id = ? AND task_id = ?").run(JSON.stringify(next), projectId, r.task_id);
+      }
+      this.queue(projectId, { op: "scrub", term: t });
+    });
+    this.kick();
+  }
+
+  keptOut(projectId: string): string[] {
+    return (this.db.prepare("SELECT term FROM memory_keep_out WHERE project_id = ? ORDER BY term").all(projectId) as { term: string }[]).map((r) => r.term);
+  }
+
+  private cleaner(projectId: string): (text: string) => string {
+    const ctx: MemoryContext = { redact: (x) => x, ...this.project.context?.(projectId), keepOut: this.keptOut(projectId) };
+    return (text) => cleanMemory(text, ctx);
   }
 
   /** Memories handed to an agent count as used: unused, uncertified ones fade after 30 days. */
@@ -329,8 +377,8 @@ export class Neo4jMemory implements MemoryStore {
 
   private add(e: Omit<LedgerEntry, "id" | "at" | "supersededBy">): LedgerEntry {
     if (!(LEDGER_KINDS as readonly string[]).includes(e.kind)) throw new Error(`Ledger kinds are ${LEDGER_KINDS.join(", ")}.`);
-    const text = e.text.trim().slice(0, MAX_TEXT);
-    if (!text) throw new Error("A ledger entry needs text.");
+    if (!e.text.trim()) throw new Error("A ledger entry needs text.");
+    const text = this.cleaner(e.projectId)(e.text.trim()).slice(0, MAX_TEXT);
     const { id } = this.db.prepare("INSERT INTO memory_ids DEFAULT VALUES RETURNING id").get() as { id: number };
     const entry = { id, projectId: e.projectId, taskId: e.taskId, ledger: e.ledger, kind: e.kind, text, by: e.by, at: new Date().toISOString() };
     this.queue(e.projectId, { op: "ledger", e: entry });
@@ -348,6 +396,8 @@ export class Neo4jMemory implements MemoryStore {
     else if (op.op === "supersede") {
       const old = this.entries.get(op.id);
       if (old) old.supersededBy = op.by;
+    } else if (op.op === "scrub") {
+      for (const e of this.entries.values()) if (e.projectId === projectId) e.text = cleanMemory(e.text, { redact: (x) => x, keepOut: [op.term] });
     } else if (op.op === "forget") for (const [id, e] of this.entries) if (e.projectId === projectId) this.entries.delete(id);
   }
 
@@ -386,7 +436,8 @@ export class Neo4jMemory implements MemoryStore {
       for (let row = next.get() as { id: number; project_id: string; op: string } | undefined; row; row = next.get() as typeof row) {
         const op = JSON.parse(row.op) as Op;
         try {
-          await driver.executeQuery(CYPHER[op.op], { ...op, projectId: row.project_id });
+          if (op.op === "scrub") await this.scrub(driver, row.project_id, op.term);
+          else await driver.executeQuery(CYPHER[op.op], { ...op, projectId: row.project_id });
           this.db.prepare("DELETE FROM memory_outbox WHERE id = ?").run(row.id);
         } catch (err) {
           if (!isOpError(err)) throw err;
@@ -404,6 +455,20 @@ export class Neo4jMemory implements MemoryStore {
       this.lastError = msg;
       this.loaded = false;
       if (!this.closed && !this.retry) (this.retry = setTimeout(() => ((this.retry = null), this.kick()), RETRY_MS)).unref();
+    }
+  }
+
+  /** Masks a newly kept-out name in everything the project already stored. Cypher has no regex replace, so it's read, cleaned here and written back. */
+  private async scrub(driver: Driver, projectId: string, term: string) {
+    const ctx: MemoryContext = { redact: (x) => x, keepOut: [term] };
+    const { records } = await driver.executeQuery(
+      "MATCH (n) WHERE n.projectId = $p AND any(k IN ['text', 'title', 'name'] WHERE toLower(toString(n[k])) CONTAINS toLower($t)) RETURN elementId(n) AS id, n { .text, .title, .name } AS v",
+      { p: projectId, t: term },
+    );
+    for (const r of records) {
+      const v = r.get("v") as Record<string, string | null>;
+      const next = Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === "string").map(([k, x]) => [k, cleanMemory(x as string, ctx)]));
+      await driver.executeQuery("MATCH (n) WHERE elementId(n) = $id SET n += $next", { id: r.get("id"), next });
     }
   }
 
@@ -435,12 +500,19 @@ export function neo4jConfig(env = process.env): Neo4jConfig | null {
 }
 
 let shared: Neo4jMemory | null = null;
+const scopes = new Map<string, () => Scope | undefined>();
+
+/** Each loaded project tells memory where its scope is (in-scope IPs may be remembered). */
+export const setMemoryScope = (projectId: string, scope: () => Scope | undefined) => void scopes.set(projectId, scope);
 
 /** One store for every project on this machine, like the HQ database. */
 export function memoryStore(): Neo4jMemory {
   if (!shared) {
     const db = hqDb();
-    shared = new Neo4jMemory(db, () => neo4jConfig(), (p) => projectTemplate(db, p)?.memoryTypes ?? []);
+    shared = new Neo4jMemory(db, () => neo4jConfig(), {
+      templateTypes: (p) => projectTemplate(db, p)?.memoryTypes ?? [],
+      context: (p) => ({ redact: (x) => redactor().redact(x), scope: scopes.get(p)?.() }),
+    });
     void shared.flush();
   }
   return shared;

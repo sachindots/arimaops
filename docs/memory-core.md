@@ -56,13 +56,13 @@ When a task reaches done, HQ writes a `TaskSummary` to SQLite (`task_summaries` 
 
 ## 6. Never stored (2.5)
 
-Applied to every write path (extraction, `remember`, consolidation), in one function `cleanMemory(text)`:
+Applied inside the store to every write (`remember`, ledger entries, task summaries and task nodes; extraction and consolidation write through `remember`), in one function `cleanMemory(text, context)` (`server/memoryClean.ts`). Masks read `[secret]`, `[email]`, `[phone]`, `[ip]`, `[name]`; a memory with too little left is refused:
 
 1. **Secrets:** the existing `Redactor` masks every stored secret value; then generic patterns (private key blocks, `sk-…`, AWS keys, JWTs, `password=` pairs) are masked too. A masked memory that says nothing useful is dropped.
-2. **Personal data:** emails, phone numbers, and IPs that aren't in the project's scope are removed by pattern. **Names** can't be caught reliably by pattern: the extraction prompt forbids them, and names that appear in the project's findings or OSINT evidence are checked against each memory and removed. Limit: a name that appears nowhere else in the project can still slip through; certification (2.6) is the human check.
+2. **Personal data:** emails and phone numbers (only in phone-number shapes, so dates, versions, ports and ids stay) are masked by pattern, and so are public IPv4 addresses outside the project's scope (loopback, private, Tailscale and documentation ranges stay). **Names** can't be caught by pattern, and findings have no field for people, so each project keeps a **keep-out list** (`memory_keep_out`): agents doing OSINT or sales add the names they meet (the MCP tool comes with step 7), and the owner can too. Adding a name also scrubs it from memories, ledgers, task nodes and summaries already stored. Limit: a name nobody put on the list can still slip through; extraction's prompt forbids names (step 6) and certification (2.6) is the human check. IPv6 isn't masked yet.
 3. Exploit techniques and payloads are allowed.
 
-Done when: a test feeds summaries holding vault secrets, generic keys, emails, phones and finding-listed names, and finds none in the graph.
+Done when: a test feeds memories, ledger entries and summaries holding vault secrets, generic keys, emails, phones and kept-out names, and finds none in the graph or the summaries.
 
 ## 7. Agents use memory (2.7)
 

@@ -14,6 +14,7 @@ const { hqDb, migrate, MIGRATIONS } = await import("../server/lib/db");
 const { Neo4jMemory, memoryState, neo4jConfig, saveMemorySettings } = await import("../server/memory");
 const { backupAll, backupProject, exportProject, importProject, listBackups, nextBackupAt, parseBackup, restoreProject, KEEP_DAYS } = await import("../server/memoryBackup");
 const neo4j = (await import("neo4j-driver")).default;
+const { cleanMemory, saysSomething } = await import("../server/memoryClean");
 
 const IMAGE = "neo4j:2026.10.2-community"; // the version compose.yaml pins
 const PASSWORD = "memory-test-pw";
@@ -32,6 +33,26 @@ const rejects = (f: () => unknown, mention: RegExp) => {
     return mention.test((e as Error).message);
   }
 };
+
+// ---------------------------------------------------------------- never stored: the cleaner (2.5)
+const VAULT_KEY = "vault-held-value-0123456789";
+const ctx = { redact: (x: string) => x.split(VAULT_KEY).join("••••6789"), keepOut: ["Ravi Kumar", "r4vi"], scope: { inScope: ["203.0.114.7", "app.example.test"], outOfScope: [], rules: "" } };
+const SENSITIVE = [
+  VAULT_KEY, "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", "AKIAIOSFODNN7EXAMPLE", "ghp_0123456789abcdefghijABCDEFGHIJ0123", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2lnbmF0dXJlX2hlcmU",
+  "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC", "hunter22", "s3cr3tpass", "ravi.kumar@corp.example", "+91 98765 43210", "(415) 555-0100", "9876543210", "Ravi Kumar", "ravi kumar", "r4vi", "8.8.4.4",
+];
+const dirty = `Logged in with ${VAULT_KEY} and sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv; AWS AKIAIOSFODNN7EXAMPLE, token ghp_0123456789abcdefghijABCDEFGHIJ0123,
+  session eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.c2lnbmF0dXJlX2hlcmU. Key: -----BEGIN RSA PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASC
+-----END RSA PRIVATE KEY----- password=hunter22 and postgres://admin:s3cr3tpass@db.internal:5432/app.
+  Mail ravi.kumar@corp.example, call +91 98765 43210 or (415) 555-0100 or 9876543210. Ravi Kumar (ravi kumar, handle r4vi) runs 8.8.4.4.`;
+const cleaned = cleanMemory(dirty, ctx);
+const leaked = SENSITIVE.filter((x) => cleaned.toLowerCase().includes(x.toLowerCase()));
+check("secrets, emails, phones, kept-out names and outside IPs are masked", leaked.length === 0, `${leaked.join(" | ")}\n${cleaned}`);
+check("the labels say what was there", ["[secret]", "[email]", "[phone]", "[name]", "[ip]", "••••6789", "password=[secret]", "postgres://[secret]@db.internal"].every((x) => cleaned.includes(x)), cleaned);
+const harmless = "On 2026-11-12 10:30 Neo4j 2026.10.2 listened on 127.0.0.1:7687 and 100.101.102.103; T-12 hit CVE-2024-12345 (CWE-89) with ' OR 1=1 -- at epoch 1731400000123 against 203.0.114.7, Ravikumarlib v1.2.3.4 untouched.";
+check("dates, versions, ports, ids, payloads, local and in-scope IPs stay", cleanMemory(harmless, ctx) === harmless, cleanMemory(harmless, ctx));
+check("a memory that was only a key says nothing", !saysSomething(cleanMemory("sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", ctx)) && saysSomething(cleaned));
 
 // ---------------------------------------------------------------- backups that need no Neo4j
 check("backups run at 03:00 tonight, or tomorrow once it's past", nextBackupAt(new Date(2026, 10, 12, 2, 0)).getTime() === new Date(2026, 10, 12, 3, 0).getTime() && nextBackupAt(new Date(2026, 10, 12, 3, 0)).getTime() === new Date(2026, 10, 13, 3, 0).getTime());
@@ -90,7 +111,7 @@ try {
   const db = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-")));
   // hqDb migrated to the end; rebuild a Phase 1 database by hand to test the step from 1 to 2.
   const old = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-old-")));
-  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DROP TABLE task_summaries; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
+  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DROP TABLE task_summaries; DROP TABLE memory_keep_out; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
   const ins = old.prepare("INSERT INTO ledger (project_id, task_id, ledger, kind, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id");
   const a = (ins.get("old", "T1", "task", "plan", "Parser first", "lead", Date.UTC(2026, 10, 1)) as { id: number }).id;
   const b = (ins.get("old", "T1", "task", "plan", "Lexer first", "lead", Date.UTC(2026, 10, 2)) as { id: number }).id;
@@ -149,7 +170,7 @@ try {
   check("a rejected write is set aside and doesn't block the next", failed.n === 1 && (await count("MATCH (e:LedgerEntry {text: 'after the bad one'}) RETURN count(e)")) === 1);
 
   // ---------------------------------------------------------------- the ontology: remember, recall, related
-  const typed = new Neo4jMemory(db, () => cfg, (p) => (p === "sec" ? ["Asset"] : []));
+  const typed = new Neo4jMemory(db, () => cfg, { templateTypes: (p) => (p === "sec" ? ["Asset"] : []) });
   const dead = typed.remember({ projectId: "dev", type: "DeadEnd", text: "Polling the hook endpoint for idle failed: Codex sends no Stop hook", taskId: "T1", about: ["server/hooks.ts", "server/hooks.ts", " "], by: "arul" });
   check("a memory starts uncertified, with its components cleaned", !dead.certified && dead.id.startsWith("M-") && dead.about.join() === "server/hooks.ts");
   const lesson = typed.remember({ projectId: "dev", type: "Lesson", text: "gh pr view needs statusCheckRollup for the CI state", taskId: "T2", about: ["server/hooks.ts"], by: "kavin" });
@@ -201,6 +222,29 @@ try {
   await typed.flush();
   check("what recall hands out counts as used", (await count("MATCH (m:Memory {id: $id}) WHERE m.lastUsedAt > m.createdAt RETURN count(m)", { id: dead.id })) === 1);
   await typed.close();
+
+  // ---------------------------------------------------------------- nothing sensitive reaches the graph (2.5)
+  const careful = new Neo4jMemory(db, () => cfg, { context: () => ({ redact: ctx.redact, scope: ctx.scope }) });
+  careful.keepOut("osint", "Ravi Kumar", "red");
+  careful.keepOut("osint", "r4vi", "red");
+  careful.remember({ projectId: "osint", type: "Lesson", text: dirty, about: ["server/auth.ts", "ravi.kumar@corp.example"], taskId: "T9", by: "red" });
+  check("a memory that was only secrets is refused", rejects(() => careful.remember({ projectId: "osint", type: "Lesson", text: `${VAULT_KEY} ravi.kumar@corp.example`, by: "red" }), /Nothing is left/));
+  careful.addLedger({ projectId: "osint", taskId: "T9", ledger: "task", kind: "fact", text: dirty, by: "lead" });
+  careful.summarise({ projectId: "osint", taskId: "T9", title: "Profile Ravi Kumar", description: dirty, doneWhen: null, stageId: null, ownerId: "red", needs: [], files: ["notes/ravi.kumar@corp.example.md"], prNumber: null, deliverablePath: null, note: dirty, ledger: [{ kind: "fact", text: dirty }], usage: null, finishedAt: new Date().toISOString() });
+  await careful.flush();
+  const stored = JSON.stringify((await probe.executeQuery("MATCH (n {projectId: 'osint'}) RETURN properties(n) AS p")).records.map((r) => r.get("p"))) +
+    (db.prepare("SELECT body FROM task_summaries WHERE project_id = 'osint'").get() as { body: string }).body + JSON.stringify(careful.ledger("osint"));
+  const found2 = SENSITIVE.filter((x) => stored.toLowerCase().includes(x.toLowerCase()));
+  check("memories, ledger, summaries and task nodes hold no secret or personal data", found2.length === 0 && stored.includes("[name]"), found2.join(" | "));
+  // A name added after the fact is scrubbed from what was already stored.
+  careful.remember({ projectId: "osint", type: "Lesson", text: "Meena Iyer reuses one password across the staging admin panels", by: "red" });
+  careful.addLedger({ projectId: "osint", taskId: null, ledger: "task", kind: "note", text: "Ask Meena Iyer's team about SSO", by: "lead" });
+  await careful.flush();
+  careful.keepOut("osint", "meena iyer", "lead");
+  await careful.flush();
+  check("keeping a name out later scrubs it from the graph and the ledger", (await count("MATCH (n {projectId: 'osint'}) WHERE toLower(toString(n.text)) CONTAINS 'meena' RETURN count(n)")) === 0 &&
+    !JSON.stringify(careful.ledger("osint")).toLowerCase().includes("meena") && careful.keptOut("osint").length === 3);
+  await careful.close();
 
   // ---------------------------------------------------------------- backup and restore
   const root = mkdtempSync(join(tmpdir(), "arima-backups-"));
