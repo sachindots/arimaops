@@ -578,6 +578,8 @@ export interface MemoryState {
   url: string;
   user: string;
   passwordSet: boolean;
+  /** The Neo4j Browser on the tailnet (ARIMA_NEO4J_BROWSER_URL), for the owner. */
+  browserUrl: string | null;
   status: "unconfigured" | "offline" | "online";
   error?: string;
   /** Writes waiting for Neo4j. */

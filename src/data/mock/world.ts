@@ -180,6 +180,7 @@ export class World {
         url: "bolt://127.0.0.1:7687",
         user: "neo4j",
         passwordSet: true,
+        browserUrl: null,
         status: "online" as const,
         queued: 0,
         extraction: { enabled: true, account: "default" },

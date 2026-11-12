@@ -38,6 +38,14 @@ export function MemorySettings() {
           {state.queued > 0 && <span className="text-muted">{state.queued} write{state.queued === 1 ? "" : "s"} waiting</span>}
         </p>
         {state.status === "offline" && state.error && <p className="m-0 mt-2 break-words text-[12px] text-muted">{state.error}</p>}
+        {state.browserUrl && !isViewer && (
+          <p className="m-0 mt-2 text-[13px]">
+            <a className="btn min-h-[40px] px-3 text-[12px]" href={state.browserUrl} target="_blank" rel="noreferrer">
+              Open Neo4j Browser ↗
+            </a>{" "}
+            <span className="text-muted">On your tailnet only. Sign in as neo4j with the memory password.</span>
+          </p>
+        )}
       </section>
 
       <section className="flex max-w-[560px] flex-col gap-2">

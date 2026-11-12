@@ -135,6 +135,11 @@ const saved = memoryState(noEnv);
 check("a saved connection is used, password from the vault", neo4jConfig(noEnv)?.password === "a-saved-password" && saved.source === "settings" && saved.user === "arima");
 check("the browser's view never holds the password", !JSON.stringify(saved).includes("a-saved-password") && saved.passwordSet);
 check("an unreachable Neo4j shows as offline", saved.status === "offline", JSON.stringify(saved));
+check("the Neo4j Browser link is shown only for a tailnet HTTPS address", memoryState({ ARIMA_NEO4J_BROWSER_URL: "https://arimaops.tail4dcc3c.ts.net:7474/browser/" }).browserUrl?.endsWith("/browser/") === true &&
+  memoryState({ ARIMA_NEO4J_BROWSER_URL: "http://192.168.1.15:7474/browser/" }).browserUrl === null && memoryState({ ARIMA_NEO4J_BROWSER_URL: "javascript:alert(1)" }).browserUrl === null);
+const compose = readFileSync(join(import.meta.dirname, "..", "compose.yaml"), "utf8");
+const neo4jPorts = compose.slice(compose.indexOf("  neo4j:")).match(/^\s+- "([^"]+)"$/gm) ?? [];
+check("compose binds Neo4j's Browser and Bolt to this machine only", neo4jPorts.length === 2 && neo4jPorts.every((p) => /"127\.0\.0\.1:/.test(p)), neo4jPorts.join());
 
 if (docker("image", "inspect", IMAGE).status !== 0 && docker("pull", "-q", IMAGE).status !== 0) {
   console.log(`- skipped the Neo4j checks: Docker or the ${IMAGE} image isn't available`);

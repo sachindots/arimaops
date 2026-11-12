@@ -26,6 +26,7 @@ services:
       ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:?set ARIMA_MASTER_KEY}
       ARIMA_NEO4J_URL: bolt://127.0.0.1:${ARIMA_NEO4J_PORT:-7687}
       ARIMA_NEO4J_PASSWORD: ${ARIMA_NEO4J_PASSWORD:?set ARIMA_NEO4J_PASSWORD}
+      ARIMA_NEO4J_BROWSER_URL: ${ARIMA_NEO4J_BROWSER_URL:-}
     volumes:
       - ${ARIMA_HOME_DIR}:${ARIMA_HOME_DIR}
       - /var/run/docker.sock:/var/run/docker.sock

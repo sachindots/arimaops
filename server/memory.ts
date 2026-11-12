@@ -633,6 +633,7 @@ export function memoryState(env = process.env): Omit<MemoryState, "backups" | "k
     url: cfg?.url ?? saved?.url ?? "",
     user: cfg?.user ?? saved?.user ?? "neo4j",
     passwordSet: !!cfg,
+    browserUrl: /^https:\/\/[\w.-]+\.ts\.net(:\d+)?\/[\w/-]*$/.test(env.ARIMA_NEO4J_BROWSER_URL ?? "") ? env.ARIMA_NEO4J_BROWSER_URL! : null,
     extraction: extractionSettings(),
     status: st.state,
     ...(st.state === "offline" ? { error: st.error } : {}),
