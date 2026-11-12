@@ -168,7 +168,7 @@ export function App() {
       <>
         <ConnectionBanner />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
-        {readOnly && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{readOnlyNote}</div>}
+        {readOnly && <div role="status" className="panel fixed bottom-16 left-1/2 z-40 w-[min(92vw,640px)] -translate-x-1/2 px-3 py-1.5 text-center text-sm text-muted">{readOnlyNote}</div>}
         {ready && (
           <>
             <CompactApp />

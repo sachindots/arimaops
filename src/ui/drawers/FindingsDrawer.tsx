@@ -43,7 +43,7 @@ export function FindingsDrawer() {
         {list.length === 0 && <p className="text-[14px] text-muted">{all.length ? "Nothing open." : "No findings yet. Agents add them with report_finding as they test in-scope targets."}</p>}
         <ul className="flex flex-col gap-2">
           {list.map((f) => (
-            <FindingRow key={f.id} f={f} now={now} reporter={snap.config.team.find((a) => a.id === f.reporterId)?.name ?? f.reporterId} />
+            <FindingRow key={f.id} f={f} now={now} locked={isViewer || !snap.config.template} reporter={snap.config.team.find((a) => a.id === f.reporterId)?.name ?? f.reporterId} />
           ))}
         </ul>
       </div>
@@ -101,7 +101,8 @@ function Ids({ label, list }: { label: string; list: string[] }) {
   ) : null;
 }
 
-function FindingRow({ f, now, reporter }: { f: Finding; now: number; reporter: string }) {
+/** `locked`: a viewer, or a project made before templates (read-only). */
+function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; reporter: string; locked: boolean }) {
   const [open, setOpen] = useState(false);
   const where = f.location ? `${f.location.file}${f.location.startLine ? `:${f.location.startLine}` : ""}` : f.asset.value;
   return (
@@ -117,13 +118,13 @@ function FindingRow({ f, now, reporter }: { f: Finding; now: number; reporter: s
       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
         <span className="font-mono">{where}</span>· {reporter} · {ago(f.at, now)} ago
         <label className="ml-auto flex items-center gap-1">
-          <input type="checkbox" checked={f.verified} disabled={isViewer} onChange={(e) => officeActions.updateFinding(f.id, { verified: e.target.checked })} />
+          <input type="checkbox" checked={f.verified} disabled={locked} onChange={(e) => officeActions.updateFinding(f.id, { verified: e.target.checked })} />
           verified
         </label>
         <select
           className="field py-0 text-[12px]"
           value={f.status}
-          disabled={isViewer}
+          disabled={locked}
           aria-label={`${f.id} status`}
           onChange={(e) => officeActions.updateFinding(f.id, { status: e.target.value as Finding["status"] })}
         >
@@ -136,7 +137,7 @@ function FindingRow({ f, now, reporter }: { f: Finding; now: number; reporter: s
         <select
           className="field py-0 text-[12px]"
           value={f.severity}
-          disabled={isViewer || !!f.cvss}
+          disabled={locked || !!f.cvss}
           title={f.cvss ? "Follows the CVSS score" : undefined}
           aria-label={`${f.id} severity`}
           onChange={(e) => officeActions.updateFinding(f.id, { severity: e.target.value as Severity })}

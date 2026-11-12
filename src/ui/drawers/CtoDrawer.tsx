@@ -55,7 +55,7 @@ export function CtoDrawer() {
           paused: false,
           archived: false,
           isCurrent: true,
-          readOnly: !snap.config.template,
+          readOnly: !snap.config.template && !snap.welcome,
           templateName: snap.config.template?.name ?? null,
           secure: snap.config.rules.findings,
           workflowMode: snap.config.workflow.mode ?? "github-pr",
@@ -321,7 +321,7 @@ export function CtoDrawer() {
                         </span>
                       )}
                       <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                        {p.templateName ?? "Read-only (made before templates)"}
+                        {p.readOnly ? "Read-only (made before templates)" : p.templateName ?? "No team yet"}
                       </span>
                       {live && !p.isCurrent && p.online && (
                         <button

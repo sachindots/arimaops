@@ -182,7 +182,7 @@ export function listProjectsOverview(): ProjectOverview[] {
         paused: loaded.paused,
         archived: false,
         isCurrent: false,
-        readOnly: !cfg.template,
+        readOnly: !cfg.template && !loaded.hub.snap.welcome, // a new project picks its template on the welcome screen
         templateName: cfg.template?.name ?? null,
         secure: cfg.rules.findings,
         workflowMode: cfg.workflow.mode ?? "github-pr",
