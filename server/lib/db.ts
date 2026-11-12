@@ -172,6 +172,16 @@ export const MIGRATIONS: readonly string[] = [
     SELECT project_id, json_object('op', 'supersede', 'id', id, 'by', superseded_by), at
     FROM ledger WHERE superseded_by IS NOT NULL ORDER BY id;
   `,
+  // Phase 2 step 4: what each finished task leaves behind; finishing it again replaces it.
+  `
+  CREATE TABLE task_summaries (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    finished_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id)
+  );
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

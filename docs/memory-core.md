@@ -45,7 +45,7 @@ Edges: `(Task)-[:TOUCHED]->(Component)`, `(Task)-[:DECIDED|LEARNED|HIT]->(memory
 
 ## 4. Task summaries (2.3)
 
-When a task reaches done, HQ writes a `TaskSummary` to SQLite (`task_summaries` table): what was done, files touched, the PR or deliverable, the handoff note and the lead's ledger entries for the task. Built by HQ from data it already has (no model call), so every finished task leaves one even when Neo4j or the model is down. The summary is the input to extraction.
+When a task reaches done, HQ writes a `TaskSummary` to SQLite (`task_summaries` table): what was done, files touched, the PR or deliverable, the handoff note and the lead's ledger entries for the task. Built by HQ from data it already has (no model call), so every finished task leaves one even when Neo4j or the model is down; finishing a task again replaces it. The summary is the input to extraction. The same write queues the task's graph: `(Task)-[:FOLLOWS]->(Task)` for each task it needs, `(Task)-[:TOUCHED]->(Component)` for the files it was given (not yet the PR's real diff), `(Agent)-[:WORKED_ON]->(Task)` for its owner. Both ways a task finishes (an agent's `set_my_status`, and a person, GitHub or a lead through `updateTask`) go through one planner hook.
 
 ## 5. Extraction and consolidation (2.4)
 

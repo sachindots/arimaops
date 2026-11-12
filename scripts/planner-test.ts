@@ -6,6 +6,8 @@ import { join } from "node:path";
 process.env.HOME = mkdtempSync(join(tmpdir(), "hq-plan-"));
 const { Planner } = await import("../server/planner");
 const { BLANK_TEMPLATE } = await import("../src/data/templates");
+const { hqDb } = await import("../server/lib/db");
+const { Neo4jMemory } = await import("../server/memory");
 // Review off, as this test had it: a task finishes once its file is delivered.
 const template = { ...BLANK_TEMPLATE, flow: { stages: [{ ...BLANK_TEMPLATE.flow.stages[0], gates: [{ id: "delivered", kind: "file-delivered" as const }] }] } };
 
@@ -33,6 +35,8 @@ const pushed: { to: string; text: string; kind?: string }[] = [];
 const inbox = { push: (to: string, item: { text: string; kind?: string }) => pushed.push({ to, text: item.text, kind: item.kind }), save: () => {} };
 const planner = new Planner(hub as never, inbox as never);
 planner.ask = async () => null; // no model calls in tests
+const memory = new Neo4jMemory(hqDb(), () => null); // no Neo4j: summaries and graph writes stay queued
+planner.memory = memory;
 const createTask = (input: Parameters<typeof planner.createTask>[0], by: string) => {
   const task = planner.createTask({ doneWhen: "Fixture acceptance verified", ...input }, by);
   task.note = "Fixture checked.";
@@ -149,6 +153,19 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   const got3 = pushed.slice(k).filter((p) => p.to === "cipher");
   check("unanswered question handed to the lead once", got3.length === 1 && /Which port/.test(got3[0].text) && /reversible decision/.test(got3[0].text), JSON.stringify(got3));
   (snap as unknown as { actionItems: unknown[] }).actionItems = [];
+}
+
+// ---------------------------------------------------------------- task summaries (2.3)
+{
+  const done = snap.tasks.filter((t: { status: string }) => t.status === "done") as { id: string; title: string; note: string | null; needs: string[] }[];
+  const missing = done.filter((t) => !memory.summary("plan-test", t.id));
+  check("every finished task leaves a summary", done.length >= 5 && missing.length === 0, `${done.length} done, missing ${missing.map((t) => t.id)}`);
+  const s2 = memory.summary("plan-test", t2.id);
+  check("a summary carries the handoff note and what the task built on", s2?.title === "Review tips" && s2.note === "Reviewed tips; all three are accurate." && s2.needs.join() === t1.id && s2.ownerId === "nyx", JSON.stringify(s2));
+  const open = snap.tasks.find((t: { status: string }) => t.status !== "done") as { id: string } | undefined;
+  check("an unfinished task has none", !open || memory.summary("plan-test", open.id) === null);
+  const queued = hqDb().prepare("SELECT count(*) AS n FROM memory_outbox WHERE op LIKE '%\"op\":\"task\"%'").get() as { n: number };
+  check("each summary queues the task for the graph", queued.n >= done.length, String(queued.n));
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

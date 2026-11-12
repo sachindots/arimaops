@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { BRAND } from "../src/data/brand";
-import { CORE_MEMORY_TYPES, LEDGER_KINDS, type LedgerEntry, type LedgerKind, type LedgerName, type Memory } from "../src/data/model";
+import { CORE_MEMORY_TYPES, LEDGER_KINDS, type LedgerEntry, type LedgerKind, type LedgerName, type Memory, type TaskSummary } from "../src/data/model";
 import type { MemoryInput, MemoryState } from "../src/data/types";
 import { credentialsVault } from "./credentials/registry";
 import { hqDb } from "./lib/db";
@@ -39,6 +39,9 @@ export interface MemoryStore {
   recall(projectId: string, query: string, opts?: { limit?: number; types?: string[] }): Promise<Memory[]>;
   /** Memories linked to a task, a file or component, or another memory, within `depth` hops. Needs Neo4j. */
   related(projectId: string, ref: { taskId?: string; path?: string; memoryId?: string }, opts?: { depth?: 1 | 2; limit?: number }): Promise<Memory[]>;
+  /** Keeps a finished task's summary, and puts the task, what it built on, its files and its owner in the graph. */
+  summarise(s: TaskSummary): void;
+  summary(projectId: string, taskId: string): TaskSummary | null;
 }
 
 export interface RememberInput {
@@ -70,6 +73,7 @@ type Op =
   | { op: "supersede"; id: number; by: number }
   | { op: "remember"; m: Omit<Memory, "certified" | "certifiedBy" | "lastUsedAt">; edge: string }
   | { op: "touch"; ids: string[]; at: string }
+  | { op: "task"; t: Pick<TaskSummary, "taskId" | "title" | "stageId" | "ownerId" | "needs" | "files" | "finishedAt"> }
   | { op: "forget" };
 
 /** How a task points at what it produced (docs/memory-core.md section 3). */
@@ -98,6 +102,16 @@ const CYPHER: { [K in Op["op"]]: string } = {
              UNWIND $m.about AS name
              MERGE (c:Component {projectId: m.projectId, name: name})
              MERGE (m)-[:ABOUT]->(c)`,
+  task: `MERGE (t:Task {projectId: $projectId, taskId: $t.taskId})
+         SET t.title = $t.title, t.stageId = $t.stageId, t.finishedAt = $t.finishedAt
+         WITH t
+         CALL (t) { UNWIND $t.needs AS n MERGE (d:Task {projectId: t.projectId, taskId: n}) MERGE (t)-[:FOLLOWS]->(d) }
+         CALL (t) { UNWIND $t.files AS f MERGE (c:Component {projectId: t.projectId, name: f}) MERGE (t)-[:TOUCHED]->(c) }
+         CALL (t) {
+           WITH t WHERE $t.ownerId IS NOT NULL
+           MERGE (a:Agent {projectId: t.projectId, agentId: $t.ownerId})
+           MERGE (a)-[:WORKED_ON]->(t)
+         }`,
   touch: `MATCH (m:Memory) WHERE m.projectId = $projectId AND m.id IN $ids SET m.lastUsedAt = $at`,
   supersede: `MATCH (old:LedgerEntry {id: $id}), (new:LedgerEntry {id: $by})
               SET old.supersededBy = $by
@@ -111,6 +125,7 @@ const SCHEMA = [
   "CREATE CONSTRAINT memory_id IF NOT EXISTS FOR (m:Memory) REQUIRE m.id IS UNIQUE",
   "CREATE INDEX memory_project IF NOT EXISTS FOR (m:Memory) ON (m.projectId)",
   "CREATE CONSTRAINT task_key IF NOT EXISTS FOR (t:Task) REQUIRE (t.projectId, t.taskId) IS UNIQUE",
+  "CREATE CONSTRAINT agent_key IF NOT EXISTS FOR (a:Agent) REQUIRE (a.projectId, a.agentId) IS UNIQUE",
   "CREATE CONSTRAINT component_key IF NOT EXISTS FOR (c:Component) REQUIRE (c.projectId, c.name) IS UNIQUE",
   "CREATE FULLTEXT INDEX memory_text IF NOT EXISTS FOR (m:Memory) ON EACH [m.text]",
 ];
@@ -245,6 +260,23 @@ export class Neo4jMemory implements MemoryStore {
       { p: projectId, taskId: ref.taskId ?? null, path: ref.path ?? null, memoryId: ref.memoryId ?? null, limit: neo4j.int(Math.min(Math.max(1, Math.trunc(opts.limit ?? 10)), 50)) },
     );
     return this.used(projectId, records.map((r) => toMemory(r.get("m"))));
+  }
+
+  summarise(t: TaskSummary) {
+    const s: TaskSummary = { ...t, needs: [...new Set(t.needs)], files: [...new Set(t.files.map((f) => f.trim()).filter(Boolean))].slice(0, MAX_ABOUT * 5) };
+    tx(this.db, () => {
+      this.db
+        .prepare("INSERT INTO task_summaries (project_id, task_id, body, finished_at) VALUES (?, ?, ?, ?) ON CONFLICT (project_id, task_id) DO UPDATE SET body = excluded.body, finished_at = excluded.finished_at")
+        .run(s.projectId, s.taskId, JSON.stringify(s), Date.parse(s.finishedAt));
+      const op: Op = { op: "task", t: { taskId: s.taskId, title: s.title, stageId: s.stageId, ownerId: s.ownerId, needs: s.needs, files: s.files, finishedAt: s.finishedAt } };
+      this.db.prepare("INSERT INTO memory_outbox (project_id, op, at) VALUES (?, ?, ?)").run(s.projectId, JSON.stringify(op), Date.now());
+    });
+    this.kick();
+  }
+
+  summary(projectId: string, taskId: string): TaskSummary | null {
+    const row = this.db.prepare("SELECT body FROM task_summaries WHERE project_id = ? AND task_id = ?").get(projectId, taskId) as { body: string } | undefined;
+    return row ? (JSON.parse(row.body) as TaskSummary) : null;
   }
 
   /** Memories handed to an agent count as used: unused, uncertified ones fade after 30 days. */

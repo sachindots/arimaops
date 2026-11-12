@@ -242,6 +242,29 @@ export interface Memory {
   lastUsedAt: string;
 }
 
+/** What a finished task leaves behind (2.3): built by HQ from what it already knows, no model call. Extraction reads it. */
+export interface TaskSummary {
+  projectId: string;
+  taskId: string;
+  title: string;
+  description: string | null;
+  doneWhen: string | null;
+  stageId: string | null;
+  ownerId: string | null;
+  /** Tasks it built on. */
+  needs: string[];
+  /** The files the task was given to edit. */
+  files: string[];
+  prNumber: number | null;
+  deliverablePath: string | null;
+  /** The owner's handoff note. */
+  note: string | null;
+  /** The lead's current task-ledger entries for it. */
+  ledger: { kind: LedgerKind; text: string }[];
+  usage: Tokens | null;
+  finishedAt: string;
+}
+
 export interface LedgerEntry {
   id: number;
   projectId: string;

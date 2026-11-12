@@ -16,6 +16,7 @@ import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
 import type { GateState } from "../src/data/model";
+import { log } from "./lib/log";
 
 export interface NewTask {
   boardId?: string;
@@ -285,6 +286,7 @@ export class Planner {
 
   /** Lean mode, once a task is done: its owner starts the next one in a fresh conversation, and the repo facts learn from it. */
   private afterDone(done: Task) {
+    this.summarise(done);
     if (!this.lean()) return;
     const id = done.ownerId;
     const agent = id ? this.hub.cfg(id) : undefined;
@@ -294,6 +296,33 @@ export class Planner {
     // Mid-way through another task, or the next one builds on this one: keep the conversation.
     if (next && next.id !== done.id && (next.status === "in-progress" || next.needs.includes(done.id))) return;
     this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
+  }
+
+  /** What a finished task leaves behind for the team's memory (docs/memory-core.md section 4). */
+  private summarise(task: Task) {
+    if (!this.memory) return;
+    const projectId = this.snap.config.project.id;
+    try {
+      this.memory.summarise({
+        projectId,
+        taskId: task.id,
+        title: task.title,
+        description: task.description?.trim() || null,
+        doneWhen: task.doneWhen?.trim() || null,
+        stageId: task.stageId ?? null,
+        ownerId: task.ownerId,
+        needs: task.needs,
+        files: task.files ?? [],
+        prNumber: task.prNumber,
+        deliverablePath: task.deliverablePath ?? null,
+        note: task.note ?? null,
+        ledger: this.memory.ledger(projectId, { ledger: "task", taskId: task.id }).map((e) => ({ kind: e.kind, text: e.text })),
+        usage: task.usage ?? null,
+        finishedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      log.warn(`couldn't keep the summary of ${task.id}: ${err instanceof Error ? err.message : err}`); // never a reason to refuse finishing
+    }
   }
 
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */

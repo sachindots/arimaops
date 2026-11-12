@@ -90,7 +90,7 @@ try {
   const db = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-")));
   // hqDb migrated to the end; rebuild a Phase 1 database by hand to test the step from 1 to 2.
   const old = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-old-")));
-  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
+  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DROP TABLE task_summaries; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
   const ins = old.prepare("INSERT INTO ledger (project_id, task_id, ledger, kind, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id");
   const a = (ins.get("old", "T1", "task", "plan", "Parser first", "lead", Date.UTC(2026, 10, 1)) as { id: number }).id;
   const b = (ins.get("old", "T1", "task", "plan", "Lexer first", "lead", Date.UTC(2026, 10, 2)) as { id: number }).id;
@@ -183,6 +183,21 @@ try {
   check("one hop from a memory: nothing; two hops: its neighbours by file", (await typed.related("dev", { memoryId: dead.id }, { depth: 1 })).length === 0 &&
     (await typed.related("dev", { memoryId: dead.id })).map((m) => m.id).join() === lesson.id);
   check("related with nothing to start from finds nothing", (await typed.related("dev", {})).length === 0);
+  // ---------------------------------------------------------------- task summaries (2.3)
+  const summary = (taskId: string, needs: string[], files: string[], note: string) => ({
+    projectId: "dev", taskId, title: `Task ${taskId}`, description: null, doneWhen: null, stageId: "build", ownerId: "arul",
+    needs, files, prNumber: null, deliverablePath: null, note, ledger: [], usage: null, finishedAt: new Date().toISOString(),
+  });
+  typed.summarise(summary("T3", ["T1"], ["server/inbox.ts", "server/inbox.ts"], "first try"));
+  typed.summarise(summary("T3", ["T1"], ["server/inbox.ts"], "finished again"));
+  await typed.flush();
+  check("finishing a task again replaces its summary", typed.summary("dev", "T3")?.note === "finished again" && (db.prepare("SELECT count(*) AS n FROM task_summaries WHERE task_id = 'T3'").get() as { n: number }).n === 1);
+  check("the task follows what it built on, touched its files and was worked on by its owner",
+    (await count("MATCH (:Task {projectId: 'dev', taskId: 'T3'})-[:FOLLOWS]->(:Task {taskId: 'T1'}) RETURN count(*)")) === 1 &&
+    (await count("MATCH (:Task {taskId: 'T3'})-[:TOUCHED]->(:Component {name: 'server/inbox.ts'}) RETURN count(*)")) === 1 &&
+    (await count("MATCH (:Agent {projectId: 'dev', agentId: 'arul'})-[:WORKED_ON]->(:Task {taskId: 'T3'}) RETURN count(*)")) === 1);
+  check("a follow-up task reaches the dead end of the task it follows", (await typed.related("dev", { taskId: "T3" })).some((m) => m.id === dead.id));
+
   await typed.flush();
   check("what recall hands out counts as used", (await count("MATCH (m:Memory {id: $id}) WHERE m.lastUsedAt > m.createdAt RETURN count(m)", { id: dead.id })) === 1);
   await typed.close();
