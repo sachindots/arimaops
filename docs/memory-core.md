@@ -28,7 +28,7 @@ Core node types, the same for every template. Templates add their own through `m
 | Node | Key fields | Example |
 |---|---|---|
 | `Task` | `taskId`, `title`, `stageId`, `finishedAt` | T-12 "Add the login rate limit" |
-| `Component` | `path` or `name` | `server/remote.ts`, "TOTP step-up" |
+| `Component` | `name`: a file path or a component name | `server/remote.ts`, "TOTP step-up" |
 | `Decision` | `text`, `why` | "Rate limits live in remote.ts, not http.ts" |
 | `Lesson` | `text` | "`gh pr view --json` needs `statusCheckRollup` for CI state" |
 | `DeadEnd` | `text`, `tried`, `why` | "Polling `/hook` for idle didn't work: Codex sends no Stop hook" |
@@ -37,9 +37,11 @@ Core node types, the same for every template. Templates add their own through `m
 
 Every memory node (`Decision`, `Lesson`, `DeadEnd` and template types) has: `id`, `projectId`, `text`, `certified` (bool), `certifiedBy`, `createdAt`, `lastUsedAt`, `source` (`extraction` / `remember` / `consolidation`), `taskId`.
 
-Edges: `(Task)-[:TOUCHED]->(Component)`, `(Task)-[:DECIDED|LEARNED|HIT]->(memory)`, `(memory)-[:ABOUT]->(Component)`, `(Agent)-[:WORKED_ON]->(Task)`, `(Task)-[:FOLLOWS]->(Task)` (from the handoff links), `(memory)-[:SUPERSEDES]->(memory)` (consolidation).
+Every memory node also carries the `Memory` label (ids `M-<n>`, from the HQ database's counter). Templates can't reuse a core type or a graph label in `memoryTypes`.
 
-**Search:** a Neo4j full-text index on memory `text` (Lucene, in Community), ranked certified first, then score, then recency. No embeddings in this phase (decision 3).
+Edges: `(Task)-[:TOUCHED]->(Component)`, `(Task)-[:DECIDED|LEARNED|HIT]->(memory)` (`NOTED` for template types), `(Task)-[:HAS_ENTRY]->(LedgerEntry)`, `(memory)-[:ABOUT]->(Component)`, `(Agent)-[:WORKED_ON]->(Task)`, `(Task)-[:FOLLOWS]->(Task)` (from the handoff links), `(memory)-[:SUPERSEDES]->(memory)` (consolidation).
+
+**Search:** a Neo4j full-text index on memory `text` (Lucene, in Community), ranked certified first, then score, then recency. Only the query's words reach Lucene (joined with OR), never its syntax. No embeddings in this phase (decision 3). `related` walks one or two hops from a task, a component or a memory. Both mark what they return as used (`lastUsedAt`) through the outbox. Uniqueness: `Memory.id`, `LedgerEntry.id`, `(Task.projectId, taskId)`, `(Component.projectId, name)`.
 
 ## 4. Task summaries (2.3)
 

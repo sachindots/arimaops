@@ -148,6 +148,45 @@ try {
   const failed = db.prepare("SELECT count(*) AS n FROM memory_outbox WHERE failed IS NOT NULL").get() as { n: number };
   check("a rejected write is set aside and doesn't block the next", failed.n === 1 && (await count("MATCH (e:LedgerEntry {text: 'after the bad one'}) RETURN count(e)")) === 1);
 
+  // ---------------------------------------------------------------- the ontology: remember, recall, related
+  const typed = new Neo4jMemory(db, () => cfg, (p) => (p === "sec" ? ["Asset"] : []));
+  const dead = typed.remember({ projectId: "dev", type: "DeadEnd", text: "Polling the hook endpoint for idle failed: Codex sends no Stop hook", taskId: "T1", about: ["server/hooks.ts", "server/hooks.ts", " "], by: "arul" });
+  check("a memory starts uncertified, with its components cleaned", !dead.certified && dead.id.startsWith("M-") && dead.about.join() === "server/hooks.ts");
+  const lesson = typed.remember({ projectId: "dev", type: "Lesson", text: "gh pr view needs statusCheckRollup for the CI state", taskId: "T2", about: ["server/hooks.ts"], by: "kavin" });
+  typed.remember({ projectId: "dev", type: "Decision", text: "Rate limits live in remote.ts", about: ["server/remote.ts"], by: "lead" });
+  typed.remember({ projectId: "sec", type: "Asset", text: "staging.example.test runs an old nginx with the parser bug", by: "red" });
+  typed.remember({ projectId: "other-dev", type: "Lesson", text: "parser hook secrets of another project", by: "x" });
+  check("a template's own type is accepted in its project", typed.ledger("sec").length === 0); // (remember above didn't throw)
+  check("another project's template type is refused", rejects(() => typed.remember({ projectId: "dev", type: "Asset", text: "x", by: "a" }), /isn't a memory type/));
+  check("an unknown type is refused", rejects(() => typed.remember({ projectId: "dev", type: "Banana", text: "x", by: "a" }), /isn't a memory type.*DeadEnd/));
+  check("a graph label isn't a memory type", rejects(() => typed.remember({ projectId: "dev", type: "Task", text: "x", by: "a" }), /isn't a memory type/));
+  check("an empty memory is refused", rejects(() => typed.remember({ projectId: "dev", type: "Lesson", text: " ", by: "a" }), /needs text/));
+  typed.addLedger({ projectId: "dev", taskId: "T1", ledger: "task", kind: "fact", text: "Codex has no Stop hook", by: "lead" });
+  await typed.flush();
+  check("a memory carries its type as a label", (await count("MATCH (m:Memory:DeadEnd {id: $id}) RETURN count(m)", { id: dead.id })) === 1);
+  check("its task points at it by kind", (await count("MATCH (:Task {projectId: 'dev', taskId: 'T1'})-[:HIT]->(m:Memory {id: $id}) RETURN count(m)", { id: dead.id })) === 1 &&
+    (await count("MATCH (:Task {taskId: 'T2'})-[:LEARNED]->(:Lesson) RETURN count(*)")) === 1);
+  check("one Component node per file, shared by its memories", (await count("MATCH (c:Component {projectId: 'dev', name: 'server/hooks.ts'})<-[:ABOUT]-(m) RETURN count(m)")) === 2 && (await count("MATCH (c:Component {projectId: 'dev'}) RETURN count(c)")) === 2);
+  check("ledger entries hang off their task", (await count("MATCH (:Task {projectId: 'dev', taskId: 'T1'})-[:HAS_ENTRY]->(:LedgerEntry) RETURN count(*)")) === 1);
+
+  const found = await typed.recall("dev", "why does polling the hook fail?");
+  check("recall finds a memory by its words", found[0]?.id === dead.id && found[0].type === "DeadEnd" && found[0].about.join() === "server/hooks.ts", JSON.stringify(found));
+  check("recall stays in its project", (await typed.recall("dev", "parser secrets")).length === 0);
+  check("recall filters by type", (await typed.recall("dev", "hook statusCheckRollup", { types: ["Lesson"] })).map((m) => m.id).join() === lesson.id);
+  check("Lucene syntax in a query is only words", (await typed.recall("dev", 'text:* OR "unclosed ~ hook^9')).some((m) => m.id === dead.id));
+  check("a query with no words finds nothing", (await typed.recall("dev", "?! *")).length === 0);
+  await probe.executeQuery("MATCH (m:Memory {id: $id}) SET m.certified = true, m.certifiedBy = 'owner'", { id: lesson.id });
+  check("certified memories rank first", (await typed.recall("dev", "hook polling statusCheckRollup")).map((m) => m.id).join() === `${lesson.id},${dead.id}`);
+
+  check("related to a task: what it produced", (await typed.related("dev", { taskId: "T1" })).map((m) => m.id).join() === dead.id);
+  check("related to a file: every memory about it", (await typed.related("dev", { path: "server/hooks.ts" })).length === 2);
+  check("one hop from a memory: nothing; two hops: its neighbours by file", (await typed.related("dev", { memoryId: dead.id }, { depth: 1 })).length === 0 &&
+    (await typed.related("dev", { memoryId: dead.id })).map((m) => m.id).join() === lesson.id);
+  check("related with nothing to start from finds nothing", (await typed.related("dev", {})).length === 0);
+  await typed.flush();
+  check("what recall hands out counts as used", (await count("MATCH (m:Memory {id: $id}) WHERE m.lastUsedAt > m.createdAt RETURN count(m)", { id: dead.id })) === 1);
+  await typed.close();
+
   // ---------------------------------------------------------------- backup and restore
   const root = mkdtempSync(join(tmpdir(), "arima-backups-"));
   const keep = memory.addLedger({ projectId: "bk", taskId: "T1", ledger: "task", kind: "plan", text: "Keep the parser", by: "lead" });
@@ -167,7 +206,8 @@ try {
   const file = await backupProject(memory, "bk", root, new Date(2026, 10, 12, 3));
   check("tonight's backup is a private file", existsSync(file) && (statSync(file).mode & 0o077) === 0 && listBackups("bk", root).join() === "2026-11-12");
   const text = await exportProject(probe, "bk");
-  check("the export holds every node and edge", text.trim().split("\n").length === 1 + 5 + 2, String(text.trim().split("\n").length));
+  const graphSize = (await count("MATCH (n {projectId: 'bk'}) RETURN count(n)")) + (await count("MATCH ({projectId: 'bk'})-[r]->({projectId: 'bk'}) RETURN count(r)"));
+  check("the export holds every node and edge", text.trim().split("\n").length === 1 + graphSize, `${text.trim().split("\n").length} vs ${1 + graphSize}`);
 
   await probe.executeQuery("MATCH (n {projectId: 'bk'}) DETACH DELETE n");
   memory.addLedger({ projectId: "bk", taskId: null, ledger: "task", kind: "note", text: "written after the backup", by: "lead" });

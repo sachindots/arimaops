@@ -217,6 +217,31 @@ export type LedgerName = (typeof LEDGERS)[number];
 export const LEDGER_KINDS = ["fact", "guess", "plan", "stall", "replan", "note"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
+// ── Memory (Phase 2, docs/memory-core.md section 3) ──
+
+/** What the team learns, in every project. Templates add their own types through `memoryTypes`. */
+export const CORE_MEMORY_TYPES = ["Decision", "Lesson", "DeadEnd"] as const;
+/** The graph's own labels: the things memories are about. Never a memory type. */
+export const STRUCTURE_LABELS = ["Task", "Component", "Agent", "Person", "LedgerEntry", "Memory"] as const;
+export const RESERVED_LABELS = [...CORE_MEMORY_TYPES, ...STRUCTURE_LABELS] as const;
+
+export interface Memory {
+  id: string; // "M-41"
+  projectId: string;
+  /** A core type or one of the template's memoryTypes. */
+  type: string;
+  text: string;
+  taskId: string | null;
+  /** Components it is about: file paths or names. */
+  about: string[];
+  certified: boolean;
+  certifiedBy: string | null;
+  source: "extraction" | "remember" | "consolidation";
+  by: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
 export interface LedgerEntry {
   id: number;
   projectId: string;
@@ -325,6 +350,7 @@ export function templateErrors(t: TeamTemplate): string[] {
   if (cycle) say(`Starter tasks depend on each other in a loop: ${cycle.join(" → ")}.`);
 
   for (const id of dupes(t.memoryTypes ?? [])) say(`Memory type "${id}" is listed twice.`);
+  for (const m of t.memoryTypes ?? []) if ((RESERVED_LABELS as readonly string[]).includes(m)) say(`"${m}" is a core memory type already; leave it out of memoryTypes.`);
   if ((t.memoryTypes ?? []).some((m) => !/^[A-Z][A-Za-z]{1,39}$/.test(m))) say("Memory types are names like Asset or Finding.");
   return errs;
 }
