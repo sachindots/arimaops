@@ -57,6 +57,7 @@
     "hq": "vite build --logLevel warn && tsx server/main.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
     "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
+    "test": "node scripts/run-tests.mjs",
     "preview": "vite preview",
     "prepack": "npm run build",
     "postinstall": "node scripts/fix-node-pty.mjs"

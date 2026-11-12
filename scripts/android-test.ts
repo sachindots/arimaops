@@ -5,15 +5,23 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const classes = mkdtempSync(join(tmpdir(), "arima-android-"));
-try {
-  execFileSync("javac", ["-d", classes, "android/app/src/main/java/com/arimaops/app/ServerUrl.java", "android/test/com/arimaops/app/ServerUrlTest.java"], { stdio: "inherit" });
-  execFileSync("java", ["-ea", "-cp", classes, "com.arimaops.app.ServerUrlTest"], { stdio: "inherit" });
-} finally {
-  rmSync(classes, { recursive: true, force: true });
+// The Java half needs a JDK; machines without one (CI, plain servers) still run the UI half.
+let hasJdk = true;
+try { execFileSync("javac", ["-version"], { stdio: "ignore" }); } catch { hasJdk = false; }
+if (hasJdk) {
+  const classes = mkdtempSync(join(tmpdir(), "arima-android-"));
+  try {
+    execFileSync("javac", ["-d", classes, "android/app/src/main/java/com/arimaops/app/ServerUrl.java", "android/test/com/arimaops/app/ServerUrlTest.java"], { stdio: "inherit" });
+    execFileSync("java", ["-ea", "-cp", classes, "com.arimaops.app.ServerUrlTest"], { stdio: "inherit" });
+  } finally {
+    rmSync(classes, { recursive: true, force: true });
+  }
+} else {
+  console.log("skip ServerUrlTest: no javac on PATH");
 }
 
 Object.defineProperty(globalThis, "window", { value: { matchMedia: () => ({ matches: true, addEventListener() {} }) } });
+Object.defineProperty(globalThis, "location", { value: new URL("http://localhost/") });
 const { useUi } = await import("../src/store/ui");
 const { closeTopPanel } = await import("../src/lib/native");
 useUi.setState({ setupOpen: true, settings: { tab: "team" }, drawer: { kind: "prs" } });
