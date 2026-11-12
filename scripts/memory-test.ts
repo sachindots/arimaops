@@ -25,6 +25,7 @@ const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.j
 const { ActionItems } = await import("../server/actionItems");
 const { MemoryReview, nextAt } = await import("../server/memoryReview");
 const { pushAlert } = await import("../server/push");
+const { forgetProject, recordHtml, saveRecord } = await import("../server/forget");
 type OfficeEvent = import("../src/data/source").OfficeEvent;
 /** A project's hub, as much of it as the action items and the review use. */
 const fakeHub = (projectId: string) => {
@@ -522,6 +523,70 @@ try {
   check("the nightly job backs up every project with memory", all.failed.length === 0 && ["bk", "bystander", "p"].every((p) => all.done.includes(p)), JSON.stringify(all));
   await importProject(probe, "bystander", gunzipSync(readFileSync(join(root, "bystander", "2026-11-30.jsonl.gz"))).toString());
   check("importing twice doesn't duplicate", (await count("MATCH (n {projectId: 'bystander'}) RETURN count(n)")) === 1);
+
+  // ---------------------------------------------------------------- forget project (2.8): a purge leaves no trace
+  {
+    const fdb = hqDb(mkdtempSync(join(tmpdir(), "arima-forget-")));
+    await probe.executeQuery("MATCH (n) WHERE n.projectId IN ['acme', 'zeta'] DETACH DELETE n");
+    const fm = new Neo4jMemory(fdb, () => cfg);
+    const fill = (p: string) => {
+      fdb.prepare("INSERT INTO projects_model (project_id, template_id, template_version, body, updated_at) VALUES (?, 'dev', 1, '{}', 0)").run(p);
+      fdb.prepare("INSERT INTO boards (project_id, id, title, status, ord) VALUES (?, 'B1', ?, 'active', 0)").run(p, `${p} board`);
+      fdb.prepare("INSERT INTO tasks (project_id, id, board_id, stage_id, title, status, updated_at) VALUES (?, 'B1-T01', 'B1', 'build', ?, 'done', 0)").run(p, `${p} login`);
+      fdb.prepare("INSERT INTO gate_events (project_id, task_id, gate_id, state, by_kind, by_id, at) VALUES (?, 'B1-T01', 'review', 'passed', 'agent', 'kavin', 0)").run(p);
+      fdb.prepare("INSERT INTO findings (project_id, id, reporter_id, title, asset_kind, asset_value, severity, description, status, at, updated_at) VALUES (?, 'F-001', 'red', ?, 'host', ?, 'high', 'x', 'open', 0, 0)").run(p, `${p} SQLi`, `${p}.example.test`);
+      fdb.prepare("INSERT INTO ledger (project_id, task_id, ledger, kind, text, by, at) VALUES (?, 'B1-T01', 'task', 'fact', ?, 'lead', 0)").run(p, `${p} old ledger`);
+      fdb.prepare("INSERT INTO usage_events (at, project_id, task_id, agent_id, source, account, provider, cli, model, input, cached, output, cost_usd) VALUES (0, ?, 'B1-T01', 'kavin', 'agent', 'default', 'anthropic', 'claude', 'claude-opus-5-5', 100, 0, 10, 0.01)").run(p);
+      fdb.prepare("INSERT INTO usage_marks (project_id, agent_id, model, input, cached, output) VALUES (?, 'kavin', 'opus', 1, 0, 1)").run(p);
+      fm.addLedger({ projectId: p, taskId: "B1-T01", ledger: "task", kind: "plan", text: `${p} plan`, by: "lead" });
+      fm.remember({ projectId: p, type: "Lesson", text: `${p} lesson: the staging login needs a CSRF token first`, about: [`src/${p}.ts`], taskId: "B1-T01", by: "hq" });
+      fm.summarise({ projectId: p, taskId: "B1-T01", title: `${p} login`, description: null, doneWhen: null, stageId: "build", ownerId: "kavin", needs: [], files: [`src/${p}.ts`], prNumber: 1, deliverablePath: null, note: `${p} done`, ledger: [], usage: null, finishedAt: new Date().toISOString() });
+      fm.keepOut(p, `${p} contact`, "red");
+    };
+    fill("acme");
+    fill("zeta");
+    await fm.flush();
+    const broot = mkdtempSync(join(tmpdir(), "arima-forget-backups-"));
+    await backupProject(fm, "acme", broot, new Date(2026, 10, 10, 3));
+    await backupProject(fm, "zeta", broot, new Date(2026, 10, 10, 3));
+    const folder = mkdtempSync(join(tmpdir(), "arima-forget-acme-"));
+    writeFileSync(join(folder, "chat.log"), "acme chat");
+    const sizeOf = async (p: string) => [
+      await count("MATCH (n {projectId: $p}) RETURN count(n)", { p }),
+      ...["tasks", "findings", "task_summaries", "memory_keep_out"].map((t) => (fdb.prepare(`SELECT count(*) AS n FROM ${t} WHERE project_id = ?`).get(p) as { n: number }).n),
+      listBackups(p, broot).length,
+    ].join();
+    const zetaBefore = await sizeOf("zeta");
+
+    const rec = await forgetProject({ db: fdb, mem: fm, projectId: "acme", projectName: "Acme <Corp>", by: "Sachin", backupsRoot: broot, folders: [folder] });
+    // Scan everything: every table, every node, the backups and the folders.
+    const tables = (fdb.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+    const traces = tables.filter((t) => JSON.stringify(fdb.prepare(`SELECT * FROM "${t}"`).all()).toLowerCase().includes("acme"));
+    const nodes = await count("MATCH (n) WHERE any(k IN keys(n) WHERE toLower(toString(n[k])) CONTAINS 'acme') RETURN count(n)");
+    check("a purge leaves no trace: no table row, no graph node, no backup, no folder", traces.length === 0 && nodes === 0 && !existsSync(join(broot, "acme")) && !existsSync(folder), `tables ${traces} nodes ${nodes}`);
+    check("usage stays in the account's totals, anonymized", (fdb.prepare("SELECT count(*) AS n FROM usage_events WHERE project_id = '' AND task_id IS NULL AND agent_id IS NULL AND cost_usd = 0.01").get() as { n: number }).n === 1);
+    check("the other project keeps everything, backups included", (await sizeOf("zeta")) === zetaBefore, `${await sizeOf("zeta")} vs ${zetaBefore}`);
+    const counted = Object.fromEntries(rec.removed.map((r) => [r.what, r.count]));
+    check("the record counts what went", rec.graph === "deleted" && counted["Memories (decisions, lessons, dead ends)"] === 1 && counted["Ledger entries"] === 1 && counted["Findings"] === 1 &&
+      counted["Task summaries"] === 1 && counted["Memory backups"] === 1 && rec.removed.some((r) => /folders/.test(r.what) && r.count === 1) && rec.kept.some((k) => /audit log/.test(k)), JSON.stringify(rec.removed));
+    const html = recordHtml(rec);
+    check("the printable record escapes the project's name", html.includes("Acme &lt;Corp&gt;") && !html.includes("<Corp>") && !/<script/i.test(html));
+    const rdir = mkdtempSync(join(tmpdir(), "arima-records-"));
+    const name = saveRecord(rec, rdir);
+    check("the record is saved as private JSON and HTML", ["json", "html"].every((x) => existsSync(join(rdir, `${name}.${x}`)) && (statSync(join(rdir, `${name}.${x}`)).mode & 0o077) === 0));
+
+    // With Neo4j unreachable the purge still happens; the graph part is queued and the record says so.
+    const offline = new Neo4jMemory(fdb, () => null);
+    offline.remember({ projectId: "zeta", type: "Lesson", text: "zeta lesson written while the graph is down", by: "hq" });
+    const rec2 = await forgetProject({ db: fdb, mem: offline, projectId: "zeta", projectName: "Zeta", by: "Sachin", backupsRoot: broot, folders: [] });
+    const outbox = fdb.prepare("SELECT op FROM memory_outbox WHERE project_id = 'zeta'").all() as { op: string }[];
+    check("offline: the graph's deletion is queued, everything else is gone, and the record says so", rec2.graph === "queued" && outbox.length === 1 && JSON.parse(outbox[0].op).op === "forget" &&
+      rec2.removed[0].count === null && rec2.kept.some((k) => /queued/.test(k)) && (fdb.prepare("SELECT count(*) AS n FROM findings WHERE project_id = 'zeta'").get() as { n: number }).n === 0);
+    await fm.flush(); // the online store sends the queued forget
+    check("and once the graph is back, the queued forget runs", (await count("MATCH (n {projectId: 'zeta'}) RETURN count(n)")) === 0);
+    await offline.close();
+    await fm.close();
+  }
 
   // ---------------------------------------------------------------- forget
   memory.forgetProject("p");

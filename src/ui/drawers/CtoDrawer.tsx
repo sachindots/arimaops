@@ -35,6 +35,8 @@ export function CtoDrawer() {
   const [newName, setNewName] = useState("");
   const [archiving, setArchiving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<{ id: string; typed: string } | null>(null);
+  /** The deletion record of the project just deleted, to hand to the client. */
+  const [record, setRecord] = useState<{ name: string; project: string } | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState<Record<string, string>>({});
   const [newTaskOwner, setNewTaskOwner] = useState<Record<string, string>>({});
   const [auditSent, setAuditSent] = useState(false);
@@ -199,10 +201,10 @@ export function CtoDrawer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body ?? {}),
       });
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
+      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string; record?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
-      return true;
+      return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return false;
@@ -519,6 +521,27 @@ export function CtoDrawer() {
           })}
         </section>
 
+        {record && (
+          <section className="flex flex-col gap-2 border-[3px] border-green p-3">
+            <b className="text-[15px]">{record.project} is deleted</b>
+            <p className="m-0 text-[13px] text-muted">
+              The deletion record lists what was removed and what stays. Open it and save it as PDF to send your client; it's also kept under{" "}
+              <code>~/{BRAND.homeDir}/deletion-records</code>.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.html?token=${encodeURIComponent(getBrowserToken())}`} target="_blank" rel="noreferrer">
+                Open deletion record ↗
+              </a>
+              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.json?token=${encodeURIComponent(getBrowserToken())}`} target="_blank" rel="noreferrer">
+                JSON
+              </a>
+              <button type="button" className="btn min-h-[40px] px-3 text-[12px]" onClick={() => setRecord(null)}>
+                Close
+              </button>
+            </div>
+          </section>
+        )}
+
         {archived.length > 0 && (
           <section className="flex flex-col gap-2">
             <SectionTitle>Archive ({archived.length})</SectionTitle>
@@ -551,12 +574,17 @@ export function CtoDrawer() {
                     className="flex flex-col gap-2 border-2 border-red p-2"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void post(`${encodeURIComponent(p.id)}/delete`, { confirm: deleting.typed.trim() }).then((ok) => ok && setDeleting(null));
+                      void post(`${encodeURIComponent(p.id)}/delete`, { confirm: deleting.typed.trim() }).then((d) => {
+                        if (!d) return;
+                        setDeleting(null);
+                        if (d.record) setRecord({ name: d.record, project: p.name });
+                      });
                     }}
                   >
                     <p className="m-0 text-[12px]">
-                      Deletes the agents' folders, chats, tasks, findings and logs {BRAND.name} keeps for <b>{p.name}</b>. The code in {p.path} and its git history stay.
-                      This can't be undone. Type <code>{p.id}</code> to confirm.
+                      Deletes everything {BRAND.name} keeps for <b>{p.name}</b>: the agents' folders, chats, tasks, findings, logs, the team's memory and its
+                      backups. The code in {p.path} and its git history stay. You get a deletion record to send your client. This can't be undone. Type{" "}
+                      <code>{p.id}</code> to confirm.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <input
