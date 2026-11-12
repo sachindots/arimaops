@@ -41,6 +41,8 @@ export class Planner {
   findings: Findings | null = null;
   /** Set by main: ledgers and, from Phase 2, the team's memory. */
   memory: MemoryStore | null = null;
+  /** Set by main: extraction after a task, consolidation after a board (docs/memory-core.md section 5). */
+  memoryJobs: { taskFinished(): void; boardDone(projectId: string): void } | null = null;
 
 
   constructor(private hub: Hub, private inbox: Inbox) {}
@@ -128,7 +130,9 @@ export class Planner {
     const board = this.snap.boards.find((b) => b.id === id);
     if (!board) throw new Error(`No board ${id}`);
     if (patch.title?.trim()) board.title = patch.title.trim().slice(0, 80);
+    const finishing = patch.status === "done" && board.status !== "done";
     if (patch.status) board.status = patch.status;
+    if (finishing) this.memoryJobs?.boardDone(this.snap.config.project.id);
     this.hub.emit({ type: "board.updated", board: { ...board } });
     this.hub.planChanged();
     return board;
@@ -320,6 +324,7 @@ export class Planner {
         usage: task.usage ?? null,
         finishedAt: new Date().toISOString(),
       });
+      this.memoryJobs?.taskFinished();
     } catch (err) {
       log.warn(`couldn't keep the summary of ${task.id}: ${err instanceof Error ? err.message : err}`); // never a reason to refuse finishing
     }

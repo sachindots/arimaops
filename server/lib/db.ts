@@ -192,6 +192,12 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, term)
   );
   `,
+  // Phase 2 step 6: which summaries Haiku has read, and why one failed.
+  `
+  ALTER TABLE task_summaries ADD COLUMN extracted_at INTEGER;
+  ALTER TABLE task_summaries ADD COLUMN extract_attempts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE task_summaries ADD COLUMN extract_error TEXT;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

@@ -138,6 +138,7 @@ export interface OfficeDataSource {
   removeAccount(id: string): void;
   saveMemory(input: MemoryInput): void;
   restoreMemory(date: string): void;
+  setMemoryExtraction(input: { enabled: boolean; account: string }): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

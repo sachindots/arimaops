@@ -49,10 +49,10 @@ When a task reaches done, HQ writes a `TaskSummary` to SQLite (`task_summaries` 
 
 ## 5. Extraction and consolidation (2.4)
 
-- **Extraction:** after a summary is written, one `ModelRunner.run` with Claude Haiku 5.5 (`purpose: "helper"`, the project's helper account: the owner's `claude -p` sign-in, or a customer's Anthropic key). The prompt asks for JSON: nodes of the core and template types, and edges, with a fixed schema; HQ validates it with zod and drops what doesn't fit. Output is redacted and personal-data filtered (section 6) before any write.
-- **Consolidation:** after each board finishes, and nightly after the backup. Finds near-duplicates (same type, full-text match above a threshold, same component), asks Haiku to merge or keep, and links the loser with `SUPERSEDES`. Certified memories are never merged away; an uncertified one can be merged into a certified one.
-- **Fading:** an uncertified memory not recalled or used in a brief for **30 days** is deleted by the nightly job. Certified ones never fade.
-- **Cost guard:** extraction is skipped (and logged) when the account's Phase 3 spend cap is hit; until then, one Haiku call per finished task plus one per consolidation.
+- **Extraction** (`server/memoryExtract.ts`): after a summary is written, one `ModelRunner.run` with Claude Haiku 5.5 (`claude-haiku-5-5`, `purpose: "helper"`) on the account chosen in Settings → Memory: the owner's `claude -p` sign-in, or an Anthropic API-key account. **Off until the owner turns it on** (it spends usage); tasks finished meanwhile are read when it is turned on. The prompt gives the summary as data and forbids names, contacts and secrets; the reply is parsed against a fixed zod schema, types the project doesn't have are dropped, and each memory goes through `remember` (so it is cleaned, section 6). A summary gets at most 3 tries, one per run (after a task finishes, and nightly); the last error is kept on the summary row.
+- **Consolidation:** after a board is marked done, and nightly. Look-alike pairs (same type, word overlap of 60% or more, at most 20) go to Haiku in one call, which names the pairs that say the same thing and gives one merged text. The kept memory takes the merged text and the dropped one's links (`ABOUT`, its task's edge); the dropped one stays as history (`SUPERSEDES`, `supersededBy`) and is no longer recalled. A certified memory is never dropped and its text is never rewritten; two certified memories are never paired. Merges Haiku invents for pairs it wasn't asked about are ignored.
+- **Fading:** nightly, after the backup, an uncertified memory not recalled or used in a brief for **30 days** is deleted. Certified ones never fade.
+- **Cost guard:** the spend caps come in Phase 3; until then the switch in Settings → Memory is the guard. One Haiku call per finished task plus one per consolidation that finds look-alikes.
 
 ## 6. Never stored (2.5)
 

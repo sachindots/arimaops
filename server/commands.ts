@@ -5,8 +5,9 @@ import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
 import type { AccountInput, MemoryInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
-import { memoryState, memoryStore, saveMemorySettings } from "./memory";
+import { memoryState, memoryStore, saveExtractionSettings, saveMemorySettings } from "./memory";
 import { listBackups, restoreProject } from "./memoryBackup";
+import { memoryWorker } from "./memoryJobs";
 
 /** Sends the accounts list (no secrets) to every loaded project. */
 function broadcastAccounts() {
@@ -366,6 +367,17 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         hub.activity("config", null, "Saved the memory settings. HQ is connecting to Neo4j.");
       } catch (e) {
         hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    setMemoryExtraction: (raw) => {
+      const input = (raw ?? {}) as { enabled?: boolean; account?: string };
+      try {
+        saveExtractionSettings(input, (id) => accounts().get(id)?.provider === "anthropic");
+        broadcastMemory();
+        hub.activity("config", null, input.enabled ? `Memory extraction is on: Claude Haiku reads each finished task (${input.account && input.account !== "default" ? `account ${input.account}` : "your Claude Code sign-in"}).` : "Memory extraction is off.");
+        if (input.enabled) memoryWorker()?.extractPending();
+      } catch (e) {
+        hub.activity("config", null, `Couldn't change memory extraction: ${e instanceof Error ? e.message : String(e)}`);
       }
     },
     restoreMemory: (date) => {

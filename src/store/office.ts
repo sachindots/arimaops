@@ -260,6 +260,7 @@ export const officeActions = {
   removeAccount: (id: string) => source.removeAccount(id),
   saveMemory: (input: MemoryInput) => source.saveMemory(input),
   restoreMemory: (date: string) => source.restoreMemory(date),
+  setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
   refreshMcp: () => source.refreshMcp(),
   addMcp: (input: NewMcpServer) => source.addMcp(input),
   authMcp: (name: string) => source.authMcp(name),

@@ -20,6 +20,7 @@ import { CORE_MEMORY_TYPES, LEDGER_KINDS, type LedgerEntry, type LedgerKind, typ
 import type { MemoryInput, MemoryState, Scope } from "../src/data/types";
 import { credentialsVault, redactor } from "./credentials/registry";
 import { cleanMemory, saysSomething, type MemoryContext } from "./memoryClean";
+import type { ExtractionSettings } from "./memoryExtract";
 import { hqDb } from "./lib/db";
 import { readDoc, tx, writeDoc } from "./lib/docs";
 import { log } from "./lib/log";
@@ -76,6 +77,7 @@ type Op =
   | { op: "touch"; ids: string[]; at: string }
   | { op: "task"; t: Pick<TaskSummary, "taskId" | "title" | "stageId" | "ownerId" | "needs" | "files" | "finishedAt"> }
   | { op: "scrub"; term: string }
+  | { op: "merge"; keep: string; drop: string; text: string | null }
   | { op: "forget" };
 
 /** How a task points at what it produced (docs/memory-core.md section 3). */
@@ -114,6 +116,15 @@ const CYPHER: { [K in Exclude<Op["op"], "scrub">]: string } = {
            MERGE (a:Agent {projectId: t.projectId, agentId: $t.ownerId})
            MERGE (a)-[:WORKED_ON]->(t)
          }`,
+  // Consolidation: the dropped memory stays as history, pointed at by the kept one, which takes over its links.
+  merge: `MATCH (k:Memory {projectId: $projectId, id: $keep}), (l:Memory {projectId: $projectId, id: $drop})
+          WHERE l.supersededBy IS NULL AND k.supersededBy IS NULL AND NOT l.certified
+          SET l.supersededBy = k.id, k.text = coalesce($text, k.text),
+              k.lastUsedAt = CASE WHEN l.lastUsedAt > k.lastUsedAt THEN l.lastUsedAt ELSE k.lastUsedAt END
+          MERGE (k)-[:SUPERSEDES]->(l)
+          WITH k, l
+          CALL (k, l) { MATCH (l)-[:ABOUT]->(c:Component) MERGE (k)-[:ABOUT]->(c) }
+          CALL (k, l) { MATCH (t:Task)-[r]->(l) WHERE type(r) IN ['DECIDED', 'LEARNED', 'HIT', 'NOTED'] MERGE (t)-[:$(type(r))]->(k) }`,
   touch: `MATCH (m:Memory) WHERE m.projectId = $projectId AND m.id IN $ids SET m.lastUsedAt = $at`,
   supersede: `MATCH (old:LedgerEntry {id: $id}), (new:LedgerEntry {id: $by})
               SET old.supersededBy = $by
@@ -249,7 +260,7 @@ export class Neo4jMemory implements MemoryStore {
     const driver = await this.connected();
     const { records } = await driver.executeQuery(
       `CALL db.index.fulltext.queryNodes('memory_text', $q) YIELD node AS m, score
-       WHERE m.projectId = $p AND ($types IS NULL OR any(l IN labels(m) WHERE l IN $types))
+       WHERE m.projectId = $p AND m.supersededBy IS NULL AND ($types IS NULL OR any(l IN labels(m) WHERE l IN $types))
        RETURN ${MEMORY_RETURN} ${ORDER} LIMIT $limit`,
       { q: words.join(" OR "), p: projectId, types: opts.types?.length ? opts.types : null, limit: neo4j.int(Math.min(Math.max(1, Math.trunc(opts.limit ?? 10)), 50)) },
     );
@@ -263,7 +274,7 @@ export class Neo4jMemory implements MemoryStore {
     const { records } = await driver.executeQuery(
       `MATCH (a) WHERE a.projectId = $p AND (
          (a:Task AND a.taskId = $taskId) OR (a:Component AND a.name = $path) OR (a:Memory AND a.id = $memoryId))
-       MATCH (a)-[*1..${depth}]-(m:Memory) WHERE m.projectId = $p AND m <> a
+       MATCH (a)-[*1..${depth}]-(m:Memory) WHERE m.projectId = $p AND m <> a AND m.supersededBy IS NULL
        WITH DISTINCT m, 0 AS score
        RETURN ${MEMORY_RETURN} ${ORDER} LIMIT $limit`,
       { p: projectId, taskId: ref.taskId ?? null, path: ref.path ?? null, memoryId: ref.memoryId ?? null, limit: neo4j.int(Math.min(Math.max(1, Math.trunc(opts.limit ?? 10)), 50)) },
@@ -287,7 +298,7 @@ export class Neo4jMemory implements MemoryStore {
     };
     tx(this.db, () => {
       this.db
-        .prepare("INSERT INTO task_summaries (project_id, task_id, body, finished_at) VALUES (?, ?, ?, ?) ON CONFLICT (project_id, task_id) DO UPDATE SET body = excluded.body, finished_at = excluded.finished_at")
+        .prepare("INSERT INTO task_summaries (project_id, task_id, body, finished_at) VALUES (?, ?, ?, ?) ON CONFLICT (project_id, task_id) DO UPDATE SET body = excluded.body, finished_at = excluded.finished_at, extracted_at = NULL, extract_attempts = 0, extract_error = NULL")
         .run(s.projectId, s.taskId, JSON.stringify(s), Date.parse(s.finishedAt));
       const op: Op = { op: "task", t: { taskId: s.taskId, title: s.title, stageId: s.stageId, ownerId: s.ownerId, needs: s.needs, files: s.files, finishedAt: s.finishedAt } };
       this.db.prepare("INSERT INTO memory_outbox (project_id, op, at) VALUES (?, ?, ?)").run(s.projectId, JSON.stringify(op), Date.now());
@@ -298,6 +309,49 @@ export class Neo4jMemory implements MemoryStore {
   summary(projectId: string, taskId: string): TaskSummary | null {
     const row = this.db.prepare("SELECT body FROM task_summaries WHERE project_id = ? AND task_id = ?").get(projectId, taskId) as { body: string } | undefined;
     return row ? (JSON.parse(row.body) as TaskSummary) : null;
+  }
+
+  /** Summaries extraction hasn't read yet (at most 3 tries each), oldest first. */
+  unextracted(limit = 20): TaskSummary[] {
+    return (this.db.prepare("SELECT body FROM task_summaries WHERE extracted_at IS NULL AND extract_attempts < 3 ORDER BY finished_at LIMIT ?").all(limit) as { body: string }[]).map((r) => JSON.parse(r.body));
+  }
+
+  /** Records an extraction: done, or one more failed try and why. */
+  extracted(projectId: string, taskId: string, error: string | null = null) {
+    if (error) this.db.prepare("UPDATE task_summaries SET extract_attempts = extract_attempts + 1, extract_error = ? WHERE project_id = ? AND task_id = ?").run(error.slice(0, 500), projectId, taskId);
+    else this.db.prepare("UPDATE task_summaries SET extracted_at = ?, extract_error = NULL WHERE project_id = ? AND task_id = ?").run(Date.now(), projectId, taskId);
+  }
+
+  /** The project's current memories (not merged away), for consolidation. Needs Neo4j. */
+  async memories(projectId: string): Promise<Memory[]> {
+    const { records } = await (await this.connected()).executeQuery(
+      `MATCH (m:Memory {projectId: $p}) WHERE m.supersededBy IS NULL RETURN ${MEMORY_RETURN} ORDER BY m.createdAt, m.id`,
+      { p: projectId },
+    );
+    return records.map((r) => toMemory(r.get("m")));
+  }
+
+  /** Folds `drop` into `keep` (consolidation). `text`, if given, replaces keep's text; a certified memory is never dropped. */
+  merge(projectId: string, keep: string, drop: string, text: string | null) {
+    const t = text === null ? null : this.cleaner(projectId)(text.trim()).slice(0, MAX_TEXT);
+    if (t !== null && !saysSomething(t)) throw new Error("The merged text says nothing once secrets and personal data are taken out.");
+    tx(this.db, () => this.queue(projectId, { op: "merge", keep, drop, text: t }));
+    this.kick();
+  }
+
+  /** Deletes uncertified memories nobody recalled or used since `before`. Needs Neo4j. Returns how many went. */
+  async fade(before: Date): Promise<number> {
+    const { records } = await (await this.connected()).executeQuery(
+      "MATCH (m:Memory) WHERE m.certified = false AND m.lastUsedAt < $before DETACH DELETE m RETURN count(m) AS n",
+      { before: before.toISOString() },
+    );
+    return records[0].get("n") as number;
+  }
+
+  /** Every project with memories in the graph. Needs Neo4j. */
+  async memoryProjects(): Promise<string[]> {
+    const { records } = await (await this.connected()).executeQuery("MATCH (m:Memory) RETURN DISTINCT m.projectId AS p");
+    return records.map((r) => r.get("p") as string);
   }
 
   /** Names (people, handles) never to keep, in this project. Adding one also scrubs what is already stored. */
@@ -533,10 +587,25 @@ export function memoryState(env = process.env): Omit<MemoryState, "backups"> {
     url: cfg?.url ?? saved?.url ?? "",
     user: cfg?.user ?? saved?.user ?? "neo4j",
     passwordSet: !!cfg,
+    extraction: extractionSettings(),
     status: st.state,
     ...(st.state === "offline" ? { error: st.error } : {}),
     queued: st.state === "online" ? st.queued : (hqDb().prepare("SELECT count(*) AS n FROM memory_outbox WHERE failed IS NULL").get() as { n: number }).n,
   };
+}
+
+type SavedSettings = { url?: string; user?: string; extract?: boolean; account?: string };
+
+/** Whether Haiku reads finished tasks, and on which account. Off until the owner turns it on (it spends usage). */
+export function extractionSettings(): ExtractionSettings {
+  const saved = readDoc<SavedSettings>(settingsFile());
+  return { enabled: saved?.extract === true, account: saved?.account || "default" };
+}
+
+export function saveExtractionSettings(input: Partial<ExtractionSettings>, isAnthropicAccount: (id: string) => boolean) {
+  const account = String(input?.account ?? "default").trim() || "default";
+  if (account !== "default" && !isAnthropicAccount(account)) throw new Error(`"${account}" isn't an Anthropic account. Use your Claude Code sign-in or add an Anthropic key in Settings → Accounts.`);
+  writeDoc(settingsFile(), { ...readDoc<SavedSettings>(settingsFile()), extract: input?.enabled === true, account });
 }
 
 /** Saves the address (memory.json) and password (vault), then reconnects. Refused while compose sets them. */
@@ -550,6 +619,6 @@ export function saveMemorySettings(input: MemoryInput, env = process.env) {
   if (password && password.length < 8) throw new Error("Neo4j passwords are at least 8 characters.");
   if (!password && !credentialsVault().get(VAULT_REF)) throw new Error("Enter the Neo4j password.");
   if (password) credentialsVault().set(VAULT_REF, password);
-  writeDoc(settingsFile(), { url, user });
+  writeDoc(settingsFile(), { ...readDoc<object>(settingsFile()), url, user });
   return memoryStore().flush();
 }

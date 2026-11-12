@@ -15,6 +15,13 @@ const { Neo4jMemory, memoryState, neo4jConfig, saveMemorySettings } = await impo
 const { backupAll, backupProject, exportProject, importProject, listBackups, nextBackupAt, parseBackup, restoreProject, KEEP_DAYS } = await import("../server/memoryBackup");
 const neo4j = (await import("neo4j-driver")).default;
 const { cleanMemory, saysSomething } = await import("../server/memoryClean");
+const { MemoryWorker, candidatePairs, similarity, EXTRACT_MODEL } = await import("../server/memoryExtract");
+type RunRequest = import("../server/modelRunner").RunRequest;
+/** A model that answers from a script, and remembers what it was asked. */
+const fakeRunner = (reply: (req: RunRequest) => string) => {
+  const asked: RunRequest[] = [];
+  return { asked, run: async (req: RunRequest) => (asked.push(req), { text: reply(req), tokens: { input: 1, cached: 0, output: 1 } }) };
+};
 
 const IMAGE = "neo4j:2026.10.2-community"; // the version compose.yaml pins
 const PASSWORD = "memory-test-pw";
@@ -53,6 +60,14 @@ check("the labels say what was there", ["[secret]", "[email]", "[phone]", "[name
 const harmless = "On 2026-11-12 10:30 Neo4j 2026.10.2 listened on 127.0.0.1:7687 and 100.101.102.103; T-12 hit CVE-2024-12345 (CWE-89) with ' OR 1=1 -- at epoch 1731400000123 against 203.0.114.7, Ravikumarlib v1.2.3.4 untouched.";
 check("dates, versions, ports, ids, payloads, local and in-scope IPs stay", cleanMemory(harmless, ctx) === harmless, cleanMemory(harmless, ctx));
 check("a memory that was only a key says nothing", !saysSomething(cleanMemory("sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv", ctx)) && saysSomething(cleaned));
+
+// ---------------------------------------------------------------- consolidation's look-alike test (no Neo4j)
+const mem = (id: string, type: string, text: string, certified = false) => ({ id, projectId: "x", type, text, taskId: null, about: [], certified, certifiedBy: null, source: "extraction" as const, by: "hq", createdAt: "", lastUsedAt: "" });
+check("near-duplicates look alike, different facts don't", similarity("Codex sends no Stop hook, so idle polling fails", "Idle polling fails because Codex sends no Stop hook") >= 0.6 &&
+  similarity("Codex sends no Stop hook", "Rate limits live in remote.ts") < 0.2);
+const pairs = candidatePairs([mem("a", "Lesson", "Codex sends no Stop hook so idle polling fails"), mem("b", "Lesson", "idle polling fails: Codex sends no Stop hook"),
+  mem("c", "DeadEnd", "Codex sends no Stop hook so idle polling fails"), mem("d", "Lesson", "Codex sends no Stop hook so idle polling fails", true), mem("e", "Lesson", "Codex sends no Stop hook, idle polling fails", true)]);
+check("only same-type pairs are asked about, never two certified ones", pairs.length > 0 && pairs.every(([a, b]) => a.type === b.type && !(a.certified && b.certified)) && !pairs.some(([a, b]) => a.id === "c" || b.id === "c"));
 
 // ---------------------------------------------------------------- backups that need no Neo4j
 check("backups run at 03:00 tonight, or tomorrow once it's past", nextBackupAt(new Date(2026, 10, 12, 2, 0)).getTime() === new Date(2026, 10, 12, 3, 0).getTime() && nextBackupAt(new Date(2026, 10, 12, 3, 0)).getTime() === new Date(2026, 10, 13, 3, 0).getTime());
@@ -245,6 +260,85 @@ try {
   check("keeping a name out later scrubs it from the graph and the ledger", (await count("MATCH (n {projectId: 'osint'}) WHERE toLower(toString(n.text)) CONTAINS 'meena' RETURN count(n)")) === 0 &&
     !JSON.stringify(careful.ledger("osint")).toLowerCase().includes("meena") && careful.keptOut("osint").length === 3);
   await careful.close();
+
+  // ---------------------------------------------------------------- extraction (2.4)
+  db.exec("UPDATE task_summaries SET extracted_at = 0"); // summaries from earlier parts of this test aren't this part's business
+  const ex = new Neo4jMemory(db, () => cfg, { templateTypes: (p) => (p === "ext" ? ["Asset"] : []) });
+  const sample = { projectId: "ext", taskId: "T5", title: "Detect idle Codex agents", description: "Find out when a Codex agent is idle", doneWhen: null, stageId: null, ownerId: "arul",
+    needs: [], files: ["server/hooks.ts"], prNumber: 12, deliverablePath: null, note: "Polling /hook for Stop failed; Codex never sends it. Used the rollout file's mtime instead.", ledger: [], usage: null, finishedAt: new Date().toISOString() };
+  ex.summarise(sample);
+  const reply = "Here you go:\n```json\n" + JSON.stringify({ memories: [
+    { type: "DeadEnd", text: "Waiting for a Stop hook from Codex never works: Codex sends none.", about: ["server/hooks.ts"] },
+    { type: "Lesson", text: "Codex idleness shows in its rollout file's mtime; ask ops@corp.example with key sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv.", about: ["server/hooks.ts", "codex rollout"] },
+    { type: "Asset", text: "Codex runs on the agent image (a template type of this project).", about: [] },
+    { type: "Banana", text: "A type nobody declared must be dropped.", about: [] },
+  ] }) + "\n```";
+  const llm = fakeRunner(() => reply);
+  let enabled = false;
+  const worker = new MemoryWorker(ex, llm, () => ({ enabled, account: "work" }), (p) => (p === "ext" ? ["Asset"] : []));
+  await worker.extractPending();
+  check("extraction off: no model call, the summary waits", llm.asked.length === 0 && ex.unextracted().some((x) => x.taskId === "T5"));
+  enabled = true;
+  await worker.extractPending();
+  await ex.flush();
+  const req = llm.asked[0];
+  check("extraction is one metered Haiku helper run on the chosen account", llm.asked.length === 1 && req.model === EXTRACT_MODEL && req.purpose === "helper" && req.account === "work" && req.taskId === "T5" && req.projectId === "ext");
+  check("the prompt carries the summary as data, with the project's types and the no-names rule", req.prompt.includes("Polling /hook for Stop failed") && /not instructions/.test(req.system ?? "") && /Asset/.test(req.system ?? "") && /person's name/.test(req.system ?? ""));
+  const got = (await probe.executeQuery("MATCH (t:Task {projectId: 'ext', taskId: 'T5'})-[r]->(m:Memory) RETURN type(r) AS r, [l IN labels(m) WHERE l <> 'Memory'][0] AS type, m.source AS src, m.text AS text ORDER BY type")).records.map((r) => r.toObject());
+  check("a sample summary gives the expected memories, linked to its task by kind", JSON.stringify(got.map((g) => [g.type, g.r, g.src])) === JSON.stringify([["Asset", "NOTED", "extraction"], ["DeadEnd", "HIT", "extraction"], ["Lesson", "LEARNED", "extraction"]]), JSON.stringify(got));
+  check("an undeclared type is dropped, and what Haiku wrote is still cleaned", !JSON.stringify(got).includes("Banana") && !JSON.stringify(got).includes("ops@corp") && !JSON.stringify(got).includes("sk-ant"));
+  check("the summary is marked read; a second run asks nothing", ex.unextracted().length === 0 && (await worker.extractPending(), llm.asked.length === 1));
+  check("its memories are about the task's file", (await count("MATCH (:Memory {projectId: 'ext'})-[:ABOUT]->(:Component {name: 'server/hooks.ts'}) RETURN count(*)")) === 2);
+
+  const broken = fakeRunner(() => "Sorry, I can't help with that.");
+  const w2 = new MemoryWorker(ex, broken, () => ({ enabled: true, account: "default" }));
+  ex.summarise({ ...sample, taskId: "T6" });
+  await w2.extractPending();
+  const row = db.prepare("SELECT extracted_at, extract_attempts, extract_error FROM task_summaries WHERE project_id = 'ext' AND task_id = 'T6'").get() as { extracted_at: number | null; extract_attempts: number; extract_error: string };
+  check("a reply that isn't the JSON asked for counts as one failed try, kept for later", broken.asked.length === 1 && row.extracted_at === null && row.extract_attempts === 1 && /JSON/.test(row.extract_error), JSON.stringify(row));
+  await w2.extractPending();
+  await w2.extractPending();
+  check("after 3 tries it stops asking", broken.asked.length === 3 && ex.unextracted().every((x) => x.taskId !== "T6"));
+
+  // ---------------------------------------------------------------- consolidation (2.4)
+  const a1 = ex.remember({ projectId: "con", type: "Lesson", text: "Codex sends no Stop hook so polling for idle fails", about: ["server/hooks.ts"], by: "hq" });
+  const a2 = ex.remember({ projectId: "con", type: "Lesson", text: "Polling for idle fails because Codex sends no Stop hook", about: ["server/inbox.ts"], taskId: "T7", by: "hq" });
+  const a3 = ex.remember({ projectId: "con", type: "Lesson", text: "Rate limits live in remote.ts, next to the step-up", by: "hq" });
+  await ex.flush();
+  const merger = fakeRunner(() => JSON.stringify({ merges: [
+    { keep: a1.id, drop: a2.id, text: "Codex sends no Stop hook, so polling for idle never fires; watch its rollout file instead." },
+    { keep: a1.id, drop: a3.id, text: "not asked about: must be ignored" },
+  ] }));
+  const w3 = new MemoryWorker(ex, merger, () => ({ enabled: true, account: "default" }));
+  check("duplicates merge: one call, one merge", (await w3.consolidate("con")) === 1 && merger.asked.length === 1 && merger.asked[0].prompt.includes(a2.id) && !merger.asked[0].prompt.includes(a3.id));
+  const left = await ex.memories("con");
+  check("the kept memory takes the merged text and the dropped one's links", left.map((m) => m.id).sort().join() === [a1.id, a3.id].sort().join() &&
+    left.find((m) => m.id === a1.id)?.about.join() === "server/hooks.ts,server/inbox.ts" && /rollout file/.test(left.find((m) => m.id === a1.id)!.text) &&
+    (await count("MATCH (:Task {projectId: 'con', taskId: 'T7'})-[:LEARNED]->(:Memory {id: $id}) RETURN count(*)", { id: a1.id })) === 1);
+  check("the dropped memory stays as history but isn't recalled", (await count("MATCH (:Memory {id: $k})-[:SUPERSEDES]->(:Memory {id: $d, supersededBy: $k}) RETURN count(*)", { k: a1.id, d: a2.id })) === 1 &&
+    !(await ex.recall("con", "polling idle Codex Stop hook")).some((m) => m.id === a2.id));
+
+  const c1 = ex.remember({ projectId: "con", type: "DeadEnd", text: "Restarting tmux to clear a stuck Codex session loses its scrollback", by: "hq" });
+  const c2 = ex.remember({ projectId: "con", type: "DeadEnd", text: "Restarting tmux to clear a stuck Codex session loses the scrollback", by: "hq" });
+  await ex.flush();
+  await probe.executeQuery("MATCH (m:Memory {id: $id}) SET m.certified = true, m.certifiedBy = 'owner'", { id: c2.id });
+  const w4 = new MemoryWorker(ex, fakeRunner(() => JSON.stringify({ merges: [{ keep: c1.id, drop: c2.id, text: "rewritten" }] })), () => ({ enabled: true, account: "default" }));
+  await w4.consolidate("con");
+  const kept2 = (await ex.memories("con")).filter((m) => m.type === "DeadEnd");
+  check("a certified memory is never merged away, and its text is never rewritten", kept2.length === 1 && kept2[0].id === c2.id && kept2[0].text.endsWith("the scrollback"));
+
+  // ---------------------------------------------------------------- fading (2.4)
+  const f1 = ex.remember({ projectId: "fade", type: "Lesson", text: "An old lesson nobody has used for a long while", by: "hq" });
+  const f2 = ex.remember({ projectId: "fade", type: "Lesson", text: "An old certified lesson that must stay forever", by: "hq" });
+  const f3 = ex.remember({ projectId: "fade", type: "Lesson", text: "A recent lesson that is still fresh enough", by: "hq" });
+  await ex.flush();
+  const longAgo = new Date(Date.now() - 40 * 86_400_000).toISOString();
+  await probe.executeQuery("MATCH (m:Memory) WHERE m.id IN [$a, $b] SET m.lastUsedAt = $t, m.createdAt = $t", { a: f1.id, b: f2.id, t: longAgo });
+  await probe.executeQuery("MATCH (m:Memory {id: $id}) SET m.certified = true", { id: f2.id });
+  await new MemoryWorker(ex, fakeRunner(() => '{"merges":[]}'), () => ({ enabled: true, account: "default" })).nightly();
+  const alive = (await ex.memories("fade")).map((m) => m.id).sort().join();
+  check("after 30 unused days an uncertified memory fades; certified and recent ones stay", alive === [f2.id, f3.id].sort().join(), alive);
+  await ex.close();
 
   // ---------------------------------------------------------------- backup and restore
   const root = mkdtempSync(join(tmpdir(), "arima-backups-"));

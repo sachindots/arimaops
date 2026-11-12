@@ -570,6 +570,8 @@ export interface MemoryState {
   error?: string;
   /** Writes waiting for Neo4j. */
   queued: number;
+  /** Claude Haiku reads finished tasks into memories (spends usage on `account`). */
+  extraction: { enabled: boolean; account: string };
   /** This project's nightly memory backups, newest first (dates). */
   backups: string[];
 }

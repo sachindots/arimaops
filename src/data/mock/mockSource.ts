@@ -360,6 +360,7 @@ export function createMockSource(): OfficeDataSource {
     removeAccount() {},
     saveMemory() {},
     restoreMemory() {},
+    setMemoryExtraction() {},
     refreshMcp() {
       if (world.snap.mcp) world.emit({ type: "mcp.updated", mcp: structuredClone(world.snap.mcp) });
     },

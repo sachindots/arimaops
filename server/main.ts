@@ -32,6 +32,7 @@ import { readLicense } from "./license";
 import { RemoteGuard, startPushNotifier } from "./remote";
 import { memoryStore } from "./memory";
 import { scheduleBackups } from "./memoryBackup";
+import { memoryWorker } from "./memoryJobs";
 import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
@@ -137,7 +138,11 @@ async function main() {
   // Container mode: the agents' network, HQ on its gateway, and the allowlist proxy. Skipped without Docker.
   const containers = (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok && (await ensureNetwork());
   if (containers) startEgressProxy(projects, port);
-  scheduleBackups(memoryStore(), broadcastMemory);
+  scheduleBackups(memoryStore(), () => {
+    broadcastMemory();
+    void memoryWorker().nightly().catch((err) => log.warn(`memory: nightly tidy skipped: ${err instanceof Error ? err.message : err}`));
+  });
+  memoryWorker().extractPending(); // summaries left from before a restart
   await startHttp({
     projects,
     defaultProject,

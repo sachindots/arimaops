@@ -30,6 +30,7 @@ import { resolveUserSkillFolders } from "./skills";
 import { sumModels, UsageMeter } from "./usage";
 import { recordMeter } from "./usageEvents";
 import { memoryStore, setMemoryScope } from "./memory";
+import { memoryWorker } from "./memoryJobs";
 import { hqDb } from "./lib/db";
 import { accounts } from "./credentials/registry";
 import type { Provider } from "../src/data/providers";
@@ -204,6 +205,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.findings = new Findings(hub);
   planner.memory = memoryStore();
   memoryStore().onChange ??= broadcastMemory;
+  planner.memoryJobs = memoryWorker();
   setMemoryScope(hub.snap.config.project.id, () => hub.snap.config.project.scope);
   hub.snap.memory = projectMemoryState(hub.snap.config.project.id);
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.

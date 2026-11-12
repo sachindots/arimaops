@@ -12,6 +12,7 @@ const STATUS = {
 /** Where the team's memory (Neo4j) is. You run Neo4j; HQ only connects to it. */
 export function MemorySettings() {
   const state = useOffice((s) => s.snap?.memory);
+  const keys = (useOffice((s) => s.snap?.accounts?.list) ?? []).filter((a) => a.provider === "anthropic");
   const [form, setForm] = useState<{ url: string; user: string; password: string } | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   if (!state) return <p className="m-0 text-[14px] text-muted">Memory settings aren't available from this server.</p>;
@@ -36,6 +37,38 @@ export function MemorySettings() {
           {state.queued > 0 && <span className="text-muted">{state.queued} write{state.queued === 1 ? "" : "s"} waiting</span>}
         </p>
         {state.status === "offline" && state.error && <p className="m-0 mt-2 break-words text-[12px] text-muted">{state.error}</p>}
+      </section>
+
+      <section className="flex max-w-[560px] flex-col gap-2">
+        <SectionTitle>Extraction</SectionTitle>
+        <p className="m-0 text-[13px] text-muted">
+          When a task finishes, Claude Haiku reads its summary and proposes decisions, lessons and dead ends to remember. Each run uses a little of the
+          chosen account (shown in usage as a helper run). Off until you turn it on; tasks finished meanwhile are read when you do.
+        </p>
+        <label className="flex items-center gap-2 text-[14px]">
+          <input
+            type="checkbox"
+            checked={state.extraction.enabled}
+            disabled={isViewer}
+            onChange={(e) => officeActions.setMemoryExtraction({ ...state.extraction, enabled: e.target.checked })}
+          />
+          Extract memories from finished tasks
+        </label>
+        <Field label="Account">
+          <select
+            className="field"
+            value={state.extraction.account}
+            disabled={isViewer}
+            onChange={(e) => officeActions.setMemoryExtraction({ ...state.extraction, account: e.target.value })}
+          >
+            <option value="default">Claude Code sign-in (claude -p)</option>
+            {keys.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.id} (Anthropic API key)
+              </option>
+            ))}
+          </select>
+        </Field>
       </section>
 
       <section>
