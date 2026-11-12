@@ -6,7 +6,7 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, FindingStatus, Severity, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -233,7 +233,7 @@ export const officeActions = {
   runSetupFix: (id: SetupCheckId) => source.runSetupFix(id),
   assignTask: (taskId: string, agentId: string) => source.assignTask(taskId, agentId),
   setTaskRunsOn: (taskId: string, cli: AgentCli | null, model: string | null) => source.setTaskRunsOn(taskId, cli, model),
-  updateFinding: (id: string, patch: { status?: FindingStatus; severity?: Severity }) => source.updateFinding(id, patch),
+  updateFinding: (id: string, patch: Parameters<typeof source.updateFinding>[1]) => source.updateFinding(id, patch),
   sendMessage: (toId: string, text: string) => source.sendMessage(toId, text),
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),

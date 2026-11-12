@@ -118,7 +118,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
 
     // You → agent: same delivery path as the lead's assign_task / send_message.
     assignTask: (taskId, agentId) => planner.assign(str(taskId, 40), str(agentId, 80), "you"),
-    updateFinding: (id, patch) => planner.findings?.update(str(id, 20), (patch ?? {}) as Record<string, unknown>),
+    updateFinding: (id, patch) => {
+      try {
+        planner.findings?.update(str(id, 20), (patch ?? {}) as Record<string, unknown>, "you");
+      } catch (e) {
+        hub.activity("config", null, e instanceof Error ? e.message : String(e));
+      }
+    },
     recordGate: (taskId, gateId, state, note) => {
       const s = state === "passed" || state === "failed" || state === "waived" || state === "reset" ? state : null;
       if (!s) return;

@@ -1,4 +1,6 @@
-import type { Role, TeamTemplate, ToolRules } from "./model";
+import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
+
+export type { Finding };
 import type { StackConfig } from "./stack";
 // Domain types shared by the data source, the store, the office and the HUD.
 
@@ -154,22 +156,6 @@ export type Severity = "critical" | "high" | "medium" | "low" | "info";
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 export type FindingStatus = "open" | "confirmed" | "fixed" | "accepted" | "false-positive";
 export const FINDING_STATUSES: FindingStatus[] = ["open", "confirmed", "fixed", "accepted", "false-positive"];
-
-/** A security finding an agent reported (Team MCP report_finding). */
-export interface Finding {
-  id: string; // "F-003"
-  title: string;
-  severity: Severity;
-  target: string; // in-scope host, IP or URL
-  description: string;
-  evidence: string; // requests/responses, commands and output (no secrets)
-  remediation: string;
-  status: FindingStatus;
-  reporterId: string;
-  taskId: string | null;
-  at: string;
-  updatedAt: string;
-}
 
 export interface HqConfig {
   project: ProjectConfig;

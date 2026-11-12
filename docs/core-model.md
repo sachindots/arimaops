@@ -152,9 +152,13 @@ interface Finding {
 ```
 
 - CWE and `impact` are additions to the roadmap list: the HackerOne and Bugcrowd forms and SARIF rules ask for them.
-- The CVSS 4.0 score needs FIRST's lookup tables. HQ validates the vector and computes the score itself, so an agent can't claim a 10.0.
-- Exports in `server/reports/`: Markdown, JSON, SARIF 2.1.0, HackerOne and Bugcrowd (Markdown in each platform's field order, for pasting by hand; nothing is submitted), and PDF (section 11, question 4).
-- Redaction runs on evidence before it is stored, as it does for terminal output today.
+- **CVSS 4.0** (`server/cvss.ts`): HQ validates the vector and computes the score with FIRST's lookup tables from `ae-cvss-calculator` (Apache-2.0), so an agent can't claim a 10.0. The severity follows the score; only unscored findings take a severity by hand. The test pins seven vectors checked against FIRST's own calculator.
+- **SSVC** stores the decision points and the decision as given. HQ checks the values but doesn't derive the decision from CISA's tree yet.
+- **IDs** are checked by shape: `CWE-89`, `T1190` or `T1059.001`, `D3-IAA`, `WSTG-INPV-05`.
+- **Scope** applies to network assets (url, host, ip). Code, cloud and app findings name things a scope doesn't list.
+- **Exports** (`server/reports.ts`, `GET /api/projects/<id>/findings/export?format=…`): Markdown, JSON, SARIF 2.1.0, a printable HTML report (Save as PDF from the browser), HackerOne and Bugcrowd (each platform's fields in order, for pasting by hand; nothing is submitted, and unverified findings are flagged). False positives are left out of all but the Markdown appendix. `scripts/findings-test.ts` validates the SARIF export against the official OASIS 2.1.0 schema (kept in `scripts/fixtures/`) with ajv. The HTML report escapes agent text and is served with a no-script content policy.
+- **Storage:** template projects keep findings in the `findings` table. Projects made before templates show their old `findings.json` row in today's shape, read-only.
+- Redaction runs on evidence, description and impact before they are stored.
 
 ## 6. Usage events (1.6)
 

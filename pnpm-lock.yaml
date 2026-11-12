@@ -28,6 +28,9 @@ importers:
       '@xterm/headless':
         specifier: 5.5.0
         version: 5.5.0
+      ae-cvss-calculator:
+        specifier: 1.0.13
+        version: 1.0.13
       ws:
         specifier: ^8.22.0
         version: 8.22.0
@@ -68,6 +71,9 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       concurrently:
         specifier: ^10.0.6
         version: 10.0.6
@@ -886,6 +892,9 @@ packages:
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
     engines: {node: '>= 0.6'}
+
+  ae-cvss-calculator@1.0.13:
+    resolution: {integrity: sha512-QnPO1O5gZ/1NM+X4fbfqN/y5rImEZ8CSkbSk7Arv4RrmxPzxLXr9RSLmsQJykDtXFUXn9wHLxC0/fe/pO78t3w==}
 
   ajv-formats@3.0.1:
     resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
@@ -2240,6 +2249,8 @@ snapshots:
     dependencies:
       mime-types: 3.0.2
       negotiator: 1.1.0
+
+  ae-cvss-calculator@1.0.13: {}
 
   ajv-formats@3.0.1:
     dependencies:

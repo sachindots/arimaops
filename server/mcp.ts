@@ -11,6 +11,7 @@ import { requestAccess } from "./access";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
 import { AGENT_CLIS, type AgentCli } from "../src/data/types";
+import { ASSET_KINDS, EVIDENCE_KINDS } from "../src/data/model";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -256,30 +257,40 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     "report_finding",
     {
       description:
-        "Security engagements: record a vulnerability you found on an IN-SCOPE target. HQ refuses out-of-scope targets. Include reproducible evidence (requests/responses, commands and output) but never real secrets or personal data; redact them.",
+        "Security work: record a vulnerability. Network assets (url, host, ip) must be in scope; HQ refuses the rest. Give a CVSS 4.0 vector when you can: HQ computes the score and severity from it. Include reproducible evidence but never real secrets or personal data; redact them. Check list_findings first to avoid duplicates.",
       inputSchema: {
         title: z.string(),
-        severity: z.enum(["critical", "high", "medium", "low", "info"]),
-        target: z.string().describe("The in-scope host, IP or URL"),
-        description: z.string().describe("What's wrong and why it matters"),
-        evidence: z.string().describe("Steps to reproduce, requests/responses or command output (redacted)"),
-        remediation: z.string().describe("How to fix it"),
+        asset: z.object({ kind: z.enum(ASSET_KINDS), value: z.string().describe("The URL, host, IP, repo, cloud resource or app") }),
+        location: z.object({ file: z.string(), startLine: z.number().int().optional(), endLine: z.number().int().optional() }).optional().describe("Code findings: the file and lines"),
+        cvss: z.string().optional().describe("CVSS 4.0 base vector, e.g. CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"),
+        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional().describe("Only when there is no CVSS vector"),
+        ssvc: z
+          .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
+          .optional(),
+        cwe: z.array(z.string()).optional().describe("e.g. CWE-89"),
+        attack: z.array(z.string()).optional().describe("MITRE ATT&CK technique ids, e.g. T1190"),
+        d3fend: z.array(z.string()).optional().describe("MITRE D3FEND ids, e.g. D3-IAA"),
+        wstg: z.string().optional().describe("OWASP WSTG test id, e.g. WSTG-INPV-05"),
+        description: z.string().describe("What's wrong"),
+        impact: z.string().describe("What an attacker gains"),
+        evidence: z.array(z.object({ kind: z.enum(EVIDENCE_KINDS), content: z.string() })).describe("Requests, responses, commands and output that reproduce it (redacted)"),
+        remediation: z.string().describe("How to fix it at the root"),
       },
     },
-    guard((args: { title: string; severity: string; target: string; description: string; evidence: string; remediation: string }) => {
+    guard((args: Record<string, unknown>) => {
       if (!planner.findings) throw new Error("Findings aren't available.");
       const f = planner.findings.report(me, planner.currentTask(me)?.id ?? null, args);
-      return ok(`Recorded ${f.id} (${f.severity}). It's in deliverables/security-report.md.`);
+      return ok(`Recorded ${f.id} (${f.severity}${f.cvss ? `, CVSS ${f.cvss.score}` : ""}). It's in deliverables/security-report.md.`);
     }),
   );
 
   server.registerTool(
     "list_findings",
-    { description: "Security engagements: the findings so far (id, severity, status, target, title), so you don't report duplicates. Also returns the scope and rules of engagement." },
+    { description: "Security work: the findings so far (id, severity, status, asset, title), so you don't report duplicates. Also returns the scope and rules of engagement." },
     guard(() =>
       ok({
         scope: hub.snap.config.project.scope ?? null,
-        findings: (hub.snap.findings ?? []).map((f) => ({ id: f.id, severity: f.severity, status: f.status, target: f.target, title: f.title })),
+        findings: (hub.snap.findings ?? []).map((f) => ({ id: f.id, severity: f.severity, cvss: f.cvss?.score ?? null, status: f.status, verified: f.verified, asset: f.asset.value, title: f.title })),
       }),
     ),
   );
@@ -287,17 +298,24 @@ function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "update_finding",
     {
-      description: "Lead only. Triage a finding: status (open, confirmed, fixed, accepted, false-positive) or severity.",
+      description: "Lead only. Triage a finding: status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation.",
       inputSchema: {
         id: z.string(),
         status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
+        verified: z.boolean().optional(),
+        cvss: z.string().optional(),
         severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+        ssvc: z
+          .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
+          .optional(),
+        impact: z.string().optional(),
+        remediation: z.string().optional(),
       },
     },
-    guard(({ id, ...patch }: { id: string; status?: string; severity?: string }) => {
+    guard(({ id, ...patch }: { id: string } & Record<string, unknown>) => {
       leadOnly();
       if (!planner.findings) throw new Error("Findings aren't available.");
-      return ok(planner.findings.update(id, patch));
+      return ok(planner.findings.update(id, patch, me));
     }),
   );
 

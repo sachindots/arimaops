@@ -29,6 +29,7 @@ import { run } from "./lib/exec";
 import { releasePortBlock } from "./ports";
 import { hqDb } from "./lib/db";
 import { forgetProjectTemplate } from "./templates";
+import { EXPORT_FORMATS, RENDER, type ExportFormat } from "./reports";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
 import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
@@ -416,6 +417,20 @@ export function startHttp(o: Options) {
           return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
+        // Findings exports (Markdown, JSON, SARIF, printable HTML, HackerOne, Bugcrowd), secrets masked. Read-only.
+        if (parts.length === 5 && parts[3] === "findings" && parts[4] === "export" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const format = url.searchParams.get("format") ?? "markdown";
+          if (!(EXPORT_FORMATS as readonly string[]).includes(format)) return send(res, 400, JSON.stringify({ error: `format is one of ${EXPORT_FORMATS.join(", ")}` }), "application/json");
+          const out = RENDER[format as ExportFormat];
+          const { config, findings } = rt.hub.snap;
+          const text = out.render({ project: config.project.name, scope: config.project.scope, findings: findings ?? [], name: (id) => rt.hub.name(id), generatedAt: new Date().toISOString() });
+          res.setHeader("Content-Disposition", `${format === "html" ? "inline" : "attachment"}; filename="${config.project.id}-findings.${out.ext}"`);
+          // Agent-written text on HQ's own origin: no scripts, no fetches, styles only.
+          if (format === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+          return send(res, 200, redactor().redact(text), out.type);
+        }
         // The command center's tile previews: each running agent's last lines, secrets masked. Read-only.
         if (parts.length === 4 && parts[3] === "screens" && req.method === "GET") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));

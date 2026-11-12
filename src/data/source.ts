@@ -86,7 +86,7 @@ export interface OfficeDataSource {
   /** Which CLI (and optionally model) a task must run on; null clears it. */
   setTaskRunsOn(taskId: string, cli: AgentCli | null, model: string | null): void;
   /** Triage a security finding. */
-  updateFinding(id: string, patch: { status?: FindingStatus; severity?: Severity }): void;
+  updateFinding(id: string, patch: { status?: FindingStatus; severity?: Severity; verified?: boolean; cvss?: string }): void;
   /** You → an agent, delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
 
