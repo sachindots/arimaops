@@ -71,7 +71,7 @@ planner.setStatus("nyx", "done", "phone-tips.md written: 2 tips");
 const afterDone = pushed.slice(beforeDone);
 check("worker's finished task queues its CLI's new-conversation command", afterDone.some((p) => p.kind === "reset" && p.to === "nyx" && p.text === "/new"), JSON.stringify(afterDone));
 planner.assign(t4.id, "nyx", "cipher");
-const b = planner.brief("nyx", t4);
+const b = await planner.brief("nyx", t4);
 check("brief carries the handoff it builds on", b.text.includes(`- ${t3.id} (`) && b.text.includes("phone-tips.md written: 2 tips"), b.text);
 check("brief carries the agent's own last note", b.text.includes("(your last task): phone-tips.md written: 2 tips"), b.text);
 

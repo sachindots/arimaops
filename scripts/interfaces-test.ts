@@ -87,6 +87,13 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const mine = await call("ghost", "get_my_task", {});
   const brief = mine.error ? "" : (JSON.parse(mine.text).brief as string);
   check("get_my_task returns the brief, with the lead's ledger and the open gates", brief.startsWith("# B1-T01: Parser") && brief.includes("guess: It's a race in the lexer") && brief.includes("merged (pr-merged)"), mine.text.slice(0, 300));
+  check("with Neo4j unreachable the brief says memory is offline, and still arrives", /## Memory\nMemory is offline/.test(brief), brief);
+  const kept = await call("ghost", "remember", { type: "DeadEnd", text: "Parsing with one big regex timed out on large inputs", about: ["src/parser.ts"] });
+  check("remember works while Neo4j is down (queued), on the agent's current task", !kept.error && /Remembered as M-\d+/.test(kept.text), kept.text);
+  check("recall says plainly that memory is offline", /offline/.test((await call("ghost", "recall", { query: "parser regex" })).text));
+  check("remember refuses a type the project doesn't have", (await call("ghost", "remember", { type: "Asset", text: "Some asset that the dev template doesn't declare" })).error);
+  check("related needs something to start from", (await call("ghost", "related", {})).error);
+  check("any agent can keep a name out of memory", !(await call("ghost", "keep_out_of_memory", { name: "Meena Iyer" })).error && memory.keptOut("mcp").join() === "Meena Iyer");
 }
 
 // ---------------------------------------------------------------- GitHub events

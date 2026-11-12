@@ -15,7 +15,7 @@ import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
-import type { GateState } from "../src/data/model";
+import type { GateState, Memory } from "../src/data/model";
 import { log } from "./lib/log";
 
 export interface NewTask {
@@ -302,6 +302,31 @@ export class Planner {
     this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
   }
 
+  /**
+   * The brief's memory section: what the tasks it builds on produced, what is known about its files, and what
+   * matches its words. Certified first. Neo4j down never blocks a brief: the section says so instead.
+   */
+  private async memoryFor(task: Task): Promise<string> {
+    const memory = this.memory;
+    if (!memory) return "";
+    const p = this.snap.config.project.id;
+    try {
+      const lists = await Promise.all([
+        ...task.needs.slice(-8).map((id) => memory.related(p, { taskId: id }, { depth: 1, limit: 6 })),
+        ...(task.files ?? []).slice(0, 10).map((f) => memory.related(p, { path: f }, { depth: 1, limit: 6 })),
+        memory.recall(p, `${task.title} ${task.description ?? ""}`, { limit: 6 }),
+      ]);
+      const seen = new Map<string, Memory>();
+      for (const m of lists.flat()) if (!seen.has(m.id)) seen.set(m.id, m);
+      const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified)).slice(0, 12);
+      return picked
+        .map((m) => `- ${m.type}${m.certified ? " (certified)" : ""}${m.taskId ? `, from ${m.taskId}` : ""}: ${m.text}${m.about.length ? ` [${m.about.join(", ")}]` : ""} (${m.id})`)
+        .join("\n");
+    } catch (err) {
+      return `Memory is offline right now (${err instanceof Error ? err.message : err}). Ask the lead if you need what the team learned before.`;
+    }
+  }
+
   /** What a finished task leaves behind for the team's memory (docs/memory-core.md section 4). */
   private summarise(task: Task) {
     if (!this.memory) return;
@@ -331,7 +356,7 @@ export class Planner {
   }
 
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */
-  brief(agentId: string, task: Task): Brief {
+  async brief(agentId: string, task: Task): Promise<Brief> {
     // Least relevant first: the brief drops from the front when it is over budget.
     const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id).at(-1);
     const deps = task.needs.map((n) => this.task(n)).filter((d): d is Task => !!d?.note).slice(-8);
@@ -346,7 +371,7 @@ export class Planner {
       spec: "",
       handoffs,
       ledger,
-      memory: "",
+      memory: await this.memoryFor(task),
       facts: readFacts(this.hub.repo.root),
       skills: this.hub.cfg(agentId)?.skills ?? [],
       gates: this.openGates(task, agentId).map((g) => ({ id: g.gate.id, kind: g.gate.kind, needs: g.why })),

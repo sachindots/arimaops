@@ -17,6 +17,11 @@ const neo4j = (await import("neo4j-driver")).default;
 const { cleanMemory, saysSomething } = await import("../server/memoryClean");
 const { MemoryWorker, candidatePairs, similarity, EXTRACT_MODEL } = await import("../server/memoryExtract");
 type RunRequest = import("../server/modelRunner").RunRequest;
+const { buildServer } = await import("../server/mcp");
+const { Planner } = await import("../server/planner");
+const { DEV_TEMPLATE } = await import("../src/data/templates");
+const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
 /** A model that answers from a script, and remembers what it was asked. */
 const fakeRunner = (reply: (req: RunRequest) => string) => {
   const asked: RunRequest[] = [];
@@ -339,6 +344,66 @@ try {
   const alive = (await ex.memories("fade")).map((m) => m.id).sort().join();
   check("after 30 unused days an uncertified memory fades; certified and recent ones stay", alive === [f2.id, f3.id].sort().join(), alive);
   await ex.close();
+
+  // ---------------------------------------------------------------- agents use memory (2.7), over MCP
+  {
+    const e2e = new Neo4jMemory(db, () => cfg);
+    const team = [
+      { id: "cipher", name: "Cipher", roleId: "lead", isLead: true },
+      { id: "ghost", name: "Ghost", roleId: "developer", isLead: false },
+      { id: "devi", name: "Devi", roleId: "developer", isLead: false },
+    ];
+    const task = (id: string, title: string, ownerId: string, status: string, needs: string[], files: string[]) => ({ id, boardId: "B1", stageId: "build", title, ownerId, status, needs, files, prNumber: null });
+    const snap = {
+      config: { template: DEV_TEMPLATE, project: { id: "brief" }, team, workflow: { mode: "github-pr", review: { enabled: true } } },
+      boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }],
+      tasks: [task("B1-T01", "Lexer", "ghost", "in-progress", [], ["src/lexer.ts"]), task("B1-T02", "Parser on top of the lexer", "devi", "todo", ["B1-T01"], ["src/parser.ts"]),
+        task("B1-T03", "Speed up the tokenizer", "cipher", "todo", [], ["src/lexer.ts"]), task("B1-T04", "Write the README", "cipher", "todo", [], ["README.md"])],
+      agents: [], messages: [], pullRequests: [], actionItems: [],
+    };
+    const hub = { snap, repo: { root: mkdtempSync(join(tmpdir(), "arima-brief-repo-")) }, cfg: (id: string) => team.find((a) => a.id === id), name: (id: string) => id, emit: () => {}, planChanged: () => {}, activity: () => {}, status: () => null, setStatus: () => {} };
+    const planner = new Planner(hub as never, { push: () => {} } as never);
+    planner.memory = e2e;
+    const call = async (me: string, name: string, args: Record<string, unknown>) => {
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      await buildServer(hub as never, planner, me).connect(a);
+      const client = new Client({ name: "test", version: "1" });
+      await client.connect(b);
+      const r = (await client.callTool({ name, arguments: args })) as { isError?: boolean; content: { text: string }[] };
+      await client.close();
+      return { error: !!r.isError, text: r.content.map((c) => c.text).join("") };
+    };
+    const DEAD = "Tokenizing with one big regex was too slow on 1 MB files";
+    const said = await call("ghost", "remember", { type: "DeadEnd", text: DEAD, about: ["src/lexer.ts"] });
+    check("an agent remembers a dead end on its current task", !said.error && /uncertified/.test(said.text), said.text);
+    // B1-T01 finishes: the planner writes its summary (planner-test covers both ways a task finishes).
+    e2e.summarise({ projectId: "brief", taskId: "B1-T01", title: "Lexer", description: null, doneWhen: null, stageId: "build", ownerId: "ghost", needs: [], files: ["src/lexer.ts"],
+      prNumber: 3, deliverablePath: null, note: "Hand-written scanner; see the dead end.", ledger: [], usage: null, finishedAt: new Date().toISOString() });
+    snap.tasks[0].status = "done";
+    await e2e.flush();
+    // Each agent's current task is its first unfinished one: cipher has B1-T03, then B1-T04.
+    const briefOf = async (who: string) => {
+      const r = await call(who, "get_my_task", {});
+      return r.error ? r.text : (JSON.parse(r.text).brief as string);
+    };
+    const followUp = await briefOf("devi");
+    check("a follow-up task's brief carries the dead end of the task it builds on, unasked", followUp.includes("## Memory") && followUp.includes(DEAD) && followUp.includes("from B1-T01"), followUp);
+    const sameFile = await briefOf("cipher");
+    check("a task on the same file gets it too", sameFile.includes(DEAD));
+    snap.tasks[2].status = "done";
+    const unrelated = await briefOf("cipher");
+    check("an unrelated task's brief doesn't", !unrelated.includes(DEAD) && !unrelated.includes("## Memory"), unrelated);
+
+    const recalled = JSON.parse((await call("devi", "recall", { query: "regex tokenizer slow" })).text) as { id: string; type: string }[];
+    check("recall over MCP finds it", recalled[0]?.type === "DeadEnd");
+    const rel = JSON.parse((await call("devi", "related", { path: "src/lexer.ts" })).text) as { id: string }[];
+    check("related over MCP finds it by file", rel.some((m) => m.id === recalled[0].id));
+    await call("devi", "remember", { type: "Lesson", text: "Rhea Thomas reviews every parser change before merge", taskId: "B1-T02" });
+    await call("devi", "keep_out_of_memory", { name: "Rhea Thomas" });
+    await e2e.flush();
+    check("a name kept out over MCP leaves memory", (await count("MATCH (m:Memory {projectId: 'brief'}) WHERE m.text CONTAINS 'Rhea' RETURN count(m)")) === 0);
+    await e2e.close();
+  }
 
   // ---------------------------------------------------------------- backup and restore
   const root = mkdtempSync(join(tmpdir(), "arima-backups-"));

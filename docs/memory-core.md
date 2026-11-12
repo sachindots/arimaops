@@ -77,8 +77,8 @@ interface MemoryStore {          // Phase 1 methods stay as they are
 }
 ```
 
-- **The brief** asks `related({ taskId, path: each file })` and `recall(task title)`, fills the memory section certified first, and marks the memories it used (`lastUsedAt`).
-- **Team MCP tools:** `recall(query)` and `related(taskId | path)` are read-only for every agent; `remember(type, text, about?)` writes uncertified. All three are scoped to the agent's own project by its token.
+- **The brief** (`get_my_task`) asks `related` for each task it builds on and each of its files (one hop), and `recall` with its title and description; it keeps up to 12, certified first, each with its type, task, files and id, and marks them used (`lastUsedAt`). When Neo4j is down the section says memory is offline and the brief still arrives.
+- **Team MCP tools:** `recall(query)` and `related(taskId | path | memoryId)` are read-only for every agent; `remember(type, text, about?, taskId?)` writes uncertified (on the agent's current task by default); `keep_out_of_memory(name)` adds to the project's keep-out list (section 6). All are scoped to the agent's own project by its token; the two that write are refused in read-only projects.
 - **Ledgers move into Neo4j** (decision 2) as `LedgerEntry` nodes with `SUPERSEDES` for revisions (links to their `Task` node come with the ontology, step 3); ids stay numbers, taken from a counter in the HQ database so they can be given out while Neo4j is down. The existing SQLite `ledger` rows are queued into the outbox once, by migration 2, then the table is left unused and dropped in a later migration. HQ keeps a copy of the ledgers in memory (loaded from Neo4j on connect, plus what's still queued), so the lead's tools and the brief stay synchronous and callers don't change. Callers don't change: `Neo4jMemory` implements the same `MemoryStore` methods. When Neo4j is down, ledger writes queue in the outbox and reads return nothing with a note.
 - Done when: a sample follow-up task's brief contains the dead end found in the task it follows, without the agent asking.
 

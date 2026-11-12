@@ -11,8 +11,9 @@ import { requestAccess } from "./access";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
 import { AGENT_CLIS, type AgentCli } from "../src/data/types";
-import { ASSET_KINDS, EVIDENCE_KINDS, type LedgerEntry } from "../src/data/model";
+import { ASSET_KINDS, CORE_MEMORY_TYPES, EVIDENCE_KINDS, type LedgerEntry, type Memory } from "../src/data/model";
 import { LEAD_KINDS } from "./memory";
+import { isReadOnly } from "./legacy";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -20,10 +21,10 @@ const ok = (value: unknown): Result => ({ content: [{ type: "text", text: typeof
 const fail = (msg: string): Result => ({ content: [{ type: "text", text: msg }], isError: true });
 
 /** Wraps a tool body: thrown errors become tool errors the agent can read. */
-function guard<A>(fn: (args: A) => Result) {
+function guard<A>(fn: (args: A) => Result | Promise<Result>) {
   return async (args: A): Promise<Result> => {
     try {
-      return fn(args);
+      return await fn(args);
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));
     }
@@ -163,7 +164,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "get_my_task",
     { description: "Your current task: title, description, the files you may edit, done-when, and what it needs. Marks it in progress." },
-    guard(() => {
+    guard(async () => {
       const t = planner.currentTask(me);
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
       const blockedBy = planner.waitingOn(t);
@@ -172,9 +173,9 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       const rules = isDeliverables
         ? `Work only on this task. Write your output to the listed files (or deliverables/${t.id}.md). Submit in-review with verification results in note and your output path in deliverablePath. When review is enabled, a different reviewer must accept it.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
-      const start = "Start from `brief`: the task, the gates before it's done, the handoff notes it builds on, the lead's ledger and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
+      const start = "Start from `brief`: the task, the gates before it's done, the handoff notes it builds on, the lead's ledger, what the team remembers (don't repeat its dead ends) and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
       const stage = hub.snap.config.template?.flow.stages.find((s) => s.id === t.stageId);
-      return ok({ ...taskView(t.id), stage: stage?.name ?? null, waitingOn: blockedBy, brief: planner.brief(me, t).text, rules: start + rules });
+      return ok({ ...taskView(t.id), stage: stage?.name ?? null, waitingOn: blockedBy, brief: (await planner.brief(me, t)).text, rules: start + rules });
     }),
   );
 
@@ -321,7 +322,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
 
   // ---------------------------------------------------------------- Lead: task ledger
   const memory = () => {
-    if (!planner.memory) throw new Error("The ledger isn't available.");
+    if (!planner.memory) throw new Error("Memory isn't available.");
     return planner.memory;
   };
   const projectId = hub.snap.config.project.id;
@@ -373,6 +374,79 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         task: memory().ledger(projectId, { ledger: "task", taskId }).map(view),
         progress: memory().ledger(projectId, { ledger: "progress", taskId }).slice(-20).map(view),
       });
+    }),
+  );
+
+  // ---------------------------------------------------------------- Everyone: the team's memory (docs/memory-core.md section 7)
+  const types = [...CORE_MEMORY_TYPES, ...(hub.snap.config.template?.memoryTypes ?? [])];
+  const memView = (m: Memory) => ({ id: m.id, type: m.type, text: m.text, about: m.about, task: m.taskId, certified: m.certified });
+  const writableMemory = () => {
+    if (isReadOnly(hub.snap.config)) throw new Error("This project was made before templates and is read-only.");
+    return memory();
+  };
+
+  server.registerTool(
+    "recall",
+    {
+      description:
+        "Search what the team remembers in this project: decisions, lessons and dead ends from earlier tasks (certified ones first). Use it before trying an approach that may have been tried.",
+      inputSchema: { query: z.string().max(500), types: z.array(z.string()).max(10).optional().describe(`Only these types: ${types.join(", ")}`) },
+    },
+    guard(async ({ query, types: only }: { query: string; types?: string[] }) => {
+      const found = await memory().recall(projectId, query, { types: only, limit: 10 });
+      return ok(found.length ? found.map(memView) : "Nothing remembered matches that.");
+    }),
+  );
+
+  server.registerTool(
+    "related",
+    {
+      description: "What the team remembers about one thing: a task (what it decided, learned or hit), a file or component, or another memory (by id). depth 2 also follows one more link.",
+      inputSchema: {
+        taskId: z.string().max(40).optional(),
+        path: z.string().max(300).optional().describe("A file path or component name"),
+        memoryId: z.string().max(40).optional(),
+        depth: z.union([z.literal(1), z.literal(2)]).optional(),
+      },
+    },
+    guard(async ({ taskId, path, memoryId, depth }: { taskId?: string; path?: string; memoryId?: string; depth?: 1 | 2 }) => {
+      if (!taskId && !path && !memoryId) throw new Error("Give a taskId, a path or a memoryId.");
+      const found = await memory().related(projectId, { taskId, path, memoryId }, { depth: depth ?? 1, limit: 10 });
+      return ok(found.length ? found.map(memView) : "Nothing remembered is linked to that.");
+    }),
+  );
+
+  server.registerTool(
+    "remember",
+    {
+      description: `Save something the team should know in later tasks: a Decision (and why), a Lesson, or a DeadEnd (what failed, and why)${
+        types.length > CORE_MEMORY_TYPES.length ? `, or this team's own types (${types.slice(CORE_MEMORY_TYPES.length).join(", ")})` : ""
+      }. One or two sentences that make sense alone. No names of people, emails, phones, passwords or keys: they are removed. The user certifies it later.`,
+      inputSchema: {
+        type: z.string().describe(types.join(", ")),
+        text: z.string().max(600),
+        about: z.array(z.string().max(300)).max(10).optional().describe("File paths or component names it concerns"),
+        taskId: z.string().max(40).optional().describe("Defaults to your current task"),
+      },
+    },
+    guard(({ type, text, about, taskId }: { type: string; text: string; about?: string[]; taskId?: string }) => {
+      const task = taskId ?? planner.currentTask(me)?.id ?? null;
+      if (task && !planner.task(task)) throw new Error(`No task ${task}.`);
+      const m = writableMemory().remember({ projectId, type, text, about, taskId: task, by: me });
+      return ok(`Remembered as ${m.id} (uncertified until the user checks it): ${m.text}`);
+    }),
+  );
+
+  server.registerTool(
+    "keep_out_of_memory",
+    {
+      description:
+        "Name a person or handle you came across (OSINT, sales, logs) so the team's memory never keeps it. It is also removed from what is already stored. Findings and reports keep their evidence; only memory forgets the name.",
+      inputSchema: { name: z.string().min(2).max(120) },
+    },
+    guard(({ name }: { name: string }) => {
+      writableMemory().keepOut(projectId, name, me);
+      return ok(`"${name}" will be kept out of memory.`);
     }),
   );
 

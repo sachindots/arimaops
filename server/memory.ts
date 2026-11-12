@@ -44,6 +44,8 @@ export interface MemoryStore {
   /** Keeps a finished task's summary, and puts the task, what it built on, its files and its owner in the graph. */
   summarise(s: TaskSummary): void;
   summary(projectId: string, taskId: string): TaskSummary | null;
+  /** Keeps a name (a person, a handle) out of the project's memory, and scrubs it from what is stored. */
+  keepOut(projectId: string, term: string, by: string): void;
 }
 
 export interface RememberInput {
