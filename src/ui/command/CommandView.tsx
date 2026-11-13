@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAND } from "../../data/brand";
+import { officeLabel } from "../../data/names";
 import type { Mode } from "../../office/iso/behaviour";
 import { followBuilding, useBuilding } from "../../store/building";
 import { isViewer, officeActions, useOffice } from "../../store/office";
@@ -73,7 +74,7 @@ export function CommandView() {
 
   const current = snap?.config.project.id ?? "";
   const projects = useMemo(() => {
-    const list = snap ? [{ id: current, name: snap.config.project.officeName || snap.config.project.name, current: true, snap }] : [];
+    const list = snap ? [{ id: current, name: officeLabel(snap.config.project), current: true, snap }] : [];
     for (const o of Object.values(others)) if (o.snap) list.push({ id: o.id, name: o.name, current: false, snap: o.snap });
     return list;
   }, [snap, others, current]);

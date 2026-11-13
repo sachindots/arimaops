@@ -118,9 +118,10 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
         specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
         highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
+        stageId: z.string().optional().describe("Start it in this flow stage (its phase, e.g. recon or exploit), if the gates before it are met. Default: the first stage."),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string }) => {
       leadOnly();
       return ok(planner.createTask(args, me));
     }),

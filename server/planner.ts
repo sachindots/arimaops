@@ -30,6 +30,8 @@ export interface NewTask {
   model?: string | null;
   specItems?: string[];
   highStakes?: boolean;
+  /** Start the task in this stage (its phase), if the gates before it are met; default the first stage. */
+  stageId?: string;
 }
 
 export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId" | "specItems" | "highStakes">>;
@@ -309,6 +311,11 @@ export class Planner {
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
       specItems: cleanItems(input.specItems), highStakes: !!input.highStakes,
     };
+    if (input.stageId && input.stageId !== task.stageId) {
+      if (!template.flow.stages.some((st) => st.id === input.stageId)) throw new Error(`No stage "${input.stageId}". Stages: ${template.flow.stages.map((st) => st.id).join(", ")}.`);
+      this.assertMove(task, input.stageId, byId);
+      task.stageId = input.stageId;
+    }
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.activity("task.created", byId === "you" ? null : byId, `${this.hub.name(byId)} added ${task.id} ${task.title}`);

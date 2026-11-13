@@ -354,6 +354,60 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("the offered security-review workflow is pinned to the vetted commit", yaml.includes(`anthropics/claude-code-security-review@${vettedPacks()["anthropics/claude-code-security-review"].commit}`) && /actions\/checkout@[0-9a-f]{40}/.test(yaml) && /CLAUDE_API_KEY/.test(yaml));
 }
 
+// Security templates (Phase 4 step 4): Red, Purple, Blue.
+{
+  const { SECURITY_RED_TEMPLATE: red, SECURITY_PURPLE_TEMPLATE: purple, SECURITY_BLUE_TEMPLATE: blue } = await import("../src/data/securityTemplates");
+  const { templateErrors } = await import("../src/data/model");
+  const { vettedPacks } = await import("../server/skillPacks");
+  const { findBuiltinSkill } = await import("../src/data/skillCatalog");
+  const all = [red, purple, blue];
+  check("the three security templates are valid", all.every((t) => templateErrors(t).length === 0), JSON.stringify(all.map((t) => templateErrors(t))));
+  check("all need a scope, plans before changes, findings, and no outbound", all.every((t) => t.rules.scopeRequired && t.rules.plans && t.rules.findings && !t.rules.labMode && t.rules.outbound === "none"));
+  check("PTES stages for Red; Purple adds Detect after Exploitation; Blue follows NIST 800-61", red.flow.stages.map((x) => x.id).join() === "scope,recon,threat,vuln,exploit,post,report" && purple.flow.stages.map((x) => x.id).join() === "scope,recon,threat,vuln,exploit,detect,post,report" && blue.flow.stages.map((x) => x.id).join() === "prepare,analyse,contain,recover,lessons");
+  const skills = all.flatMap((t) => t.roles.flatMap((r) => r.skills.map((sk) => ({ t: t.id, sk }))));
+  const missing = skills.filter(({ sk }) => {
+    const m = sk.match(/^([^@]+)@(.+)$/);
+    return m ? !vettedPacks()[m[1]]?.skills[m[2]] : !findBuiltinSkill(sk);
+  });
+  check("every skill they name is a built-in or pinned in a vetted pack", missing.length === 0, JSON.stringify(missing));
+  check("offensive BugHunter skills only in Red and Purple", !blue.roles.some((r) => r.skills.some((sk) => sk.startsWith("elementalsouls/"))) && red.roles.some((r) => r.skills.some((sk) => sk.startsWith("elementalsouls/"))));
+  check("the report needs a second opinion from a Gemini seat", all.every((t) => t.flow.stages.at(-1)!.gates.some((g) => g.kind === "second-opinion" && g.when === "always") && t.roles.some((r) => r.id === "second-opinion" && r.cli === "agy")));
+  check("Blue's containment waits for the owner", blue.flow.stages.find((x) => x.id === "contain")!.gates.some((g) => g.kind === "owner-approval" && g.reason === "containment"));
+  check("memory types", red.memoryTypes.join() === "Asset,Finding,Technique" && purple.memoryTypes.includes("Detection") && blue.memoryTypes.join() === "Incident,Asset");
+
+  // In the planner: a Red task in its phase needs the scope; Purple's Detect needs the defender.
+  const team = [
+    { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "claude-opus-5-5" },
+    { id: "rec", name: "Rec", roleId: "recon", isLead: false, cli: "agy", model: "gemini-4-argon-high" },
+    { id: "x1", name: "X1", roleId: "exploit", isLead: false, cli: "claude", model: "claude-sonnet-5-5" },
+    { id: "def", name: "Def", roleId: "defender", isLead: false, cli: "claude", model: "claude-sonnet-5-5" },
+    { id: "gem", name: "Gem", roleId: "second-opinion", isLead: false, cli: "agy", model: "gemini-4-argon-high" },
+  ];
+  const project = { id: "purple", scope: { inScope: [] as string[], outOfScope: [], rules: "" } };
+  const snap = { config: { template: structuredClone(purple), project, workflow: { mode: "deliverables", review: { enabled: false } }, team, rules: purple.rules }, boards: [{ id: "B1", title: "Engagement", status: "active" as const, order: 0 }], tasks: [] as Task[], agents: [], messages: [], pullRequests: [], actionItems: [] };
+  const hub = { slug: "purple", snap, emit: () => {}, planChanged: () => {}, activity: () => {}, configChanged: () => {}, name: (id: string) => id, setStatus: () => {}, status: () => ({ session: { state: "stopped" } }), cfg: (id: string) => team.find((a) => a.id === id), repo: { root: process.env.HOME } };
+  const planner = new Planner(hub as never, { push: () => {}, save: () => {} } as never);
+  check("without a scope, a task can't start in Recon", throws(() => planner.createTask({ title: "Map hosts", stageId: "recon" } as never, "lea"), /scope/i) && snap.tasks.length === 0);
+  project.scope.inScope.push("10.20.0.0/24");
+  const r = planner.createTask({ title: "Map hosts", stageId: "recon", doneWhen: "x" } as never, "lea");
+  check("with a scope, it starts in its phase", r.stageId === "recon");
+  const e = planner.createTask({ title: "Exploit the login", stageId: "exploit", doneWhen: "x" } as never, "lea");
+  savePlanTables(hqDb(), "purple", { boards: snap.boards, tasks: snap.tasks }, "scope");
+  planner.assign(e.id, "exploit", "lea");
+  check("an exploit task goes to an exploit seat", e.ownerId === "x1");
+  check("leaving Exploitation needs the defender's check (Detect)", throws(() => planner.updateTask(e.id, { stageId: "post" }, "lea"), /defender must accept/));
+
+  // The report: critical and high findings verified by a person or another maker's model.
+  const severeGate: Gate = { id: "report", kind: "findings-report" };
+  const vendorOf = (id: string) => ({ x1: "anthropic", def: "anthropic", gem: "google" })[id] ?? null;
+  const roleOf = (id: string) => ({ x1: "exploit", def: "defender", gem: "second-opinion" })[id] ?? null;
+  const base = { reportAt: 2000, findingsAt: 1000, vendorOf, roleOf };
+  check("an unverified high finding holds the report", /F-1/.test(gateProblem(severeGate, ctx({ ...base, severe: [{ id: "F-1", reporterId: "x1", verifiedBy: null }] })) ?? ""));
+  check("…so does one its own reporter verified", !met(severeGate, ctx({ ...base, severe: [{ id: "F-1", reporterId: "x1", verifiedBy: "x1" }] })));
+  check("…or one a model from the same maker verified", !met(severeGate, ctx({ ...base, severe: [{ id: "F-1", reporterId: "x1", verifiedBy: "def" }] })));
+  check("verified by the Gemini seat or a person, it passes", met(severeGate, ctx({ ...base, severe: [{ id: "F-1", reporterId: "x1", verifiedBy: "gem" }, { id: "F-2", reporterId: "x1", verifiedBy: "you" }] })));
+}
+
 if (fails) {
   console.error(`\n${fails} failed`);
   process.exit(1);

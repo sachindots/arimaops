@@ -1,3 +1,4 @@
+import { DEFAULT_OFFICE_NAME, officeSign } from "../../data/names";
 import { BRAND } from "../../data/brand";
 import { useCallback, useEffect, useState } from "react";
 import { type ProjectOverview, type TaskStatus } from "../../data/types";
@@ -365,9 +366,9 @@ export function CtoDrawer() {
                           {archiving === p.id ? "Stop agents & archive" : "Archive"}
                         </button>
                       )}
-                      {p.officeName && (
+                      {p.officeName && officeSign(p.officeName) !== DEFAULT_OFFICE_NAME && (
                         <span className="border border-red bg-[rgba(255,23,68,0.12)] px-1.5 py-0.5 font-mono text-[10px] text-red">
-                          {p.officeName}
+                          {officeSign(p.officeName)}
                         </span>
                       )}
                     </div>

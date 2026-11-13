@@ -24,6 +24,8 @@ export interface GateContext {
   /** When the findings report was last written, and when this task's findings last changed (ms; null: never). */
   reportAt?: number | null;
   findingsAt?: number | null;
+  /** The project's critical and high findings, with who reported and who verified them (the findings report checks them). */
+  severe?: { id: string; reporterId: string; verifiedBy: string | null }[];
 }
 
 /** Files that make a task high-stakes on their own (docs/agent-engine.md section 5). */
@@ -110,9 +112,16 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
         ? null
         : `The second opinion must come from another provider than ${task.ownerId ?? "the task's owner"}'s${mine ? ` (${mine})` : ""}.`;
     }
-    case "findings-report":
+    case "findings-report": {
       if (!ctx.reportAt) return "The findings report hasn't been written yet: report a finding first.";
-      return ctx.findingsAt && ctx.findingsAt > ctx.reportAt ? "The findings report is older than this task's findings. It's rewritten on every change; check that the last write worked." : null;
+      if (ctx.findingsAt && ctx.findingsAt > ctx.reportAt) return "The findings report is older than this task's findings. It's rewritten on every change; check that the last write worked.";
+      // Every critical and high finding needs a second look: a person, or a model from another maker than the reporter's.
+      const vendor = (id: string) => ctx.vendorOf?.(id) ?? null;
+      const checked = (f: NonNullable<GateContext["severe"]>[number]) =>
+        !!f.verifiedBy && f.verifiedBy !== f.reporterId && (f.verifiedBy === "you" || ctx.roleOf(f.verifiedBy) === null || (vendor(f.verifiedBy) !== null && vendor(f.verifiedBy) !== vendor(f.reporterId)));
+      const open = (ctx.severe ?? []).filter((f) => !checked(f));
+      return open.length ? `Critical and high findings need verifying by a person or a model from another maker than the reporter's: ${open.map((f) => f.id).join(", ")}.` : null;
+    }
   }
 }
 

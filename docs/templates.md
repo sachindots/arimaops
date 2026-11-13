@@ -75,6 +75,13 @@ All three: `rules.findings`, `scopeRequired` (lab mode lifts it), `plans` (an ag
 
 Skills per the vetted list (roadmap): BugHunter for red/lead (scoped only), ToB audit set and Cloudflare for blue/purple/code audit.
 
+**As built** (`src/data/securityTemplates.ts`):
+- Roles: lead (Claude Opus), recon (Gemini through agy, research), exploit ×2 (Claude Sonnet), reporter (Claude Sonnet), defender in Purple, analyst ×2 and responder in Blue, and a Gemini second-opinion seat in all three. Every skill they name is a built-in or pinned in a vetted pack (a test checks); BugHunter only in Red and Purple, and agents get it only once a scope is set.
+- A task can be created straight into its phase (`create_task stageId`), through the gates before it: without a scope nothing leaves Scope or Prepare.
+- Purple's Detect stage is a `reviewer` gate for the defender role: a task leaves Exploitation only after the defender maps its findings to ATT&CK ↔ D3FEND and checks the detection.
+- The findings report also holds until every critical and high finding is verified by a person or by a model from another maker than its reporter's (the second opinion on severe findings).
+- Lists name an office by its own sign, else by the project's name (`officeLabel`): the brand sign and the old ".HQ" said nothing about which project it was.
+
 ## 5. Research template (4.2)
 
 Stages: Sources (a PRISMA-style log: every source searched, kept or dropped and why) → Claims (each claim linked to sources) → Fact-check (`reviewer` by the fact-checker role, someone other than the writer) → Report (`second-opinion`). Memory types: Source, Claim. Roles: lead, researcher (2), fact-checker. Paper search through free, keyless APIs (decision 3), added to the container egress allowlist (`rules.egress`); the open web through the CLIs' own search. A claim without a source fails the fact-check gate.

@@ -3,6 +3,7 @@
 // (see behaviour.ts). Reads the stores, writes only UI state (hover, drawer)
 // through the ui actions.
 
+import { officeLabel } from "../../data/names";
 import { Application, Container, Graphics, Sprite, TextureStyle, type Texture } from "pixi.js";
 import type { AgentConfig, OfficeSnapshot } from "../../data/types";
 import { followBuilding, useBuilding } from "../../store/building";
@@ -186,7 +187,7 @@ export class IsoScene {
     const cur = this.snapshot();
     if (!cur) return [];
     const p = cur.config.project;
-    const out: WingData[] = [{ project: p.id, name: p.officeName || p.name, current: true, snap: cur }];
+    const out: WingData[] = [{ project: p.id, name: officeLabel(p), current: true, snap: cur }];
     const fake = this.demo && demoWingCount() ? demoOthers(cur, demoWingCount()) : null;
     for (const o of fake ?? Object.values(useBuilding.getState().others)) if (o.snap?.config.team.length) out.push({ project: o.id, name: o.name, current: false, snap: namespaced(o.snap, o.id) });
     // A fixed order (not "yours first"): every tab and device sees the same building; home flies to your wing.

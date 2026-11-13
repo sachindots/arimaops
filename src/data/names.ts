@@ -14,6 +14,12 @@ export function nextAgentName(taken: string[]): string {
 export const OFFICE_NAME_MAX = 19;
 export const DEFAULT_OFFICE_NAME = BRAND.officeSign;
 
+/** What lists call an office: its own sign when it has one, else the project's name (the brand sign or an old default says nothing). */
+export function officeLabel(p: { officeName?: string; name: string }): string {
+  const sign = officeSign(p.officeName);
+  return sign === DEFAULT_OFFICE_NAME ? p.name : sign;
+}
+
 export function officeSign(name?: string): string {
   const clean = (name ?? "").trim();
   if (!clean || /^(jsm\s*hq|\.hq)$/i.test(clean)) return DEFAULT_OFFICE_NAME; // old default names

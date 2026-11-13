@@ -1,5 +1,6 @@
 // Pointer input for the office: drag to pan, pinch/wheel to zoom, hover + click on things.
 
+import { officeLabel } from "../data/names";
 import type { Application } from "pixi.js";
 import { useBuilding } from "../store/building";
 import { useOffice } from "../store/office";
@@ -36,7 +37,7 @@ function describe(hit: Hit): { title: string; sub?: string } {
     if (!snap) return { title: hit.id };
     const up = snap.agents.filter((a) => a.session.state === "running").length;
     const p = snap.config.project;
-    return { title: p.officeName || p.name, sub: `${snap.config.team.length} agents · ${up} running · tap to fly there` };
+    return { title: officeLabel(p), sub: `${snap.config.team.length} agents · ${up} running · tap to fly there` };
   }
   const r = hit.kind === "agent" ? remote(hit.id) : null;
   const snap = r?.snap ?? useOffice.getState().snap;

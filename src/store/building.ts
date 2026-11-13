@@ -2,6 +2,7 @@
 // Read-only: one extra socket per project (same /ws?project= protocol), never
 // sends a command. Running = loaded in this HQ and not paused (GET /api/projects).
 
+import { officeLabel } from "../data/names";
 import { create } from "zustand";
 import { createWsSource } from "../data/ws/wsSource";
 import type { OfficeSnapshot, ProjectOverview } from "../data/types";
@@ -67,7 +68,7 @@ export function followBuilding(): () => void {
       set(id, null);
     }
     for (const p of want) {
-      set(p.id, { name: p.officeName || p.name });
+      set(p.id, { name: officeLabel(p) });
       if (sockets.has(p.id)) continue;
       const src = createWsSource(token(), p.id, { watch: true });
       sockets.set(
