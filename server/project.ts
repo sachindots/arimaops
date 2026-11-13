@@ -40,6 +40,8 @@ import { recordMeter } from "./usageEvents";
 import { extractionSettings, memoryStore, setMemoryScope } from "./memory";
 import { helperRunner, memoryWorker } from "./memoryJobs";
 import { gatherFacts, scoreTask } from "./scorers";
+import { inSuite } from "./suite";
+import { suiteId } from "../src/data/suite";
 import { EXTRACT_MODEL } from "./memoryExtract";
 import { estimateCost } from "./prices";
 import { MemoryReview } from "./memoryReview";
@@ -297,6 +299,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.memory = memoryStore();
   memoryStore().onChange ??= broadcastMemory;
   planner.memoryJobs = memoryWorker();
+  for (const t of hub.snap.tasks) if (t.status === "done" && inSuite(hub.snap.config.project.id, t.id)) t.benchmark = suiteId(hub.snap.config.project.id, t.id);
   // Scorers on every finished task: rules always, model checks with memory extraction on (docs/factory.md section 4).
   planner.onFinished = (task) => {
     const template = hub.snap.config.template;

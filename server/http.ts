@@ -123,7 +123,7 @@ interface Who {
 }
 
 /** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps", "finishGithubApp", "importTemplate", "promoteLessons", "setLessonPromotion", "removeLesson", "proposeImprovements"]);
+const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps", "finishGithubApp", "importTemplate", "promoteLessons", "setLessonPromotion", "removeLesson", "proposeImprovements", "addToSuite"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
@@ -552,6 +552,7 @@ export function startHttp(o: Options) {
             description?: string;
             doneWhen?: string;
             ownerId?: string;
+            files?: unknown;
           };
           if (!body.title?.trim()) return send(res, 400, JSON.stringify({ error: "title required" }), "application/json");
           const task = createCrossProjectTask(
@@ -562,6 +563,7 @@ export function startHttp(o: Options) {
               description: body.description,
               doneWhen: body.doneWhen,
               ownerId: body.ownerId,
+              files: Array.isArray(body.files) ? body.files.filter((f): f is string => typeof f === "string").slice(0, 50).map((f) => f.slice(0, 300)) : undefined,
             },
           );
           return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");

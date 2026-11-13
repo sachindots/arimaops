@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, type Task, type TaskStatus, cliPickerLabel } from "../../data/types";
-import { officeActions, useOffice } from "../../store/office";
+import { isViewer, officeActions, useOffice } from "../../store/office";
+import { benchmarkKind } from "../../data/suite";
 import { Dot, TokensChip } from "../kit";
 import { DrawerHeader } from "./Drawer";
 import { SCORERS, type TaskScore } from "../../data/scorers";
@@ -97,6 +98,28 @@ function Checks({ scores }: { scores: TaskScore[] }) {
   );
 }
 
+/** A finished Dev or Research task can join the benchmark suite, to be replayed on other models from a terminal. */
+function SuiteButton({ task }: { task: Task }) {
+  const template = useOffice((s) => s.snap?.config.template);
+  if (task.benchmark)
+    return (
+      <div className="mt-1 truncate font-mono text-[11px] text-muted" title={`Replay it from a terminal (paid, asks first):\npnpm bench task:${task.benchmark} --run --models <role>=<cli>/<model>`}>
+        ◆ in the benchmark suite
+      </div>
+    );
+  if (isViewer || !template || !benchmarkKind(template)) return null;
+  return (
+    <button
+      className="btn mt-1 min-h-[32px] px-2 text-[11px]"
+      onClick={() => officeActions.addToSuite(task.id)}
+      aria-label={`Add ${task.id} to the benchmark suite`}
+      title="Save this task (brief, base commit, template, checks) to ~/.arima-bench/suite so it can be replayed on other models. Free."
+    >
+      Add to benchmark suite
+    </button>
+  );
+}
+
 function TaskCard({ task }: { task: Task }) {
   const snap = useOffice((s) => s.snap);
   const owner = snap?.config.team.find((a) => a.id === task.ownerId);
@@ -123,6 +146,7 @@ function TaskCard({ task }: { task: Task }) {
       {task.deliverablePath && <div className="mt-0.5 truncate font-term text-[14px] text-green">↳ {task.deliverablePath}</div>}
       {task.status === "blocked" && task.note && <div className="text-[12px] text-red">{task.note}</div>}
       {task.scores && task.scores.length > 0 && <Checks scores={task.scores} />}
+      {task.status === "done" && <SuiteButton task={task} />}
       <div className="mt-1 flex items-center gap-1.5 text-[12px]">
         {owner ? (
           <>

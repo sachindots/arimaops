@@ -35,6 +35,7 @@ export const RISKY_COMMANDS = new Set([
   "setLessonPromotion",
   "removeLesson",
   "proposeImprovements",
+  "addToSuite",
   "updateSandbox",
   "setSecret",
   "saveAccount",

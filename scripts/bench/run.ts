@@ -5,6 +5,7 @@
 //   pnpm bench <id>                show what a run would do (nothing starts)
 //   pnpm bench <id> --dry          set everything up and tear it down without starting an agent (free)
 //   pnpm bench <id> --run          a real run: real models, real money. Asks you to type the id first, at a terminal.
+//   pnpm bench task:<id> …         replay a task from your suite on other models (replay.ts)
 //
 // A run gets its own HQ: a throwaway HOME under ~/.arima-bench/runs/ (your ~/.arima is never touched), your CLI
 // sign-in folders linked into it so agents can sign in, a fresh repo, and for security benchmarks the target container
@@ -22,9 +23,9 @@ import WebSocket from "ws";
 import { BENCHMARKS, benchmarkErrors, imageRef, type Benchmark } from "./benchmarks";
 import { compareRuns, scoreRun, summary, type RunFacts, type RunResult } from "./score";
 
-const ROOT = join(homedir(), ".arima-bench");
-const SIGN_INS = [".claude", ".claude.json", ".codex", ".gemini"];
-const REPO = new URL("../..", import.meta.url).pathname;
+export const ROOT = join(homedir(), ".arima-bench");
+export const SIGN_INS = [".claude", ".claude.json", ".codex", ".gemini"];
+export const REPO = new URL("../..", import.meta.url).pathname;
 
 export const names = (b: Benchmark, stamp: string) => ({ network: `arima-bench-${b.id}`, target: `arima-bench-${b.id}-target`, run: join(ROOT, "runs", `${b.id}-${stamp}`) });
 
@@ -60,7 +61,7 @@ export function plan(b: Benchmark, mode: "dry" | "run"): string[] {
 const docker = (args: string[]) => execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 /** HQ's command channel: the WebSocket the browser uses. */
-class Hq {
+export class Hq {
   private ws!: WebSocket;
   snap: Record<string, unknown> | null = null;
   activity: string[] = [];
@@ -110,7 +111,7 @@ class Hq {
   }
 }
 
-function startHq(home: string, repo: string, port: number): Promise<{ proc: ChildProcess; token: string }> {
+export function startHq(home: string, repo: string, port: number): Promise<{ proc: ChildProcess; token: string }> {
   const proc = spawn(process.execPath, [join(REPO, "dist-server/main.mjs"), "--repo", repo, "--port", String(port), "--no-open"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HOME: home, ARIMA_MASTER_KEY: randomBytes(32).toString("hex") },
@@ -175,7 +176,7 @@ export function lastResult(id: string): RunResult | null {
   return files.length ? (JSON.parse(readFileSync(join(dir, files.at(-1)!), "utf8")) as RunResult) : null;
 }
 
-async function confirmPaid(b: Benchmark): Promise<boolean> {
+export async function confirmPaid(b: { id: string }): Promise<boolean> {
   if (!process.stdin.isTTY) {
     console.error("A real run needs you at a terminal to confirm it: run it yourself, not from a script.");
     return false;
@@ -289,14 +290,35 @@ export async function runBenchmark(b: Benchmark, opts: { dry: boolean; port?: nu
   }
 }
 
+/** `pnpm bench task:<id> [--dry|--run|--results] [--models role=cli/model,…]`: a task from the suite (replay.ts). */
+async function mainTask(id: string, args: string[]) {
+  const { loadTaskBenchmark, parseModels, replayPlan, resultsSummary, runReplay } = await import("./replay");
+  const b = loadTaskBenchmark(id);
+  if (args.includes("--results")) return console.log(resultsSummary(b));
+  const at = args.indexOf("--models");
+  const parsed = parseModels(at >= 0 ? args[at + 1] : undefined, b.template);
+  if ("error" in parsed) throw new Error(parsed.error);
+  const mode = args.includes("--run") ? "run" : args.includes("--dry") ? "dry" : null;
+  console.log(replayPlan(b, parsed.overrides, mode === "run" ? "run" : "dry").map((l) => `  ${l}`).join("\n"));
+  if (!mode) return console.log("\nNothing started. Add --dry to set up and tear down without agents (free), or --run for a real run.");
+  if (mode === "run" && !(await confirmPaid({ id: `task:${b.id}` }))) return console.log("Not started.");
+  if (!existsSync(join(REPO, "dist-server/main.mjs"))) throw new Error("Build HQ first: pnpm build.");
+  const r = await runReplay(b, { dry: mode === "dry", overrides: parsed.overrides });
+  if (mode === "dry") console.log(`\n✓ dry run: clone at ${b.repo.commit.slice(0, 12)}, HQ, team (${r.label}) and the task set up and torn down; nothing spent.`);
+  else console.log(`\n${resultsSummary(b)}`);
+}
+
 async function main() {
   const [id, flag] = process.argv.slice(2);
+  if (id?.startsWith("task:")) return mainTask(id.slice(5), process.argv.slice(3));
   if (!id) {
     for (const b of BENCHMARKS) {
       const errs = benchmarkErrors(b);
       const ref = b.kind === "security" ? imageRef(b) : null;
       console.log(`${b.id.padEnd(22)} ${b.title}${errs.length ? `  (invalid: ${errs.join(" ")})` : ref && "error" in ref ? "  (target not pinned yet)" : ""}`);
     }
+    const { listTaskBenchmarks } = await import("./replay");
+    for (const t of listTaskBenchmarks()) console.log(`${`task:${t.id}`.padEnd(22)} ${t.title}  (your own task, ${t.kind})`);
     return;
   }
   const b = BENCHMARKS.find((x) => x.id === id);

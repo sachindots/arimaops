@@ -169,6 +169,7 @@ export interface OfficeDataSource {
   /** Takes an approved lesson out of the template. */
   removeLesson(id: string): void;
   proposeImprovements(): void;
+  addToSuite(taskId: string): void;
   /** Owner only: per-project caps in USD on API-key accounts. */
   setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
   /** Owner only: trades GitHub's manifest code for the App's credentials. */

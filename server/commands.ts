@@ -44,6 +44,7 @@ import { cleanAccount } from "./accounts";
 import { OFFICE_NAME_MAX } from "../src/data/names";
 import type { TeamTemplate } from "../src/data/model";
 import { hqDb } from "./lib/db";
+import { addToSuite, buildTaskBenchmark } from "./suite";
 import { isReadOnly, READ_ONLY_COMMANDS } from "./legacy";
 import { applyTemplate, changeMode, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
@@ -274,6 +275,20 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     setLessonPromotion: (on) => planner.lessons?.setEnabled(on === true),
     removeLesson: (id) => planner.lessons?.decide(str(id, 40), false),
     proposeImprovements: () => void planner.lessons?.improve(),
+    /** A finished Dev or Research task joins the benchmark suite (free, local): `pnpm bench task:<id>` replays it. */
+    addToSuite: (taskId) => {
+      const task = planner.task(str(taskId, 40));
+      const template = hub.snap.config.template;
+      if (!task || !template) return;
+      try {
+        const id = addToSuite(buildTaskBenchmark(hqDb(), { projectId: hub.snap.config.project.id, root: hub.repo.root, template, team: hub.snap.config.team }, task));
+        task.benchmark = id;
+        hub.emit({ type: "task.updated", task: { ...task } });
+        hub.activity("config", null, `${task.id} added to the benchmark suite as ${id}. Replay it on other models from a terminal: pnpm bench task:${id} --models <role>=<cli>/<model>`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't add ${task.id} to the suite: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
 
     exportTemplate: () => {
       const t = hub.snap.config.template;

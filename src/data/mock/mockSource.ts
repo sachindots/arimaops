@@ -449,6 +449,13 @@ export function createMockSource(): OfficeDataSource {
       world.emit({ type: "action.updated", item: structuredClone(item) });
       world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
     },
+    addToSuite(taskId) {
+      const task = world.snap.tasks.find((t) => t.id === taskId);
+      if (!task || task.status !== "done") return;
+      task.benchmark = `task-demo-${taskId.toLowerCase()}`;
+      world.emit({ type: "task.updated", task: structuredClone(task) });
+      world.activity("config", null, `${taskId} added to the benchmark suite as ${task.benchmark}. Replay it with: pnpm bench task:${task.benchmark} --models developer=claude/claude-opus-5-5`);
+    },
     removeLesson(id) {
       if (!world.snap.lessons) return;
       world.snap.lessons = { ...world.snap.lessons, approved: world.snap.lessons.approved.filter((l) => l.id !== id) };

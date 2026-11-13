@@ -79,5 +79,61 @@ else {
   check("…and leaves no container or network behind", left === "", left);
 }
 
+// Own-task benchmarks (docs/factory.md section 6): a finished task saved to the suite, replayed and compared per model.
+{
+  const { hqDb } = await import("../server/lib/db");
+  const { buildTaskBenchmark, addToSuite, inSuite } = await import("../server/suite");
+  const { DEV_TEMPLATE_V1 } = await import("../src/data/templates");
+  const { RESEARCH_TEMPLATE } = await import("../src/data/researchTemplate");
+  const { MARKETING_TEMPLATE } = await import("../src/data/commsTemplates");
+  const { loadTaskBenchmark, parseModels, replayScore, compareModels, chartHtml, modelLabel, listTaskBenchmarks, runReplay, changedSince } = await import("./bench/replay");
+  const { writeFileSync, existsSync } = await import("node:fs");
+  const db = hqDb();
+  const repo = mkdtempSync(join(tmpdir(), "bench-src-"));
+  const git = (args: string[], date?: string) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@localhost", ...args], { env: { ...process.env, ...(date ? { GIT_COMMITTER_DATE: date, GIT_AUTHOR_DATE: date } : {}) }, encoding: "utf8" }).trim();
+  git(["init", "-q", "-b", "main"]);
+  writeFileSync(join(repo, "a.ts"), "export const a = 1;\n");
+  git(["add", "."]);
+  git(["commit", "-qm", "first"], "2026-11-01T10:00:00Z");
+  const first = git(["rev-parse", "HEAD"]);
+  writeFileSync(join(repo, "a.ts"), "export const a = 2;\n");
+  git(["commit", "-qam", "the task's work"], "2026-11-03T10:00:00Z");
+  db.prepare("INSERT INTO boards (project_id, id, title, status, ord) VALUES ('shop', 'B', 'B', 'active', 0)").run();
+  db.prepare("INSERT INTO tasks (project_id, id, board_id, stage_id, title, status, updated_at) VALUES ('shop', 'B-T01', 'B', 'build', 'Rate limit login', 'done', 0)").run();
+  db.prepare("INSERT INTO task_events (project_id, task_id, at, status, stage_id, owner_id) VALUES ('shop', 'B-T01', ?, 'todo', 'build', NULL), ('shop', 'B-T01', ?, 'in-progress', 'build', 'nyx')").run(Date.parse("2026-11-01T09:00:00Z"), Date.parse("2026-11-02T10:00:00Z"));
+  db.prepare("INSERT INTO usage_events (at, project_id, task_id, agent_id, source, account, provider, cli, model, input, cached, output, cost_usd) VALUES (0, 'shop', 'B-T01', 'nyx', 'agent', 'k', 'anthropic', 'claude', 'm', 800, 0, 200, 1.25)").run();
+  const team = [{ id: "nyx", name: "Nyx", roleId: "developer", isLead: false, cli: "codex", model: "gpt-5.1" }] as never;
+  const task = { id: "B-T01", boardId: "B", stageId: "merge", title: "Rate limit login", ownerId: "nyx", status: "done", needs: [], prNumber: 4, description: "Add a limiter", files: ["a.ts"], doneWhen: "10 tries a minute", note: "Added", deliverablePath: null, templateVersion: 2, scores: [{ scorer: "tests-only-added", pass: false, reason: "no test", costUsd: null }] } as never;
+  const b = buildTaskBenchmark(db, { projectId: "shop", root: repo, template: DEV_TEMPLATE_V1, team }, task);
+  check("a finished task is saved with the commit it started from, not today's", b.repo.commit === first && b.id === "task-shop-b-t01" && b.kind === "dev", `${b.repo.commit} vs ${first}`);
+  check("…with its brief, template, scorers and what the original run cost, on which models", b.task.doneWhen === "10 tries a minute" && b.original.usd === 1.25 && b.original.tokens === 1000 && b.original.models.some((m) => m.roleId === "developer" && m.cli === "codex" && m.model === "gpt-5.1") && b.scorers.includes("tests-only-added"));
+  check("only finished Dev and Research tasks can join", (() => { try { buildTaskBenchmark(db, { projectId: "shop", root: repo, template: MARKETING_TEMPLATE, team }, task); return false; } catch (e) { return /Only Dev and Research/.test(String(e)); } })() && (() => { try { buildTaskBenchmark(db, { projectId: "shop", root: repo, template: RESEARCH_TEMPLATE, team }, { ...(task as object), status: "in-review" } as never); return false; } catch (e) { return /isn't done/.test(String(e)); } })());
+  addToSuite(b);
+  check("adding is free and local: the suite file, listed by the runner", inSuite("shop", "B-T01") && loadTaskBenchmark(b.id).repo.commit === first && listTaskBenchmarks().some((t) => t.id === b.id));
+
+  const p = parseModels("developer=claude/claude-opus-5-5,lead=codex", b.template);
+  check("--models picks a CLI and model per role; no model means the CLI's default", "overrides" in p && p.overrides.length === 2 && p.overrides[1].model === "" && modelLabel(p.overrides) === "developer=claude/claude-opus-5-5, lead=codex");
+  check("…and refuses a role or CLI that isn't there", "error" in parseModels("pilot=claude", b.template) && "error" in parseModels("developer=vim/x", b.template) && "error" in parseModels("developer", b.template));
+  check("the replay score counts reaching review, then each rule check", replayScore("in-review", [{ pass: true }, { pass: false }]) === 0.667 && replayScore("in-progress", []) === 0 && replayScore("done", []) === 1);
+  const r = (label: string, usd: number, score: number) => ({ benchmark: b.id, startedAt: "", overrides: [], models: [], label, facts: { usd, tokens: { input: 1000, output: 500, cached: 0 }, minutes: 10, status: "in-review", gateRejections: 0, replans: 0, changed: [], stoppedBy: "done" as const }, checks: [], score });
+  const rows = compareModels([r("developer=claude/claude-opus-5-5", 3, 1), r("developer=codex/gpt-5.1", 1, 0.5), r("developer=codex/gpt-5.1", 2, 1), { ...r("dry", 0, 0), facts: { ...r("dry", 0, 0).facts, stoppedBy: "dry" as const } }]);
+  check("one task on two models gives a comparable cost and score pair each", JSON.stringify(rows.map((x) => [x.label, x.runs, x.usd, x.score])) === JSON.stringify([["developer=claude/claude-opus-5-5", 1, 3, 1], ["developer=codex/gpt-5.1", 2, 1.5, 0.75]]), JSON.stringify(rows));
+  const html = chartHtml(b, rows);
+  check("the chart plots both models and the original run, with a table, and escapes labels", html.includes("developer=codex/gpt-5.1") && html.includes("original run") && (html.match(/<circle/g) ?? []).length === 5 && !chartHtml({ ...b, title: "<script>" }, rows).includes("<script>x"));
+
+  // A free dry replay, end to end, when HQ is built: clone at the base commit (no remote), the team, the models, the task.
+  if (!existsSync("dist-server/main.mjs")) console.log("- dry replay skipped: build HQ first (pnpm build)");
+  else {
+    const dry = await runReplay(b, { dry: true, overrides: "overrides" in p ? p.overrides.slice(0, 1) : [] });
+    const clone = join(dry.runDir, b.id);
+    const remotes = execFileSync("git", ["-C", clone, "remote"], { encoding: "utf8" }).trim();
+    check("a dry replay clones at the base commit, with no remote to push to", execFileSync("git", ["-C", clone, "rev-parse", "HEAD"], { encoding: "utf8" }).trim() === first && remotes === "", remotes);
+    check("…puts the task on the board under the chosen model, and spends nothing", dry.facts.status === "todo" && dry.models.some((m) => m.roleId === "developer" && m.cli === "claude" && m.model === "claude-opus-5-5") && dry.facts.usd === 0 && dry.facts.stoppedBy === "dry", JSON.stringify([dry.facts.status, dry.models]));
+    check("…and stores no result (only real runs are compared)", compareModels([]).length === 0 && !existsSync(join(process.env.HOME!, ".arima-bench", "results", b.id)));
+    writeFileSync(join(clone, "a.ts"), "export const a = 3;\n");
+    check("changes in the clone are found against the base", changedSince(clone, first).includes("a.ts"));
+  }
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

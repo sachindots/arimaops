@@ -325,6 +325,8 @@ export interface Task {
   templateVersion?: number;
   /** Its scorers' verdicts once it finished (docs/factory.md section 4). */
   scores?: TaskScore[];
+  /** Its id in the benchmark suite (~/.arima-bench/suite), once added (docs/factory.md section 6). */
+  benchmark?: string;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
