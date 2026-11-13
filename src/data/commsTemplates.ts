@@ -22,7 +22,7 @@ const DRAFTS_ONLY = `## Drafts only
 - No invented facts, testimonials, numbers or urgency. Every claim has a source.`;
 
 const lead = (roleMd: string, skills: string[]): Role =>
-  role({ id: "lead", title: "Lead", isLead: true, onDemand: false, roleMd, cli: "claude", model: "claude-opus-5-5", fallback: { cli: "codex", model: "gpt-6.1-sol" }, skills, color: "#ffd600" });
+  role({ id: "lead", title: "Lead", isLead: true, onDemand: false, roleMd, cli: "claude", model: "claude-opus-5-5", fallback: { cli: "codex", model: "gpt-6.1-sol" }, skills, color: "#d29922" });
 
 // ---------------------------------------------------------------- Marketing
 
@@ -68,7 +68,7 @@ ${DRAFTS_ONLY}`,
       cli: "agy",
       model: "gemini-4-argon-high",
       skills: ["copywriting", "fact-checking"],
-      color: "#00e5ff",
+      color: "#818cf8",
     }),
   ],
   flow: {
@@ -118,7 +118,7 @@ ${DRAFTS_ONLY}`,
       model: "gemini-4-argon-high",
       skills: ["meddicc-qualification", "deep-research"],
       seats: 2,
-      color: "#00e5ff",
+      color: "#818cf8",
     }),
     role({
       id: "writer",
@@ -128,7 +128,7 @@ ${DRAFTS_ONLY}`,
       model: "claude-sonnet-5-5",
       fallback: { cli: "codex", model: "gpt-6.1-sol" },
       skills: ["copywriting", "meddicc-qualification"],
-      color: "#ff9100",
+      color: "#d29922",
     }),
   ],
   flow: {

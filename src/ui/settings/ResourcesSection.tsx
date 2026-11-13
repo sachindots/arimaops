@@ -22,7 +22,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
   const mismatch = session ? sizeMismatch(r, session, machine) : false;
 
   return (
-    <section className="border-[3px] border-ink bg-white p-3">
+    <section className="border border-ink bg-white p-3">
       <SectionTitle>Resources</SectionTitle>
       <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Sandbox size">
         <button
@@ -56,7 +56,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
               CPUs <span className="font-term text-[17px]">{draft.cpus} of {machine.cpus}</span>
             </span>
             <input
-              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#00ff66]"
+              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#3fb950]"
               onChange={(e) => setDraft({ ...draft, cpus: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />
@@ -66,7 +66,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
               Memory <span className="font-term text-[17px]">{fmtGb(draft.memoryGb)} of {fmtGb(maxMem)} max</span>
             </span>
             <input
-              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#00ff66]"
+              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#3fb950]"
               onChange={(e) => setDraft({ ...draft, memoryGb: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />

@@ -1,6 +1,6 @@
 # ArimaOps: notes for coding agents
 
-ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node server (`server/`) runs a team of AI agents per project, and a React + PixiJS UI (`src/`) shows them in an isometric office. Read `docs/architecture.md` before adding a module.
+ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node server (`server/`) runs a team of AI agents per project, and a React UI (`src/`) shows the work: Home, Board, Inbox, Agents, Chat. The look is calm and serious (Inter, one indigo accent, flat panels); no pixel or game styling. Read `docs/architecture.md` before adding a module.
 
 ## Rules from the owner (Sachin)
 

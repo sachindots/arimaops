@@ -81,9 +81,9 @@ const askwell: Preset = {
   config: demoConfig({
     project: { id: "askwell", name: "Askwell", repo: "acme/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
-      agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
-      agent("jim", "Vortex", "Frontend", "#00e5ff", { cli: "agy", model: "gemini-3-flash" }),
+      agent("michael", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
+      agent("jim", "Vortex", "Frontend", "#818cf8", { cli: "agy", model: "gemini-3-flash" }),
     ],
     workflow: {
       mode: "github-pr",
@@ -137,11 +137,11 @@ const redCell: Preset = {
     project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
     secure: true,
     team: [
-      agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),
-      agent("vortex", "Vortex", "Red Teamer", "#00e5ff", { cli: "claude", model: "Sonnet" }),
-      agent("nyx", "Nyx", "Security", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
-      agent("pulse", "Pulse", "SOC Analyst", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+      agent("cipher", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("ghost", "Ghost", "OSINT Analyst", "#3fb950", { cli: "agy", model: "gemini-3-flash" }),
+      agent("vortex", "Vortex", "Red Teamer", "#818cf8", { cli: "claude", model: "Sonnet" }),
+      agent("nyx", "Nyx", "Security", "#a371f7", { cli: "codex", model: "gpt-5.4" }),
+      agent("pulse", "Pulse", "SOC Analyst", "#db61a2", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
     ],
     workflow: {
       mode: "deliverables",
@@ -183,12 +183,12 @@ const bigTeam: Preset = {
   config: demoConfig({
     project: { id: "shipyard", name: "Shipyard", repo: "acme/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
     team: [
-      agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
-      agent("jim", "Vortex", "Architect", "#00e5ff", { cli: "agy", model: "gemini-3.1-pro" }),
-      agent("kenji", "Nyx", "Developer", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
-      agent("priya", "Pulse", "QA", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
-      agent("leo", "Zero", "Frontend", "#3ee0d0", { cli: "gemini", model: "gemini-3-flash" }),
+      agent("maya", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
+      agent("jim", "Vortex", "Architect", "#818cf8", { cli: "agy", model: "gemini-3.1-pro" }),
+      agent("kenji", "Nyx", "Developer", "#a371f7", { cli: "codex", model: "gpt-5.4" }),
+      agent("priya", "Pulse", "QA", "#db61a2", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+      agent("leo", "Zero", "Frontend", "#4fb3c4", { cli: "gemini", model: "gemini-3-flash" }),
       agent("sam", "Hex", "Docs", "#5271ff", { cli: "copilot", model: "claude-sonnet-4.6" }),
     ],
     workflow: {
@@ -235,8 +235,8 @@ const duo: Preset = {
   config: demoConfig({
     project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420 },
     team: [
-      agent("ada", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("max", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
+      agent("ada", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("max", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
     ],
     workflow: {
       mode: "github-pr",

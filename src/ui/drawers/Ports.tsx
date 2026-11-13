@@ -35,7 +35,7 @@ export function PortBanner({ agent, status }: { agent: AgentConfig; status: Agen
   if (!port) return null;
   const done = forwarded.some((p) => p.sandbox === port);
   return (
-    <div className={`flex items-center gap-2 border-b-[3px] border-ink px-3 py-1.5 text-[13px] ${done ? "bg-[rgba(0,255,102,0.14)]" : "bg-[rgba(192,77,255,0.16)]"}`}>
+    <div className={`flex items-center gap-2 border-b border-ink px-3 py-1.5 text-[13px] ${done ? "bg-[rgba(0,255,102,0.14)]" : "bg-[rgba(192,77,255,0.16)]"}`}>
       <span className="min-w-0 flex-1">
         {done ? (
           <>

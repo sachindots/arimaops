@@ -40,7 +40,7 @@ export function WelcomeModal() {
   return (
     <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col">
-        <div className="border-b-[3px] border-ink px-4 py-2">
+        <div className="border-b border-ink px-4 py-2">
           <h2 className="m-0 text-[22px] font-bold">
             Welcome to <span className="text-gold">{BRAND.name}</span>
           </h2>
@@ -68,13 +68,13 @@ export function WelcomeModal() {
                   type="button"
                   role="radio"
                   aria-checked={t.id === template.id}
-                  className={`flex flex-col items-start gap-1.5 border-[3px] bg-white p-2.5 text-left ${t.id === template.id ? "border-red" : "border-ink"}`}
+                  className={`flex flex-col items-start gap-1.5 border bg-white p-2.5 text-left ${t.id === template.id ? "border-red" : "border-ink"}`}
                   onClick={() => setTemplateId(t.id)}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <b className="text-[14px]">{t.name}</b>
-                    {!builtin && <span className="chip text-[10px]" style={{ ["--c" as string]: "#b388ff" }}>yours · v{t.version}</span>}
-                    {problems.length > 0 && <span className="chip text-[10px]" style={{ ["--c" as string]: "#ff9100" }}>waits for you</span>}
+                    {!builtin && <span className="chip text-[10px]" style={{ ["--c" as string]: "#a371f7" }}>yours · v{t.version}</span>}
+                    {problems.length > 0 && <span className="chip text-[10px]" style={{ ["--c" as string]: "#d29922" }}>waits for you</span>}
                   </span>
                   <span className="text-[12px] leading-snug text-muted">{t.description}</span>
                   <span className="flex flex-wrap gap-1">
@@ -86,7 +86,7 @@ export function WelcomeModal() {
               ))}
             </div>
             {entry.problems.length > 0 && (
-              <p className="mt-2 border-l-[3px] border-[#ff9100] pl-2 text-[13px]">
+              <p className="mt-2 border-l border-[#d29922] pl-2 text-[13px]">
                 {template.name} can't be used yet: {entry.problems.join("; ")}.
               </p>
             )}
@@ -126,7 +126,7 @@ export function WelcomeModal() {
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
+        <div className="flex items-center justify-between gap-3 border-t border-ink px-4 py-2">
           <span className="text-[12px] text-muted">Agents don't start until you press Start.</span>
           <button className="btn" disabled={sending || entry.problems.length > 0} onClick={submit}>
             {sending ? "Creating…" : "Create team"}

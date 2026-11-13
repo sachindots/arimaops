@@ -11,10 +11,10 @@ const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done",
 
 const STATUS_BADGE: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: "TODO", color: "#9da9c4" },
-  "in-progress": { label: "DOING", color: "#00e5ff" },
-  "in-review": { label: "REVIEW", color: "#c04dff" },
-  done: { label: "DONE", color: "#00ff66" },
-  blocked: { label: "BLOCKED", color: "#ff1744" },
+  "in-progress": { label: "DOING", color: "#818cf8" },
+  "in-review": { label: "REVIEW", color: "#a371f7" },
+  done: { label: "DONE", color: "#3fb950" },
+  blocked: { label: "BLOCKED", color: "#f85149" },
 };
 
 function getBrowserToken(): string {
@@ -233,7 +233,7 @@ export function CtoDrawer() {
   return (
     <>
       <DrawerHeader>
-        {ctoAgent && <Portrait color={ctoAgent.color} lead={ctoAgent.isLead} size={36} />}
+        {ctoAgent && <Portrait name={ctoAgent.name} color={ctoAgent.color} lead={ctoAgent.isLead} size={36} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <b className="text-[18px]">Projects</b>
@@ -247,7 +247,7 @@ export function CtoDrawer() {
         </div>
       </DrawerHeader>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b-[3px] border-ink bg-cream px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink bg-cream px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           {ctoAgent && (
             <>
@@ -304,7 +304,7 @@ export function CtoDrawer() {
             const isExpanded = expandedId === p.id;
             const pct = p.counts.total > 0 ? Math.round((p.counts.done / p.counts.total) * 100) : 0;
             return (
-              <div key={p.id} className="border-[3px] border-ink bg-white">
+              <div key={p.id} className="border border-ink bg-white">
                 <div
                   className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-cream"
                   onClick={() => setExpandedId(isExpanded ? null : p.id)}
@@ -383,15 +383,15 @@ export function CtoDrawer() {
                   <div className="h-2 w-full overflow-hidden border border-ink bg-[#080b12]">
                     <div
                       className="h-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#00ff66" : "#ff1744" }}
+                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "#f85149" }}
                     />
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                     <div className="flex flex-wrap gap-1.5 font-mono">
                       <span className="text-muted">TODO: {p.counts.todo}</span>
-                      <span className="text-[#00e5ff]">DOING: {p.counts.inProgress}</span>
-                      <span className="text-[#c04dff]">REVIEW: {p.counts.inReview}</span>
+                      <span className="text-[#818cf8]">DOING: {p.counts.inProgress}</span>
+                      <span className="text-[#a371f7]">REVIEW: {p.counts.inReview}</span>
                       <span className="text-green">DONE: {p.counts.done}</span>
                       {p.counts.blocked > 0 && <span className="text-red">BLOCKED: {p.counts.blocked}</span>}
                     </div>
@@ -411,7 +411,7 @@ export function CtoDrawer() {
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t-[3px] border-ink bg-cream p-3">
+                  <div className="border-t border-ink bg-cream p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
                         Tasks in {p.name} ({p.tasks.length})
@@ -523,7 +523,7 @@ export function CtoDrawer() {
         </section>
 
         {record && (
-          <section className="flex flex-col gap-2 border-[3px] border-green p-3">
+          <section className="flex flex-col gap-2 border border-green p-3">
             <b className="text-[15px]">{record.project} is deleted</b>
             <p className="m-0 text-[13px] text-muted">
               The deletion record lists what was removed and what stays. Open it and save it as PDF to send your client; it's also kept under{" "}
@@ -547,7 +547,7 @@ export function CtoDrawer() {
           <section className="flex flex-col gap-2">
             <SectionTitle>Archive ({archived.length})</SectionTitle>
             {archived.map((p) => (
-              <div key={p.id} className="flex flex-col gap-2 border-[3px] border-dashed border-ink p-3">
+              <div key={p.id} className="flex flex-col gap-2 border border-dashed border-ink p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <b className="text-[15px]">{p.name}</b>
                   <span className="font-mono text-[11px] text-muted">
@@ -608,7 +608,7 @@ export function CtoDrawer() {
         )}
 
         {live && !isViewer && (
-          <section className="border-[3px] border-dashed border-ink p-3">
+          <section className="border border-dashed border-ink p-3">
             <SectionTitle>Add an existing folder</SectionTitle>
             <form className="flex items-end gap-2" onSubmit={handleRegisterProject}>
               <div className="flex-1">

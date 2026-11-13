@@ -6,8 +6,8 @@ import { TerminalView } from "../drawers/TerminalView";
 import { ask } from "../dialog";
 
 const STATUS: Record<string, [string, string]> = {
-  ready: ["Ready", "#00ff66"],
-  "needs-auth": ["Needs sign-in", "#c04dff"],
+  ready: ["Ready", "#3fb950"],
+  "needs-auth": ["Needs sign-in", "#a371f7"],
 };
 
 /** MCP servers from Docker Sandboxes' registry, and which agents get them. */
@@ -54,13 +54,13 @@ export function McpSettings() {
             Refresh
           </button>
         </div>
-        {mcp.error && <p className="mb-2 border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
+        {mcp.error && <p className="mb-2 border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
         {servers.length === 0 ? (
           <p className="text-[13px] text-muted">No MCP servers yet. Add one below.</p>
         ) : (
-          <div className="border-[3px] border-ink bg-white">
+          <div className="border border-ink bg-white">
             {servers.map((s) => {
-              const [label, color] = STATUS[s.status] ?? [s.status, "#6e7b94"];
+              const [label, color] = STATUS[s.status] ?? [s.status, "#6b7280"];
               return (
                 <div key={s.name} className="flex items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                   <b className="font-term text-[17px]">{s.name}</b>
@@ -107,7 +107,7 @@ export function McpSettings() {
           </div>
         )}
         {signingIn && (
-          <div className="mt-2 border-[3px] border-ink">
+          <div className="mt-2 border border-ink">
             <div className="flex items-center justify-between bg-navy px-2 py-1 text-[13px] text-cream">
               <span>Signing in to {signingIn} · your browser opens; answer here if it asks</span>
               <button className="text-[12px] underline" onClick={() => setSigningIn(null)}>
@@ -127,7 +127,7 @@ export function McpSettings() {
           {sandboxed.length === 0 ? (
             <p className="text-[13px] text-muted">MCP servers attach to sandboxes. All agents are in Local mode.</p>
           ) : (
-            <table className="w-full border-[3px] border-ink bg-white text-[14px]">
+            <table className="w-full border border-ink bg-white text-[14px]">
               <thead>
                 <tr className="bg-cream-2 text-left">
                   <th className="px-3 py-1.5">Server</th>
@@ -159,7 +159,7 @@ export function McpSettings() {
           )}
           {team.some((a) => a.mode === "local") && <p className="mt-1 text-[12px] text-muted">Local-mode agents aren't listed: MCP servers attach to sandboxes.</p>}
           {stuck.map(({ agent, name }) => (
-            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 border-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
+            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 border border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
               <span className="flex-1">
                 {agent.name}'s sandbox still has <b>{name}</b>: sbx can't detach a server, so it goes when the sandbox is recreated. The folder and code are
                 kept; installed packages and the conversation are not.
@@ -177,7 +177,7 @@ export function McpSettings() {
         </section>
       )}
 
-      <section className="border-[3px] border-ink bg-white p-3">
+      <section className="border border-ink bg-white p-3">
         <SectionTitle>Add a server</SectionTitle>
         {suggestions.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[13px]">

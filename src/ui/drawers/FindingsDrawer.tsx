@@ -6,7 +6,7 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, SectionTitle, useNow } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
-export const SEVERITY_COLOR: Record<Severity, string> = { critical: "#ff1744", high: "#ff6d00", medium: "#ffd600", low: "#00e5ff", info: "#9da9c4" };
+export const SEVERITY_COLOR: Record<Severity, string> = { critical: "#f85149", high: "#ff6d00", medium: "#d29922", low: "#818cf8", info: "#9da9c4" };
 
 export function FindingsDrawer() {
   const snap = useOffice((s) => s.snap);
@@ -106,7 +106,7 @@ function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; rep
   const [open, setOpen] = useState(false);
   const where = f.location ? `${f.location.file}${f.location.startLine ? `:${f.location.startLine}` : ""}` : f.asset.value;
   return (
-    <li className="border-2 border-ink bg-[#111520] px-2.5 py-2" style={{ borderLeft: `5px solid ${SEVERITY_COLOR[f.severity]}` }}>
+    <li className="border-2 border-ink bg-[#16181d] px-2.5 py-2" style={{ borderLeft: `5px solid ${SEVERITY_COLOR[f.severity]}` }}>
       <button className="flex w-full flex-wrap items-center gap-2 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className="font-mono text-[12px] text-muted">{f.id}</span>
         <b className="min-w-0 flex-1 text-[14px]">{f.title}</b>
@@ -179,7 +179,7 @@ function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; rep
               f.evidence.map((e, i) => (
                 <div key={i} className="mb-1.5">
                   <span className="text-[11px] italic text-muted">{e.kind}</span>
-                  <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap bg-[#04060a] p-2 font-mono text-[12px]">{e.content}</pre>
+                  <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap bg-[#0b0c0f] p-2 font-mono text-[12px]">{e.content}</pre>
                 </div>
               ))
             ) : (

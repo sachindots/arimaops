@@ -1,8 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource/pixelify-sans/400.css";
-@import "@fontsource/pixelify-sans/600.css";
-@import "@fontsource/pixelify-sans/700.css";
-@import "@fontsource/vt323/400.css";
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
@@ -12,42 +8,35 @@
 @import "@fontsource/jetbrains-mono/700.css";
 @import "@xterm/xterm/css/xterm.css";
 
-/* ArimaOps palette: deep-night base, lion gold/amber accent, cyan for security. Red/green stay semantic (alerts/ok). */
+/* ArimaOps palette: calm dark. Neutral greys, one indigo accent, muted status colours (green ok, amber warn,
+   red alert, violet review). Token names are historical; their values are what the UI shows. */
 @theme {
-  --color-ink: #f3ede0;
-  --color-cream: #111a2c;
-  --color-cream-2: #172338;
-  --color-cream-3: #2a2a3a;
-  --color-muted: #8a97b0;
-  --color-navy: #0b1220;
-  --color-navy-2: #070d19;
-  --color-blue: #22d3ee;
-  --color-cyan: #22d3ee;
-  --color-gold: #e8b339;
-  --color-amber: #f59e0b;
-  --color-gold-dark: #b9791c;
-  --color-red: #ff1744;
-  --color-orange: #c04dff;
-  --color-green: #00ff66;
-  --color-lav: #8a97b0;
-  --color-yellow: #e8b339;
-  --color-pink: #ff2a85;
-  --color-grass: #0b1220;
-  --font-ui: "Pixelify Sans", "Trebuchet MS", system-ui, sans-serif;
-  --font-term: "VT323", ui-monospace, Menlo, Consolas, monospace;
+  --color-ink: #e6e8eb;
+  --color-cream: #16181d;
+  --color-cream-2: #1c1f26;
+  --color-cream-3: #252932;
+  --color-muted: #8b919c;
+  --color-navy: #0f1115;
+  --color-navy-2: #0b0c0f;
+  --color-accent: #6366f1;
+  --color-blue: #818cf8;
+  --color-cyan: #818cf8;
+  --color-gold: #a5b4fc;
+  --color-amber: #d29922;
+  --color-gold-dark: #4f46e5;
+  --color-red: #f85149;
+  --color-orange: #a371f7;
+  --color-green: #3fb950;
+  --color-lav: #8b919c;
+  --color-yellow: #d29922;
+  --color-pink: #db61a2;
+  --color-grass: #0f1115;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-term: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
-/* Font styles (Settings → Project → Font). The office canvas and terminal keep their pixel fonts. */
-html[data-font="clean"] {
-  --font-ui: "Inter", system-ui, sans-serif;
-  --font-term: "JetBrains Mono", ui-monospace, Menlo, monospace;
-}
-html[data-font="mono"] {
-  --font-ui: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --font-term: "JetBrains Mono", ui-monospace, Menlo, monospace;
-}
-/* VT323 is small for its size; keep data text the same visual size in the other fonts. */
-html[data-font] .font-term {
+/* The mono face runs larger than the old one at the same size; keep data text the same visual size. */
+.font-term {
   font-size-adjust: 0.42;
 }
 
@@ -73,96 +62,93 @@ html[data-font] .font-term {
 }
 
 @layer components {
-  /* Night tiles with a lion-gold edge */
+  /* Flat surfaces: 1px hairline borders, soft corners, no glow. */
   .panel {
-    background: rgba(17, 26, 44, 0.94);
+    background: var(--color-cream);
     color: var(--color-ink);
-    border: 2px solid rgba(232, 179, 57, 0.55);
-    box-shadow:
-      inset 0 0 16px rgba(232, 179, 57, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 6px 22px rgba(0, 0, 0, 0.78);
+    border: 1px solid #262a33;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   }
   .panel-dark {
-    background: rgba(11, 18, 32, 0.96);
+    background: var(--color-navy-2);
     color: var(--color-ink);
-    border: 2px solid rgba(0, 255, 102, 0.45);
-    box-shadow:
-      inset 0 0 16px rgba(0, 255, 102, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 6px 22px rgba(0, 0, 0, 0.82);
+    border: 1px solid #262a33;
+    border-radius: 10px;
   }
   .btn {
     cursor: pointer;
-    border: 1px solid rgba(232, 179, 57, 0.45);
-    background: #172338;
+    border: 1px solid #2c313b;
+    border-radius: 6px;
+    background: #1c1f26;
     color: var(--color-ink);
-    padding: 2px 10px;
-    font-weight: 600;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 2px 0 #05080f;
+    padding: 3px 10px;
+    font-weight: 500;
     transition:
-      transform 0.06s,
       border-color 0.12s,
       background-color 0.12s,
-      box-shadow 0.12s;
+      color 0.12s;
     white-space: nowrap;
   }
   .btn:hover {
-    background: #1e2c45;
-    border-color: var(--color-gold);
-    box-shadow:
-      0 0 10px rgba(232, 179, 57, 0.32),
-      0 2px 0 #05080f;
-  }
-  .btn:active,
-  .btn[aria-pressed="true"] {
-    transform: translateY(2px);
-    box-shadow: inset 0 0 10px rgba(0, 255, 102, 0.2);
+    background: #23272f;
+    border-color: #3a404c;
   }
   .btn[aria-pressed="true"] {
-    background: rgba(0, 255, 102, 0.14);
-    border-color: var(--color-green);
-    color: var(--color-green);
+    background: rgba(99, 102, 241, 0.16);
+    border-color: rgba(129, 140, 248, 0.55);
+    color: #c7d2fe;
   }
   .btn:disabled {
     cursor: not-allowed;
     opacity: 0.45;
-    transform: none;
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: #5458e8;
+    border-color: #5458e8;
   }
   .btn:focus-visible,
   .field:focus-visible {
-    outline: 2px solid var(--color-green);
+    outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
   .chip {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 0 6px 1px;
-    border: 1px solid var(--c, rgba(232, 179, 57, 0.45));
-    background: color-mix(in srgb, var(--c, #8b9bb4) 16%, #0b1220);
-    color: var(--c, var(--color-ink));
+    font-size: 12px;
+    font-weight: 500;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--c, #8b919c) 40%, transparent);
+    background: color-mix(in srgb, var(--c, #8b919c) 12%, transparent);
+    color: color-mix(in srgb, var(--c, var(--color-ink)) 85%, white);
     white-space: nowrap;
   }
   .chip-dot::before {
     content: "";
     width: 6px;
     height: 6px;
+    border-radius: 50%;
     background: var(--c, var(--color-green));
-    box-shadow: 0 0 6px var(--c, var(--color-green));
   }
   .field {
-    border: 1px solid #2c3a57;
-    background: #0b1220;
+    border: 1px solid #2c313b;
+    border-radius: 6px;
+    background: var(--color-navy);
     color: var(--color-ink);
-    padding: 2px 8px;
-    font-size: 15px;
+    padding: 2px 10px;
+    font-size: 14px;
     width: 100%;
     min-width: 0;
+  }
+  .field:focus {
+    border-color: rgba(129, 140, 248, 0.6);
   }
   /* Inputs and dropdowns share one height so labels in a row line up. */
   input.field,
@@ -171,23 +157,24 @@ html[data-font] .font-term {
   }
   .kbd {
     font-family: var(--font-term);
-    font-size: 16px;
-    border: 1px solid rgba(232, 179, 57, 0.45);
+    font-size: 12px;
+    border: 1px solid #2c313b;
+    border-radius: 4px;
     padding: 0 4px;
-    background: #0b1220;
-    color: var(--color-green);
+    background: var(--color-navy);
+    color: var(--color-muted);
   }
 }
 
 /* Keep legacy utility classes dark-theme safe */
 .border-ink {
-  border-color: #243050 !important;
+  border-color: #262a33 !important;
 }
 .text-cream {
   color: var(--color-ink) !important;
 }
 .bg-white {
-  background-color: #111a2c !important;
+  background-color: var(--color-cream) !important;
   color: var(--color-ink);
 }
 
@@ -197,16 +184,13 @@ html[data-font] .font-term {
   }
 }
 .blink {
-  animation: blink 0.5s steps(1) infinite;
+  animation: blink 1.6s ease-in-out infinite;
 }
 .led {
   width: 8px;
   height: 8px;
+  border-radius: 50%;
   background: var(--color-green);
-  box-shadow:
-    0 0 8px var(--color-green),
-    0 0 0 1px #0b1220;
-  animation: blink 1s steps(1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -218,7 +202,7 @@ html[data-font] .font-term {
 
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: #b9791c transparent;
+  scrollbar-color: #3a404c transparent;
 }
 
 .xterm {
@@ -226,7 +210,7 @@ html[data-font] .font-term {
 }
 .xterm .xterm-viewport {
   scrollbar-width: thin;
-  scrollbar-color: #b9791c transparent;
+  scrollbar-color: #3a404c transparent;
 }
 
 /* Tablet / phone (remote control over Tailscale). Touch-sized controls, scrollable top bar,

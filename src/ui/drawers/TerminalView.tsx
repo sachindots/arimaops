@@ -8,19 +8,19 @@ import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme
 import { lastLink } from "./links";
 
 const theme = {
-  background: "#04060a",
-  foreground: "#e6edf7",
-  cursor: "#00ff66",
-  cursorAccent: "#04060a",
+  background: "#0b0c0f",
+  foreground: "#e6e8eb",
+  cursor: "#3fb950",
+  cursorAccent: "#0b0c0f",
   selectionBackground: "rgba(255, 23, 68, 0.32)",
-  black: "#040508",
-  red: "#ff1744",
-  green: "#00ff66",
-  yellow: "#00ff66",
-  blue: "#00e5ff",
-  magenta: "#c04dff",
-  cyan: "#3ee0d0",
-  white: "#e6edf7",
+  black: "#0b0c0f",
+  red: "#f85149",
+  green: "#3fb950",
+  yellow: "#3fb950",
+  blue: "#818cf8",
+  magenta: "#a371f7",
+  cyan: "#4fb3c4",
+  white: "#e6e8eb",
 };
 
 /** Opens a link from a terminal in a new tab. Only web links: a terminal's output is untrusted. */

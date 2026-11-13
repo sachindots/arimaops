@@ -63,7 +63,7 @@ export function UsersSettings() {
           Sign out
         </button>
       </p>
-      {error && <p className="m-0 border-[3px] border-red px-3 py-1.5 text-[13px]">{error}</p>}
+      {error && <p className="m-0 border border-red px-3 py-1.5 text-[13px]">{error}</p>}
       {shown && <AuthenticatorLink url={shown.url} who={shown.who} />}
 
       {user && (
@@ -100,7 +100,7 @@ export function UsersSettings() {
             ) : people.length === 0 ? (
               <p className="text-[13px] text-muted">Nobody has a sign-in yet. Add yourself as the owner below.</p>
             ) : (
-              <div className="border-[3px] border-ink">
+              <div className="border border-ink">
                 {people.map((p) => (
                   <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                     <b className={p.disabled ? "text-muted line-through" : ""}>{p.name}</b>

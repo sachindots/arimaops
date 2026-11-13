@@ -59,7 +59,7 @@ const lead = (over: Partial<Role> = {}): Role => ({
   skills: ["pstack-architect", "pstack-blast-radius", "ponytail", "product-prd"],
   onDemand: false,
   seats: 1,
-  color: "#ff1744",
+  color: "#f85149",
   ...over,
 });
 
@@ -82,7 +82,7 @@ export const DEV_TEMPLATE_V1: TeamTemplate = {
       skills: ["pstack-architect", "ponytail", "pstack-thermo-review", "pstack-blast-radius", "pstack-deslop"],
       onDemand: true,
       seats: 2,
-      color: "#00ff66",
+      color: "#3fb950",
     },
     {
       id: "reviewer",
@@ -95,7 +95,7 @@ export const DEV_TEMPLATE_V1: TeamTemplate = {
       skills: ["pstack-thermo-review", "ponytail", "pstack-blast-radius", "pstack-deslop", "vuln-triage"],
       onDemand: true,
       seats: 1,
-      color: "#ffab00",
+      color: "#d29922",
     },
   ],
   flow: {
@@ -178,7 +178,7 @@ export const DEV_TEMPLATE: TeamTemplate = {
       skills: ["pstack-thermo-review", "trailofbits/skills@differential-review"],
       onDemand: true,
       seats: 1,
-      color: "#448aff",
+      color: "#58a6ff",
     },
     {
       id: "verifier",
@@ -191,7 +191,7 @@ export const DEV_TEMPLATE: TeamTemplate = {
       skills: [],
       onDemand: true,
       seats: 1,
-      color: "#26c6da",
+      color: "#4fb3c4",
     },
   ],
   flow: {

@@ -4,9 +4,9 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 
 const STATUS = {
-  online: ["Connected", "#00ff66"],
-  offline: ["Can't reach Neo4j", "#F59E0B"],
-  unconfigured: ["Not set up", "#F59E0B"],
+  online: ["Connected", "#3fb950"],
+  offline: ["Can't reach Neo4j", "#d29922"],
+  unconfigured: ["Not set up", "#d29922"],
 } as const;
 
 /** Where the team's memory (Neo4j) is. You run Neo4j; HQ only connects to it. */
@@ -123,7 +123,7 @@ export function MemorySettings() {
         {state.backups.length === 0 ? (
           <p className="m-0 text-[13px] text-muted">No backups yet.</p>
         ) : (
-          <div className="border-[3px] border-ink">
+          <div className="border border-ink">
             {state.backups.map((d) => (
               <div key={d} className="flex flex-wrap items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                 <b className="font-mono text-[14px]">{d}</b>

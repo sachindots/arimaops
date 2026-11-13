@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BRAND } from "../../data/brand";
 import { signIn } from "../../store/auth";
-import { Logo } from "../hud/TopBar";
+import { Logo } from "../kit";
 
 /** Shown when this device isn't signed in to a real HQ. */
 export function SignIn() {

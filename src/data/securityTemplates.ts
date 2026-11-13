@@ -26,7 +26,7 @@ const role = (r: Omit<Role, "isLead" | "fallback" | "onDemand" | "seats"> & Part
 });
 
 const lead = (roleMd: string, skills: string[]): Role =>
-  role({ id: "lead", title: "Lead", isLead: true, onDemand: false, roleMd, cli: "claude", model: "claude-opus-5-5", fallback: { cli: "codex", model: "gpt-6.1-sol" }, skills, color: "#ff1744" });
+  role({ id: "lead", title: "Lead", isLead: true, onDemand: false, roleMd, cli: "claude", model: "claude-opus-5-5", fallback: { cli: "codex", model: "gpt-6.1-sol" }, skills, color: "#f85149" });
 
 const secondOpinion = (): Role =>
   role({
@@ -43,7 +43,7 @@ ${ENGAGEMENT}`,
     cli: "agy",
     model: "gemini-4-argon-high",
     skills: ["vuln-triage", `${TOB}@cvss-scoring`, `${TOB}@fp-check`],
-    color: "#448aff",
+    color: "#58a6ff",
   });
 
 // ---------------------------------------------------------------- Red
@@ -66,7 +66,7 @@ const reconRole = (): Role =>
     cli: "agy",
     model: "gemini-4-argon-high",
     skills: ["osint-recon", `${BH}@recon-scope-triage`, `${BH}@web2-recon`, `${BH}@bb-methodology`],
-    color: "#00e5ff",
+    color: "#818cf8",
   });
 
 const exploitRole = (): Role =>
@@ -79,7 +79,7 @@ const exploitRole = (): Role =>
     fallback: { cli: "codex", model: "gpt-6.1-sol" },
     skills: ["red-team-poc", "vuln-triage", `${BH}@hunt-dispatch`, `${BH}@triage-validation`, `${BH}@evidence-hygiene`],
     seats: 2,
-    color: "#ff9100",
+    color: "#d29922",
   });
 
 const reporterRole = (): Role =>
@@ -90,7 +90,7 @@ const reporterRole = (): Role =>
     cli: "claude",
     model: "claude-sonnet-5-5",
     skills: ["technical-writing", `${BH}@report-writing`, `${BH}@redteam-report-template`, `${TOB}@cvss-scoring`],
-    color: "#b388ff",
+    color: "#a371f7",
   });
 
 const redStages = (): Stage[] => [
@@ -135,7 +135,7 @@ const defenderRole = (): Role =>
     cli: "claude",
     model: "claude-sonnet-5-5",
     skills: DEFENDER_SKILLS,
-    color: "#00c853",
+    color: "#3fb950",
   });
 
 export const SECURITY_PURPLE_TEMPLATE: TeamTemplate = {
@@ -191,7 +191,7 @@ export const SECURITY_BLUE_TEMPLATE: TeamTemplate = {
       fallback: { cli: "codex", model: "gpt-6.1-sol" },
       skills: [...DEFENDER_SKILLS, `${TOB}@entry-point-analyzer`, `${TOB}@fp-check`, `${TOB}@cvss-scoring`],
       seats: 2,
-      color: "#00e5ff",
+      color: "#818cf8",
     }),
     role({
       id: "responder",
@@ -200,7 +200,7 @@ export const SECURITY_BLUE_TEMPLATE: TeamTemplate = {
       cli: "claude",
       model: "claude-sonnet-5-5",
       skills: ["soc-incident-response"],
-      color: "#ff9100",
+      color: "#d29922",
     }),
     secondOpinion(),
   ],

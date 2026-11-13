@@ -87,7 +87,7 @@ export function ChipList({
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button className="btn flex items-center gap-2 px-2 text-[14px]" role="switch" aria-checked={checked} aria-pressed={checked} onClick={() => onChange(!checked)}>
-      <span className="inline-block h-3 w-3 border border-ink" style={{ background: checked ? "#00ff66" : "#1c2233", boxShadow: checked ? "0 0 6px #00ff66" : undefined }} />
+      <span className="inline-block h-3 w-3 border border-ink" style={{ background: checked ? "#3fb950" : "#1c2233", boxShadow: checked ? "0 0 6px #3fb950" : undefined }} />
       {label}
     </button>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BRAND } from "../../data/brand";
 import { officeLabel } from "../../data/names";
-import type { Mode } from "../../office/iso/behaviour";
+import type { Mode } from "../../data/mode";
 import { followBuilding, useBuilding } from "../../store/building";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
@@ -12,13 +12,13 @@ import { useScreens } from "./screens";
 import { FactoryCard } from "./Factory";
 
 const MODE_COLOR: Record<Mode, string> = {
-  "needs-input": "#F59E0B",
-  alert: "#ff1744",
-  working: "#00ff66",
-  cheer: "#00ff66",
-  starting: "#22D3EE",
-  idle: "#8A97B0",
-  stopped: "#3a4560",
+  "needs-input": "#d29922",
+  alert: "#f85149",
+  working: "#3fb950",
+  cheer: "#3fb950",
+  starting: "#818cf8",
+  idle: "#8b919c",
+  stopped: "#3a404c",
 };
 const FILTER_LABEL: Record<Filter, string> = { all: "All", attention: "Needs you", working: "Working", idle: "Idle", stopped: "Stopped" };
 const DENSITY = { S: 300, M: 420, L: 600 } as const;
@@ -282,7 +282,7 @@ function Tile({
     >
       <header className="flex flex-wrap items-center gap-2 border-b-2 border-ink px-2.5 py-1.5">
         {index !== undefined && index <= 9 && <kbd className="font-mono text-[10px] text-muted">{index}</kbd>}
-        <Portrait color={r.agent.color} lead={r.agent.isLead} size={24} />
+        <Portrait name={r.agent.name} color={r.agent.color} lead={r.agent.isLead} size={24} />
         <b className="truncate text-[15px]">{r.agent.name}</b>
         {multi && <span className="chip text-[10px]">{r.projectName}</span>}
         {r.status && <StateChip state={r.status.state} session={r.status.session.state} blink={false} />}
@@ -311,7 +311,7 @@ function Tile({
       {running || r.mode === "starting" || max ? (
       <pre
         ref={pre}
-        className={`scroll-thin m-0 min-h-0 overflow-auto whitespace-pre bg-[#04060a] px-2.5 py-1.5 font-mono text-[11px] leading-[1.35] text-[#cfd8e6] ${max ? "flex-1 text-[13px]" : ""}`}
+        className={`scroll-thin m-0 min-h-0 overflow-auto whitespace-pre bg-[#0b0c0f] px-2.5 py-1.5 font-mono text-[11px] leading-[1.35] text-[#d0d4da] ${max ? "flex-1 text-[13px]" : ""}`}
         style={max ? undefined : { height: `${lines * 1.35 * 11 + 12}px` }}
         onDoubleClick={open}
         aria-label={`${r.agent.name}'s screen`}

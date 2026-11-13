@@ -60,7 +60,7 @@ export function ActionItemsDrawer() {
               ))}
               {a.readyPrs.map((p) =>
                 p.url ? (
-                  <li key={`pr-${p.number}`} className="flex items-center gap-2 border-[3px] border-ink bg-white px-2.5 py-1.5">
+                  <li key={`pr-${p.number}`} className="flex items-center gap-2 border border-ink bg-white px-2.5 py-1.5">
                     <span className="flex-1">
                       PR <b>#{p.number}</b> {p.title} passed review and is ready to merge
                     </span>
@@ -101,7 +101,7 @@ export function ActionItemsDrawer() {
 
 function Row({ text, color, onOpen }: { text: string; color?: string; onOpen: () => void }) {
   return (
-    <li className="flex items-center gap-2 border-[3px] border-ink bg-white px-2.5 py-1.5">
+    <li className="flex items-center gap-2 border border-ink bg-white px-2.5 py-1.5">
       {color && <Dot color={color} size={8} />}
       <span className="flex-1">{text}</span>
       <button className="btn px-2 text-[12px]" onClick={onOpen}>
@@ -116,19 +116,19 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
   const [expanded, setExpanded] = useState(false);
   const long = item.details.split("\n").length > 6 || item.details.length > 400;
   return (
-    <li className={`border-[3px] border-ink bg-white px-3 py-2 shadow-[0_3px_0_rgba(36,26,46,0.35)] ${item.waiting ? "outline outline-[3px] outline-orange" : ""}`}>
+    <li className={`border border-ink bg-white px-3 py-2 ${item.waiting ? "outline outline-orange" : ""}`}>
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
-        {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
-        {item.kind === "lesson" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#b388ff" }}>lesson · for the template</span>}
-        {item.kind === "proposal" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#F59E0B" }}>template change</span>}
-        {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffd600" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
-        {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>spec · needs approval</span>}
-        {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>skills · scan</span>}
-        {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>usage limit</span>}
-        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff1744" }}>spend</span>}
-        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffab00" }}>lead approved · undoable</span>}
-        {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>waiting</span>}
+        {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>plan · needs approval</span>}
+        {item.kind === "lesson" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>lesson · for the template</span>}
+        {item.kind === "proposal" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>template change</span>}
+        {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
+        {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
+        {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
+        {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
+        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#f85149" }}>spend</span>}
+        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>lead approved · undoable</span>}
+        {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
         {from && <Dot color={from.color} size={8} />}
@@ -145,7 +145,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       {item.proposal && (
         <pre className="scroll-thin my-1 overflow-x-auto whitespace-pre-wrap border-2 border-ink bg-[#0b0f17] px-2 py-1.5 font-mono text-[12px] leading-snug" aria-label="The change">
           {item.proposal.diff.map((l, n) => (
-            <div key={n} style={{ color: l.startsWith("+") ? "#00c853" : l.startsWith("-") ? "#ff5252" : undefined }}>
+            <div key={n} style={{ color: l.startsWith("+") ? "#3fb950" : l.startsWith("-") ? "#f85149" : undefined }}>
               {l}
             </div>
           ))}
@@ -213,14 +213,14 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
   );
 }
 
-const TYPE_COLOR: Record<string, string> = { Decision: "#00e5ff", Lesson: "#00ff66", DeadEnd: "#ff4d6d" };
+const TYPE_COLOR: Record<string, string> = { Decision: "#818cf8", Lesson: "#3fb950", DeadEnd: "#ff4d6d" };
 
 /** New memories from one task: certify or reject each, or certify them all at once. */
 function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
   const list = item.memories ?? [];
   const decide = (decisions: Record<string, "certify" | "reject">) => officeActions.decideMemories(item.id, decisions);
   return (
-    <li className="border-[3px] border-ink bg-white px-3 py-2 shadow-[0_3px_0_rgba(36,26,46,0.35)]">
+    <li className="border border-ink bg-white px-3 py-2">
       <div className="flex flex-wrap items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
         {!isViewer && list.length > 1 && (
@@ -236,7 +236,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
         {list.map((m) => (
           <li key={m.id} className="flex flex-col gap-1 border-t-2 border-dashed border-cream-3 py-2 first:border-t-0">
             <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-              <span className="chip chip-dot text-[11px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#c04dff" }}>
+              <span className="chip chip-dot text-[11px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#a371f7" }}>
                 {m.type}
               </span>
               <span className="font-mono text-muted">{m.id}</span>
@@ -248,7 +248,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
             </div>
             <p className="m-0 text-[14px]">{m.text}</p>
             {m.conflict && (
-              <p className="m-0 border-l-[3px] border-orange pl-2 text-[12px]">
+              <p className="m-0 border-l border-orange pl-2 text-[12px]">
                 May contradict certified {m.conflict.id}: “{m.conflict.text}”
               </p>
             )}

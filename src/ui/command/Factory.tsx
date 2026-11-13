@@ -62,7 +62,7 @@ function Delta({ now, before }: { now: number | null; before: number | null }) {
   if (!pct) return <span className="text-[11px] text-muted">= </span>;
   const better = pct < 0;
   return (
-    <span className="font-mono text-[11px]" style={{ color: better ? "#00c853" : "#F59E0B" }} title={`Last ${DAYS} days against the ${DAYS} before`}>
+    <span className="font-mono text-[11px]" style={{ color: better ? "#3fb950" : "#d29922" }} title={`Last ${DAYS} days against the ${DAYS} before`}>
       {better ? "▼" : "▲"}
       {Math.abs(pct)}%
     </span>

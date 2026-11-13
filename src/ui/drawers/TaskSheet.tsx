@@ -11,11 +11,11 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, Dot, TokensChip, useNow } from "../kit";
 
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
-  todo: { label: "To do", color: "#6e7b94" },
-  "in-progress": { label: "Doing", color: "#00e5ff" },
-  "in-review": { label: "Review", color: "#c04dff" },
-  done: { label: "Done", color: "#00ff66" },
-  blocked: { label: "Blocked", color: "#ff1744" },
+  todo: { label: "To do", color: "#6b7280" },
+  "in-progress": { label: "Doing", color: "#818cf8" },
+  "in-review": { label: "Review", color: "#a371f7" },
+  done: { label: "Done", color: "#3fb950" },
+  blocked: { label: "Blocked", color: "#f85149" },
 };
 
 /** What a gate asks for, in words. */
@@ -98,15 +98,15 @@ function Stepper({ task }: { task: Task }) {
               <span
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-bold"
                 style={{
-                  borderColor: state === "next" ? "#3a4560" : state === "done" ? "#00c853" : "#00e5ff",
-                  background: state === "done" ? "#00c853" : "transparent",
-                  color: state === "done" ? "#04060a" : state === "now" ? "#00e5ff" : "#8A97B0",
+                  borderColor: state === "next" ? "#3a404c" : state === "done" ? "#3fb950" : "#818cf8",
+                  background: state === "done" ? "#3fb950" : "transparent",
+                  color: state === "done" ? "#0b0c0f" : state === "now" ? "#818cf8" : "#8b919c",
                 }}
               >
                 {state === "done" ? "✓" : i + 1}
               </span>
               <span className={`ml-1.5 truncate text-[12px] ${state === "now" ? "font-semibold text-ink" : "text-muted"}`}>{s.name}</span>
-              {i < flow.stages.length - 1 && <span className="mx-1.5 h-[2px] min-w-[8px] flex-1" style={{ background: i < at ? "#00c853" : "#3a4560" }} />}
+              {i < flow.stages.length - 1 && <span className="mx-1.5 h-[2px] min-w-[8px] flex-1" style={{ background: i < at ? "#3fb950" : "#3a404c" }} />}
             </li>
           );
         })}
@@ -132,7 +132,7 @@ function Checks({ scores }: { scores: TaskScore[] }) {
     <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px]">
       {scores.map((x) => (
         <li key={x.scorer} className="flex items-baseline gap-2">
-          <span className={x.pass ? "text-green" : "text-[#F59E0B]"} aria-label={x.pass ? "passed" : "failed"}>
+          <span className={x.pass ? "text-green" : "text-[#d29922]"} aria-label={x.pass ? "passed" : "failed"}>
             {x.pass ? "✓" : "✗"}
           </span>
           <span className="min-w-0">
@@ -156,7 +156,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
     <>
       <p className="m-0 mb-2 text-[12px] text-muted">
         {verifier} at <span className="font-mono">{ev.sha.slice(0, 7)}</span>, {ago(ev.at, now)} ago
-        {stale && <span className="ml-1 text-[#F59E0B]">· the PR has new commits: the verifier takes it again</span>}
+        {stale && <span className="ml-1 text-[#d29922]">· the PR has new commits: the verifier takes it again</span>}
       </p>
       <div className="grid grid-cols-2 gap-2">
         {ev.shots.map((s) => {
@@ -184,8 +184,8 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
 function Timeline({ history, name }: { history: History; name: (id: string | null) => string }) {
   const now = useNow(30_000);
   const rows = [
-    ...history.events.map((e) => ({ at: e.at, dot: STATUS[e.status as TaskStatus]?.color ?? "#8A97B0", text: `${STATUS[e.status as TaskStatus]?.label ?? e.status}${e.ownerId ? ` · ${name(e.ownerId)}` : ""}` })),
-    ...history.gates.map((g) => ({ at: g.at, dot: g.state === "failed" ? "#ff1744" : g.state === "passed" ? "#00c853" : "#8A97B0", text: `Gate ${g.gateId} ${g.state} by ${name(g.by)}${g.note ? `: ${g.note}` : ""}` })),
+    ...history.events.map((e) => ({ at: e.at, dot: STATUS[e.status as TaskStatus]?.color ?? "#8b919c", text: `${STATUS[e.status as TaskStatus]?.label ?? e.status}${e.ownerId ? ` · ${name(e.ownerId)}` : ""}` })),
+    ...history.gates.map((g) => ({ at: g.at, dot: g.state === "failed" ? "#f85149" : g.state === "passed" ? "#3fb950" : "#8b919c", text: `Gate ${g.gateId} ${g.state} by ${name(g.by)}${g.note ? `: ${g.note}` : ""}` })),
   ].sort((a, b) => b.at - a.at);
   if (!rows.length) return <p className="m-0 text-[12px] text-muted">No history: this task is older than HQ's task history.</p>;
   return (
@@ -292,8 +292,8 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={`${task.id} ${task.title}`}>
       <button className="absolute inset-0 cursor-default bg-black/55" aria-label="Close" onClick={onClose} tabIndex={-1} />
-      <div ref={panel} tabIndex={-1} className="relative flex h-full w-full max-w-[600px] flex-col border-l-[3px] border-ink bg-[#0d111b] shadow-[-8px_0_24px_rgba(0,0,0,0.5)] outline-none">
-        <header className="flex items-start gap-3 border-b-[3px] border-ink px-4 py-3">
+      <div ref={panel} tabIndex={-1} className="relative flex h-full w-full max-w-[600px] flex-col border-l border-ink bg-[#121419] shadow-[-8px_0_24px_rgba(0,0,0,0.5)] outline-none">
+        <header className="flex items-start gap-3 border-b border-ink px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 font-mono text-[12px] text-muted">
               <span>{task.id}</span>
@@ -303,10 +303,10 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
             <h2 className="m-0 mt-1 text-[19px] font-semibold leading-snug">{task.title}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <span className="chip text-[11px]" style={{ ["--c" as string]: st.color }}>{st.label}</span>
-              {failed > 0 && <span className="chip text-[11px]" style={{ ["--c" as string]: "#F59E0B" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
-              {task.evidence && <span className="chip text-[11px]" style={{ ["--c" as string]: "#26c6da" }}>evidence</span>}
+              {failed > 0 && <span className="chip text-[11px]" style={{ ["--c" as string]: "#d29922" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
+              {task.evidence && <span className="chip text-[11px]" style={{ ["--c" as string]: "#4fb3c4" }}>evidence</span>}
               {task.benchmark && <span className="chip text-[11px]" style={{ ["--c" as string]: "#9085e9" }}>in suite</span>}
-              {task.highStakes && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ff5252" }}>high-stakes</span>}
+              {task.highStakes && <span className="chip text-[11px]" style={{ ["--c" as string]: "#f85149" }}>high-stakes</span>}
             </div>
           </div>
           <button className="btn min-h-[40px] w-10 shrink-0 px-0 text-[16px]" onClick={onClose} aria-label="Close the task">

@@ -1,14 +1,14 @@
 import { BRAND } from "../../data/brand";
-import { Logo } from "../hud/TopBar";
 // Tablet/phone layout: a header, a bottom bar (Chat · Board · Inbox · Agents · More) and full-screen
 // pages. Opening anything else (an agent, PRs, your terminal, projects) uses the same drawers as the
 // office, shown full-screen with a Back button.
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID, type AgentConfig } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
-import { ui, useUi, type LayoutChoice } from "../../store/ui";
+import { ui, useUi } from "../../store/ui";
 import { signOut, useAuth } from "../../store/auth";
-import { ago, Dot, Portrait, StateChip, useNow } from "../kit";
+import { ago, Dot, Logo, Portrait, StateChip, useNow } from "../kit";
+import { Home } from "./Home";
 import { ActionItemsDrawer } from "../drawers/ActionItemsDrawer";
 import { AgentDrawer, MessagesTab } from "../drawers/AgentDrawer";
 import { BoardsDrawer } from "../drawers/BoardsDrawer";
@@ -19,17 +19,14 @@ import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
 
-type Tab = "chat" | "board" | "office" | "inbox" | "agents" | "more";
+type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
 
-// Loaded only when shown: Pixi and the office art stay out of the phone's first load.
-const CompactOffice = lazy(() => import("../../office/iso/CompactOffice"));
-
-/** Tablet width: the office sits beside the current page instead of being a tab. */
-const SIDE_BY_SIDE = "(min-width: 900px)";
-function useSideBySide(): boolean {
-  const [on, setOn] = useState(() => window.matchMedia(SIDE_BY_SIDE).matches);
+/** Wide screens (a landscape tablet, a laptop) get a sidebar; narrower ones a bottom bar. */
+const WIDE = "(min-width: 1000px)";
+function useWide(): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(WIDE).matches);
   useEffect(() => {
-    const mq = window.matchMedia(SIDE_BY_SIDE);
+    const mq = window.matchMedia(WIDE);
     const onChange = () => setOn(mq.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
@@ -37,13 +34,20 @@ function useSideBySide(): boolean {
   return on;
 }
 
-function OfficePane() {
+const NAV: { id: Tab; label: string; icon: ReactNode }[] = [
+  { id: "home", label: "Home", icon: <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" /> },
+  { id: "board", label: "Board", icon: <path d="M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z" /> },
+  { id: "inbox", label: "Inbox", icon: <path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zm0 0h5l1 3h6l1-3h5" /> },
+  { id: "agents", label: "Agents", icon: <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 10a7 7 0 0 1 14 0M17 3.5a4 4 0 0 1 0 7.5M22 21a7 7 0 0 0-4-6.3" /> },
+  { id: "chat", label: "Chat", icon: <path d="M4 5h16v11H9l-5 4z" /> },
+  { id: "more", label: "More", icon: <path d="M5 12h.01M12 12h.01M19 12h.01" /> },
+];
+
+function NavIcon({ children }: { children: ReactNode }) {
   return (
-    <div className="relative min-h-0 flex-1 bg-[#070910]">
-      <Suspense fallback={<div className="p-4 text-[13px] text-muted">Loading the office…</div>}>
-        <CompactOffice />
-      </Suspense>
-    </div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {children}
+    </svg>
   );
 }
 
@@ -51,17 +55,19 @@ export function CompactApp() {
   const view = useUi((st) => st.view);
   const snap = useOffice((s) => s.snap);
   const drawer = useUi((s) => s.drawer);
-  const [tab, setTab] = useState<Tab>("chat");
+  const [tab, setTab] = useState<Tab>("home");
   const [thread, setThread] = useState<string | null>(null);
-  const side = useSideBySide();
+  const wide = useWide();
   if (!snap) return null;
-  const current = side && tab === "office" ? "chat" : tab;
-  // The board needs the width: on a tablet it takes the whole screen instead of sitting beside the office.
-  const wide = side && ((current === "board" && !drawer) || drawer?.kind === "boards");
+  const current = tab;
   const attention = selectAttention(snap).total;
   const setupIssues = snap.setup.checks.filter((c) => c.status !== "ok").length;
+  const go = (id: Tab) => {
+    ui.closeDrawer();
+    setTab(id);
+  };
 
-  // A drawer (agent, PRs, terminal…) is a full-screen page over the current tab.
+  // A drawer (agent, PRs, terminal…) is a full page over the current tab.
   const page =
     drawer?.kind === "agent" ? <AgentDrawer id={drawer.id} initialTab={drawer.tab} />
     : drawer?.kind === "prs" ? <PrDrawer />
@@ -76,78 +82,89 @@ export function CompactApp() {
   // The command center is a full-screen page; an agent opened from it is a page over it (Back returns).
   if (view === "command" && !page) return <CommandView />;
 
+  const navButton = (n: (typeof NAV)[number]) => {
+    const on = current === n.id && !page;
+    const label = n.id === "inbox" && attention ? `Inbox` : n.label;
+    return (
+      <button
+        key={n.id}
+        className={`relative flex items-center gap-3 rounded-md transition-colors ${wide ? "w-full px-3 py-2 text-[14px]" : "flex-col justify-center gap-0.5 py-1 text-[11px]"} ${on ? "bg-[rgba(99,102,241,0.14)] text-[#c7d2fe]" : "text-muted hover:bg-white/[0.04] hover:text-ink"}`}
+        aria-current={on ? "page" : undefined}
+        onClick={() => go(n.id)}
+      >
+        <NavIcon>{n.icon}</NavIcon>
+        <span>{label}</span>
+        {n.id === "inbox" && attention > 0 && (
+          <span className={`rounded-full bg-[#d29922] px-1.5 font-term text-[11px] font-semibold text-[#0f1115] ${wide ? "ml-auto" : "absolute right-[calc(50%-22px)] top-0"}`}>{attention}</span>
+        )}
+      </button>
+    );
+  };
+
+  const main = page ? (
+    <div className="flex min-h-0 flex-1 flex-col">{page}</div>
+  ) : current === "home" ? (
+    <Home onOpen={(t) => go(t)} />
+  ) : current === "chat" ? (
+    thread ? <Thread agentId={thread} onBack={() => setThread(null)} /> : <ChatList onOpen={setThread} />
+  ) : current === "board" ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <BoardsDrawer />
+    </div>
+  ) : current === "inbox" ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ActionItemsDrawer />
+    </div>
+  ) : current === "agents" ? (
+    <AgentList />
+  ) : (
+    <More />
+  );
+
   return (
-    <div className="fixed inset-0 flex flex-col bg-grass text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-      <header className="flex h-[48px] shrink-0 items-center gap-2 border-b-[3px] border-ink bg-[rgba(17,26,44,0.96)] px-3">
-        <Logo size={28} />
-        <b className="text-[20px] font-bold text-gold">{BRAND.name}</b>
-        <button className="min-h-[40px] min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
-          <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
-        </button>
-        {isViewer && <span className="chip text-[11px]">Viewer</span>}
-        {setupIssues > 0 && (
-          <button className="btn px-2 text-[13px]" onClick={() => ui.openSetup()}>
-            Setup · {setupIssues}
+    <div className="fixed inset-0 flex bg-grass text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {wide && (
+        <aside className="flex w-[216px] shrink-0 flex-col gap-1 border-r border-ink bg-[#0b0c0f] px-3 py-3" aria-label="Sections">
+          <div className="mb-3 flex items-center gap-2 px-1">
+            <Logo size={26} />
+            <b className="text-[15px] font-semibold">{BRAND.name}</b>
+          </div>
+          <button className="mb-3 flex items-center gap-2 rounded-md border border-ink px-2.5 py-2 text-left text-[13px] hover:bg-white/[0.04]" onClick={() => ui.openCto()} title="Switch project">
+            <span className="min-w-0 flex-1 truncate font-medium">{snap.config.project.name}</span>
+            <span className="text-muted">▾</span>
           </button>
+          {NAV.map(navButton)}
+          <span className="flex-1" />
+          {setupIssues > 0 && (
+            <button className="flex items-center gap-2 rounded-md px-3 py-2 text-[13px] text-[#d29922] hover:bg-white/[0.04]" onClick={() => ui.openSetup()}>
+              Setup · {setupIssues} to do
+            </button>
+          )}
+          {isViewer && <span className="chip self-start text-[11px]">Viewer</span>}
+        </aside>
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {!wide && (
+          <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-ink bg-[#0b0c0f] px-4">
+            <Logo size={24} />
+            <button className="min-h-[40px] min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
+              <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
+            </button>
+            {isViewer && <span className="chip text-[11px]">Viewer</span>}
+            {setupIssues > 0 && (
+              <button className="btn px-2 text-[12px]" onClick={() => ui.openSetup()}>
+                Setup · {setupIssues}
+              </button>
+            )}
+          </header>
         )}
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-      <main className={`relative flex min-h-0 min-w-0 flex-col ${side && !wide ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
-        {page ? (
-          <div className="panel flex min-h-0 flex-1 flex-col !border-0">{page}</div>
-        ) : current === "office" ? (
-          <OfficePane />
-        ) : current === "chat" ? (
-          thread ? (
-            <Thread agentId={thread} onBack={() => setThread(null)} />
-          ) : (
-            <ChatList onOpen={setThread} />
-          )
-        ) : current === "board" ? (
-          <div className="panel flex min-h-0 flex-1 flex-col !border-0">
-            <BoardsDrawer />
-          </div>
-        ) : current === "inbox" ? (
-          <div className="panel flex min-h-0 flex-1 flex-col !border-0">
-            <ActionItemsDrawer />
-          </div>
-        ) : current === "agents" ? (
-          <AgentList />
-        ) : (
-          <More />
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">{main}</main>
+        {!wide && (
+          <nav className="grid h-[60px] shrink-0 grid-cols-6 gap-1 border-t border-ink bg-[#0b0c0f] px-1" aria-label="Sections">
+            {NAV.map(navButton)}
+          </nav>
         )}
-      </main>
-      {side && !wide && <OfficePane />}
       </div>
-
-      <nav className={`grid h-[58px] shrink-0 ${side ? "grid-cols-5" : "grid-cols-6"} border-t-[3px] border-ink bg-[rgba(17,26,44,0.96)]`} aria-label="Sections">
-        {(
-          [
-            ["chat", "Chat", "💬"],
-            ["board", "Board", "▦"],
-            ...(side ? [] : [["office", "Office", "▙"] as [Tab, string, string]]),
-            ["inbox", attention ? `Inbox · ${attention}` : "Inbox", "!"],
-            ["agents", "Agents", "◉"],
-            ["more", "More", "⋯"],
-          ] as [Tab, string, string][]
-        ).map(([id, label, icon]) => (
-          <button
-            key={id}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[12px] ${current === id && !page ? "text-green" : "text-muted"} ${id === "inbox" && attention ? "!text-red" : ""}`}
-            aria-current={current === id && !page ? "page" : undefined}
-            onClick={() => {
-              ui.closeDrawer();
-              setTab(id);
-            }}
-          >
-            <span className="text-[18px] leading-none" aria-hidden="true">
-              {icon}
-            </span>
-            {label}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }
@@ -167,7 +184,7 @@ function ChatList({ onOpen }: { onOpen: (agentId: string) => void }) {
         return (
           <li key={a.id}>
             <button className="flex w-full items-center gap-3 border-b border-ink px-3 py-3 text-left" onClick={() => onOpen(a.id)}>
-              <Portrait color={a.color} lead={a.isLead} size={36} />
+              <Portrait name={a.name} color={a.color} lead={a.isLead} size={36} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <b className="text-[16px]">{a.name}</b>
@@ -198,11 +215,11 @@ function Thread({ agentId, onBack }: { agentId: string; onBack: () => void }) {
   const st = snap.agents.find((s) => s.agentId === agentId);
   return (
     <div className="panel flex min-h-0 flex-1 flex-col !border-0">
-      <div className="flex items-center gap-2 border-b-[3px] border-ink px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-ink px-3 py-2">
         <button className="btn px-2.5" aria-label="Back to chats" onClick={onBack}>
           ‹
         </button>
-        <Portrait color={agent.color} lead={agent.isLead} size={28} />
+        <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={28} />
         <b className="text-[16px]">{agent.name}</b>
         {st && <StateChip state={st.state} session={st.session.state} />}
         <button className="btn ml-auto px-2 text-[13px]" onClick={() => ui.openAgent(agentId, "terminal")}>
@@ -251,7 +268,7 @@ function AgentList() {
   return (
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
       {!isViewer && stopped.length > 0 && (
-        <div className="border-b-[3px] border-ink p-3">
+        <div className="border-b border-ink p-3">
           <button className="btn w-full text-[14px]" onClick={() => stopped.forEach((s) => officeActions.startAgent(s.agentId))}>
             Start team ({stopped.length} stopped)
           </button>
@@ -270,7 +287,6 @@ function More() {
     ready();
     return () => window.removeEventListener("arima-native-ready", ready);
   }, []);
-  const choice = useUi((s) => s.layoutChoice);
   const auth = useAuth((s) => s.status);
   const security = useOffice((s) => !!s.snap?.config.rules.findings);
   const open = useOffice((s) => (s.snap?.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length);
@@ -283,11 +299,6 @@ function More() {
         </button>
       </li>
     );
-  const layouts: [LayoutChoice, string][] = [
-    ["auto", "Auto"],
-    ["compact", "This layout"],
-    ["office", "Office"],
-  ];
   return (
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
       <ul>
@@ -301,17 +312,6 @@ function More() {
         {item("Sign out", "Sign this device out of HQ", () => void signOut(), auth === "signed-in")}
         {item("Switch server", "Connect this app to another HQ", () => window.ArimaNative?.switchServer(), native)}
       </ul>
-      <div className="px-4 py-3">
-        <div className="mb-1.5 text-[13px] text-muted">Layout on this device</div>
-        <div className="flex gap-2">
-          {layouts.map(([id, label]) => (
-            <button key={id} className="btn flex-1 text-[13px]" aria-pressed={choice === id} onClick={() => ui.setLayout(id)}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[12px] text-muted">Auto uses this layout below 1280 px wide and the full office above. Office keeps the full office down to 1180 px; narrower screens, like a tablet held upright, use this layout. Here the office is the Office tab, or beside the page on a tablet.</p>
-      </div>
     </div>
   );
 }

@@ -80,7 +80,7 @@ function savedLayout(): LayoutChoice {
     return "auto";
   }
 }
-const isCompact = (choice: LayoutChoice) => choice === "compact" || window.matchMedia(choice === "auto" ? NARROW : TOO_NARROW).matches;
+const isCompact = (_choice: LayoutChoice) => true; // one layout on every screen: pages, no office scene
 
 const WIDTH_PREF = "drawerWidth";
 export const DRAWER_MIN = 420;

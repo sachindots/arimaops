@@ -6,11 +6,11 @@ import { DrawerHeader } from "./Drawer";
 import { TaskSheet } from "./TaskSheet";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
-  { id: "todo", label: "To do", color: "#6e7b94" },
-  { id: "in-progress", label: "Doing", color: "#00e5ff" },
-  { id: "in-review", label: "Review", color: "#c04dff" },
-  { id: "done", label: "Done", color: "#00ff66" },
-  { id: "blocked", label: "Blocked", color: "#ff1744" },
+  { id: "todo", label: "To do", color: "#6b7280" },
+  { id: "in-progress", label: "Doing", color: "#818cf8" },
+  { id: "in-review", label: "Review", color: "#a371f7" },
+  { id: "done", label: "Done", color: "#3fb950" },
+  { id: "blocked", label: "Blocked", color: "#f85149" },
 ];
 
 const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "Planned", done: "Done" };
@@ -31,7 +31,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
         <b className="text-[18px]">Boards</b>
         <span className="text-[14px] text-muted">{boards.length} in {snap.config.project.name}</span>
       </DrawerHeader>
-      <div className="flex flex-wrap gap-1.5 border-b-[3px] border-ink px-3 py-2">
+      <div className="flex flex-wrap gap-1.5 border-b border-ink px-3 py-2">
         {boards.map((b) => (
           <button key={b.id} className="btn px-2 text-[13px]" aria-pressed={b.id === boardId} onClick={() => setBoardId(b.id)}>
             {b.status === "active" && <span className="mr-1 text-green">●</span>}
@@ -40,7 +40,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
         ))}
       </div>
       {board && (
-        <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream-2 px-3 py-1.5 text-[14px]">
+        <div className="flex items-center gap-2 border-b border-ink bg-cream-2 px-3 py-1.5 text-[14px]">
           <span className="text-muted">Status</span>
           <select
             className="field w-[120px] py-0 text-[14px]"
@@ -57,7 +57,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
         </div>
       )}
       <div
-        className="scroll-thin grid min-h-0 flex-1 snap-x content-start gap-3 overflow-auto bg-[#07090e] p-3 max-[560px]:snap-mandatory"
+        className="scroll-thin grid min-h-0 flex-1 snap-x content-start gap-3 overflow-auto bg-[#0b0c0f] p-3 max-[560px]:snap-mandatory"
         style={{ gridTemplateColumns: cols.map((c) => (tasks.some((t) => t.status === c.id) ? "minmax(min(230px, 86%), 1fr)" : "minmax(92px, 0.35fr)")).join(" ") }}
       >
         {cols.map((c) => {
@@ -65,7 +65,7 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
           if (c.id === "done") list.reverse();
           return (
             <div key={c.id} className="min-w-0 snap-start">
-              <h4 className="mb-2 flex justify-between border-b-[3px] pb-0.5 text-[14px] font-semibold" style={{ borderColor: c.color }}>
+              <h4 className="mb-2 flex justify-between border-b pb-0.5 text-[14px] font-semibold" style={{ borderColor: c.color }}>
                 {c.label} <span className="font-term text-[17px] text-muted">{list.length}</span>
               </h4>
               <div className="flex flex-col gap-2">
@@ -93,7 +93,7 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: () => void }) {
   const done = task.status === "done";
   return (
     <button
-      className={`group w-full border-2 border-ink px-2.5 py-2 text-left shadow-[0_3px_0_rgba(0,0,0,0.6)] transition-colors hover:border-[#3a4f7a] focus-visible:border-cyan ${done ? "bg-[#0a0d14]" : "bg-[#111520]"}`}
+      className={`group w-full border-2 border-ink px-2.5 py-2 text-left transition-colors hover:border-[#3a404c] focus-visible:border-cyan ${done ? "bg-[#121419]" : "bg-[#16181d]"}`}
       onClick={onOpen}
       aria-label={`${task.id} ${task.title}: open`}
     >
@@ -116,11 +116,11 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: () => void }) {
         )}
         <span className="flex-1" />
         {task.scores && task.scores.length > 0 && (
-          <span className={failed ? "text-[#F59E0B]" : "text-green"} title={failed ? `${failed} check${failed === 1 ? "" : "s"} failed` : "Checks passed"}>
+          <span className={failed ? "text-[#d29922]" : "text-green"} title={failed ? `${failed} check${failed === 1 ? "" : "s"} failed` : "Checks passed"}>
             {failed ? `◇ ${failed} failed` : `✓ ${task.scores.length}`}
           </span>
         )}
-        {task.evidence && <span className="text-[#26c6da]" title={`${task.evidence.shots.length} screenshots at ${task.evidence.sha.slice(0, 7)}`}>▣ {task.evidence.shots.length}</span>}
+        {task.evidence && <span className="text-[#4fb3c4]" title={`${task.evidence.shots.length} screenshots at ${task.evidence.sha.slice(0, 7)}`}>▣ {task.evidence.shots.length}</span>}
         {task.benchmark && <span className="text-[#9085e9]" title="In the benchmark suite">◆</span>}
         {task.cli && <span className="font-mono text-muted" title="Runs on">{CLI_LABEL[task.cli]}</span>}
       </div>

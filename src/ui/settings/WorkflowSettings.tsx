@@ -13,7 +13,7 @@ function SecurityReviewSection() {
   const [copied, setCopied] = useState(false);
   const yaml = securityReviewWorkflow();
   return (
-    <section className="border-[3px] border-ink bg-white p-3">
+    <section className="border border-ink bg-white p-3">
       <SectionTitle>Security review on every PR</SectionTitle>
       <p className="mb-2 text-[13px] text-muted">
         Anthropic&apos;s security review comments on each pull request. Add this file to the repo as <code>.github/workflows/security-review.yml</code> and a repository secret <code>CLAUDE_API_KEY</code>. The action is pinned to a commit, like the skill packs. Each run uses that API key.
@@ -64,7 +64,7 @@ function GitHubAppSection() {
   };
   const owner = !role || role === "owner";
   return (
-    <section className="border-[3px] border-ink bg-white p-3">
+    <section className="border border-ink bg-white p-3">
       <SectionTitle>GitHub App</SectionTitle>
       {gh?.app ? (
         <>
@@ -119,14 +119,14 @@ export function WorkflowSettings() {
   const isDeliverables = mode === "deliverables";
 
   const stage = (name: string, on: boolean, detail: string) => (
-    <span className={`border-[3px] border-ink px-2 py-0.5 ${on ? "bg-white" : "bg-cream-2 text-muted line-through"}`}>
+    <span className={`border border-ink px-2 py-0.5 ${on ? "bg-white" : "bg-cream-2 text-muted line-through"}`}>
       <b>{name}</b> <span className="text-[12px]">{detail}</span>
     </span>
   );
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="border-[3px] border-ink bg-white p-3">
+      <section className="border border-ink bg-white p-3">
         <SectionTitle>Mission Workflow Mode</SectionTitle>
         <p className="text-[14px] font-semibold">{isDeliverables ? "Deliverables (any task, no PRs)" : "GitHub pull requests"}</p>
         <p className="mt-1 text-[13px] text-muted">Set by the project's team template: its flow decides how a task is finished.</p>
@@ -164,7 +164,7 @@ export function WorkflowSettings() {
               {stage("Merge", true, wf.merge.by === "lead" ? "by the lead" : "by you")}
               <span>→</span>
               {live ? (
-                <span className="border-[3px] border-dashed border-ink bg-cream-2 px-2 py-0.5 text-muted">
+                <span className="border border-dashed border-ink bg-cream-2 px-2 py-0.5 text-muted">
                   <b>Deploy</b> <span className="text-[12px]">coming soon</span>
                 </span>
               ) : (
@@ -178,7 +178,7 @@ export function WorkflowSettings() {
 
       {!isDeliverables && (
         <>
-          <section className="border-[3px] border-ink bg-white p-3">
+          <section className="border border-ink bg-white p-3">
             <div className="mb-3 flex items-center justify-between">
               <SectionTitle>Review</SectionTitle>
               <Toggle checked={wf.review.enabled} onChange={(v) => officeActions.updateWorkflow({ review: { enabled: v } })} label={wf.review.enabled ? "On" : "Off"} />
@@ -210,7 +210,7 @@ export function WorkflowSettings() {
           <GitHubAppSection />
           <SecurityReviewSection />
 
-          <section className="border-[3px] border-ink bg-white p-3">
+          <section className="border border-ink bg-white p-3">
             <SectionTitle>Merge</SectionTitle>
             <div className="flex gap-2" role="radiogroup" aria-label="Who merges">
               {(["human", "lead"] as const).map((by) => (
@@ -224,7 +224,7 @@ export function WorkflowSettings() {
 
 
           {live ? (
-            <section className="border-[3px] border-dashed border-ink bg-cream-2 p-3">
+            <section className="border border-dashed border-ink bg-cream-2 p-3">
               <div className="mb-1 flex items-center justify-between">
                 <SectionTitle>Deploy</SectionTitle>
                 <span className="chip text-[12px]">Coming soon</span>
@@ -235,7 +235,7 @@ export function WorkflowSettings() {
               </p>
             </section>
           ) : (
-            <section className="border-[3px] border-ink bg-white p-3">
+            <section className="border border-ink bg-white p-3">
               <div className="mb-3 flex items-center justify-between">
                 <SectionTitle>Deploy</SectionTitle>
                 <Toggle checked={wf.deploy.enabled} onChange={(v) => officeActions.updateWorkflow({ deploy: { enabled: v } })} label={wf.deploy.enabled ? "On" : "Off"} />
@@ -273,7 +273,7 @@ export function WorkflowSettings() {
           )}
         </>
       )}
-          <section className="border-[3px] border-ink bg-white p-3">
+          <section className="border border-ink bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
               <SectionTitle>Token saving</SectionTitle>
               <Toggle

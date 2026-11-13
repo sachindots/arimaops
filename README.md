@@ -12,7 +12,7 @@
 
 ArimaOps (அரிமா, "lion") runs a team of AI agents for every project on your machine. A **lead** agent plans the work and hands out tasks. Each **worker** gets its own desk, its own copy of the repo and, if you like, its own sandbox or container, then opens a pull request. Security teams get a SOC: an engagement scope, findings and a report.
 
-You watch it all in one isometric office. Every running project is a wing of the building. Agents walk to their wing when they have work and wait in the HQ hall when they don't.
+You run it from one calm workspace: what needs you first, the work in progress, the board with a sheet for every task, each agent's terminal and messages, and the numbers on how well the team works.
 
 Agents run **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, **Copilot** or **Antigravity**, on your CLI subscriptions or on API keys you add. Everything runs on your machine.
 

@@ -1,8 +1,7 @@
 // Small shared HUD pieces.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AgentState, ReviewState, SessionState, Tokens } from "../data/types";
-import { ROBOT_H, ROBOT_W, robotPortrait } from "../office/draw/robots";
 import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 
 /** The agent's role, in its colour. */
@@ -24,7 +23,7 @@ export function RoleBadge({ role, color, compact = false }: { role: string; colo
 export function StateChip({ state, session, blink = true }: { state: AgentState; session?: SessionState; blink?: boolean }) {
   if (session && session !== "running")
     return (
-      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ff1744" : "#6e7b94" }}>
+      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#f85149" : "#6b7280" }}>
         {sessionLabel[session]}
       </span>
     );
@@ -37,7 +36,7 @@ export function StateChip({ state, session, blink = true }: { state: AgentState;
 }
 
 export function ReviewChip({ review, merged }: { review: ReviewState; merged?: boolean }) {
-  const st = merged ? { label: "Merged", color: "#00873a" } : reviewStyle[review];
+  const st = merged ? { label: "Merged", color: "#2ea043" } : reviewStyle[review];
   return (
     <span className="chip chip-dot" style={{ ["--c" as string]: st.color, color: merged ? "#fff" : undefined }}>
       {st.label}
@@ -45,33 +44,39 @@ export function ReviewChip({ review, merged }: { review: ReviewState; merged?: b
   );
 }
 
-/** Pixel robot portrait drawn from the same sprite as the office. */
-const PORTRAIT = Math.max(ROBOT_W, ROBOT_H) + 2; // square, so it scales without stretching
-
-export function Portrait({ color, lead, size = 40 }: { color: string; lead: boolean; size?: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current;
-    const g = c?.getContext("2d");
-    if (!c || !g) return;
-    g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, PORTRAIT, PORTRAIT);
-    g.drawImage(robotPortrait(color, lead), Math.floor((PORTRAIT - ROBOT_W) / 2), PORTRAIT - ROBOT_H - 1);
-  }, [color, lead]);
+/** ArimaOps' mark: an indigo tile with the A. */
+export function Logo({ size = 28 }: { size?: number }) {
   return (
-    <canvas
-      ref={ref}
-      width={PORTRAIT}
-      height={PORTRAIT}
-      className="shrink-0 border-[3px] border-ink bg-navy"
-      style={{ width: size, height: size, imageRendering: "pixelated" }}
+    <svg width={size} height={size} viewBox="0 0 32 32" className="shrink-0" aria-hidden>
+      <rect width="32" height="32" rx="8" fill="#6366f1" />
+      <path d="M16 7 L24.5 25 H20.6 L18.9 21 H13.1 L11.4 25 H7.5 Z M14.4 18 H17.6 L16 14.2 Z" fill="#fff" />
+    </svg>
+  );
+}
+
+/** An agent's avatar: its colour, its initial, and a ring for the lead. */
+export function Portrait({ color, lead, size = 40, name }: { color: string; lead: boolean; size?: number; name?: string }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.42),
+        background: `color-mix(in srgb, ${color} 22%, #16181d)`,
+        color: `color-mix(in srgb, ${color} 70%, white)`,
+        boxShadow: lead ? `0 0 0 2px #0f1115, 0 0 0 3px ${color}` : `inset 0 0 0 1px color-mix(in srgb, ${color} 45%, transparent)`,
+      }}
+      title={lead ? "Lead" : undefined}
       aria-hidden
-    />
+    >
+      {name ? name.trim().charAt(0).toUpperCase() : ""}
+    </span>
   );
 }
 
 export function Dot({ color, size = 10 }: { color: string; size?: number }) {
-  return <i className="inline-block shrink-0 border-2 border-ink" style={{ width: size, height: size, background: color }} />;
+  return <i className="inline-block shrink-0 rounded-full" style={{ width: size, height: size, background: color }} />;
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {

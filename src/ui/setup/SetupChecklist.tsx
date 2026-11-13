@@ -6,10 +6,10 @@ import { ui } from "../../store/ui";
 import { TerminalView } from "../drawers/TerminalView";
 
 const ICON: Record<SetupStatus, [string, string]> = {
-  ok: ["✓", "#00ff66"],
-  missing: ["✗", "#ff1744"],
-  unsupported: ["✗", "#ff1744"],
-  warning: ["!", "#c04dff"],
+  ok: ["✓", "#3fb950"],
+  missing: ["✗", "#f85149"],
+  unsupported: ["✗", "#f85149"],
+  warning: ["!", "#a371f7"],
 };
 
 const NEEDED: Record<SetupCheck["neededFor"], string> = {
@@ -39,7 +39,7 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               {c.fix.command && (
                 <>
-                  <code className="max-w-full truncate border-2 border-ink bg-navy-2 px-2 py-0.5 font-term text-[17px] text-[#e6edf7]">{c.fix.command}</code>
+                  <code className="max-w-full truncate border-2 border-ink bg-navy-2 px-2 py-0.5 font-term text-[17px] text-[#e6e8eb]">{c.fix.command}</code>
                   <button
                     className="btn px-2 text-[12px]"
                     onClick={() => {
@@ -81,7 +81,7 @@ export function SetupChecklist() {
   return (
     <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(4,5,8,0.75)] p-4" role="dialog" aria-modal="true" aria-label="Setup checklist">
       <div className="panel flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col">
-        <div className="flex items-center gap-3 border-b-[3px] border-ink px-4 py-2">
+        <div className="flex items-center gap-3 border-b border-ink px-4 py-2">
           <h2 className="m-0 flex-1 text-[22px] font-bold">Get {BRAND.name} ready</h2>
           <button className="btn text-[14px]" onClick={() => officeActions.recheckSetup()}>
             Check again
@@ -89,14 +89,14 @@ export function SetupChecklist() {
         </div>
         <div className="scroll-thin min-h-0 overflow-y-auto px-4 py-2">
           <div className="mb-2 flex flex-wrap gap-2 text-[14px]">
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#00ff66" : "#ff1744" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#3fb950" : "#f85149" }}>
               Sandboxes {setup.sandboxReady ? "ready" : "not ready"}
             </span>
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#00ff66" : "#6e7b94" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#3fb950" : "#6b7280" }}>
               Local mode {setup.localReady ? "ready" : "not ready"}
             </span>
             {setup.checks.some((c) => c.neededFor === "container") && (
-              <span className="chip chip-dot" style={{ ["--c" as string]: setup.containerReady ? "#00ff66" : "#ff1744" }}>
+              <span className="chip chip-dot" style={{ ["--c" as string]: setup.containerReady ? "#3fb950" : "#f85149" }}>
                 Containers {setup.containerReady ? "ready" : "not ready"}
               </span>
             )}
@@ -116,7 +116,7 @@ export function SetupChecklist() {
             ))}
           </ul>
           {runningId && (
-            <div ref={termBox} className={big ? "fixed inset-0 z-[55] flex flex-col bg-navy-2" : "mb-2 mt-1 scroll-mt-2 border-[3px] border-ink"}>
+            <div ref={termBox} className={big ? "fixed inset-0 z-[55] flex flex-col bg-navy-2" : "mb-2 mt-1 scroll-mt-2 border border-ink"}>
               <div className="flex items-center gap-2 bg-navy px-2 py-1 text-[13px] text-cream">
                 <span className="min-w-0 flex-1 truncate">{setup.checks.find((c) => c.id === runningId)?.label ?? "Running"} · type here if it asks for input</span>
                 <button className="btn px-2 py-1 text-[12px]" onClick={() => setBig(!big)}>
@@ -132,12 +132,12 @@ export function SetupChecklist() {
             </div>
           )}
           {!setup.sandboxReady && setup.localReady && (
-            <p className="mb-2 border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
+            <p className="mb-2 border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
               Sandboxes aren't available here, but Local mode is. Set agents to <b>Local</b> in Settings → Team. They run plain Claude Code in their own folder, with permission prompts on.
             </p>
           )}
         </div>
-        <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
+        <div className="flex items-center justify-between gap-3 border-t border-ink px-4 py-2">
           <span className="text-[12px] text-muted">{BRAND.name} never runs sudo or install scripts for you. "Run in terminal" shows exactly what runs.</span>
           <button className="btn" onClick={() => ui.closeSetup()}>
             Continue to the office

@@ -42,7 +42,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
   return (
     <>
       <DrawerHeader>
-        <Portrait color={agent.color} lead={agent.isLead} size={36} />
+        <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={36} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <b className="text-[18px]">{agent.name}</b>
@@ -136,7 +136,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         <AccessCard request={access} agent={agent} />
       ) : (
         status.note && (
-          <div className={`border-b-[3px] border-ink px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
+          <div className={`border-b border-ink px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
             {status.note}
             {status.state === "needs-input" && <span className="ml-2 text-muted">— answer in the terminal and press Enter</span>}
           </div>
@@ -144,7 +144,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
       )}
       <BlockedRequests agent={agent} />
       <PortBanner agent={agent} status={status} />
-      <div className="border-b-[3px] border-ink px-3 py-2">
+      <div className="border-b border-ink px-3 py-2">
         <Tabs
           value={tab}
           onChange={setTab}
@@ -184,7 +184,7 @@ function ShellTab({ agent, status }: { agent: AgentConfig; status: AgentStatus }
     return <div className="p-4 text-[14px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "local" ? "their folder" : agent.mode === "container" ? "their container" : "their sandbox"}.</div>;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream-2 px-3 py-1 text-[12px] text-muted">
+      <div className="flex items-center gap-2 border-b border-ink bg-cream-2 px-3 py-1 text-[12px] text-muted">
         <span className="min-w-0 flex-1 truncate">
           {agent.mode === "sandbox" ? `A shell in ${agent.name}'s sandbox, beside the agent` : agent.mode === "container" ? `A shell in ${agent.name}'s container, beside the agent` : `Your shell in ${agent.name}'s folder`}
         </span>
@@ -221,7 +221,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
   };
   const shown = open ? approvals : approvals.slice(0, 3);
   return (
-    <div className="border-b-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
+    <div className="border-b border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
       <div className="flex items-center gap-2">
         <b className="flex-1 text-orange">
           Blocked by the sandbox · {approvals.length}
@@ -268,7 +268,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
 /** The agent asked (request_access) to reach a domain its sandbox blocks. */
 function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentConfig }) {
   return (
-    <div className="border-b-[3px] border-ink bg-[rgba(255,23,68,0.16)] px-3 py-2">
+    <div className="border-b border-ink bg-[rgba(255,23,68,0.16)] px-3 py-2">
       <div className="text-[14px] text-red">
         <b>{agent.name}</b> wants to reach <b className="font-term text-[17px]">{request.domain}</b>
       </div>
@@ -288,7 +288,7 @@ function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentCo
   );
 }
 
-const SESSION_COLOR = { running: "#00ff66", starting: "#00e5ff", stopped: "#6e7b94", failed: "#ff1744" } as const;
+const SESSION_COLOR = { running: "#3fb950", starting: "#818cf8", stopped: "#6b7280", failed: "#f85149" } as const;
 
 /** Session state + Start/Stop + the agent's folder. */
 function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
@@ -296,7 +296,7 @@ function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const live = useOffice((st) => st.live);
   const [removing, setRemoving] = useState(false);
   return (
-    <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream px-3 py-1.5 text-[13px]">
+    <div className="flex items-center gap-2 border-b border-ink bg-cream px-3 py-1.5 text-[13px]">
       <span className={`chip chip-dot ${s.state === "starting" ? "blink" : ""}`} style={{ ["--c" as string]: SESSION_COLOR[s.state] }}>
         {s.state === "running" ? "Session running" : s.state === "starting" ? "Starting" : s.state === "failed" ? "Failed" : "Stopped"}
       </span>
@@ -333,15 +333,15 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const setup = useOffice((st) => st.snap?.setup);
   const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : agent.mode === "container" ? !setup?.containerReady : !setup?.localReady;
   return (
-    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6edf7]">
+    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6e8eb]">
       <div className="max-w-[380px]">
         {s.state === "starting" ? (
           <p className="blink font-term text-[22px] text-green">{s.detail ?? "Starting…"}</p>
         ) : (
           <>
             <p className="mb-2 font-term text-[22px]">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
-            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[16px] text-[#ff5c8a]">{s.detail}</pre>}
-            <p className="mb-4 text-[13px] text-[#6e7b94]">
+            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[16px] text-[#db61a2]">{s.detail}</pre>}
+            <p className="mb-4 text-[13px] text-[#6b7280]">
               {agent.mode === "sandbox"
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
                 : agent.mode === "container"
@@ -536,7 +536,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#00ff66" } : id === "hq" ? { name: BRAND.name, color: "#E8B339" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#a5b4fc" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;
@@ -561,7 +561,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
                   {!out && m.delivered && (
                     <span
                       className="font-mono text-[11px]"
-                      style={{ color: m.delivered === "queued" ? "#ff9f1c" : m.delivered === "dropped" ? "#6e7b94" : "#00ff66" }}
+                      style={{ color: m.delivered === "queued" ? "#d29922" : m.delivered === "dropped" ? "#6b7280" : "#3fb950" }}
                       title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "dropped" ? "Not sent: the task was reassigned or finished while it waited" : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
                     >
                       {m.delivered === "queued" ? "◷ queued" : m.delivered === "dropped" ? "– not sent" : "✓ delivered"}
@@ -576,7 +576,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
         </ul>
       </div>
       <form
-        className="flex gap-2 border-t-[3px] border-ink bg-cream p-2"
+        className="flex gap-2 border-t border-ink bg-cream p-2"
         onSubmit={(e) => {
           e.preventDefault();
           send();
