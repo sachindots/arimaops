@@ -2,6 +2,7 @@
 // through the Team MCP (request_access); you answer Allow or Deny in HQ.
 // Allow adds a per-sandbox rule (the base policy is never touched).
 
+import { isOutboundHost } from "../src/data/outbound";
 import type { AccessDecision, AccessRequest } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
@@ -30,6 +31,8 @@ export function requestAccess(hub: Hub, agentId: string, rawDomain: string, reas
   if (agent.mode === "local") return "You run in Local mode, outside a sandbox: HQ doesn't restrict your network. If a request fails, it isn't a sandbox block.";
   const domain = cleanDomain(rawDomain);
   if (!domain) throw new Error(`"${rawDomain}" isn't a domain. Pass just the host, like docs.example.com.`);
+  if (hub.snap.config.rules?.outbound === "drafts-only" && isOutboundHost(domain))
+    return `${domain} sends mail, posts or writes to a CRM, and this project is drafts only: write the message as a deliverable and the owner sends it.`;
   if (agent.sandbox.allow.includes(domain))
     return `${domain} is already allowed for your sandbox. If it still fails, the problem is something else (a typo, the site is down, or a different domain it redirects to).`;
   const open = hub.snap.accessRequests?.find((r) => r.agentId === agentId && r.domain === domain && r.status === "pending");

@@ -105,6 +105,22 @@ As built (`src/data/researchTemplate.ts`):
 | Marketing | Jobs-to-be-Done brief → Drafts (checked against the brief) → Owner approval | Audience, Campaign |
 | Sales | MEDDICC qualification → Outreach drafts → Owner approval | Lead, Account |
 
+As built (`src/data/commsTemplates.ts`, `src/data/outbound.ts`):
+- **Marketing:** lead (Claude Opus), copywriter ×2 (Claude Sonnet), editor (agy Gemini, another maker). `brief` (lead) → `drafts` (`file-delivered`, `reviewer` by the editor) → `approval` (`owner-approval: outbound`). Starter board "Campaigns".
+- **Sales:** lead, account researcher ×2 (agy Gemini), outreach writer (Claude Sonnet). `qualify` (lead, researcher) → `outreach` (`file-delivered`, `reviewer` by the lead) → `approval` (`owner-approval: outbound`). Starter board "Accounts".
+- New built-in skills: `jtbd-brief`, `copywriting` (drafts only, sources for every claim) and `meddicc-qualification` (public, professional sources only).
+- **Enforcement of drafts only:**
+  - `OUTBOUND_HOSTS`: mail APIs and SMTP, social networks, chat and CRM/outreach APIs. Also any host named `smtp.`, `mail.`, `imap.`, `pop.` or `mx.`.
+  - The container proxy refuses them on every port, before the scope or allow lists, and files no access request. That covers `gmail.googleapis.com` even though `*.googleapis.com` is in the base allowlist.
+  - The sbx rules add them as deny rules for every seat and drop them from the allow lists. The owner's Allow on a blocked request for one of them is refused.
+  - `request_access` tells the agent to write a deliverable instead.
+  - MCP servers whose name or URL is a mail, social or CRM service aren't added or attached.
+- **The owner's approval:** when the only gates left on a task are owner approvals (outbound, containment or merge), HQ files one Action item per gate, of kind `gate`, with Approve and Send back buttons. It's filed once, and only after the editor or the lead has accepted the draft. Approve records the gate as passed by the owner and tells the lead and the writer to finish the task. Blue's containment gate uses the same item.
+- **Limits:**
+  - A Local-mode agent runs outside any sandbox, so none of the network rules apply to it.
+  - The MCP check goes by the server's name and URL, because sbx doesn't say what a server does.
+  - The host list is a list. A service that isn't on it is caught only by the per-host access request.
+
 ## 7. Save and import (4.4)
 
 - **Export** (Settings → Team → template menu): the project's template copy as JSON (`arimaops-template` v1: the `TeamTemplate` plus its pinned packs), no secrets, no seats, no project data.

@@ -269,6 +269,66 @@ Keep \`deliverables/sources.md\`. Log every search, not only the hits you kept:
 Every claim in the report cites its sources as [S7]. A claim without a source is not a finding: say it is unknown, or find one.`,
   },
 
+  {
+    id: "jtbd-brief",
+    name: "Jobs-to-be-Done Brief",
+    domain: "content",
+    description: "Write a campaign brief around the job the customer is hiring the product to do: situation, motivation, outcome, anxieties, and the one message.",
+    body: `# Jobs-to-be-Done Brief
+
+Write deliverables/brief.md before any copy. Every draft is checked against it.
+
+## Sections
+1. **The job:** "When <situation>, I want to <motivation>, so I can <expected outcome>." One sentence, in the customer's words. Quote real customers (reviews, support tickets, interviews) when you have them, and say where they came from.
+2. **Who:** the audience segment, and who is explicitly not the target.
+3. **Forces:** push (what's wrong today), pull (what's attractive about the new way), anxiety (what worries them about switching), habit (what keeps them where they are). Copy must answer the anxieties.
+4. **The one message:** one sentence. Two proof points that support it, each with its source.
+5. **Channel and format:** where it runs, length limits, the call to action.
+6. **Not saying:** claims we can't support, competitor names, prices or dates not yet confirmed.
+7. **Done when:** how the owner will judge the drafts.
+
+Unknowns are written as questions for the owner, not guessed.`,
+  },
+  {
+    id: "copywriting",
+    name: "Copywriting (drafts for review)",
+    domain: "content",
+    description: "Draft emails, posts and pages from a brief: one message, the reader's words, claims you can back, variants to choose from. Drafts only; a person sends.",
+    body: `# Copywriting
+
+You write drafts. You never send, post, schedule or publish anything: the owner does that by hand.
+
+## How
+- Start from the brief: the job, the one message, the anxieties to answer. If there is no brief, ask for one.
+- Lead with the reader's situation, not the product. Short sentences, concrete nouns, one call to action.
+- Every factual claim (numbers, customers, comparisons) needs a source in the brief or the project. No invented testimonials, statistics or urgency.
+- Respect the channel: subject line ≤ 50 characters and a preview line for email; the platform's length for social; a scannable heading structure for pages.
+- Write 2–3 variants that differ in angle, not just wording, and say which you'd pick and why.
+
+## Deliver
+One file per piece under deliverables/drafts/, with a header: channel, audience, the brief section it answers, sources for every claim, and "DRAFT: not sent".`,
+  },
+  {
+    id: "meddicc-qualification",
+    name: "MEDDICC Qualification",
+    domain: "content",
+    description: "Qualify an account with MEDDICC (Metrics, Economic buyer, Decision criteria, Decision process, Identify pain, Champion, Competition) from public sources, before any outreach.",
+    body: `# MEDDICC Qualification
+
+One file per account: deliverables/accounts/<account>.md. Public, professional sources only (the company's site, filings, press, job posts, the person's professional profile as published). No personal data beyond name, role and work context; never home addresses, personal phones or family.
+
+## The seven letters
+- **Metrics:** the measurable outcome they'd care about, with the evidence.
+- **Economic buyer:** the role that owns the budget (a name only when publicly stated).
+- **Decision criteria:** what they'll judge on (security, price, integration…), as far as public signals show.
+- **Decision process:** how they buy (procurement, trials, partners), or "unknown".
+- **Identify pain:** the problem, with a source (a job post, an outage, a filing).
+- **Champion:** who would push for it internally, or "not yet".
+- **Competition:** what they use today, if known.
+
+Score each letter: known / partial / unknown, with the source. An account with no identified pain isn't ready for outreach: say so.`,
+  },
+
   // ---------------------------------------------------------------- Content & Documentation
   {
     id: "technical-writing",

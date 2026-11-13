@@ -531,7 +531,9 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate";
+  /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */
+  gate?: { taskId: string; gateId: string; reason: string };
   /** kind spec: the board spec version waiting for the owner (Approve = done, Send back = dismissed). */
   spec?: { boardId: string; version: number };
   /** kind skills: the skill pack (owner/repo) waiting for the owner's approval of its scan. */

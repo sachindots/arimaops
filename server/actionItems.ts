@@ -70,6 +70,10 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "gate" && item.gate) {
+      this.planner.ownerGate(item.gate.taskId, item.gate.gateId, decision === "done", item.note ?? undefined);
+      return;
+    }
     if (item.kind === "spec" && item.spec) {
       if (decision === "done") this.planner.approveBoardSpec(item.spec.boardId, item.spec.version, "you", item.note ?? undefined);
       else this.planner.specSentBack(item.spec.boardId, item.spec.version, item.note ?? undefined);
@@ -96,6 +100,35 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  /** A task held by an owner-approval gate. One open item per task and gate. */
+  addGate(task: { id: string; title: string; note?: string | null; deliverablePath?: string | null }, gateId: string, reason: string, fromId: string): ActionItem {
+    const open = this.items.find((i) => i.kind === "gate" && i.status === "open" && i.gate?.taskId === task.id && i.gate.gateId === gateId);
+    if (open) return open;
+    const what = reason === "outbound" ? "sending" : reason === "containment" ? "containment for" : reason === "merge" ? "merging" : `${gateId} for`;
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      fromId,
+      taskId: task.id,
+      title: `Approve ${what} ${task.id}: ${task.title}?`,
+      details: [
+        task.deliverablePath ? `Deliverable: ${task.deliverablePath}` : null,
+        task.note ? `Note: ${task.note}` : null,
+        reason === "outbound" ? "Approve: the drafts are ready and you'll send them yourself (agents can't send). Send back: the writer hears your note." : "Approve: the gate passes and the task can go on. Send back: the task's owner hears your note.",
+      ].filter(Boolean).join("\n\n"),
+      waiting: true,
+      kind: "gate",
+      gate: { taskId: task.id, gateId, reason },
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
   }
 
   /** A board spec the lead wrote, for the owner to approve once for the whole board. A newer version replaces an open one. */

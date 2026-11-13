@@ -5,6 +5,7 @@
 import type { Role, TeamTemplate } from "./model";
 import { SECURITY_BLUE_TEMPLATE, SECURITY_PURPLE_TEMPLATE, SECURITY_RED_TEMPLATE } from "./securityTemplates";
 import { RESEARCH_TEMPLATE } from "./researchTemplate";
+import { MARKETING_TEMPLATE, SALES_TEMPLATE } from "./commsTemplates";
 
 const LEAD_MD = `You are the lead. You run the team: you plan, assign, review and unblock. The user sets direction and makes only the calls that are truly theirs.
 
@@ -213,4 +214,4 @@ export const BLANK_TEMPLATE: TeamTemplate = {
   memoryTypes: [],
 };
 
-export const BUILTIN_TEMPLATES: readonly TeamTemplate[] = [DEV_TEMPLATE, SECURITY_RED_TEMPLATE, SECURITY_PURPLE_TEMPLATE, SECURITY_BLUE_TEMPLATE, RESEARCH_TEMPLATE, BLANK_TEMPLATE];
+export const BUILTIN_TEMPLATES: readonly TeamTemplate[] = [DEV_TEMPLATE, SECURITY_RED_TEMPLATE, SECURITY_PURPLE_TEMPLATE, SECURITY_BLUE_TEMPLATE, RESEARCH_TEMPLATE, MARKETING_TEMPLATE, SALES_TEMPLATE, BLANK_TEMPLATE];

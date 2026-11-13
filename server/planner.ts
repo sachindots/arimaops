@@ -127,7 +127,30 @@ export class Planner {
 
   /** Throws with every unmet gate when the task can't move to `toStageId` (null: finish it). */
   private assertMove(task: Task, toStageId: string | null, byId: string) {
-    assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root });
+    try {
+      assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root });
+    } catch (e) {
+      // Held by the owner's approval (outbound send, containment, merge): ask the owner in Action items, once per gate.
+      // Only once nothing else is missing: drafts the editor hasn't accepted don't reach the owner.
+      const open = /Waiting for the owner's approval/.test((e as Error).message) ? this.openGates(task, byId) : [];
+      const asks = open.flatMap((u) => (u.gate.kind === "owner-approval" && u.gate.reason !== "spec" ? [u.gate] : []));
+      if (open.length && asks.length === open.length) for (const g of asks) this.actions?.addGate(task, g.id, g.reason, byId);
+      throw e;
+    }
+  }
+
+  /** The owner answered an approval gate from Action items: the gate is recorded, and the lead and the task's owner told. */
+  ownerGate(taskId: string, gateId: string, approved: boolean, note?: string) {
+    const task = this.task(taskId);
+    if (!task) return;
+    this.recordGate(taskId, gateId, approved ? "passed" : "failed", "you", { note });
+    const n = note ? ` Their note: ${note}` : "";
+    const text = approved
+      ? `The owner approved ${gateId} on ${task.id} (${task.title}).${n} Finish the task (set_my_status done, or the lead updates it).`
+      : `The owner sent ${task.id} (${task.title}) back at ${gateId}.${n || " Ask them what to change."}`;
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, text);
+    if (task.ownerId && task.ownerId !== lead?.id) this.notify(task.ownerId, text);
   }
 
   /** What still stands between `byId` finishing this task: the unmet gates of its stage and the ones after it. */

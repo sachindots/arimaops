@@ -435,6 +435,57 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("the lead's report needs the second opinion from another maker", !met(so, ctx({ task: lt, roleOf, vendorOf, events: [] })) && !met(so, ctx({ task: lt, roleOf, vendorOf, events: signed("fc") })) && met(so, ctx({ task: lt, roleOf, vendorOf, events: signed("so") })));
 }
 
+// Marketing and Sales (Phase 4 step 6): drafts only, enforced.
+{
+  const { MARKETING_TEMPLATE: mkt, SALES_TEMPLATE: sales } = await import("../src/data/commsTemplates");
+  const { BUILTIN_TEMPLATES } = await import("../src/data/templates");
+  const { templateErrors } = await import("../src/data/model");
+  const { findBuiltinSkill } = await import("../src/data/skillCatalog");
+  const { isOutboundHost, outboundMcpProblem } = await import("../src/data/outbound");
+  const { leadMayApprove } = await import("../server/gates");
+  const { requestAccess } = await import("../server/access");
+  const both = [mkt, sales];
+  check("Marketing and Sales are valid and offered", both.every((t) => templateErrors(t).length === 0 && BUILTIN_TEMPLATES.includes(t)), JSON.stringify(both.map((t) => templateErrors(t))));
+  check("JTBD brief → Drafts → Owner approval; MEDDICC → Outreach drafts → Owner approval", mkt.flow.stages.map((x) => x.id).join() === "brief,drafts,approval" && sales.flow.stages.map((x) => x.id).join() === "qualify,outreach,approval");
+  check("both are drafts only, and their last gate is the owner's outbound approval the lead can't pass", both.every((t) => t.rules.outbound === "drafts-only" && t.flow.stages.at(-1)!.gates.every((g) => g.kind === "owner-approval" && g.reason === "outbound" && !leadMayApprove(g))));
+  check("every skill they name is a built-in", both.every((t) => t.roles.every((r) => r.skills.every((sk) => !!findBuiltinSkill(sk)))));
+  check("memory types", mkt.memoryTypes.join() === "Audience,Campaign" && sales.memoryTypes.join() === "Lead,Account");
+
+  check("mail, social and CRM hosts are outbound, on any port", ["gmail.googleapis.com", "smtp.example.com", "mail.acme.io", "acme.my.salesforce.com", "api.hubapi.com", "api.x.com", "hooks.slack.com", "smtp.office365.com:587"].every(isOutboundHost));
+  check("…the AI services, GitHub and the paper APIs aren't", !["generativelanguage.googleapis.com", "api.anthropic.com", "github.com", "api.openalex.org", "registry.npmjs.org", "mailbox-docs.example.com"].some(isOutboundHost));
+  check("MCP servers for mail, social or CRM are refused by name or URL", ["gmail", "hubspot-crm", "x", "slack", "mailchimp_api"].every((n) => outboundMcpProblem(n)) && !!outboundMcpProblem("acme", "https://api.hubapi.com/mcp"));
+  check("…others aren't", ["linear", "nextjs", "context7", "arcjet", "postgres", "sentry"].every((n) => !outboundMcpProblem(n)) && !outboundMcpProblem("docs", "https://docs.example.com/mcp"));
+  const accessHub = (outbound: string) => ({ snap: { config: { rules: { outbound } }, accessRequests: [] }, cfg: () => ({ id: "w", mode: "sandbox", sandbox: { allow: [], deny: [] } }), holdForAccess: () => {}, emit: () => {}, activity: () => {} });
+  check("an agent asking for a mail host in a drafts-only project is told no, without asking the owner", /drafts only/.test(requestAccess(accessHub("drafts-only") as never, "w", "api.sendgrid.com", "send the campaign")));
+
+  // In the planner: a draft reaches the owner only after the editor accepts it, and finishes once the owner approves.
+  const team = [
+    { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "claude-opus-5-5" },
+    { id: "cw", name: "Cw", roleId: "copywriter", isLead: false, cli: "claude", model: "claude-sonnet-5-5" },
+    { id: "ed", name: "Ed", roleId: "editor", isLead: false, cli: "agy", model: "gemini-4-argon-high" },
+  ];
+  const snap = { config: { template: structuredClone(mkt), project: { id: "mkt" }, workflow: { mode: "deliverables", review: { enabled: false } }, team, rules: mkt.rules }, boards: [{ id: "B1", title: "Campaigns", status: "active" as const, order: 0 }], tasks: [] as Task[], agents: team.map((a) => ({ agentId: a.id, currentTaskId: null, session: { state: "running" } })), messages: [], pullRequests: [], actionItems: [] };
+  const st = new Map(snap.agents.map((a) => [a.agentId, a as Record<string, unknown>]));
+  const hub = { slug: "mkt", snap, emit: () => {}, planChanged: () => {}, activity: () => {}, configChanged: () => {}, name: (id: string) => id, setStatus: (id: string, p: object) => Object.assign(st.get(id)!, p), status: (id: string) => st.get(id), cfg: (id: string) => team.find((a) => a.id === id), repo: { root: process.env.HOME } };
+  const told: { to: string; text: string }[] = [];
+  const planner = new Planner(hub as never, { push: (to: string, i: { text: string }) => told.push({ to, text: i.text }), save: () => {} } as never);
+  const { ActionItems } = await import("../server/actionItems");
+  const actions = new ActionItems(hub as never, planner);
+  planner.actions = actions;
+  const asked = () => (snap.actionItems as { kind?: string; status: string; id: string; gate?: { gateId: string; reason: string } }[]).filter((i) => i.kind === "gate");
+  const t = planner.createTask({ title: "Launch email", doneWhen: "Three subject lines and a body that match the brief" } as never, "lea");
+  savePlanTables(hqDb(), "mkt", { boards: snap.boards, tasks: snap.tasks }, "drafts");
+  planner.assign(t.id, "copywriter", "lea");
+  check("assigning a copywriter moves the task out of the lead's brief stage", t.stageId === "drafts" && t.ownerId === "cw");
+  check("the copywriter can't finish before the editor accepts, and the owner isn't asked yet", throws(() => planner.setStatus("cw", "done", "3 variants", undefined, "deliverables/drafts/launch.md"), /different reviewer/) && asked().length === 0);
+  planner.setStatus("cw", "in-review", "3 variants", undefined, "deliverables/drafts/launch.md");
+  planner.recordGate(t.id, "edited", "passed", "ed", { note: "on brief" });
+  check("after the editor's pass, finishing waits for the owner, who is asked once in Action items", throws(() => planner.setStatus("cw", "done", "3 variants"), /owner's approval/) && throws(() => planner.setStatus("cw", "done", "3 variants"), /owner's approval/) && asked().length === 1 && asked()[0].gate?.gateId === "send-ok" && asked()[0].gate?.reason === "outbound");
+  check("the lead can't approve the send for the owner", throws(() => planner.recordGate(t.id, "send-ok", "passed", "lea"), /Only a person/));
+  actions.resolve(asked()[0].id, "done", "Sending Tuesday");
+  check("the owner approves: the writer and the lead are told, and the task can finish", told.some((m) => m.to === "cw" && /approved send-ok/.test(m.text)) && told.some((m) => m.to === "lea" && /Sending Tuesday/.test(m.text)) && planner.setStatus("cw", "done", "3 variants").status === "done");
+}
+
 if (fails) {
   console.error(`\n${fails} failed`);
   process.exit(1);

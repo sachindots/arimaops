@@ -5,6 +5,7 @@
 // what's attached: sbx can't detach a server from one sandbox, so an unticked
 // server stays until that sandbox is recreated.
 
+import { outboundMcpProblem } from "../src/data/outbound";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServer, McpState, NewMcpServer } from "../src/data/types";
@@ -78,6 +79,8 @@ export class SbxMcp {
       const name = input.name.trim().toLowerCase();
       if (!MCP_NAME.test(name)) return this.hub.activity("config", null, `MCP server name "${input.name}" isn't valid: use letters, numbers, - or _.`);
       const url = input.url?.trim();
+      const blocked = this.drafts() ? outboundMcpProblem(name, url) : null;
+      if (blocked) return this.hub.activity("config", null, `MCP server not added: ${blocked}`);
       const command = input.command?.trim();
       if ((!url && !command) || url?.startsWith("-") || command?.startsWith("-")) return this.hub.activity("config", null, "Give the MCP server a URL (or a command for a local server).");
       const args = ["mcp", "add", name, "--skip-auth"];
@@ -137,7 +140,8 @@ export class SbxMcp {
     return this.serial(async () => {
       const agent = this.hub.cfg(agentId);
       if (!agent) return;
-      const want = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => MCP_NAME.test(n)))];
+      const asked = [...new Set(names.map((n) => n.trim().toLowerCase()).filter((n) => MCP_NAME.test(n)))];
+      const want = this.allowedNames(asked, agentId);
       const before = agent.mcp ?? [];
       agent.mcp = want;
       this.hub.configChanged();
@@ -159,9 +163,21 @@ export class SbxMcp {
     return this.serial(async () => {
       const agent = this.hub.cfg(agentId);
       if (!agent || agent.mode !== "sandbox" || !agent.mcp?.length) return;
-      await this.attach(agentId, agent.mcp);
+      await this.attach(agentId, this.allowedNames(agent.mcp, agentId));
       this.publish();
     });
+  }
+
+  private drafts() {
+    return this.hub.snap.config.rules?.outbound === "drafts-only";
+  }
+
+  /** Drafts only: mail, social and CRM servers are never attached (by name; sbx doesn't say what a server does). */
+  private allowedNames(names: string[], agentId: string) {
+    if (!this.drafts()) return names;
+    const refused = names.filter((n) => outboundMcpProblem(n));
+    if (refused.length) this.hub.activity("config", agentId, `Not attached to ${this.hub.name(agentId)}: ${refused.join(", ")}. This project is drafts only: agents write, you send.`);
+    return names.filter((n) => !refused.includes(n));
   }
 
   /** The agent's sandbox was removed or recreated: nothing is attached any more. */
