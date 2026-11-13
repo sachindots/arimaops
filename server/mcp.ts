@@ -323,7 +323,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "update_finding",
     {
-      description: "Lead only. Triage a finding: status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation.",
+      description: "Triage a finding (lead): status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation. Other agents may only set verified, on a finding someone else reported, after reproducing it.",
       inputSchema: {
         id: z.string(),
         status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
@@ -338,8 +338,14 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       },
     },
     guard(({ id, ...patch }: { id: string } & Record<string, unknown>) => {
-      leadOnly();
       if (!planner.findings) throw new Error("Findings aren't available.");
+      if (!isLead) {
+        // A second look from another seat (the report gate wants critical and high findings verified by a person or a
+        // model from another maker): any agent may set verified, and only that, on a finding someone else reported.
+        const fields = Object.keys(patch).filter((k) => patch[k] !== undefined);
+        if (fields.some((k) => k !== "verified") || !fields.length) throw new Error("Only the lead triages findings. You may set verified (and only that) on a finding someone else reported, after reproducing it.");
+        if (planner.findings.reporterOf(id) === me) throw new Error("You reported this finding: someone else has to verify it.");
+      }
       return ok(planner.findings.update(id, patch, me));
     }),
   );

@@ -82,6 +82,8 @@ Skills per the vetted list (roadmap): BugHunter for red/lead (scoped only), ToB 
 - The findings report also holds until every critical and high finding is verified by a person or by a model from another maker than its reporter's (the second opinion on severe findings).
 - Lists name an office by its own sign, else by the project's name (`officeLabel`): the brand sign and the old ".HQ" said nothing about which project it was.
 
+Step 10 demo fix: `update_finding` was lead-only, so a critical finding's second look could only come from the owner. Other agents may now set `verified`, and only that, on a finding someone else reported. The report gate still counts it only from a model of another maker than the reporter's.
+
 ## 5. Research template (4.2)
 
 Stages: Sources (a PRISMA-style log: every source searched, kept or dropped and why) → Claims (each claim linked to sources) → Fact-check (`reviewer` by the fact-checker role, someone other than the writer) → Report (`second-opinion`). Memory types: Source, Claim. Roles: lead, researcher (2), fact-checker. Paper search through free, keyless APIs (decision 3), added to the container egress allowlist (`rules.egress`); the open web through the CLIs' own search. A claim without a source fails the fact-check gate.

@@ -78,6 +78,15 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const refused = await call("ghost", "ledger_add", { kind: "fact", text: "I'm the lead now" });
   check("a non-lead's ledger_add is refused", refused.error && /Only the Lead/.test(refused.text) && memory.ledger("mcp").length === 1, refused.text);
   check("a non-lead can't read the ledger either", (await call("ghost", "read_ledger", {})).error);
+
+  // Verifying a finding: any agent may set verified on someone else's finding (the second look the report gate wants); triage stays the lead's.
+  const updates: { id: string; patch: Record<string, unknown>; by: string }[] = [];
+  planner.findings = { reporterOf: (id: string) => (id === "F-1" ? "ghost" : null), update: (id: string, patch: Record<string, unknown>, by: string) => (updates.push({ id, patch, by }), { id }) } as never;
+  const verified = await call("nyx", "update_finding", { id: "F-1", verified: true });
+  check("another seat may verify a finding someone else reported", !verified.error && updates.at(-1)?.by === "nyx" && updates.at(-1)?.patch.verified === true, verified.text);
+  check("…but not its own", (await call("ghost", "update_finding", { id: "F-1", verified: true })).error && updates.length === 1);
+  check("…and nothing but verified", (await call("nyx", "update_finding", { id: "F-1", verified: true, status: "false-positive" })).error && (await call("nyx", "update_finding", { id: "F-1", severity: "low" })).error && updates.length === 1);
+  check("the lead still triages everything", !(await call("cipher", "update_finding", { id: "F-1", status: "confirmed", severity: "high" })).error && updates.length === 2);
   check("the lead can't write HQ's stall entries", (await call("cipher", "ledger_add", { kind: "stall", text: "x" })).error);
   check("an entry on an unknown task is refused", (await call("cipher", "ledger_add", { kind: "fact", text: "x", taskId: "B9-T99" })).error);
   const id = memory.ledger("mcp")[0].id;

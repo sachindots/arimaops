@@ -103,7 +103,7 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
     }
     case "second-opinion": {
       if (gate.when === "high-stakes" && !isHighStakes(task)) return null;
-      if (!passed) return "Needs a second opinion from an agent on another provider (a Gemini seat by default).";
+      if (!passed) return "Needs a second opinion from an agent on another provider than the task owner's (the team's second-opinion seat).";
       if (last.by.kind === "user") return null;
       const vendor = (id: string | null) => (id ? (ctx.vendorOf?.(id) ?? null) : null);
       const mine = vendor(task.ownerId);
