@@ -232,6 +232,22 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
           ))}
         </ul>
       )}
+      <div className="mt-2" />
+      <SectionTitle>Template improvements</SectionTitle>
+      <p className="m-0 text-[13px] text-muted">
+        When a check or gate fails on 3 different tasks within 30 days, Claude Haiku drafts one change to the template (a role's model, a skill, a
+        gate or a line of instructions). Nightly at 04:00, or now. You approve each in Action items; a built-in template is saved as your own copy.
+        Same switch and masking as lessons.
+      </p>
+      {!isViewer && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn px-3 text-[12px]" disabled={!lessons.enabled || !extractionOn || lessons.improvements.running} onClick={() => officeActions.proposeImprovements()}>
+            {lessons.improvements.running ? "Drafting…" : "Look for repeated failures now"}
+          </button>
+          {lessons.improvements.pending > 0 && <span className="text-[12px] text-muted">{lessons.improvements.pending} waiting for you in Action items</span>}
+        </div>
+      )}
+      {lessons.improvements.last && <p className="m-0 text-[12px] text-muted" role="status">{lessons.improvements.last}</p>}
     </section>
   );
 }

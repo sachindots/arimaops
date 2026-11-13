@@ -272,6 +272,24 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, task_id, scorer)
   );
   `,
+  // Factory step 5 (docs/factory.md section 5): template changes drafted from repeated failures. status pending,
+  // approved, rejected, or dropped (no change, invalid, or it named a project; text not kept). A pattern decided or
+  // dropped within 30 days isn't proposed again.
+  `
+  CREATE TABLE template_proposals (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    from_version INTEGER NOT NULL,
+    pattern TEXT NOT NULL,
+    change TEXT NOT NULL,
+    why TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'dropped')),
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    new_version INTEGER
+  );
+  CREATE INDEX template_proposals_pattern ON template_proposals (template_id, pattern);
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

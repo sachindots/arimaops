@@ -426,6 +426,29 @@ export function createMockSource(): OfficeDataSource {
       world.snap.lessons = { ...world.snap.lessons, enabled: on };
       world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
     },
+    proposeImprovements() {
+      const l = world.snap.lessons;
+      if (!l) return;
+      const templateId = l.templateId ?? "dev";
+      const item = {
+        id: `ai-P-demo${Date.now().toString(36)}`,
+        fromId: "hq",
+        taskId: null,
+        title: `Change the ${templateId} template? "Code and tests together" failed on 4 tasks`,
+        details: "Developers keep opening PRs that change code without a test.\n\nApprove: saved as a new version of your copy of the template; projects get it when you re-sync them. Reject: not proposed again for 30 days.",
+        waiting: false,
+        kind: "proposal" as const,
+        proposal: { id: "P-demo", templateId, pattern: "scorer:tests-only-added", diff: ["+ developer instructions: Every PR that changes code adds or updates a test that fails without the change."] },
+        status: "open" as const,
+        note: null,
+        at: new Date().toISOString(),
+        closedAt: null,
+      };
+      world.snap.actionItems = [item, ...(world.snap.actionItems ?? [])];
+      world.snap.lessons = { ...l, improvements: { running: false, pending: l.improvements.pending + 1, last: "1 template change waiting for you in Action items." } };
+      world.emit({ type: "action.updated", item: structuredClone(item) });
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
     removeLesson(id) {
       if (!world.snap.lessons) return;
       world.snap.lessons = { ...world.snap.lessons, approved: world.snap.lessons.approved.filter((l) => l.id !== id) };

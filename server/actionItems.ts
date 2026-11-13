@@ -72,6 +72,10 @@ export class ActionItems {
     hqDb().prepare("INSERT OR REPLACE INTO action_answers (project_id, id, kind, decision, at) VALUES (?, ?, ?, ?, ?)").run(this.hub.snap.config.project.id, item.id, item.kind ?? "request", decision, Date.parse(item.closedAt));
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "proposal" && item.proposal) {
+      this.onProposalDecided(item.proposal.id, decision === "done");
+      return;
+    }
     if (item.kind === "lesson" && item.lesson) {
       this.onLessonDecided(item.lesson.id, decision === "done");
       return;
@@ -169,6 +173,29 @@ export class ActionItems {
   onPackDecided: (source: string, approve: boolean) => void = () => {};
   /** The owner approved or rejected a lesson for the template (set by the project: server/lessonPromotion.ts). */
   onLessonDecided: (id: string, approve: boolean) => void = () => {};
+  onProposalDecided: (id: string, approve: boolean) => void = () => {};
+
+  /** A template change drafted from a repeated failure (docs/factory.md section 5). */
+  addProposal(p: { id: string; templateId: string; pattern: string; tasks: number; label: string; why: string; diff: string[] }): ActionItem {
+    const item: ActionItem = {
+      id: `ai-${p.id}`,
+      fromId: "hq",
+      taskId: null,
+      title: `Change the ${p.templateId} template? ${p.label} failed on ${p.tasks} tasks`,
+      details: `${p.why}\n\nApprove: saved as a new version of the template (a built-in one as your own copy); projects get it when you re-sync them, new projects at once. Reject: not proposed again for 30 days. Drafted by Claude Haiku from the failures; check it reads as general advice.`,
+      waiting: false,
+      kind: "proposal",
+      proposal: { id: p.id, templateId: p.templateId, pattern: p.pattern, diff: p.diff },
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
+  }
 
   /** A lesson, made general, waiting to join the project's template. */
   addLesson(l: TemplateLesson): ActionItem {

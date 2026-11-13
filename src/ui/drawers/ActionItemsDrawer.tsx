@@ -86,7 +86,7 @@ export function ActionItemsDrawer() {
                 {closed.map((i) => (
                   <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
-                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
+                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "proposal" ? (i.status === "done" ? "saved" : "rejected") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
                 ))}
@@ -121,6 +121,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
         <b className="flex-1 text-[15px]">{item.title}</b>
         {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
         {item.kind === "lesson" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#b388ff" }}>lesson · for the template</span>}
+        {item.kind === "proposal" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#F59E0B" }}>template change</span>}
         {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffd600" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
         {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>spec · needs approval</span>}
         {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>skills · scan</span>}
@@ -141,6 +142,15 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
         {item.taskId && <span>· {item.taskId}</span>}
         <span>· {ago(item.at, now)} ago</span>
       </div>
+      {item.proposal && (
+        <pre className="scroll-thin my-1 overflow-x-auto whitespace-pre-wrap border-2 border-ink bg-[#0b0f17] px-2 py-1.5 font-mono text-[12px] leading-snug" aria-label="The change">
+          {item.proposal.diff.map((l, n) => (
+            <div key={n} style={{ color: l.startsWith("+") ? "#00c853" : l.startsWith("-") ? "#ff5252" : undefined }}>
+              {l}
+            </div>
+          ))}
+        </pre>
+      )}
       {item.details && (
         <div className={`whitespace-pre-wrap text-[13px] ${long && !expanded ? "line-clamp-6" : ""}`}>{item.details}</div>
       )}
@@ -192,10 +202,10 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
         />
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
-          {item.kind === "plan" || item.kind === "spec" || item.kind === "gate" || item.kind === "lesson" ? "Approve" : item.kind === "approval" ? "Keep" : "Done"}
+          {item.kind === "plan" || item.kind === "spec" || item.kind === "gate" || item.kind === "lesson" || item.kind === "proposal" ? "Approve" : item.kind === "approval" ? "Keep" : "Done"}
         </button>
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
-          {item.kind === "plan" || item.kind === "lesson" ? "Reject" : item.kind === "spec" || item.kind === "gate" ? "Send back" : item.kind === "approval" ? "Undo" : "Dismiss"}
+          {item.kind === "plan" || item.kind === "lesson" || item.kind === "proposal" ? "Reject" : item.kind === "spec" || item.kind === "gate" ? "Send back" : item.kind === "approval" ? "Undo" : "Dismiss"}
         </button>
       </div>
       )}

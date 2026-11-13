@@ -254,6 +254,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.actions = new ActionItems(hub, planner);
   planner.lessons = new LessonPromotion(hub, () => planner.actions);
   planner.actions.onLessonDecided = (id, approve) => planner.lessons?.decide(id, approve);
+  planner.actions.onProposalDecided = (id, approve) => planner.lessons?.decideProposal(id, approve);
   planner.actions.onMove = (m) => overflow.move(m);
   const broadcastPacks = () => {
     const skillPacks = packsState();

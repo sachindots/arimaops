@@ -34,6 +34,7 @@ import { memoryStore } from "./memory";
 import { scheduleBackups } from "./memoryBackup";
 import { memoryWorker } from "./memoryJobs";
 import { daily, DIGEST_HOUR } from "./memoryReview";
+const IMPROVE_HOUR = 4; // after the 03:00 memory backup and tidy
 import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
@@ -144,6 +145,10 @@ async function main() {
     void memoryWorker().nightly().catch((err) => log.warn(`memory: nightly tidy skipped: ${err instanceof Error ? err.message : err}`));
   });
   memoryWorker().extractPending(); // summaries left from before a restart
+  // Template improvements from repeated failures, nightly (docs/factory.md section 5).
+  daily(IMPROVE_HOUR, async () => {
+    for (const rt of projects.values()) await rt.planner.lessons?.improve();
+  });
   daily(DIGEST_HOUR, async () => {
     for (const rt of projects.values()) {
       await rt.memoryReview.sync();

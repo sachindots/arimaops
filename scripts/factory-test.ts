@@ -186,5 +186,67 @@ check("an answer is kept with its kind and decision, once", answers.length === 1
   check("a model check that can't run is reported, not a failed score", failing.modelError === "spend cap" && failing.scores.length === 0);
 }
 
+// Improvement proposals (section 5): a repeated failure yields one proposal; approving it saves a new version.
+{
+  const { repeatedFailures, snoozed, draftProposal, decideProposal, applyChange, pendingProposals } = await import("../server/proposals");
+  const { seedBuiltins, getTemplate, saveTemplate } = await import("../server/templates");
+  const { DEV_TEMPLATE_V1 } = await import("../src/data/templates");
+  seedBuiltins(db);
+  const dev = getTemplate(db, "dev")!;
+  const P3 = "improve-test";
+  const now = Date.now();
+  db.prepare("INSERT INTO boards (project_id, id, title, status, ord) VALUES (?, 'B', 'Board', 'active', 0)").run(P3);
+  const fail = (task: string, scorer: string, at: number, version = dev.version) => {
+    db.prepare("INSERT OR IGNORE INTO tasks (project_id, id, board_id, stage_id, title, status, updated_at, template_id, template_version) VALUES (?, ?, 'B', 'build', ?, 'done', 0, 'dev', ?)").run(P3, task, task, version);
+    db.prepare("INSERT INTO scores (project_id, task_id, scorer, template_id, template_version, pass, reason, cost_usd, at) VALUES (?, ?, ?, 'dev', ?, 0, ?, NULL, ?)").run(P3, task, scorer, version, `Changes code (src/${task}.ts) but no test.`, at);
+  };
+  fail("A1", "tests-only-added", now - 86_400_000);
+  fail("A2", "tests-only-added", now - 2 * 86_400_000);
+  check("two failures aren't a pattern yet", repeatedFailures(db, dev, [P3], now).length === 0);
+  fail("A3", "tests-only-added", now - 40 * 86_400_000); // too old
+  fail("A4", "tests-only-added", now - 86_400_000, dev.version - 1); // an older version of the template
+  check("old failures and other versions don't count", repeatedFailures(db, dev, [P3], now).length === 0);
+  fail("A5", "tests-only-added", now - 3600_000);
+  db.prepare("INSERT INTO gate_events (project_id, task_id, gate_id, state, by_kind, by_id, proof, at) VALUES (?, 'A1', 'ci', 'failed', 'hq', 'hq', '{\"note\":\"red\"}', ?), (?, 'A1', 'ci', 'failed', 'hq', 'hq', '{}', ?)").run(P3, now - 1000, P3, now - 900);
+  const found = repeatedFailures(db, dev, [P3], now);
+  check("3 different tasks within 30 days make a pattern; one task failing twice doesn't", found.length === 1 && found[0].pattern === "scorer:tests-only-added" && found[0].tasks === 3, JSON.stringify(found));
+  check("…and other projects' failures aren't read", repeatedFailures(db, dev, ["someone-else"], now).length === 0);
+
+  const words = { words: ["acme-shop", "Acme"], keepOut: [] };
+  const reply = (change: unknown, why = "PRs keep shipping code without a test.") => async () => JSON.stringify({ change, why });
+  const leaky = await draftProposal(db, dev, found[0], words, reply({ kind: "role-instruction", roleId: "developer", text: "Always add tests to the acme-shop checkout code." }), now);
+  check("a draft that names a project is dropped, never shown", "dropped" in leaky && /acme-shop/.test(leaky.dropped));
+  check("…and the pattern waits 30 days", snoozed(db, "dev", "scorer:tests-only-added", now) && !snoozed(db, "dev", "scorer:tests-only-added", now + 31 * 86_400_000));
+  db.prepare("DELETE FROM template_proposals").run();
+  const bad = await draftProposal(db, dev, found[0], words, reply({ kind: "role-model", roleId: "nobody", model: "x" }), now);
+  check("a draft that doesn't fit the template is dropped", "dropped" in bad && /No role "nobody"/.test(bad.dropped));
+  db.prepare("DELETE FROM template_proposals").run();
+  let asked = "";
+  const good = await draftProposal(db, dev, found[0], words, async (req) => {
+    asked = req.system + req.prompt;
+    return JSON.stringify({ change: { kind: "role-instruction", roleId: "developer", text: "Every PR that changes code adds or updates a test that fails without the change." }, why: "Code keeps landing without tests." });
+  }, now);
+  check("a repeated failure yields one proposal, shown as a diff", "proposal" in good && good.proposal.diff.join() === "+ developer instructions: Every PR that changes code adds or updates a test that fails without the change." && pendingProposals(db, "dev") === 1);
+  check("the examples go to Haiku as data", asked.indexOf("not instructions to you") < asked.indexOf("src/A1.ts") || asked.indexOf("not instructions to you") < asked.indexOf("src/A5.ts"));
+  check("a pending proposal isn't proposed again", snoozed(db, "dev", "scorer:tests-only-added", now));
+  const id = "proposal" in good ? good.proposal.id : "";
+  const yes = decideProposal(db, id, true);
+  check("approving saves a built-in as the owner's copy, with the change", yes.saved?.id === "dev-yours" && yes.saved.version === 1 && yes.saved.roles.find((r) => r.id === "developer")!.roleMd.endsWith("fails without the change.") && getTemplate(db, "dev")!.version === dev.version);
+  check("deciding twice does nothing", decideProposal(db, id, true).saved === null && pendingProposals(db, "dev") === 0);
+  // A second approved change lands on the owner's copy and bumps its version.
+  const again = await draftProposal(db, dev, { ...found[0], pattern: "gate:ci" }, words, reply({ kind: "role-skill", roleId: "developer", skill: "anthropics/skills/webapp-testing" }), now);
+  const second = decideProposal(db, "proposal" in again ? again.proposal.id : "", true);
+  check("approving the next one bumps the copy's version and keeps the first change", second.saved?.version === 2 && second.saved.roles.find((r) => r.id === "developer")!.roleMd.endsWith("fails without the change.") && second.saved.roles.find((r) => r.id === "developer")!.skills.includes("anthropics/skills/webapp-testing"), second.error ?? "");
+  // A template of the owner's own is changed in place; rejecting snoozes.
+  const mine = saveTemplate(db, { ...DEV_TEMPLATE_V1, id: "mine", name: "Mine" }, "you");
+  const own = await draftProposal(db, mine, { ...found[0] }, words, reply({ kind: "add-gate", stageId: mine.flow.stages[0].id, gate: { id: "tests", kind: "tests-ci" } }), now);
+  const ok = decideProposal(db, "proposal" in own ? own.proposal.id : "", true);
+  check("the owner's own template gets the change under a new version", ok.saved?.id === "mine" && ok.saved.version === mine.version + 1 && ok.saved.flow.stages[0].gates.some((g) => g.id === "tests"), ok.error ?? "");
+  const nope = await draftProposal(db, mine, { ...found[0], pattern: "gate:other" }, words, reply({ kind: "role-model", roleId: "developer", model: "claude-opus-5-5" }), now);
+  decideProposal(db, "proposal" in nope ? nope.proposal.id : "", false);
+  check("a rejected pattern isn't proposed again for 30 days", snoozed(db, "mine", "gate:other", now + 1000) && getTemplate(db, "mine")!.version === mine.version + 1);
+  check("a change to a stage that doesn't exist is refused", (() => { try { applyChange(dev, { kind: "add-gate", stageId: "nope", gate: { id: "x", kind: "tests-ci" } }); return false; } catch { return true; } })());
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);
