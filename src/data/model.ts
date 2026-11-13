@@ -5,6 +5,7 @@
 import type { Provider } from "./providers";
 import type { AgentCli, AgentMode, Board, FindingStatus, SandboxSettings, Severity, Task, Tokens } from "./types";
 import { AGENT_CLIS, isAgentCli } from "./types";
+import { isScorerId, SCORER_IDS } from "./scorers";
 
 // ── Team template (1.1) ──
 
@@ -19,6 +20,8 @@ export interface TeamTemplate {
   rules: ToolRules;
   /** Memory node types beyond the core ontology: "Asset", "Finding", "Source"… */
   memoryTypes: string[];
+  /** Checks run on each finished task (src/data/scorers.ts); left out, HQ picks ones that fit the template. */
+  scorers?: string[];
 }
 
 export interface Role {
@@ -378,6 +381,9 @@ export function templateErrors(t: TeamTemplate): string[] {
   for (const id of dupes(t.memoryTypes ?? [])) say(`Memory type "${id}" is listed twice.`);
   for (const m of t.memoryTypes ?? []) if ((RESERVED_LABELS as readonly string[]).includes(m)) say(`"${m}" is a core memory type already; leave it out of memoryTypes.`);
   if ((t.memoryTypes ?? []).some((m) => !/^[A-Z][A-Za-z]{1,39}$/.test(m))) say("Memory types are names like Asset or Finding.");
+  if (t.scorers !== undefined && !Array.isArray(t.scorers)) say("scorers is a list of scorer ids.");
+  for (const id of Array.isArray(t.scorers) ? t.scorers : []) if (!isScorerId(id)) say(`No scorer "${id}". Scorers: ${SCORER_IDS.join(", ")}.`);
+  for (const id of dupes(Array.isArray(t.scorers) ? t.scorers : [])) say(`Scorer "${id}" is listed twice.`);
   return errs;
 }
 

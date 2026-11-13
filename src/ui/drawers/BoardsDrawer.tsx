@@ -3,6 +3,7 @@ import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, type AgentCli, type BoardStatus, typ
 import { officeActions, useOffice } from "../../store/office";
 import { Dot, TokensChip } from "../kit";
 import { DrawerHeader } from "./Drawer";
+import { SCORERS, type TaskScore } from "../../data/scorers";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
   { id: "todo", label: "To do", color: "#6e7b94" },
@@ -77,6 +78,25 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
   );
 }
 
+/** The scorers' verdicts on a finished task: a count, and each failed check with why. Signals, never blockers. */
+function Checks({ scores }: { scores: TaskScore[] }) {
+  const failed = scores.filter((x) => !x.pass);
+  const cost = scores.reduce((t, x) => t + (x.costUsd ?? 0), 0);
+  return (
+    <div className="mt-1 text-[12px]" title={scores.map((x) => `${x.pass ? "✓" : "✗"} ${SCORERS[x.scorer]?.label ?? x.scorer}: ${x.reason}`).join("\n")}>
+      <span className={failed.length ? "text-[#F59E0B]" : "text-green"}>
+        {failed.length ? "◇" : "✓"} Checks {scores.length - failed.length}/{scores.length}
+      </span>
+      {cost > 0 && <span className="ml-1.5 font-mono text-[11px] text-muted">${cost.toFixed(3)}</span>}
+      {failed.map((x) => (
+        <div key={x.scorer} className="leading-tight text-[#F59E0B]">
+          ✗ {SCORERS[x.scorer]?.label ?? x.scorer}: <span className="text-muted">{x.reason}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TaskCard({ task }: { task: Task }) {
   const snap = useOffice((s) => s.snap);
   const owner = snap?.config.team.find((a) => a.id === task.ownerId);
@@ -102,6 +122,7 @@ function TaskCard({ task }: { task: Task }) {
       </div>
       {task.deliverablePath && <div className="mt-0.5 truncate font-term text-[14px] text-green">↳ {task.deliverablePath}</div>}
       {task.status === "blocked" && task.note && <div className="text-[12px] text-red">{task.note}</div>}
+      {task.scores && task.scores.length > 0 && <Checks scores={task.scores} />}
       <div className="mt-1 flex items-center gap-1.5 text-[12px]">
         {owner ? (
           <>

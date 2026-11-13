@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import type { Cost, FactoryMetrics, MetricsReport, VersionMetrics } from "../../data/metrics";
 import { readPref, writePref } from "../../lib/prefs";
+import { isScorerId, SCORERS } from "../../data/scorers";
 
 const DAYS = 7;
 
@@ -87,8 +88,8 @@ function Versions({ versions }: { versions: VersionMetrics[] }) {
     <div className="flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="Template versions">
       <span className="text-muted">By template version:</span>
       {versions.map((v) => (
-        <span key={`${v.templateId}@${v.version}`} className="chip font-mono text-[11px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task`}>
-          {v.templateId} v{v.version} · {v.finished} done · {cost(v.costPerTask)} · {v.cycleCreated === null ? "—" : hours(v.cycleCreated)} · {v.reworkPerTask === null ? "—" : v.reworkPerTask.toFixed(1)} rework
+        <span key={`${v.templateId}@${v.version}`} className="chip font-mono text-[11px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task, share of checks failed`}>
+          {v.templateId} v{v.version} · {v.finished} done · {cost(v.costPerTask)} · {v.cycleCreated === null ? "—" : hours(v.cycleCreated)} · {v.reworkPerTask === null ? "—" : v.reworkPerTask.toFixed(1)} rework{v.checkFailRate === null ? "" : ` · ${Math.round(v.checkFailRate * 100)}% checks failed`}
         </span>
       ))}
     </div>
@@ -129,6 +130,14 @@ function Row({ name, multi, r }: { name: string; multi: boolean; r: MetricsRepor
             now={n.rework.perTask}
             before={b.rework.perTask}
             title="Failed gates per finished task"
+          />
+          <Metric
+            label="Checks failed"
+            value={n.checks.run ? `${n.checks.failed} of ${n.checks.run}` : "—"}
+            sub={n.checks.worst ? `most failed: ${isScorerId(n.checks.worst.scorer) ? SCORERS[n.checks.worst.scorer].label : n.checks.worst.scorer} (${n.checks.worst.failed})` : undefined}
+            now={n.checks.run ? n.checks.failed / n.checks.run : null}
+            before={b.checks.run ? b.checks.failed / b.checks.run : null}
+            title="Scorer verdicts on the finished tasks: rules always, model checks when memory extraction is on. A failed check never blocks a task."
           />
           <Metric
             label="Stalls · replans"

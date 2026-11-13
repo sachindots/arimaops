@@ -7,6 +7,7 @@ const ICON: Record<ActivityType, [string, string]> = {
   "task.assigned": ["▸", "#c04dff"],
   "task.started": ["●", "#00e5ff"],
   "task.created": ["+", "#c04dff"],
+  "task.scored": ["◇", "#F59E0B"],
   "agent.needs-input": ["!", "#ff1744"],
   "agent.answered": ["✓", "#00ff66"],
   message: ["✉", "#ff2a85"],

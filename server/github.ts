@@ -203,6 +203,6 @@ export function toPullRequest(pr: GhPr, tool: ReviewTool, reviewEnabled: boolean
     closed: pr.state === "CLOSED",
     conflict: pr.mergeable === "CONFLICTING",
     reviewNote: pr.isDraft ? "Draft" : r.note,
-    ...(pr.files ? { testsChanged: pr.files.nodes.some((f) => TEST_FILE.test(f.path)), ciGreen: ciGreen(pr) } : {}),
+    ...(pr.files ? { testsChanged: pr.files.nodes.some((f) => TEST_FILE.test(f.path)), ciGreen: ciGreen(pr), files: pr.files.nodes.map((f) => f.path) } : {}),
   };
 }

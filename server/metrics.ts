@@ -96,6 +96,14 @@ export function interventions(db: DatabaseSync, projectId: string, w: Window, ow
   return { gates, answers, messages, total: gates + answers + messages };
 }
 
+export function checks(db: DatabaseSync, projectId: string, ids: string[]): FactoryMetrics["checks"] {
+  const rows = db
+    .prepare("SELECT scorer, COUNT(*) AS n, SUM(1 - pass) AS failed FROM scores WHERE project_id = ? AND task_id IN (SELECT value FROM json_each(?)) GROUP BY scorer")
+    .all(projectId, JSON.stringify(ids)) as { scorer: string; n: number; failed: number }[];
+  const worst = rows.filter((r) => r.failed > 0).sort((a, b) => b.failed - a.failed || a.scorer.localeCompare(b.scorer))[0];
+  return { run: rows.reduce((t, r) => t + r.n, 0), failed: rows.reduce((t, r) => t + r.failed, 0), worst: worst ? { scorer: worst.scorer, failed: worst.failed } : null };
+}
+
 export function factoryMetrics(db: DatabaseSync, projectId: string, w: Window, ownerMessages: number[] = []): FactoryMetrics {
   const done = finishedTasks(db, projectId, w);
   const ids = done.map((t) => t.id);
@@ -110,6 +118,7 @@ export function factoryMetrics(db: DatabaseSync, projectId: string, w: Window, o
     stalls: ledgerCount(db, projectId, "stall", w),
     replans: ledgerCount(db, projectId, "replan", w),
     interventions: interventions(db, projectId, w, ownerMessages),
+    checks: checks(db, projectId, ids),
   };
 }
 
@@ -124,6 +133,7 @@ export function byVersion(db: DatabaseSync, projectId: string, w: Window): Versi
   return [...groups.values()]
     .map((g) => {
       const ids = g.map((t) => t.id);
+      const c = checks(db, projectId, ids);
       return {
         templateId: g[0].templateId!,
         version: g[0].templateVersion!,
@@ -131,6 +141,7 @@ export function byVersion(db: DatabaseSync, projectId: string, w: Window): Versi
         costPerTask: costPer(db, projectId, ids),
         cycleCreated: cycleTime(db, projectId, g).created,
         reworkPerTask: rework(db, projectId, ids).perTask,
+        checkFailRate: per(c.failed, c.run),
       };
     })
     .sort((a, b) => a.templateId.localeCompare(b.templateId) || a.version - b.version);

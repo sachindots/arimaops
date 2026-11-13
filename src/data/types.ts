@@ -1,3 +1,4 @@
+import type { TaskScore } from "./scorers";
 import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
 
 export type { Finding };
@@ -320,6 +321,8 @@ export interface Task {
   /** The project's template when the task was made (docs/factory.md section 2); empty on older tasks. */
   templateId?: string;
   templateVersion?: number;
+  /** Its scorers' verdicts once it finished (docs/factory.md section 4). */
+  scores?: TaskScore[];
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -341,6 +344,8 @@ export interface PullRequest {
   reviewNote?: string | null; // e.g. "CodeRabbit: review rate limited"
   /** The PR adds or changes a test file (unknown until GitHub sends the PR's files). */
   testsChanged?: boolean;
+  /** The paths it changes, as GitHub last reported them (first 100). */
+  files?: string[];
   /** Every check on the head commit finished green; false with no checks at all. */
   ciGreen?: boolean;
 }
@@ -372,6 +377,7 @@ export type ActivityType =
   | "task.assigned"
   | "task.started"
   | "task.created"
+  | "task.scored"
   | "agent.needs-input"
   | "agent.answered"
   | "message"

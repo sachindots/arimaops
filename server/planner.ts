@@ -510,8 +510,13 @@ export class Planner {
   private lean = () => this.snap.config.workflow.lean?.clearBetweenTasks !== false;
 
   /** Lean mode, once a task is done: its owner starts the next one in a fresh conversation, and the repo facts learn from it. */
+  /** A task just finished: its scorers run (server/scorers.ts, wired in project.ts). Never blocks finishing. */
+  onFinished: (task: Task) => void = () => {};
+
   private afterDone(done: Task) {
     this.summarise(done);
+    // Deliverables are copied in first, so the scorers read what the agent delivered.
+    void this.syncTaskDeliverables(done).catch(() => {}).then(() => this.onFinished(done));
     if (!this.lean()) return;
     const id = done.ownerId;
     const agent = id ? this.hub.cfg(id) : undefined;

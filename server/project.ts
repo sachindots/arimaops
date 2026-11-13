@@ -37,8 +37,11 @@ import { LoopGuard, toolEvent } from "./loopguard";
 import { resolveUserSkillFolders } from "./skills";
 import { sumModels, UsageMeter } from "./usage";
 import { recordMeter } from "./usageEvents";
-import { memoryStore, setMemoryScope } from "./memory";
-import { memoryWorker } from "./memoryJobs";
+import { extractionSettings, memoryStore, setMemoryScope } from "./memory";
+import { helperRunner, memoryWorker } from "./memoryJobs";
+import { gatherFacts, scoreTask } from "./scorers";
+import { EXTRACT_MODEL } from "./memoryExtract";
+import { estimateCost } from "./prices";
 import { MemoryReview } from "./memoryReview";
 import { hqDb } from "./lib/db";
 import { accounts } from "./credentials/registry";
@@ -293,6 +296,30 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.memory = memoryStore();
   memoryStore().onChange ??= broadcastMemory;
   planner.memoryJobs = memoryWorker();
+  // Scorers on every finished task: rules always, model checks with memory extraction on (docs/factory.md section 4).
+  planner.onFinished = (task) => {
+    const template = hub.snap.config.template;
+    if (!template) return;
+    const projectId = hub.snap.config.project.id;
+    const settings = extractionSettings();
+    const pr = task.prNumber ? hub.snap.pullRequests.find((p) => p.number === task.prNumber) : undefined;
+    const facts = gatherFacts(hub.repo.root, task, pr, hub.snap.findings ?? [], hub.snap.config.workflow.mode === "deliverables");
+    const ask = settings.enabled
+      ? async (req: { system: string; prompt: string }) => {
+          const r = await helperRunner().run({ account: settings.account, model: EXTRACT_MODEL, system: req.system, prompt: req.prompt, maxTokens: 800, purpose: "helper", projectId, taskId: task.id });
+          return { text: r.text, costUsd: estimateCost(EXTRACT_MODEL, r.tokens) };
+        }
+      : null;
+    void scoreTask(task, { db: hqDb(), projectId, template, facts, ask })
+      .then(({ scores, modelError }) => {
+        task.scores = scores;
+        hub.emit({ type: "task.updated", task: { ...task } });
+        const failed = scores.filter((x) => !x.pass);
+        if (failed.length) hub.activity("task.scored", null, `${task.id} failed ${failed.length} check${failed.length === 1 ? "" : "s"}: ${failed.map((x) => x.scorer).join(", ")}`);
+        if (modelError) hub.activity("config", null, `Couldn't run the model checks on ${task.id}: ${modelError}`);
+      })
+      .catch((err) => log.warn(`couldn't score ${task.id}: ${err instanceof Error ? err.message : err}`));
+  };
   setMemoryScope(hub.snap.config.project.id, () => hub.snap.config.project.scope);
   hub.snap.memory = projectMemoryState(hub.snap.config.project.id);
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.

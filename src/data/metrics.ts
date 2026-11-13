@@ -21,6 +21,8 @@ export interface FactoryMetrics {
   stalls: number;
   replans: number;
   interventions: { gates: number; answers: number; messages: number; total: number };
+  /** Scorer verdicts on the finished tasks (section 4); `worst` is the scorer that failed most. */
+  checks: { run: number; failed: number; worst: { scorer: string; failed: number } | null };
 }
 
 export interface VersionMetrics {
@@ -30,6 +32,8 @@ export interface VersionMetrics {
   costPerTask: Cost | null;
   cycleCreated: number | null;
   reworkPerTask: number | null;
+  /** Share of scorer verdicts that failed; null with none. */
+  checkFailRate: number | null;
 }
 
 export interface MetricsReport {

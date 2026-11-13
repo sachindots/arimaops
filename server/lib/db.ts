@@ -256,6 +256,22 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, id)
   );
   `,
+  // Factory step 4 (docs/factory.md section 4): each scorer's verdict on a finished task, with the template version it
+  // ran under and what a model check cost. Scoring again replaces the row.
+  `
+  CREATE TABLE scores (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    scorer TEXT NOT NULL,
+    template_id TEXT,
+    template_version INTEGER,
+    pass INTEGER NOT NULL CHECK (pass IN (0, 1)),
+    reason TEXT NOT NULL,
+    cost_usd REAL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id, scorer)
+  );
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { FINDINGS_REPORT } from "./findings";
 import { hqDb } from "./lib/db";
 import { taskUsage } from "./usageEvents";
+import { scoresByTask } from "./scorers";
 import { tx } from "./lib/docs";
 import { assertGates, leadMayApprove, OBSERVED_GATES, PERSON_GATES, type GateContext } from "./gates";
 
@@ -31,6 +32,7 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
     .map((b) => ({ id: b.id, title: b.title, status: b.status, order: b.ord }));
   if (!boards.length) return null;
   const used = taskUsage(db, projectId);
+  const scored = scoresByTask(db, projectId);
   const tasks = (db.prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY rowid").all(projectId) as unknown as TaskRow[]).map(
     (r): Task => ({
       id: r.id,
@@ -53,6 +55,7 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       highStakes: !!r.high_stakes,
       templateId: r.template_id ?? undefined,
       templateVersion: r.template_version ?? undefined,
+      ...(scored.has(r.id) ? { scores: scored.get(r.id) } : {}),
     }),
   );
   return { boards, tasks };
