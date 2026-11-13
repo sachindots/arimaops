@@ -3,10 +3,33 @@ import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../.
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
 import { useState } from "react";
-import { appManifest, GITHUB_STATE_KEY, newAppUrl, WEBHOOK_PATH } from "../../data/githubApp";
+import { appManifest, GITHUB_STATE_KEY, newAppUrl, securityReviewWorkflow, WEBHOOK_PATH } from "../../data/githubApp";
 import { BRAND } from "../../data/brand";
 import { useAuth } from "../../store/auth";
 
+
+/** Anthropic's security review on every PR (docs/templates.md section 3): a pinned workflow file the owner adds; HQ never commits it. */
+function SecurityReviewSection() {
+  const [copied, setCopied] = useState(false);
+  const yaml = securityReviewWorkflow();
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Security review on every PR</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Anthropic&apos;s security review comments on each pull request. Add this file to the repo as <code>.github/workflows/security-review.yml</code> and a repository secret <code>CLAUDE_API_KEY</code>. The action is pinned to a commit, like the skill packs. Each run uses that API key.
+      </p>
+      <pre className="max-h-[220px] overflow-auto border-2 border-ink bg-cream p-2 font-mono text-[12px]">{yaml}</pre>
+      <button
+        className="btn mt-2 min-h-[44px]"
+        onClick={() => {
+          void navigator.clipboard?.writeText(yaml).then(() => setCopied(true), () => setCopied(false));
+        }}
+      >
+        {copied ? "Copied" : "Copy the workflow"}
+      </button>
+    </section>
+  );
+}
 
 /**
  * The GitHub App (docs/agent-engine.md section 6): webhooks bring PR news in seconds, polling stays the fallback.
@@ -185,6 +208,7 @@ export function WorkflowSettings() {
           </section>
 
           <GitHubAppSection />
+          <SecurityReviewSection />
 
           <section className="border-[3px] border-ink bg-white p-3">
             <SectionTitle>Merge</SectionTitle>

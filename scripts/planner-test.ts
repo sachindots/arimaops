@@ -205,7 +205,7 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
 
 // ---------------------------------------------------------------- routing by role (3.1)
 {
-  const { DEV_TEMPLATE } = await import("../src/data/templates");
+  const { DEV_TEMPLATE_V1 } = await import("../src/data/templates");
   const crew = [
     { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "" },
     { id: "d1", name: "Dev One", roleId: "developer", isLead: false, cli: "claude", model: "" },
@@ -217,7 +217,7 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   const later = new Date(Date.now() + 3600_000).toISOString();
   Object.assign(st.get("d1")!, { limitedUntil: later }); // at its usage limit
   Object.assign(st.get("d3")!, { session: { state: "stopped" } }); // on demand, stopped
-  const s2 = { config: { team: crew, template: DEV_TEMPLATE, workflow: { mode: "github-pr", review: { enabled: false } }, project: { id: "route-test" } }, boards: [], tasks: [] as { ownerId: string | null; status: string; id: string }[], messages: [], agents: [...st.values()] };
+  const s2 = { config: { team: crew, template: DEV_TEMPLATE_V1, workflow: { mode: "github-pr", review: { enabled: false } }, project: { id: "route-test" } }, boards: [], tasks: [] as { ownerId: string | null; status: string; id: string }[], messages: [], agents: [...st.values()] };
   const h2 = { ...hub, snap: s2, cfg: (id: string) => crew.find((a) => a.id === id), name: (id: string) => crew.find((a) => a.id === id)?.name ?? id, status: (id: string) => st.get(id), setStatus: (id: string, patch: Record<string, unknown>) => Object.assign(st.get(id)!, patch) };
   const p2 = new Planner(h2 as never, inbox as never);
   p2.ask = async () => null;

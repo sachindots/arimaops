@@ -56,6 +56,13 @@ A blocked file blocks its whole skill; the reason shows in Settings and the acti
 
 Skills: reviewer gets Cloudflare `security-audit` and ToB `differential-review`, `sharp-edges`, `insecure-defaults`, `supply-chain-risk-auditor`; developers get ToB `property-based-testing` and the language pack for the stack. The Anthropic security-review GitHub Action is offered (not installed) as a workflow file the owner adds to the repo. A Gemini (`agy`) seat, `second-opinion` role, 1 seat, on demand. v1 projects keep their copy; re-sync is on purpose.
 
+**As built:**
+- **The board's spec is approved once.** A written spec files an Action item with its text (**Approve** / **Send back**); approving marks that version of the board's spec approved, so every task on the board passes its spec gate until the spec changes. A newer version replaces a request still open and can't be overtaken by approving an old one. (The browser has no spec view yet; the item carries the text.)
+- **Assigning moves a task out of the lead's own stages.** A task in Spec or Plan assigned to a developer moves to Build if the gates it leaves pass (approved spec, every item covered); otherwise the error says what's missing. A task in a worker's stage never jumps ahead because someone else is assigned.
+- **The second opinion is asked for.** When a task goes into review and the flow wants a second opinion on it (here: high-stakes), HQ messages a seat whose model comes from another maker (the Gemini seat first) and starts it on demand. A seat's maker comes from its model name when it says (agy and OpenCode run several makers' models), else from its CLI.
+- **Security review on PRs:** Settings → Workflow shows the workflow file to copy, pinned to the vetted commit (and `actions/checkout` to a commit); HQ never commits it. It runs on the repo's own `CLAUDE_API_KEY` secret.
+- Dev v1 stays as `DEV_TEMPLATE_V1` for projects made from it (and for tests); the library now has v2. The language pack per stack (`modern-python`, `rust-review`…) isn't added yet: the stack has no language field.
+
 ## 4. Security templates (4.2)
 
 All three: `rules.findings`, `scopeRequired` (lab mode lifts it), `plans` (an agent submits a plan and waits before changing a system), memory types below. Every finding is scored CVSS 4.0 and SSVC (Phase 1 schema); critical and high findings and the final report need a `second-opinion`. Reports export as PDF, Markdown, HackerOne, Bugcrowd, JSON and SARIF (Phase 1 `reports.ts`).

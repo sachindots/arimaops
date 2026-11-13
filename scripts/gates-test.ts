@@ -10,7 +10,7 @@ process.env.HOME = mkdtempSync(join(tmpdir(), "arima-gates-"));
 const { assertGates, gateProblem, stagesLeft } = await import("../server/gates");
 const { hqDb } = await import("../server/lib/db");
 const { gateEvents, loadPlanTables, recordGate, savePlanTables } = await import("../server/planStore");
-const { DEV_TEMPLATE } = await import("../src/data/templates");
+const { DEV_TEMPLATE_V1 } = await import("../src/data/templates");
 const { Planner } = await import("../server/planner");
 
 let fails = 0;
@@ -146,7 +146,7 @@ const plan = { boards: [{ id: "B1", title: "Backlog", status: "active" as const,
 savePlanTables(db, "p", plan, "build");
 const loaded = loadPlanTables(db, "p");
 check("a plan round-trips through the tables", loaded?.tasks[0].stageId === "build" && loaded.tasks[0].prNumber === 7 && loaded.tasks[0].deliverablePath === "out.md");
-const t: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow };
+const t: TeamTemplate = { ...structuredClone(DEV_TEMPLATE_V1), flow };
 recordGate(db, t, task, { projectId: "p", gateId: "spec-ok", state: "passed", by: you, proof: { note: "Spec read" } });
 check("recorded evidence is read back", gateEvents(db, "p", "T1").at(-1)?.proof.note === "Spec read");
 check("nobody records tests and CI: HQ reads them from the PR", throws(() => recordGate(db, t, task, { projectId: "p", gateId: "tests", state: "passed", by: agent("rev"), proof: {} }), /checks tests/));
@@ -163,7 +163,7 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
 {
   const devTask: Task = { ...task, stageId: "build", prNumber: 3 };
   const snap = {
-    config: { template: DEV_TEMPLATE, project: { id: "plan" }, workflow: { mode: "github-pr", review: { enabled: true } }, team: [{ id: "lead", roleId: "lead", isLead: true }, { id: "dev1", roleId: "developer" }] },
+    config: { template: DEV_TEMPLATE_V1, project: { id: "plan" }, workflow: { mode: "github-pr", review: { enabled: true } }, team: [{ id: "lead", roleId: "lead", isLead: true }, { id: "dev1", roleId: "developer" }] },
     boards: plan.boards,
     tasks: [devTask],
     agents: [],
@@ -209,7 +209,7 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
 {
   const { ActionItems } = await import("../server/actionItems");
   const presence = await import("../server/presence");
-  const lt: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow: { stages: [
+  const lt: TeamTemplate = { ...structuredClone(DEV_TEMPLATE_V1), flow: { stages: [
     { id: "spec", name: "Spec", roleIds: ["lead", "developer"], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
     { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
   ] } };
@@ -236,12 +236,12 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("Undo keeps the history and adds a reset row", evs.length === 2 && evs[0].state === "passed" && evs[1].state === "reset" && evs[1].by.kind === "user");
   check("…the task is back in the spec stage", t8.stageId === "spec");
   check("…and the lead and the task's owner are told", told.some((m) => m.to === "lead" && /undid your approval/.test(m.text) && /rate limit/.test(m.text)) && told.some((m) => m.to === "dev1" && /undid the lead's approval/.test(m.text)), JSON.stringify(told));
-  check("the gate waits for the owner again", throws(() => planner.updateTask("T8", { stageId: "build" }, "lead"), /approve the spec/));
+  check("the gate waits for the owner again", throws(() => planner.updateTask("T8", { stageId: "build" }, "lead"), /spec/));
 }
 
 // Specs through the planner: write_spec, analyze over the board's tasks, the brief's spec, and a rewrite resets approval.
 {
-  const st: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow: { stages: [
+  const st: TeamTemplate = { ...structuredClone(DEV_TEMPLATE_V1), flow: { stages: [
     { id: "plan", name: "Plan", roleIds: ["lead", "developer"], gates: [{ id: "spec-ok", kind: "spec-approved" }, { id: "covered", kind: "analyze" }] },
     { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
   ] } };
@@ -277,6 +277,81 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("lab mode lifts it", scopeBlocksStart({ ...red, rules: { scopeRequired: true, labMode: true } }, { isLead: false }) === null);
   check("a scope lifts it", scopeBlocksStart({ ...red, project: { scope: { inScope: ["10.0.0.0/24"], outOfScope: [], rules: "" } } }, { isLead: false }) === null);
   check("dev projects never need one", scopeBlocksStart({ ...red, rules: { scopeRequired: false, labMode: false } }, { isLead: false }) === null);
+}
+
+// Dev v2 (Phase 4 step 3): spec → plan → build, the board's spec approved once, the second opinion asked for.
+{
+  const { DEV_TEMPLATE } = await import("../src/data/templates");
+  const { ActionItems } = await import("../server/actionItems");
+  const { vendorOf } = await import("../server/planStore");
+  const { securityReviewWorkflow } = await import("../src/data/githubApp");
+  const t = structuredClone(DEV_TEMPLATE);
+  check("Dev v2 runs spec → plan → build → review → merge", t.version === 2 && t.flow.stages.map((x) => x.id).join() === "spec,plan,build,review,merge");
+  const team = [
+    { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "claude-opus-5-5" },
+    { id: "d1", name: "Dev", roleId: "developer", isLead: false, cli: "claude", model: "claude-sonnet-5-5" },
+    { id: "nyx", name: "Nyx", roleId: "reviewer", isLead: false, cli: "codex", model: "gpt-6.1-sol" },
+    { id: "gem", name: "Gem", roleId: "second-opinion", isLead: false, cli: "agy", model: "gemini-4-argon-high" },
+  ];
+  const st = new Map(team.map((a) => [a.id, { agentId: a.id, currentTaskId: null, session: { state: "stopped" } } as Record<string, unknown>]));
+  const snap = { config: { template: t, project: { id: "dev2" }, workflow: { mode: "github-pr", review: { enabled: true } }, team }, boards: [{ id: "B1", title: "Backlog", status: "active" as const, order: 0 }], tasks: [] as Task[], agents: [], messages: [], pullRequests: [] as PullRequest[], actionItems: [] };
+  const hub = { slug: "dev2", snap, emit: () => {}, planChanged: () => {}, activity: () => {}, configChanged: () => {}, name: (id: string) => team.find((a) => a.id === id)?.name ?? id, setStatus: (id: string, p: object) => Object.assign(st.get(id)!, p), status: (id: string) => st.get(id), cfg: (id: string) => team.find((a) => a.id === id), repo: { root: process.env.HOME } };
+  const told: { to: string; text: string }[] = [];
+  const planner = new Planner(hub as never, { push: (to: string, i: { text: string }) => told.push({ to, text: i.text }), save: () => {} } as never);
+  const items = new ActionItems(hub as never, planner);
+  planner.actions = items;
+  const ready: string[] = [];
+  planner.onReady = (id) => ready.push(id);
+  const sync = () => savePlanTables(hqDb(), "dev2", { boards: snap.boards, tasks: snap.tasks }, "spec");
+
+  const a = planner.createTask({ title: "Checkout", doneWhen: "x", files: ["app/checkout.ts"] } as never, "lea");
+  sync();
+  check("a new task starts in Spec", a.stageId === "spec");
+  check("without a spec, the developer can't take it", throws(() => planner.assign(a.id, "developer", "lea"), /reach the Build stage.*no spec yet/));
+  planner.writeSpec("B1", "S1. Card checkout.\nS2. Receipt email.", "lea");
+  const specItem = snap.actionItems.find((i: { kind?: string }) => i.kind === "spec") as { id: string; title: string; spec: { version: number } } | undefined;
+  check("writing the spec asks the owner to approve it, once for the board", !!specItem && /Approve the spec for Backlog \(v1\)/.test(specItem.title));
+  check("before approval, still no", throws(() => planner.assign(a.id, "developer", "lea"), /approve the board's spec/));
+  items.resolve(specItem!.id, "done");
+  check("approved: the lead is told", told.some((m) => m.to === "lea" && /approved the spec for B1 \(v1\)/.test(m.text)));
+  check("…but a task can't reach Build until every spec item has a task", throws(() => planner.assign(a.id, "developer", "lea"), /No task covers S1, S2/));
+  planner.updateTask(a.id, { specItems: ["S1", "S2"] }, "lea");
+  sync();
+  planner.assign(a.id, "developer", "lea");
+  check("covered and approved: assigning moves it through Plan into Build", a.stageId === "build" && a.ownerId === "d1" && ready.includes("d1"), `${a.stageId} ${a.ownerId}`);
+  check("the reviewer can't take a task in Build", throws(() => planner.assign(a.id, "nyx", "lea"), /Build stage, where only developer seats work/));
+
+  planner.writeSpec("B1", "S1. Card checkout.\nS2. Receipt email.\nS3. Refunds?", "lea");
+  planner.writeSpec("B1", "S1. Card checkout.\nS2. Receipt email.\nS3. Refunds.", "lea");
+  const specs = snap.actionItems.filter((i: { kind?: string }) => i.kind === "spec") as { status: string; note: string | null }[];
+  check("a new spec version needs its own approval, and replaces a request still open", specs.length === 3 && specs.filter((i) => i.status === "open").length === 1 && specs.some((i) => i.status === "dismissed" && /Replaced by v3/.test(i.note ?? "")), JSON.stringify(specs.map((i) => [i.status, i.note])));
+  const b = planner.createTask({ title: "Refunds", doneWhen: "x", specItems: ["S3"] } as never, "lea");
+  sync();
+  check("…so new tasks wait for it", throws(() => planner.assign(b.id, "developer", "lea"), /approve the board's spec/));
+  check("an old version can't be approved any more", planner.approveBoardSpec("B1", 2, "you") === false);
+
+  // The second opinion, from another maker's model.
+  check("a seat's maker comes from its model first", vendorOf("agy", "gemini-4-argon-high") === "google" && vendorOf("agy", "claude-sonnet-5-5-high") === "anthropic" && vendorOf("opencode", "openai/gpt-5.4") === "openai" && vendorOf("codex", "") === "openai");
+  st.get("d1")!.currentTaskId = a.id;
+  const n = told.length;
+  planner.setStatus("d1", "in-review", "PR open", 5);
+  check("an ordinary task in review gets no second-opinion request", !told.slice(n).some((m) => m.to === "gem"));
+  const c = planner.createTask({ title: "Login rate limit", doneWhen: "x", files: ["server/auth.ts"], specItems: ["S3"] } as never, "lea");
+  c.stageId = "build";
+  c.ownerId = "d1";
+  c.status = "in-progress";
+  sync();
+  st.get("d1")!.currentTaskId = c.id;
+  ready.length = 0;
+  planner.setStatus("d1", "in-review", "PR open", 6);
+  const ask = told.filter((m) => m.to === "gem");
+  check("a high-stakes task in review: HQ asks the Gemini seat and starts it", ask.length === 1 && new RegExp(`second opinion on ${c.id} \\(PR #6\\)`).test(ask[0].text) && ready.includes("gem"), JSON.stringify(ask));
+  planner.updateTask(c.id, { status: "in-review" }, "lea");
+  check("…once per task", told.filter((m) => m.to === "gem").length === 1);
+
+  const yaml = securityReviewWorkflow();
+  const { vettedPacks } = await import("../server/skillPacks");
+  check("the offered security-review workflow is pinned to the vetted commit", yaml.includes(`anthropics/claude-code-security-review@${vettedPacks()["anthropics/claude-code-security-review"].commit}`) && /actions\/checkout@[0-9a-f]{40}/.test(yaml) && /CLAUDE_API_KEY/.test(yaml));
 }
 
 if (fails) {

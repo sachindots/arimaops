@@ -18,7 +18,7 @@ export interface GateContext {
   /** This task's gate events, oldest first. */
   events: GateEvent[];
   /** The spec items of the task's board (null: the board has no spec), and the items its tasks cover. */
-  spec?: { items: string[]; covered: string[] } | null;
+  spec?: { items: string[]; covered: string[]; approved?: boolean } | null;
   /** Who makes an agent's model ("anthropic", "openai", "google"...), for the second opinion. */
   vendorOf?: (agentId: string) => string | null;
   /** When the findings report was last written, and when this task's findings last changed (ms; null: never). */
@@ -84,7 +84,9 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
     case "owner-approval":
       return approved(gate, last) ? null : `Waiting for the owner's approval (${gate.reason}).`;
     case "spec-approved":
-      return approved(gate, last) ? null : "Waiting for the owner to approve the spec.";
+      // The board's spec approved as a whole (its current version), or this task's gate passed on its own.
+      if (ctx.spec?.approved && last?.state !== "reset") return null;
+      return approved(gate, last) ? null : ctx.spec ? "Waiting for the owner to approve the board's spec (Action items)." : "The board has no spec yet: the lead writes it with write_spec, then the owner approves it.";
     case "tests-ci": {
       const pr = ctx.prs.find((p) => p.number === task.prNumber && p.taskId === task.id);
       if (!pr) return "Open the task's PR first (set_my_status in-review with its number).";

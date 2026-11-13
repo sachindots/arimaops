@@ -70,6 +70,11 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "spec" && item.spec) {
+      if (decision === "done") this.planner.approveBoardSpec(item.spec.boardId, item.spec.version, "you", item.note ?? undefined);
+      else this.planner.specSentBack(item.spec.boardId, item.spec.version, item.note ?? undefined);
+      return;
+    }
     if (item.kind === "skills" && item.pack) {
       this.onPackDecided(item.pack, decision === "done");
       return;
@@ -91,6 +96,34 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  /** A board spec the lead wrote, for the owner to approve once for the whole board. A newer version replaces an open one. */
+  addSpec(boardId: string, boardTitle: string, version: number, text: string, fromId: string): ActionItem {
+    for (const old of this.items.filter((i) => i.kind === "spec" && i.status === "open" && i.spec?.boardId === boardId)) {
+      old.status = "dismissed";
+      old.note = `Replaced by v${version}`;
+      old.closedAt = new Date().toISOString();
+      this.hub.emit({ type: "action.updated", item: { ...old } });
+    }
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      fromId,
+      taskId: null,
+      title: `Approve the spec for ${boardTitle} (v${version})?`,
+      details: `${text.slice(0, 3800)}\n\nApprove: every task on this board passes its spec gate until the spec changes. Send back: the lead rewrites it (add a note).`,
+      waiting: true,
+      kind: "spec",
+      spec: { boardId, version },
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
   }
 
   /** The owner approved or rejected a skill pack's scan (set by the project: server/skillPacks.ts). */

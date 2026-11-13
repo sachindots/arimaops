@@ -10,9 +10,9 @@ import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
 import { taskUsage } from "./usageEvents";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
-import { assertTaskMove, gateContext, gateEvents, loadSpec, recordGate, saveSpec, type Spec } from "./planStore";
+import { approveSpec, vendorOf, assertTaskMove, gateContext, gateEvents, loadSpec, recordGate, saveSpec, type Spec } from "./planStore";
 import { ownerAway } from "./presence";
-import { PERSON_GATES, stagesLeft, unmetGates, type UnmetGate } from "./gates";
+import { isHighStakes, PERSON_GATES, stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
@@ -197,7 +197,62 @@ export class Planner {
           if (gateEvents(hqDb(), projectId, t.id).some((e) => e.gateId === g.id))
             recordGate(hqDb(), template, t, { projectId, gateId: g.id, state: "reset", by: { kind: "hq", id: "hq" }, proof: { note: `Spec v${spec.version} replaces the approved one` } });
     this.hub.activity("config", byId === HUMAN_ID ? null : byId, `${this.hub.name(byId)} wrote the spec for ${board.title} (v${spec.version}, ${spec.items.length} items)`);
+    if (template.flow.stages.some((st) => st.gates.some((g) => g.kind === "spec-approved"))) this.actions?.addSpec(board.id, board.title, spec.version, spec.text, byId);
     return spec;
+  }
+
+  /**
+   * The owner approves a board's spec (this version): every task on the board passes its spec gate until the spec
+   * changes. Refused when a newer version was written meanwhile.
+   */
+  approveBoardSpec(boardId: string, version: number, byId: string, note?: string) {
+    this.writable();
+    const projectId = this.snap.config.project.id;
+    const current = loadSpec(hqDb(), projectId, boardId);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!current || current.version !== version || !approveSpec(hqDb(), projectId, boardId, version, byId)) {
+      this.hub.activity("config", null, `Spec v${version} for ${boardId} wasn't approved: it was replaced by v${current?.version ?? "?"}. Check the newer one.`);
+      return false;
+    }
+    this.hub.activity("config", null, `You approved the spec for ${boardId} (v${version})`);
+    if (lead) this.notify(lead.id, `The owner approved the spec for ${boardId} (v${version}).${note ? ` Their note: ${note}` : ""} Its tasks can leave the Spec stage; plan them so every item has a task (the analyze gate).`);
+    return true;
+  }
+
+  private secondAsked = new Set<string>(); // task ids: asked once per task
+
+  /**
+   * A task went into review and its flow wants a second opinion on it (always, or because it is high-stakes): ask a
+   * seat whose model comes from another maker than the owner's, the second-opinion role first. On demand, it starts.
+   */
+  askSecondOpinion(task: Task) {
+    const flow = this.snap.config.template?.flow;
+    const gate = flow?.stages.flatMap((st) => st.gates).find((g): g is Extract<typeof g, { kind: "second-opinion" }> => g.kind === "second-opinion");
+    if (!gate || (gate.when === "high-stakes" && !isHighStakes(task)) || this.secondAsked.has(task.id)) return;
+    const owner = task.ownerId ? this.hub.cfg(task.ownerId) : null;
+    const mine = owner ? vendorOf(owner.cli, owner.model) : null;
+    const seats = this.snap.config.team.filter((a) => !a.isLead && a.id !== task.ownerId && vendorOf(a.cli, a.model) !== mine);
+    const seat = seats.find((a) => a.roleId === "second-opinion") ?? seats[0];
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!seat) {
+      if (lead) this.notify(lead.id, `${task.id} needs a second opinion from a model by another maker than ${owner?.name ?? "its owner"}'s, and no seat runs one. Add a seat on another CLI (a Gemini seat), or ask the owner to waive the gate.`);
+      return;
+    }
+    this.secondAsked.add(task.id);
+    const pr = task.prNumber ? ` (PR #${task.prNumber})` : "";
+    const msg = this.record("hq", seat.id, `Second opinion on ${task.id}${pr}`);
+    this.inbox.push(seat.id, {
+      fromId: "hq", kind: "notice", msgId: msg.id,
+      text: `Give a second opinion on ${task.id}${pr}: ${task.title}. It ${task.highStakes ? "is marked high-stakes" : "touches sensitive files"}${owner ? `; ${owner.name} wrote it` : ""}. Read the diff and the task (get_project_status or list_tasks), check what its author's model would miss, then record_gate ${task.id} second passed or failed, with what you found.`,
+    });
+    this.onReady(seat.id);
+    this.hub.activity("review.started", seat.id, `HQ asked ${seat.name} for a second opinion on ${task.id}`);
+  }
+
+  /** The owner sent a spec back. */
+  specSentBack(boardId: string, version: number, note?: string) {
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, `The owner sent back the spec for ${boardId} (v${version}).${note ? ` Their note: ${note}` : " Ask them what to change."} Rewrite it with write_spec.`);
   }
 
   /** The spec text a task's brief shows: the items it covers, else the whole spec (the brief trims it to fit). */
@@ -285,6 +340,7 @@ export class Planner {
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
     if (task.status === "in-review" && task.prNumber && (changes.status === "in-review" || changes.prNumber)) this.startUnblocked(task); // tasks that can stack on its PR
+    if (changes.status === "in-review") this.askSecondOpinion(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     return task;
@@ -298,9 +354,25 @@ export class Planner {
     const agentId = this.agentId(agentRef) ?? this.seatOf(agentRef, task);
     if (!agentId) throw new Error(`No agent or role "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}. Roles: ${template.roles.map((r) => r.id).join(", ")}`);
     const agent = this.hub.cfg(agentId)!;
-    const stage = template.flow.stages.find((s) => s.id === task.stageId);
-    if (stage && agent.roleId && !stage.roleIds.includes(agent.roleId))
-      throw new Error(`${task.id} is in the ${stage.name} stage, where only ${stage.roleIds.join(" or ")} seats work. ${agent.name} is a ${agent.roleId}. Assign one of those, or first move the task to a stage ${agent.name}'s role works in.`);
+    const stages = template.flow.stages;
+    const at = stages.findIndex((s) => s.id === task.stageId);
+    const stage = stages[at];
+    if (stage && agent.roleId && !stage.roleIds.includes(agent.roleId)) {
+      // Out of the lead's own stages (Spec, Plan) a task moves on to the first stage this role works in, if the gates
+      // it leaves are met. A task in a worker's stage never jumps ahead just because someone else is assigned.
+      const leadRoles = new Set(template.roles.filter((r) => r.isLead).map((r) => r.id));
+      const leadOnly = (st: (typeof stages)[number]) => st.roleIds.every((r) => leadRoles.has(r));
+      const ahead = stages.slice(at + 1);
+      const to = ahead.findIndex((s) => s.roleIds.includes(agent.roleId!));
+      const next = leadOnly(stage) && to >= 0 && ahead.slice(0, to).every(leadOnly) ? ahead[to] : undefined;
+      if (!next) throw new Error(`${task.id} is in the ${stage.name} stage, where only ${stage.roleIds.join(" or ")} seats work. ${agent.name} is a ${agent.roleId}. Assign one of those, or first move the task to a stage ${agent.name}'s role works in.`);
+      try {
+        this.assertMove(task, next.id, byId);
+      } catch (e) {
+        throw new Error(`${task.id} has to reach the ${next.name} stage before ${agent.name} can take it: ${(e as Error).message}`);
+      }
+      task.stageId = next.id;
+    }
     if (task.cli && agent.cli !== task.cli) {
       const fits = this.snap.config.team.filter((a) => a.cli === task.cli && !a.isLead).map((a) => a.name);
       throw new Error(`${task.id} runs on ${CLI_LABEL[task.cli]}, but ${agent.name} runs ${CLI_LABEL[agent.cli]}. ${fits.length ? `Agents on ${CLI_LABEL[task.cli]}: ${fits.join(", ")}.` : `No agent runs ${CLI_LABEL[task.cli]}; add one or clear the task's "runs on".`}`);
@@ -377,6 +449,7 @@ export class Planner {
       this.startUnblocked(task);
     }
     if (status === "in-review" && task.prNumber) this.startUnblocked(task); // tasks that can stack on its PR
+    if (status === "in-review") this.askSecondOpinion(task);
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);

@@ -96,14 +96,14 @@ check("then deliveries signed with that secret are accepted", handleWebhook(head
 // Stacked PRs: a task waiting on one open PR starts on its branch, and is told to rebase once it merges.
 {
   const { Planner } = await import("../server/planner");
-  const { DEV_TEMPLATE } = await import("../src/data/templates");
+  const { DEV_TEMPLATE_V1 } = await import("../src/data/templates");
   const team = [
     { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "" },
     { id: "d1", name: "D1", roleId: "developer", isLead: false, cli: "claude", model: "" },
     { id: "d2", name: "D2", roleId: "developer", isLead: false, cli: "claude", model: "" },
   ];
   const st2 = new Map(team.map((a) => [a.id, { agentId: a.id, currentTaskId: null, session: { state: "running" } } as Record<string, unknown>]));
-  const snap = { config: { team, template: DEV_TEMPLATE, workflow: { mode: "github-pr", review: { enabled: false } }, project: { id: "stack" } }, boards: [{ id: "B1", title: "B", status: "active", order: 0 }], tasks: [] as never[], messages: [], agents: [...st2.values()], pullRequests: [] as Record<string, unknown>[] };
+  const snap = { config: { team, template: DEV_TEMPLATE_V1, workflow: { mode: "github-pr", review: { enabled: false } }, project: { id: "stack" } }, boards: [{ id: "B1", title: "B", status: "active", order: 0 }], tasks: [] as never[], messages: [], agents: [...st2.values()], pullRequests: [] as Record<string, unknown>[] };
   const hub = { slug: "stack", repo: { root: "/nonexistent" }, snap, emit: () => {}, planChanged: () => {}, configChanged: () => {}, activity: () => {}, cfg: (id: string) => team.find((a) => a.id === id), name: (id: string) => team.find((a) => a.id === id)?.name ?? id, status: (id: string) => st2.get(id), setStatus: (id: string, p: object) => Object.assign(st2.get(id)!, p) };
   const pushed: { to: string; text: string }[] = [];
   const planner = new Planner(hub as never, { push: (to: string, i: { text: string }) => pushed.push({ to, text: i.text }), save: () => {} } as never);

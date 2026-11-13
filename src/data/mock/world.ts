@@ -157,6 +157,20 @@ export class World {
         }))
         .concat([
           {
+            id: "ai-demo-spec",
+            fromId: preset.config.team.find((a) => a.isLead)?.id ?? "hq",
+            taskId: null,
+            title: "Approve the spec for Backlog (v2)?",
+            details: "# Checkout\nS1. Card payments through Stripe Checkout.\nS2. An order email after payment.\nS3. Refunds from the admin page.\n\nApprove: every task on this board passes its spec gate until the spec changes. Send back: the lead rewrites it (add a note).",
+            waiting: true,
+            kind: "spec" as const,
+            spec: { boardId: "B1", version: 2 },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
             id: "ai-demo-skills",
             fromId: "hq",
             taskId: null,

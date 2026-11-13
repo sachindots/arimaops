@@ -212,6 +212,11 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE tasks ADD COLUMN spec_items TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE tasks ADD COLUMN high_stakes INTEGER NOT NULL DEFAULT 0;
   `,
+  // Phase 4 step 3: the owner approves a board's spec once, for every task on it, until a new version.
+  `
+  ALTER TABLE specs ADD COLUMN approved_version INTEGER;
+  ALTER TABLE specs ADD COLUMN approved_by TEXT;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

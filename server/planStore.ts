@@ -145,6 +145,15 @@ export interface ContextMore {
 /** Who makes each CLI's models: a second opinion must come from another one. */
 const VENDOR: Record<AgentCli, string> = { claude: "anthropic", codex: "openai", agy: "google", gemini: "google", copilot: "github", opencode: "opencode" };
 
+/** Who makes the model a seat runs: the model's name when it says (agy and OpenCode run several makers' models), else the CLI's maker. */
+export function vendorOf(cli: AgentCli, model: string | null | undefined): string {
+  const m = (model ?? "").toLowerCase();
+  if (/claude|opus|sonnet|haiku/.test(m)) return "anthropic";
+  if (/gpt|^o\d|codex/.test(m)) return "openai";
+  if (/gemini/.test(m)) return "google";
+  return VENDOR[cli];
+}
+
 export function gateContext(cfg: HqConfig, task: Task, byId: string, prs: PullRequest[], more: ContextMore = {}): GateContext {
   const db = hqDb();
   const spec = task.boardId ? loadSpec(db, cfg.project.id, task.boardId) : null;
@@ -163,10 +172,10 @@ export function gateContext(cfg: HqConfig, task: Task, byId: string, prs: PullRe
     prs,
     scopeSet: !!cfg.project.scope?.inScope.length,
     events: gateEvents(db, cfg.project.id, task.id),
-    spec: spec ? { items: spec.items, covered } : null,
+    spec: spec ? { items: spec.items, covered, approved: !!spec.approvedBy } : null,
     vendorOf: (id) => {
-      const cli = cfg.team.find((a) => a.id === id)?.cli;
-      return cli ? VENDOR[cli] : null;
+      const a = cfg.team.find((x) => x.id === id);
+      return a ? vendorOf(a.cli, a.model) : null;
     },
     reportAt,
     findingsAt,
@@ -183,13 +192,24 @@ export interface Spec {
   items: string[];
   by: string;
   at: string;
+  /** Who approved this version (a person, or the lead while the owner was away); null until then. */
+  approvedBy: string | null;
 }
 
 export const specItemsOf = (text: string) => [...new Set([...text.matchAll(/^\s*(?:[-*]\s*)?(S\d+)[.:)]/gm)].map((m) => m[1].toUpperCase()))];
 
 export function loadSpec(db: DatabaseSync, projectId: string, boardId: string): Spec | null {
-  const r = db.prepare("SELECT version, text, by, at FROM specs WHERE project_id = ? AND board_id = ?").get(projectId, boardId) as { version: number; text: string; by: string; at: number } | undefined;
-  return r ? { boardId, version: r.version, text: r.text, items: specItemsOf(r.text), by: r.by, at: new Date(r.at).toISOString() } : null;
+  const r = db.prepare("SELECT version, text, by, at, approved_version, approved_by FROM specs WHERE project_id = ? AND board_id = ?").get(projectId, boardId) as
+    | { version: number; text: string; by: string; at: number; approved_version: number | null; approved_by: string | null }
+    | undefined;
+  return r
+    ? { boardId, version: r.version, text: r.text, items: specItemsOf(r.text), by: r.by, at: new Date(r.at).toISOString(), approvedBy: r.approved_version === r.version ? r.approved_by : null }
+    : null;
+}
+
+/** Approves this exact version of a board's spec; a later version needs its own approval. */
+export function approveSpec(db: DatabaseSync, projectId: string, boardId: string, version: number, by: string): boolean {
+  return Number(db.prepare("UPDATE specs SET approved_version = ?, approved_by = ? WHERE project_id = ? AND board_id = ? AND version = ?").run(version, by, projectId, boardId, version).changes) > 0;
 }
 
 /** Saves a new version of a board's spec. */

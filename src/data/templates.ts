@@ -60,7 +60,8 @@ const lead = (over: Partial<Role> = {}): Role => ({
   ...over,
 });
 
-export const DEV_TEMPLATE: TeamTemplate = {
+/** Dev v1 (build → review): what Phase 1–3 projects were made from. Kept for them and for tests; no longer offered. */
+export const DEV_TEMPLATE_V1: TeamTemplate = {
   id: "dev",
   version: 1,
   name: "Dev team",
@@ -98,6 +99,87 @@ export const DEV_TEMPLATE: TeamTemplate = {
     stages: [
       { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
       { id: "review", name: "Review", roleIds: ["reviewer", "lead"], gates: [{ id: "merged", kind: "pr-merged" }] },
+    ],
+  },
+  starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },
+  rules: { findings: false, plans: false, scopeRequired: false, labMode: false, outbound: "none", egress: [] },
+  memoryTypes: [],
+};
+
+const SECOND_OPINION_MD = `You give second opinions. You are deliberately a different model from the one that wrote the change, so you catch what it can't see in its own work.
+
+## How you work
+- HQ or the lead sends you a task in review with its PR. Read the diff, the task and its spec items, then run what you can.
+- Look first for what the author's model tends to miss: wrong assumptions about inputs, missing auth or validation checks, error paths, races, and anything the tests don't exercise.
+- Record your verdict with record_gate on the task's second-opinion gate: "passed" with what you checked, or "failed" with each problem, a concrete case that breaks it and the smallest fix.
+- Don't rewrite the change yourself. Don't repeat the reviewer's points; add what they didn't cover.
+
+## How you talk
+Short and specific: file, line, the input that breaks it, the fix.`;
+
+const SPEC_LEAD_MD = `${LEAD_MD}
+
+## The flow you run
+- **Spec:** before any code, write the board's spec with write_spec, one numbered requirement per line (S1., S2.…). The owner approves it once for the whole board in Action items.
+- **Plan:** cut the spec into small tasks, each naming the spec items it covers (specItems). The analyze gate lets tasks into Build only when every item has a task.
+- **Build:** assign tasks to the developer role; HQ picks the seat and starts it. A task leaves Build when its PR changes a test and CI is green.
+- **Review:** the reviewer and you review the PR. High-stakes tasks (auth, money, secrets, migrations, CI; or ones you mark highStakes) also get a second opinion from the Gemini seat; HQ asks it when such a task goes into review.
+- **Merge:** you merge in the order you set, or the owner does if they keep that.`;
+
+/**
+ * Dev v2 (docs/templates.md section 3): spec → plan → build → review → merge. The library copy; projects made from
+ * v1 keep theirs until re-synced on purpose.
+ */
+export const DEV_TEMPLATE: TeamTemplate = {
+  id: "dev",
+  version: 2,
+  name: "Dev team",
+  description: "Spec-driven: the lead writes the spec and you approve it, tasks cover every spec item, each task is one branch and one PR with tests and green CI, reviewed (plus a second opinion from another model on high-stakes work), then merged.",
+  roles: [
+    lead({ roleMd: SPEC_LEAD_MD }),
+    {
+      ...DEV_TEMPLATE_V1.roles[1],
+      skills: [...DEV_TEMPLATE_V1.roles[1].skills, "trailofbits/skills@property-based-testing"],
+    },
+    {
+      ...DEV_TEMPLATE_V1.roles[2],
+      skills: [
+        ...DEV_TEMPLATE_V1.roles[2].skills,
+        "cloudflare/security-audit-skill@security-audit",
+        "trailofbits/skills@differential-review",
+        "trailofbits/skills@sharp-edges",
+        "trailofbits/skills@supply-chain-risk-auditor",
+      ],
+    },
+    {
+      id: "second-opinion",
+      title: "Second opinion",
+      isLead: false,
+      roleMd: SECOND_OPINION_MD,
+      cli: "agy",
+      model: "gemini-4-argon-high",
+      fallback: null,
+      skills: ["pstack-thermo-review", "trailofbits/skills@differential-review"],
+      onDemand: true,
+      seats: 1,
+      color: "#448aff",
+    },
+  ],
+  flow: {
+    stages: [
+      { id: "spec", name: "Spec", roleIds: ["lead"], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
+      { id: "plan", name: "Plan", roleIds: ["lead"], gates: [{ id: "covered", kind: "analyze" }] },
+      { id: "build", name: "Build", roleIds: ["developer"], gates: [{ id: "tests", kind: "tests-ci" }] },
+      {
+        id: "review",
+        name: "Review",
+        roleIds: ["reviewer", "lead", "second-opinion"],
+        gates: [
+          { id: "reviewed", kind: "reviewer" },
+          { id: "second", kind: "second-opinion", when: "high-stakes" },
+        ],
+      },
+      { id: "merge", name: "Merge", roleIds: ["lead"], gates: [{ id: "merged", kind: "pr-merged" }] },
     ],
   },
   starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },

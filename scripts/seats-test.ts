@@ -49,8 +49,8 @@ const repo = repoOf("askwell");
   check("a new project starts with no team and no template", hub.snap.welcome && hub.snap.config.team.length === 0 && hub.snap.config.template === null);
   await commands.completeWelcome({ projectName: "Askwell", templateId: "dev", reviewTool: "human", reviewEnabled: true });
   const team = hub.snap.config.team;
-  check("welcome makes the template's seats", team.map((a) => a.roleId).join() === "lead,developer,developer,reviewer", team.map((a) => a.roleId).join());
-  check("seats run their role's CLI and model", team[1].cli === "claude" && team[1].model === "claude-sonnet-5-5" && team[3].cli === "codex");
+  check("welcome makes the template's seats", team.map((a) => a.roleId).join() === "lead,developer,developer,reviewer,second-opinion", team.map((a) => a.roleId).join());
+  check("seats run their role's CLI and model", team[1].cli === "claude" && team[1].model === "claude-sonnet-5-5" && team[3].cli === "codex" && team[4].cli === "agy" && team[4].model === "gemini-4-argon-high");
   check("every seat has its own colour", new Set(team.map((a) => a.color)).size === team.length);
   check("the dev flow works in pull requests", hub.snap.config.workflow.mode === "github-pr");
 
@@ -77,7 +77,7 @@ const repo = repoOf("askwell");
 {
   const { hub } = project(repo);
   const team = hub.snap.config.team;
-  check("a reload resolves seats from the template copy", team.length === 5 && team[2].model === "claude-opus-5-5" && team[1].name === "Mira");
+  check("a reload resolves seats from the template copy", team.length === 6 && team[2].model === "claude-opus-5-5" && team[1].name === "Mira");
   check("a reload is not read-only", hub.snap.config.template?.id === "dev");
 }
 
