@@ -169,6 +169,36 @@ As built (`server/lessons.ts`, `server/lessonPromotion.ts`):
 - **Other templates:** 3–5 practice projects each (a small app for Dev, a question with a known answer set for Research, a product brief for Marketing and Sales).
 - Every run uses real models and costs money: the harness never starts one without the owner's go-ahead per run.
 
+As built (`scripts/bench/`, `pnpm bench`):
+- **Commands:**
+  - `pnpm bench` lists the benchmarks.
+  - `pnpm bench <id>` prints the plan and starts nothing.
+  - `--dry` sets up and tears down without an agent (free).
+  - `--run` is a real run. It refuses unless you're at a terminal and type the benchmark's id, so a script or an agent can't start it.
+- **A run:**
+  - **Isolation:** its own HQ, with a throwaway HOME under `~/.arima-bench/runs/`, so `~/.arima` is never touched. Your CLI sign-in folders (`.claude`, `.claude.json`, `.codex`, `.gemini`) are linked into it so agents can sign in, and the plan lists them before you confirm.
+  - **Setup:** a fresh repo, and the template's team created through HQ's own WebSocket commands.
+  - **Security targets:** the pinned image on its own `--internal` Docker network (checked: the host reaches it, it can't reach the internet), with a memory and process limit. The project is in lab mode, the target is the only scope entry, and the team runs in container mode, so HQ's proxy keeps agents to it.
+  - **Ending:** the run stops when every task is done, at the time limit, or at the spend limit (API-key accounts). Then the agents stop, HQ stops, and the target and network are removed, even on error.
+- **Results:**
+  - **What's recorded:** findings, usage (tokens and API-key dollars), failed gates and replans, read from the run's database. Deliverables come from the repo, and blocked send attempts from HQ's activity (the proxy now logs each drafts-only refusal once).
+  - **Scoring:** security findings match the known list by CWE or title, each known item once, and false positives never count. Research matches arXiv ids in the deliverables. Marketing runs five checks: brief, three drafts, "DRAFT: not sent", no invented numbers, nothing sent.
+  - **Storage:** JSON in `~/.arima-bench/results/<id>/`, compared with the last run.
+- **Benchmarks so far:**
+  - `juice-shop`: pinned to the image already on this machine, 12 known classes.
+  - `dvwa`: listed, but refused until its digest is pinned.
+  - `research-rag-origins`: 5 known papers.
+  - `marketing-launch`: the five checks.
+  - `selftest`: an nginx target, dry only.
+- **Not there yet:**
+  - crAPI (it's a multi-container compose).
+  - Code-audit repos at a vulnerable commit.
+  - Dev benchmarks (Dev v2 merges PRs, so it needs a GitHub repo).
+  - Sales.
+  - More practice projects per template.
+- **Checked:** 21 checks in `scripts/bench-test.ts`, including a real dry run (target up, HQ up, team, lab mode and scope taken, teardown with nothing left behind).
+- **Not checked:** a paid run (each needs your go-ahead).
+
 ## 10. Owner's decisions (2026-11-13)
 
 1. **Other `owner/repo` skills are pinned at first add, scanned, and kept only after the owner approves the scan.** `npx skills add` goes.

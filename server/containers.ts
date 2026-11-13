@@ -216,7 +216,14 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     if (!who) return { ok: false, why: "unknown container" };
     const agent = who.rt.hub.cfg(who.agent.id) ?? who.agent; // live config: allow/deny change at runtime
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
-    if (who.rt.hub.snap.config.rules?.outbound === "drafts-only" && isOutboundHost(host)) return { ok: false, why: "drafts only: agents write, the owner sends" };
+    if (who.rt.hub.snap.config.rules?.outbound === "drafts-only" && isOutboundHost(host)) {
+      const key = `${who.rt.slug}/${agent.id}/send/${host}`;
+      if (!asked.has(key)) {
+        asked.add(key);
+        who.rt.hub.activity("config", agent.id, `${who.rt.hub.name(agent.id)} tried to reach ${host}: blocked, this project is drafts only.`);
+      }
+      return { ok: false, why: "drafts only: agents write, the owner sends" };
+    }
     // Security engagement: in scope is allowed on any port; explicitly out of scope is never allowed.
     const project = who.rt.hub.snap.config.project;
     if (who.rt.hub.snap.config.rules.findings && project.scope) {

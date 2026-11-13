@@ -59,6 +59,7 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
     "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
     "test": "node scripts/run-tests.mjs",
+    "bench": "node --import tsx scripts/bench/run.ts",
     "preview": "vite preview",
     "prepack": "npm run build",
     "postinstall": "node scripts/fix-node-pty.mjs"
