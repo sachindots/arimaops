@@ -22,6 +22,6 @@ export function officeLabel(p: { officeName?: string; name: string }): string {
 
 export function officeSign(name?: string): string {
   const clean = (name ?? "").trim();
-  if (!clean || /^(jsm\s*hq|\.hq)$/i.test(clean)) return DEFAULT_OFFICE_NAME; // old default names
+  if (!clean || /^\.hq$/i.test(clean)) return DEFAULT_OFFICE_NAME; // old default names
   return clean.slice(0, OFFICE_NAME_MAX);
 }

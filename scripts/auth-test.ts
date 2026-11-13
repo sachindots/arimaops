@@ -215,12 +215,12 @@ for (const c of [beta, stale]) c.ws.close();
 
 // ---------------------------------------------------------------- legacy migration
 const repo = join(process.env.HOME, "repo");
-mkdirSync(join(repo, ".jsmhq"), { recursive: true });
-writeFileSync(join(repo, ".jsmhq", "config.json"), "{}");
-mkdirSync(join(process.env.HOME, ".jsmhq", "legacyproj", "dwight"), { recursive: true });
+mkdirSync(join(repo, ".hq"), { recursive: true });
+writeFileSync(join(repo, ".hq", "config.json"), "{}");
+mkdirSync(join(process.env.HOME, ".hq", "legacyproj", "dwight"), { recursive: true });
 await migrateLegacy(repo, "legacyproj");
-check("repo .jsmhq (untracked) moves to .arima", existsSync(join(repo, ".arima", "config.json")) && !existsSync(join(repo, ".jsmhq")));
-check("~/.jsmhq/<project> moves to ~/.arima/<project>", existsSync(join(process.env.HOME, ".arima", "legacyproj", "dwight")) && !existsSync(join(process.env.HOME, ".jsmhq", "legacyproj")));
+check("repo .hq (untracked) moves to .arima", existsSync(join(repo, ".arima", "config.json")) && !existsSync(join(repo, ".hq")));
+check("~/.hq/<project> moves to ~/.arima/<project>", existsSync(join(process.env.HOME, ".arima", "legacyproj", "dwight")) && !existsSync(join(process.env.HOME, ".hq", "legacyproj")));
 
 // The GitHub webhook path: public, so nothing but GitHub's signature gets through.
 {

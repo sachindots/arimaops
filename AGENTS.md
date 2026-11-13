@@ -4,7 +4,7 @@ ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node serve
 
 ## Rules from the owner (Sachin)
 
-- The name is **ArimaOps** everywhere visible. Never "dothq", ".hq" or "JSM HQ" as a name (old names live only in migration lists in `src/data/brand.ts`).
+- The name is **ArimaOps** everywhere visible. Never an older name such as "dothq" or ".hq" (old names live only in migration lists in `src/data/brand.ts`). Don't name or credit other products in the code, docs or UI; the MIT notices in `LICENSES/MIT.txt` stay as they are.
 - **No AI attribution** in commits or PRs: no `Co-Authored-By` AI lines, no "Generated with" footers.
 - Ask before big product decisions. Don't stop or delete the owner's running agents or projects.
 - Never type secrets, TOTP codes or passwords on the owner's behalf; never answer an agent CLI's folder-trust prompt without the owner's OK.

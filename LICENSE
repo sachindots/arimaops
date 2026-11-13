@@ -5,11 +5,8 @@ ArimaOps is licensed in parts.
    your option) any later version. Full text: LICENSES/AGPL-3.0-or-later.txt
    Copyright (c) 2026 Sachin Dot (ArimaOps)
 
-2. Every other file outside ee/ is licensed under the MIT License, as
-   ArimaOps was first published, building on JSM HQ by JavaScript Mastery.
-   Full text and notices: LICENSES/MIT.txt
-   Copyright (c) 2026 JavaScript Mastery
-   Copyright (c) 2026 Sachin Dot (ArimaOps)
+2. Every other file outside ee/ is licensed under the MIT License.
+   Full text and its copyright notices: LICENSES/MIT.txt
 
 3. Everything in ee/ is commercial software under ee/LICENSE. It runs only
    with a valid ArimaOps licence file. The rest of ArimaOps never needs it.

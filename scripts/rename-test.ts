@@ -63,14 +63,14 @@ writeFileSync(join(HOME, ".claude", "projects", oldKey, "s.jsonl"), JSON.stringi
 const t = new UsageMeter(HOME).read("claude", newDir);
 check("Claude token logs filed under the old ~/.hq path still count", !!t && t.input + t.output > 0, JSON.stringify(t));
 
-// The office wall never says an old name: ".HQ" and "JSM HQ" (saved by older welcomes) read as the brand sign.
+// The office wall never says an old name: ".HQ" (saved by older welcomes) reads as the brand sign.
 {
   const { officeSign, DEFAULT_OFFICE_NAME } = await import("../src/data/names");
   {
   const { officeLabel } = await import("../src/data/names");
   check("lists call an office by its own sign, else the project's name", officeLabel({ officeName: ".HQ", name: "Shop" }) === "Shop" && officeLabel({ officeName: "ARIMAOPS", name: "Shop" }) === "Shop" && officeLabel({ name: "Shop" }) === "Shop" && officeLabel({ officeName: "Red Cell", name: "Shop" }) === "Red Cell");
 }
-check("old default office names show the brand sign", [".HQ", ".hq", "JSM HQ", "", undefined].every((n) => officeSign(n) === DEFAULT_OFFICE_NAME) && officeSign("Acme Lab") === "Acme Lab" && officeSign("HQ") === "HQ");
+check("old default office names show the brand sign", [".HQ", ".hq", "", undefined].every((n) => officeSign(n) === DEFAULT_OFFICE_NAME) && officeSign("Acme Lab") === "Acme Lab" && officeSign("HQ") === "HQ");
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

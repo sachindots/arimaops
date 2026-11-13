@@ -88,9 +88,9 @@ export interface Runtime {
 
 /**
  * Moves a project's older folders to the ArimaOps names, once:
- * - <repo>/.hq or .jsmhq → <repo>/.arima, but only when git doesn't track it (a committed folder keeps
+ * - <repo>/.hq → <repo>/.arima, but only when git doesn't track it (a committed folder keeps
  *   working where it is; moving it would leave changes in your repo). `git mv .hq .arima` when convenient.
- * - ~/.jsmhq/<slug> → ~/.arima/<slug> (the whole ~/.arima is moved at start-up, see migrateHome).
+ * - ~/.hq/<slug> → ~/.arima/<slug> (the whole ~/.arima is moved at start-up, see migrateHome).
  * Skipped while that project's agents run in tmux (their folders are in use); the fallbacks in paths/store still find it.
  */
 export async function migrateLegacy(root: string, slug: string): Promise<void> {

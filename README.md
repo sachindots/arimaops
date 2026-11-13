@@ -113,7 +113,7 @@ Open **More → Settings → Users → Change your password**. Enter your curren
 | `.arima/` in your repo | Team, workflow, boards and tasks |
 | `~/.arima/` | Agents' folders, the projects list, people, devices, the audit log, and the encrypted key vault |
 
-Folders from older versions (`.hq`, `.jsmhq`, `~/.hq`) are moved on first start. A `.hq` folder your repo commits stays where it is and keeps working.
+Folders from older versions (`.hq`, `~/.hq`) are moved on first start. A `.hq` folder your repo commits stays where it is and keeps working.
 
 ## Docs
 
@@ -125,8 +125,6 @@ Folders from older versions (`.hq`, `.jsmhq`, `~/.hq`) are moved on first start.
 
 ## Credits
 
-ArimaOps is built on **[JSM HQ](https://github.com/jsmastery-pro/jsm-hq)** by [JavaScript Mastery](https://github.com/jsmastery-pro), used under the MIT license. Thanks to them for the original office, sandboxes and review loop. ArimaOps is a separate project and is not affiliated with or endorsed by JavaScript Mastery.
-
 Ideas and tools that shaped it:
 
 - **TokenEconomizer** (Microsoft): lean-mode ideas for spending fewer tokens.
@@ -137,4 +135,4 @@ See [NOTICE](NOTICE) for the license notices.
 
 ## License
 
-Code: MIT for the code ArimaOps started with, AGPL-3.0-or-later for files marked so, and a commercial licence for `ee/`; see [LICENSE](LICENSE). The ArimaOps name and logo, and the JSM HQ name and logo, are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md).
+Code: MIT for the code ArimaOps started with, AGPL-3.0-or-later for files marked so, and a commercial licence for `ee/`; see [LICENSE](LICENSE). The ArimaOps name and logo are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md).

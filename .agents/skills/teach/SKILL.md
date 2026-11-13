@@ -139,7 +139,7 @@ At Level 1: keep it simple, one clear case. At Level 3 and 4: go into the failur
 
 ### What a senior engineer thinks about this
 
-This section is what makes the JSM teach skill different. Not "here's what the code does" — here's how someone with years of experience would evaluate it.
+This section is what makes this teach skill different. Not "here's what the code does" — here's how someone with years of experience would evaluate it.
 
 Adapt by level:
 

@@ -149,7 +149,7 @@ export interface ProjectConfig {
   /** Fixed once created: names sandboxes, tmux sessions and ~/.arima/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
   name: string; // "Askwell"
-  repo: string; // "jsmastery-pro/askwell"
+  repo: string; // "acme/askwell"
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md

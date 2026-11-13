@@ -79,7 +79,7 @@ const askwell: Preset = {
   id: "askwell",
   label: "Askwell · 3 agents",
   config: demoConfig({
-    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420 },
+    project: { id: "askwell", name: "Askwell", repo: "acme/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
       agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
@@ -181,7 +181,7 @@ const bigTeam: Preset = {
   id: "big-team",
   label: "Shipyard · 7 agents",
   config: demoConfig({
-    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
+    project: { id: "shipyard", name: "Shipyard", repo: "acme/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
     team: [
       agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
