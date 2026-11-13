@@ -86,7 +86,7 @@ export function ActionItemsDrawer() {
                 {closed.map((i) => (
                   <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
-                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
+                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
                 ))}
@@ -120,6 +120,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
         {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
+        {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>skills · scan</span>}
         {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>usage limit</span>}
         {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff1744" }}>spend</span>}
         {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffab00" }}>lead approved · undoable</span>}
@@ -145,7 +146,16 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
-      {item.kind === "overflow" && item.overflow ? (
+      {item.kind === "skills" ? (
+        <div className="mt-2 flex items-center gap-2">
+          <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done")}>
+            Approve
+          </button>
+          <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed")}>
+            Reject
+          </button>
+        </div>
+      ) : item.kind === "overflow" && item.overflow ? (
         <div className="mt-2 flex items-center gap-2">
           <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done")}>
             Move to {item.overflow.cli === "codex" ? "Codex" : item.overflow.cli}

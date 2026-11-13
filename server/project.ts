@@ -15,11 +15,13 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { agentToken, sessionName } from "./paths";
 import { Planner } from "./planner";
-import { setLiveProject } from "./projectsRegistry";
+import { liveHubs, setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { OnDemand } from "./onDemand";
 import { githubAppState } from "./githubApp";
+import { decidePack, packsState, proposePack } from "./skillPacks";
+import { onUnpinnedPack } from "./skills";
 import { Overflow } from "./overflow";
 import { capsOf, SpendGuard, spendPaused } from "./spendCaps";
 import { detectRepo } from "./repo";
@@ -144,6 +146,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const hub = new Hub(repo, slug, config, loadPlan(repo.root, config), setup);
   hub.snap.accounts = accountsState();
   hub.snap.githubApp = githubAppState();
+  hub.snap.skillPacks = packsState();
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
@@ -244,6 +247,36 @@ export async function startProject(path: string, port: number, paused: boolean):
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
   planner.actions.onMove = (m) => overflow.move(m);
+  const broadcastPacks = () => {
+    const skillPacks = packsState();
+    for (const h of liveHubs()) {
+      h.snap.skillPacks = skillPacks;
+      h.emit({ type: "skillPacks.updated", skillPacks });
+    }
+  };
+  // Skill packs nobody pinned: fetched, hashed and scanned in the background, then the owner decides.
+  const proposing = new Set<string>();
+  onUnpinnedPack(slug, (source) => {
+    if (proposing.has(source)) return;
+    proposing.add(source);
+    void proposePack(source)
+      .then((p) => {
+        if (p.status !== "pending") return;
+        planner.actions?.addSkillPack(source, { commit: p.commit, skills: Object.keys(p.skills).length, blocked: p.blocked, warnings: p.findings.filter((f) => f.level === "warn"), licence: p.licence });
+        broadcastPacks();
+      })
+      .catch((err) => hub.activity("config", null, `Couldn't check the skills in ${source}: ${err instanceof Error ? err.message : err}`))
+      .finally(() => proposing.delete(source));
+  });
+  planner.actions.onPackDecided = (source, approve) => {
+    try {
+      decidePack(source, approve);
+      hub.activity("config", null, approve ? `Skills from ${source} approved at their pinned commit: agents get them at their next start.` : `Skills from ${source} rejected: never installed.`);
+    } catch (err) {
+      hub.activity("config", null, `Couldn't record your answer on ${source}: ${err instanceof Error ? err.message : err}`);
+    }
+    broadcastPacks();
+  };
   planner.onLeadApproval = (task, gateId, stageId, note) => {
     const lead = hub.snap.config.team.find((a) => a.isLead);
     if (lead) planner.actions?.addApproval(lead.id, task.id, task.title, gateId, stageId, note);

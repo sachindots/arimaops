@@ -177,6 +177,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, spend: e.spend };
     case "githubApp.updated":
       return { ...snap, githubApp: e.githubApp };
+    case "skillPacks.updated":
+      return { ...snap, skillPacks: e.skillPacks };
     case "memory.digest":
       return snap;
     case "mcp.updated":

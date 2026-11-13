@@ -1,7 +1,8 @@
 // Built-in ArimaOps skill library + external skills.sh parser.
 // Built-in skills are written directly as SKILL.md into .claude/skills/, .agents/skills/,
 // and .agent/skills/ (Antigravity), so they work immediately in any workspace without network access.
-// External skills formatted as "owner/repo" or "owner/repo@skill-name" are fetched via `npx skills add`.
+// External skills formatted as "owner/repo" or "owner/repo@skill-name" come from pinned packs only
+// (server/skillPacks.ts): a commit and a hash per skill, scanned before any agent gets them.
 
 import type { SkillSpec } from "./stack";
 

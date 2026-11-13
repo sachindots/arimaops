@@ -156,6 +156,19 @@ export interface GitHubAppState {
   lastDeliveryAt: string | null;
 }
 
+/** A skill pack on this machine (docs/templates.md section 2). */
+export interface SkillPackView {
+  source: string;
+  commit: string;
+  licence: string | null;
+  credit: string | null;
+  use: "any" | "scoped-offensive" | "github-action";
+  skills: number;
+  status: "vetted" | "pending" | "approved" | "rejected";
+  blocked: string[];
+  warnings: number;
+}
+
 /** A project's spend against its caps, on API-key accounts only (subscriptions have no bill). */
 export interface SpendState {
   day: { usd: number; cap: number };
@@ -492,6 +505,7 @@ export interface OfficeSnapshot {
   memory?: MemoryState;
   spend?: SpendState;
   githubApp?: GitHubAppState;
+  skillPacks?: SkillPackView[];
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
@@ -517,7 +531,9 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills";
+  /** kind skills: the skill pack (owner/repo) waiting for the owner's approval of its scan. */
+  pack?: string;
   /** kind overflow: the seat, its task and the fallback it would move to (Move = done, Wait = dismissed). */
   overflow?: { agentId: string; taskId: string; cli: AgentCli; model: string };
   /** kind approval: the gate the lead passed and the stage it belongs to. */

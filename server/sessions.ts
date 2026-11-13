@@ -171,7 +171,9 @@ export class Sessions {
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
-        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root);
+        const rules = hub.snap.config.rules;
+        const offensive = !!rules?.scopeRequired && (!!rules.labMode || !!hub.snap.config.project.scope?.inScope.length);
+        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root, { offensive });
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {

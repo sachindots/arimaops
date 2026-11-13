@@ -37,6 +37,7 @@ import type {
   SpendState,
   AgentMode,
   GitHubAppState,
+  SkillPackView,
 } from "./types";
 
 export type OfficeEvent =
@@ -62,6 +63,7 @@ export type OfficeEvent =
   | { type: "memory.updated"; memory: MemoryState }
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
+  | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
   /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
   | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }

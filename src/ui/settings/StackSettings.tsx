@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { SkillPackView } from "../../data/types";
 import {
   EMPTY_STACK,
   frameworks,
@@ -61,7 +62,47 @@ export function StackSettings() {
           </div>
         </>
       )}
+      <SkillPacks />
     </div>
+  );
+}
+
+const PACK_STATUS: Record<SkillPackView["status"], [string, string]> = {
+  vetted: ["vetted", "#00c853"],
+  approved: ["approved by you", "#00c853"],
+  pending: ["waiting for your check", "#ffab00"],
+  rejected: ["rejected", "#ff1744"],
+};
+
+/** Third-party skills come only from pinned packs (docs/templates.md section 2): one commit, a hash per skill, scanned. */
+function SkillPacks() {
+  const packs = useOffice((s) => s.snap?.skillPacks) ?? [];
+  if (!packs.length) return null;
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Skill packs</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Skills from other repos are pinned to one commit, checked against a hash and scanned before any agent gets them. A repo nobody pinned yet waits for your check in Action items.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {packs.map((p) => (
+          <li key={p.source} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t-2 border-dashed border-cream-3 pt-1.5 text-[13px]">
+            <b className="font-mono">{p.source}</b>
+            <span className="font-mono text-muted">@{p.commit.slice(0, 7)}</span>
+            <span className="chip text-[11px]" style={{ ["--c" as string]: PACK_STATUS[p.status][1] }}>
+              {PACK_STATUS[p.status][0]}
+            </span>
+            {p.use === "scoped-offensive" && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ff4d6d" }}>offensive · scoped projects only</span>}
+            <span className="w-full text-[12px] text-muted">
+              {p.use === "github-action" ? "A GitHub Action, offered as a workflow file" : `${p.skills} skill${p.skills === 1 ? "" : "s"}`} · licence {p.licence ?? "none stated"}
+              {p.credit ? ` · credit ${p.credit}` : ""}
+              {p.blocked.length ? ` · blocked: ${p.blocked.join(", ")}` : ""}
+              {p.warnings ? ` · ${p.warnings} scan warning${p.warnings === 1 ? "" : "s"}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

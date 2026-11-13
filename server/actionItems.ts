@@ -70,6 +70,10 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "skills" && item.pack) {
+      this.onPackDecided(item.pack, decision === "done");
+      return;
+    }
     if (item.kind === "overflow") {
       if (decision === "done" && item.overflow) void this.onMove(item.overflow).catch((err) => this.hub.activity("config", item.overflow!.agentId, `Couldn't move to the fallback: ${err instanceof Error ? err.message : err}`));
       return; // Wait: nothing changes, the agent goes on when its limit resets
@@ -87,6 +91,32 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  /** The owner approved or rejected a skill pack's scan (set by the project: server/skillPacks.ts). */
+  onPackDecided: (source: string, approve: boolean) => void = () => {};
+
+  /** A pack a role or the stack named, scanned and waiting for the owner (docs/templates.md section 2). Once per pack. */
+  addSkillPack(source: string, summary: { commit: string; skills: number; blocked: string[]; warnings: { path: string; why: string }[]; licence: string | null }): ActionItem | null {
+    const id = `skills-${source.replace(/[^A-Za-z0-9]+/g, "-")}`;
+    if (this.items.some((i) => i.id === id && i.status === "open")) return null;
+    const old = this.items.findIndex((i) => i.id === id);
+    if (old >= 0) this.items.splice(old, 1);
+    const lines = [
+      `${source} at commit ${summary.commit.slice(0, 12)}: ${summary.skills} skill${summary.skills === 1 ? "" : "s"}, licence ${summary.licence ?? "none stated"}.`,
+      summary.blocked.length ? `Blocked by the scanner (never used, even if you approve): ${summary.blocked.join(", ")}.` : "Nothing blocked by the scanner.",
+      ...(summary.warnings.length ? ["", "Worth a read before you approve:", ...summary.warnings.slice(0, 12).map((w) => `- ${w.path}: ${w.why}`)] : []),
+      "",
+      "Approve: agents get these skills at this commit only; a new commit needs a new approval. Reject: they're never installed.",
+    ];
+    const item: ActionItem = {
+      id, fromId: "hq", taskId: null, title: `Skills from ${source} wait for your check`, details: lines.join("\n"), waiting: false, kind: "skills", pack: source,
+      status: "open", note: null, at: new Date().toISOString(), closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
   }
 
   /** The owner chose Move on an overflow item (set by the project: server/overflow.ts). */
