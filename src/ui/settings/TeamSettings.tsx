@@ -33,6 +33,35 @@ function ModeSelect({ value, onChange }: { value: AgentMode; onChange: (v: Agent
   );
 }
 
+const MODE_LABEL: Record<AgentMode, string> = { local: "Local", sandbox: "Sandbox", container: "Container" };
+
+/** The whole team in one mode, e.g. Container on a server without nested virtualization (docs/agent-engine.md section 9). */
+function TeamMode() {
+  const team = useOffice((s) => s.snap?.config.team) ?? [];
+  const containerReady = useOffice((s) => s.snap?.setup.containerReady);
+  const [mode, setMode] = useState<AgentMode>("container");
+  const counts = team.reduce<Record<string, number>>((m, a) => ({ ...m, [a.mode]: (m[a.mode] ?? 0) + 1 }), {});
+  const pending = team.filter((a) => a.nextMode);
+  const all = team.every((a) => (a.nextMode ?? a.mode) === mode);
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Where the team runs</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        {Object.entries(counts).map(([m, n]) => `${n} in ${MODE_LABEL[m as AgentMode]}`).join(" · ")}
+        {pending.length ? ` · ${pending.map((a) => `${a.name} to ${MODE_LABEL[a.nextMode!]}`).join(", ")} at the next start` : ""}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <ModeSelect value={mode} onChange={setMode} />
+        <button className="btn min-h-[44px]" disabled={all} onClick={() => officeActions.setTeamMode(mode)}>
+          Move the whole team
+        </button>
+      </div>
+      <p className="mt-2 text-[12px] text-muted">Stopped agents switch now. Running ones keep going and switch at their next start, so no task is cut off.</p>
+      {mode === "container" && !containerReady && <p className="mt-1 text-[12px] font-bold">Container mode isn't ready on this machine yet: see the setup checklist (Docker, the agent image, the proxy firewall rule).</p>}
+    </section>
+  );
+}
+
 export function TeamSettings() {
   const snap = useOffice((s) => s.snap);
   const [open, setOpen] = useState<string | null>(null);
@@ -72,6 +101,7 @@ export function TeamSettings() {
           ))}
         </div>
       </section>
+      <TeamMode />
       <section>
         <SectionTitle>Agents · {team.length}</SectionTitle>
         <div className="flex flex-col gap-2">
@@ -170,8 +200,8 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
             </select>
           )}
         </Field>
-        <Field label="Runs in">
-          <ModeSelect value={agent.mode} onChange={(mode) => set({ mode })} />
+        <Field label="Runs in" hint={agent.nextMode ? `${MODE_LABEL[agent.nextMode]} at its next start` : undefined}>
+          <ModeSelect value={agent.nextMode ?? agent.mode} onChange={(mode) => set({ mode })} />
         </Field>
         <div className="flex gap-1.5">
           <button className="btn px-2 text-[13px]" aria-expanded={expanded} onClick={onToggle}>

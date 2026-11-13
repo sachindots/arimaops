@@ -75,6 +75,8 @@ export interface Seat {
   roleId: string;
   color: string;
   mode: AgentMode;
+  /** The mode it switches to at its next start (set when the mode changed while it ran). */
+  nextMode?: AgentMode | null;
   account: string; // "" = the default account for the role's CLI
   workspacePath: string | null; // null = HQ-managed clone
   sandbox: SandboxSettings;

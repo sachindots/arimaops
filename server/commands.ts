@@ -43,7 +43,7 @@ import { OFFICE_NAME_MAX } from "../src/data/names";
 import type { TeamTemplate } from "../src/data/model";
 import { hqDb } from "./lib/db";
 import { isReadOnly, READ_ONLY_COMMANDS } from "./legacy";
-import { applyTemplate, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
+import { applyTemplate, changeMode, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
 import { ensureSkillCache } from "./skills";
@@ -98,6 +98,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     }
   };
   const team = () => hub.snap.config.team;
+  const sessionUp = (id: string) => ["running", "starting"].includes(hub.status(id)?.session.state ?? "");
 
   /** Runs a template change; a refused template is reported, not thrown at the browser. */
   const guardTemplate = (fn: () => void) => {
@@ -201,7 +202,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const seat = seatOf(agent);
       if (typeof p.name === "string" && p.name.trim()) seat.name = str(p.name, 40).trim();
       if (typeof p.color === "string") seat.color = str(p.color, 20);
-      if (isAgentMode(p.mode)) seat.mode = p.mode;
+      if (isAgentMode(p.mode)) changeMode(seat, p.mode, sessionUp(agent.id));
       // A seat can move to another worker role; the lead's seat stays the lead's.
       const role = t.roles.find((r) => r.id === p.roleId);
       if (role && !role.isLead && !agent.isLead) seat.roleId = role.id;
@@ -211,10 +212,31 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       if (p.workspacePath !== undefined) seat.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
       Object.assign(agent, resolveSeat(t, seat));
+      if (!seat.nextMode) delete agent.nextMode;
       if (!agent.account) delete agent.account;
       hub.configChanged();
       // Non-Claude CLIs and named container accounts add their own setup checks.
       if (`${agent.cli}/${agent.mode}/${agent.account ?? ""}` !== before) void sessions.recheckSetup();
+    },
+
+    /** Moves every seat to one mode (Container for EC2): stopped seats now, running ones at their next start. */
+    setTeamMode: (raw) => {
+      const t = hub.snap.config.template;
+      if (!t) throw new Error("This project was made before templates and is read-only.");
+      if (!isAgentMode(raw)) throw new Error("Mode is local, sandbox or container.");
+      let later = 0;
+      for (const agent of team()) {
+        const seat = seatOf(agent);
+        const up = sessionUp(agent.id);
+        changeMode(seat, raw, up);
+        if (seat.nextMode) later++;
+        Object.assign(agent, resolveSeat(t, seat));
+        if (!seat.nextMode) delete agent.nextMode;
+      }
+      hub.configChanged();
+      void sessions.recheckSetup();
+      const label = { local: "Local", sandbox: "Sandbox", container: "Container" }[raw];
+      hub.activity("config", null, later ? `The team moves to ${label} mode: ${later} running agent${later === 1 ? "" : "s"} switch at their next start, the rest now.` : `The team runs in ${label} mode.`);
     },
 
     /** Edits one role of this project's template; every seat of it picks the change up at its next start. */

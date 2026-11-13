@@ -363,6 +363,17 @@ export function createMockSource(): OfficeDataSource {
     saveMemory() {},
     restoreMemory() {},
     setMemoryExtraction() {},
+    setTeamMode(mode) {
+      for (const a of world.snap.config.team) {
+        const up = ["running", "starting"].includes(world.status(a.id)?.session.state ?? "");
+        if (up && a.mode !== mode) a.nextMode = mode;
+        else {
+          a.mode = mode;
+          delete a.nextMode;
+        }
+      }
+      world.configChanged();
+    },
     finishGithubApp() {
       githubApp = { app: { id: 1, slug: "arimaops-demo", htmlUrl: "https://github.com/apps/arimaops-demo", owner: "demo", installUrl: "https://github.com/apps/arimaops-demo/installations/new" }, webhookPath: "/api/github/webhook", lastDeliveryAt: null };
       world.snap.githubApp = githubApp;

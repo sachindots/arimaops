@@ -35,6 +35,7 @@ import type {
   MemoryInput,
   MemoryState,
   SpendState,
+  AgentMode,
   GitHubAppState,
 } from "./types";
 
@@ -151,6 +152,8 @@ export interface OfficeDataSource {
   setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
   /** Owner only: trades GitHub's manifest code for the App's credentials. */
   finishGithubApp(code: string): void;
+  /** Every seat to one mode: stopped seats now, running ones at their next start. */
+  setTeamMode(mode: AgentMode): void;
   decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
   keepOutOfMemory(name: string): void;
 

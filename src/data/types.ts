@@ -80,6 +80,8 @@ export interface AgentConfig {
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
+  /** Set while running: the mode it switches to at its next start (never mid-task). */
+  nextMode?: AgentMode | null;
   color: string; // hex, used for the robot, owner dots and chips
   skills: string[];
   roleMd: string; // contents of ROLE.md

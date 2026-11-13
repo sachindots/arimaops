@@ -107,6 +107,13 @@ export class Sessions {
     const agent = hub.cfg(id);
     const st = hub.status(id);
     if (!agent || !st || st.session.state === "running" || st.session.state === "starting") return;
+    if (agent.nextMode) {
+      // A mode change made while it ran takes effect now, between tasks.
+      agent.mode = agent.nextMode;
+      delete agent.nextMode;
+      hub.configChanged();
+      hub.activity("session", id, `${agent.name} switches to ${agent.mode} mode`);
+    }
     const setup = hub.snap.setup;
     const fail = (detail: string) => {
       hub.setSession(id, { state: "failed", detail });

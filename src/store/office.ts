@@ -6,7 +6,7 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccountInput, MemoryInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type { AccountInput, MemoryInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentMode, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -270,6 +270,7 @@ export const officeActions = {
   setLabMode: (on: boolean) => source.setLabMode(on),
   setSpendCaps: (caps: { dailyUsd: number; monthlyUsd: number }) => source.setSpendCaps(caps),
   finishGithubApp: (code: string) => source.finishGithubApp(code),
+  setTeamMode: (mode: AgentMode) => source.setTeamMode(mode),
   decideMemories: (itemId: string, decisions: Record<string, "certify" | "reject">) => source.decideMemories(itemId, decisions),
   keepOutOfMemory: (name: string) => source.keepOutOfMemory(name),
   refreshMcp: () => source.refreshMcp(),

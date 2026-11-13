@@ -104,6 +104,45 @@ const repo = repoOf("askwell");
   check("saving an old project keeps it as it was", saved.project.type === "security" && saved.team[0].roleMd === "x");
 }
 
+// The whole team to Container mode (3.8): stopped seats now, running ones at their next start; saved as seats.
+{
+  const r = repoOf("teammode");
+  const { hub, commands } = project(r);
+  await commands.completeWelcome({ projectName: "Teammode", templateId: "dev", reviewTool: "human", reviewEnabled: true });
+  const team = hub.snap.config.team;
+  const running = team[1].id;
+  (hub as unknown as { status: (id: string) => unknown }).status = (id: string) => ({ session: { state: id === running ? "running" : "stopped" } });
+  const before = team[1].mode;
+  await commands.setTeamMode("container");
+  check("stopped seats switch now", team.filter((a) => a.id !== running).every((a) => a.mode === "container" && !a.nextMode), JSON.stringify(team.map((a) => [a.id, a.mode, a.nextMode])));
+  check("a running seat keeps its mode until its next start", team[1].mode === before && team[1].nextMode === "container");
+  const saved = loadConfig(r, 7420).config.team;
+  check("the pending switch is saved with the seat", saved[1].nextMode === "container" && saved[1].mode === before && saved[0].mode === "container", JSON.stringify(saved.map((a) => [a.mode, a.nextMode])));
+  await commands.updateAgent(running, { mode: before });
+  check("choosing its current mode again cancels the pending switch", team[1].mode === before && !team[1].nextMode);
+  let err = "";
+  try {
+    await commands.setTeamMode("cloud");
+  } catch (e) {
+    err = (e as Error).message;
+  }
+  check("an unknown mode is refused", /local, sandbox or container/.test(err));
+}
+
+// The next start applies a pending switch (before anything else can fail).
+{
+  const { Sessions } = await import("../server/sessions");
+  const agent = { id: "dev1", name: "Dev", mode: "local", nextMode: "container", cli: "claude", isLead: false } as Record<string, unknown>;
+  const notes: string[] = [];
+  const hub = {
+    slug: "switch", snap: { setup: { checks: [] }, config: { team: [agent], project: { id: "switch", hqPort: 7420 } }, agents: [] },
+    cfg: () => agent, status: () => ({ session: { state: "stopped" } }), setSession: () => {}, setStatus: () => {},
+    activity: (_t: string, _a: string | null, text: string) => notes.push(text), configChanged: () => notes.push("saved"),
+  };
+  await new Sessions(hub as never, "t").start("dev1");
+  check("starting a seat with a pending switch starts it in the new mode", agent.mode === "container" && !agent.nextMode && notes.includes("saved") && notes.some((n) => /switches to container mode/.test(n)), JSON.stringify(notes));
+}
+
 if (fails) {
   console.error(`\n${fails} failed`);
   process.exit(1);

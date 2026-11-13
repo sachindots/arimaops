@@ -102,6 +102,7 @@ Each gate kind gets a checker. "Observed" means HQ decides from what it can see;
 ## 9. API-key containers (3.8)
 
 - API-key accounts already start in Local and Container mode (Stage E). Phase 3 adds: switching a **running team to Container mode** in one action (each seat restarts in a container at its next start, not mid-task); an Antigravity sign-in volume (`hq-auth-agy`) like Claude's and Codex's.
+- **As built:** Settings → Team → *Where the team runs* moves every seat to one mode (`setTeamMode`, step-up from a remote device). A seat whose session is down switches at once; a running one keeps its mode and gets `nextMode`, saved with the seat, which `Sessions.start` applies before anything else. Changing one agent's mode while it runs works the same way. The Antigravity sign-in volume (`hq-auth-agy`, with its sign-in check through the proxy) already existed from Stage E, so nothing was added for it.
 - Done when an API-key-only agent starts on EC2: **needs the server**, so it waits for the owner's go-ahead on AWS (roadmap rule 7). Locally: an API-key-only agent starts in a container on the laptop.
 
 ## 10. Alerts always on (3.9)
