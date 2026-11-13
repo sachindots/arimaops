@@ -479,6 +479,17 @@ export function startHttp(o: Options) {
           if (format === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
           return send(res, 200, redactor().redact(text), out.type);
         }
+        // A task's history for its sheet: status and stage changes, and gate events, oldest first. Read-only.
+        if (parts.length === 6 && parts[3] === "tasks" && parts[5] === "history" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const pid = rt.hub.snap.config.project.id;
+          const taskId = decodeURIComponent(parts[4]);
+          const db = hqDb();
+          const events = (db.prepare("SELECT at, status, stage_id, owner_id FROM task_events WHERE project_id = ? AND task_id = ? ORDER BY at, rowid").all(pid, taskId) as { at: number; status: string; stage_id: string; owner_id: string | null }[]).map((e) => ({ at: e.at, status: e.status, stageId: e.stage_id, ownerId: e.owner_id }));
+          const gates = (db.prepare("SELECT at, gate_id, state, by_id, proof FROM gate_events WHERE project_id = ? AND task_id = ? ORDER BY id").all(pid, taskId) as { at: number; gate_id: string; state: string; by_id: string; proof: string }[]).map((g) => ({ at: g.at, gateId: g.gate_id, state: g.state, by: g.by_id, note: (JSON.parse(g.proof) as { note?: string }).note ?? null }));
+          return send(res, 200, redactor().redact(JSON.stringify({ events, gates })), "application/json");
+        }
         // The verifier's evidence files (docs/factory.md section 7): /api/projects/<id>/evidence/<task>/<sha>/<file>. Read-only.
         if (parts.length === 7 && parts[3] === "evidence" && req.method === "GET") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));

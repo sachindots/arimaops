@@ -56,6 +56,8 @@ export function CompactApp() {
   const side = useSideBySide();
   if (!snap) return null;
   const current = side && tab === "office" ? "chat" : tab;
+  // The board needs the width: on a tablet it takes the whole screen instead of sitting beside the office.
+  const wide = side && ((current === "board" && !drawer) || drawer?.kind === "boards");
   const attention = selectAttention(snap).total;
   const setupIssues = snap.setup.checks.filter((c) => c.status !== "ok").length;
 
@@ -91,7 +93,7 @@ export function CompactApp() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-      <main className={`relative flex min-h-0 min-w-0 flex-col ${side ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
+      <main className={`relative flex min-h-0 min-w-0 flex-col ${side && !wide ? "w-[420px] shrink-0 border-r-[3px] border-ink" : "flex-1"}`}>
         {page ? (
           <div className="panel flex min-h-0 flex-1 flex-col !border-0">{page}</div>
         ) : current === "office" ? (
@@ -116,7 +118,7 @@ export function CompactApp() {
           <More />
         )}
       </main>
-      {side && <OfficePane />}
+      {side && !wide && <OfficePane />}
       </div>
 
       <nav className={`grid h-[58px] shrink-0 ${side ? "grid-cols-5" : "grid-cols-6"} border-t-[3px] border-ink bg-[rgba(17,26,44,0.96)]`} aria-label="Sections">
