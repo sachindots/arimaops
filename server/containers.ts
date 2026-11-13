@@ -21,6 +21,9 @@ import { log } from "./lib/log";
 import type { Runtime } from "./project";
 
 export const IMAGE = "arimaops-agent";
+/** The verifier's image: the agent image plus Playwright and Chromium (docker/verifier.Dockerfile). */
+export const VERIFIER_IMAGE = "arimaops-verifier";
+export const imageFor = (agent: { roleId?: string }) => (agent.roleId === "verifier" ? VERIFIER_IMAGE : IMAGE);
 export const NETWORK = "hq-agents";
 export const BRIDGE = "br-hq";
 export const SUBNET = "172.30.0.0/24";
@@ -59,6 +62,9 @@ export const EGRESS_LOCK_CMD = `sudo iptables -I DOCKER-USER -i ${BRIDGE} -j DRO
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 export const buildCommand = () =>
   `docker build -t ${IMAGE} --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f "${join(repoRoot, "docker", "agent.Dockerfile")}" "${join(repoRoot, "docker")}"`;
+
+export const buildVerifierCommand = () =>
+  `docker build -t ${VERIFIER_IMAGE} --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f "${join(repoRoot, "docker", "verifier.Dockerfile")}" "${join(repoRoot, "docker")}"`;
 
 /** Base allowlist: AI services, sign-in pages, GitHub and package registries (like sbx's "balanced"). Agents ask for anything else. */
 export const BASE_ALLOW = [
@@ -140,7 +146,7 @@ export function runArgs(
     "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`, "-e", "TE_DISABLE=1",
     ...authEnvArgs(agent.cli),
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
-    IMAGE,
+    imageFor(agent),
     agent.cli,
     ...cliArgs,
   ];

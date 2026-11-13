@@ -192,6 +192,7 @@ export function gateContext(cfg: HqConfig, task: Task, byId: string, prs: PullRe
     },
     reportAt,
     findingsAt,
+    evidence: (id) => (id === task.id ? (task.evidence ?? null) : null),
     severe: (db.prepare("SELECT id, reporter_id, verified, verified_by FROM findings WHERE project_id = ? AND severity IN ('critical', 'high') AND status NOT IN ('false-positive', 'accepted')").all(cfg.project.id) as { id: string; reporter_id: string; verified: number; verified_by: string | null }[]).map((f) => ({
       id: f.id,
       reporterId: f.reporter_id,

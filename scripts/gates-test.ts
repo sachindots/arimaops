@@ -286,7 +286,7 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   const { vendorOf } = await import("../server/planStore");
   const { securityReviewWorkflow } = await import("../src/data/githubApp");
   const t = structuredClone(DEV_TEMPLATE);
-  check("Dev v2 runs spec → plan → build → review → merge", t.version === 2 && t.flow.stages.map((x) => x.id).join() === "spec,plan,build,review,merge");
+  check("Dev v3 runs spec → plan → build → review → merge", t.version === 3 && t.flow.stages.map((x) => x.id).join() === "spec,plan,build,review,merge");
   const team = [
     { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "claude-opus-5-5" },
     { id: "d1", name: "Dev", roleId: "developer", isLead: false, cli: "claude", model: "claude-sonnet-5-5" },

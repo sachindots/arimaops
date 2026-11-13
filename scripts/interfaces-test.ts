@@ -116,13 +116,13 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const acts: string[] = [];
   const done: string[] = [];
   const hub = {
-    snap: { config: { team: [{ id: "ghost", isLead: false }], workflow: { review: { tool: "human", enabled: false }, merge: { by: "human" } }, template: DEV_TEMPLATE }, pullRequests: [] as unknown[], setup: { checks: [] } },
+    snap: { config: { team: [{ id: "ghost", isLead: false }], workflow: { review: { tool: "human", enabled: false }, merge: { by: "human" } }, template: DEV_TEMPLATE }, pullRequests: [] as unknown[], tasks: [] as unknown[], setup: { checks: [] } },
     subscribe: () => () => {},
     emit: () => {},
     activity: (_t: string, _a: string | null, text: string) => acts.push(text),
     name: (id: string) => id,
   };
-  const planner = { task: () => ({ id: "B1-T01", ownerId: "ghost", status: "in-progress" }), updateTask: (id: string, p: { status?: string }) => p.status && done.push(`${id}:${p.status}`), notify: () => {} };
+  const planner = { askVerifier: () => {}, task: () => ({ id: "B1-T01", ownerId: "ghost", status: "in-progress" }), updateTask: (id: string, p: { status?: string }) => p.status && done.push(`${id}:${p.status}`), notify: () => {} };
   const sync = new GitHubSync(hub as never, planner as never, "me/repo", source as never);
   sync.start();
   check("GitHubSync watches through the GitHubEvents source", typeof onEvent === "function");

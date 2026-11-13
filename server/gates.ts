@@ -26,6 +26,17 @@ export interface GateContext {
   findingsAt?: number | null;
   /** The project's critical and high findings, with who reported and who verified them (the findings report checks them). */
   severe?: { id: string; reporterId: string; verifiedBy: string | null }[];
+  /** The verifier's latest evidence for a task: the commit it was taken at (null: none). */
+  evidence?: (taskId: string) => { sha: string } | null;
+}
+
+/** Files that change what people see: a PR touching one needs evidence when the flow has an evidence gate. */
+export const UI_FILE = /\.(tsx|jsx|vue|svelte|css|scss|sass|less|html)$/i;
+
+/** The PR's UI files by the gate's own extensions (".tsx", "astro"…) or the default list. */
+export function uiFilesOf(gate: { uiFiles?: string[] }, files: string[]): string[] {
+  const exts = (gate.uiFiles ?? []).map((e) => e.replace(/^\./, "").toLowerCase()).filter(Boolean);
+  return files.filter((f) => (exts.length ? exts.includes(f.split(".").pop()!.toLowerCase()) : UI_FILE.test(f)));
 }
 
 /** Files that make a task high-stakes on their own (docs/agent-engine.md section 5). */
@@ -44,7 +55,7 @@ export interface UnmetGate {
 }
 
 /** Gates HQ checks from what it can see; nobody records evidence for them (the owner can still waive one). */
-export const OBSERVED_GATES: ReadonlySet<Gate["kind"]> = new Set(["pr-merged", "file-delivered", "scope-set", "tests-ci", "analyze", "findings-report"]);
+export const OBSERVED_GATES: ReadonlySet<Gate["kind"]> = new Set(["pr-merged", "file-delivered", "scope-set", "tests-ci", "analyze", "findings-report", "evidence"]);
 
 /** Gates only a person may pass: they approve, or decide what the team works on. */
 export const PERSON_GATES: ReadonlySet<Gate["kind"]> = new Set(["owner-approval", "spec-approved"]);
@@ -95,6 +106,18 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
       if (pr.testsChanged === undefined) return "Waiting for GitHub to report the PR's files and checks.";
       if (!pr.testsChanged) return `PR #${pr.number} changes no test file. Add or update a test for this change.`;
       return pr.ciGreen ? null : `CI on PR #${pr.number} isn't green yet (or no checks ran).`;
+    }
+    case "evidence": {
+      const pr = ctx.prs.find((p) => p.number === task.prNumber && p.taskId === task.id);
+      if (!pr) return "Open the task's PR first (set_my_status in-review with its number).";
+      if (!pr.files) return "Waiting for GitHub to report the PR's files.";
+      const ui = uiFilesOf(gate, pr.files);
+      if (!ui.length) return null;
+      if (!pr.headSha) return "Waiting for GitHub to report the PR's head commit.";
+      const ev = ctx.evidence?.(task.id);
+      const which = `${ui.slice(0, 3).join(", ")}${ui.length > 3 ? ` and ${ui.length - 3} more` : ""}`;
+      if (!ev) return `PR #${pr.number} changes what people see (${which}): it needs screenshots of the running app from the verifier.`;
+      return ev.sha === pr.headSha ? null : `The evidence is for ${ev.sha.slice(0, 7)}; PR #${pr.number} has new commits (${pr.headSha.slice(0, 7)}): the verifier takes it again.`;
     }
     case "analyze": {
       if (!ctx.spec?.items.length) return "The board has no spec with numbered items (S1., S2.…). The lead writes it with write_spec.";

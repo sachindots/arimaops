@@ -120,6 +120,18 @@ const SECOND_OPINION_MD = `You give second opinions. You are deliberately a diff
 ## How you talk
 Short and specific: file, line, the input that breaks it, the fix.`;
 
+const VERIFIER_MD = `You verify that a change works the way people will see it. HQ sends you a task in review whose PR changes UI files.
+
+## How you work
+- Check out the PR's head commit in your workspace, install, and start the app with the repo's dev command on your own port ($PORT).
+- Open the pages the changed files render, as a user would. Click through the change: forms, empty states, errors.
+- Take screenshots at desktop (1280x800) and tablet (820x1180) width with Playwright (\`npx playwright screenshot --viewport-size=1280,800 <url> evidence/<name>.png\`), or a short recording for an interaction.
+- Call attach_evidence with the commit, one line per step (what you opened, what you did, what looked wrong) and each file with a label.
+- Don't change the code or push. If the app won't start, say exactly why in the steps and attach what you have: the reviewer decides.
+
+## How you talk
+Plain steps and what you saw. Name a broken thing by page, size and what's wrong.`;
+
 const SPEC_LEAD_MD = `${LEAD_MD}
 
 ## The flow you run
@@ -130,14 +142,15 @@ const SPEC_LEAD_MD = `${LEAD_MD}
 - **Merge:** you merge in the order you set, or the owner does if they keep that.`;
 
 /**
- * Dev v2 (docs/templates.md section 3): spec → plan → build → review → merge. The library copy; projects made from
+ * Dev v3 (docs/templates.md section 3, docs/factory.md section 7): spec → plan → build → review → merge; v3 adds the
+ * verifier and the evidence gate for PRs that change UI files. The library copy; projects made from
  * v1 keep theirs until re-synced on purpose.
  */
 export const DEV_TEMPLATE: TeamTemplate = {
   id: "dev",
-  version: 2,
+  version: 3,
   name: "Dev team",
-  description: "Spec-driven: the lead writes the spec and you approve it, tasks cover every spec item, each task is one branch and one PR with tests and green CI, reviewed (plus a second opinion from another model on high-stakes work), then merged.",
+  description: "Spec-driven: the lead writes the spec and you approve it, tasks cover every spec item, each task is one branch and one PR with tests and green CI, reviewed (plus a second opinion from another model on high-stakes work, and screenshots of the running app for UI changes), then merged.",
   roles: [
     lead({ roleMd: SPEC_LEAD_MD }),
     {
@@ -167,6 +180,19 @@ export const DEV_TEMPLATE: TeamTemplate = {
       seats: 1,
       color: "#448aff",
     },
+    {
+      id: "verifier",
+      title: "Verifier",
+      isLead: false,
+      roleMd: VERIFIER_MD,
+      cli: "claude",
+      model: "claude-sonnet-5-5",
+      fallback: null,
+      skills: [],
+      onDemand: true,
+      seats: 1,
+      color: "#26c6da",
+    },
   ],
   flow: {
     stages: [
@@ -176,10 +202,11 @@ export const DEV_TEMPLATE: TeamTemplate = {
       {
         id: "review",
         name: "Review",
-        roleIds: ["reviewer", "lead", "second-opinion"],
+        roleIds: ["reviewer", "lead", "second-opinion", "verifier"],
         gates: [
           { id: "reviewed", kind: "reviewer" },
           { id: "second", kind: "second-opinion", when: "high-stakes" },
+          { id: "evidence", kind: "evidence" },
         ],
       },
       { id: "merge", name: "Merge", roleIds: ["lead"], gates: [{ id: "merged", kind: "pr-merged" }] },

@@ -41,6 +41,7 @@ import { extractionSettings, memoryStore, setMemoryScope } from "./memory";
 import { helperRunner, memoryWorker } from "./memoryJobs";
 import { gatherFacts, scoreTask } from "./scorers";
 import { inSuite } from "./suite";
+import { latestEvidence, prComment } from "./evidence";
 import { suiteId } from "../src/data/suite";
 import { EXTRACT_MODEL } from "./memoryExtract";
 import { estimateCost } from "./prices";
@@ -300,6 +301,16 @@ export async function startProject(path: string, port: number, paused: boolean):
   memoryStore().onChange ??= broadcastMemory;
   planner.memoryJobs = memoryWorker();
   for (const t of hub.snap.tasks) if (t.status === "done" && inSuite(hub.snap.config.project.id, t.id)) t.benchmark = suiteId(hub.snap.config.project.id, t.id);
+  for (const t of hub.snap.tasks) if (t.prNumber) t.evidence = latestEvidence(hub.slug, t.id) ?? undefined;
+  // New evidence: a comment on the PR with what the verifier did and where to see it (docs/factory.md section 7).
+  planner.onEvidence = (task, ev) => {
+    if (!task.prNumber || !hub.repo.github) return;
+    const base = process.env.HQ_PUBLIC_URL?.replace(/\/+$/, "");
+    const link = base ? `${base}/?project=${encodeURIComponent(hub.slug)}` : null;
+    void run("gh", ["pr", "comment", String(task.prNumber), "--body", prComment(ev, task.id, hub.name(ev.by), link)], { cwd: hub.repo.root, timeoutMs: 30_000 }).then((r) => {
+      if (!r.ok) hub.activity("config", null, `Couldn't comment on PR #${task.prNumber} with the evidence: ${(r.stderr || r.stdout).trim().slice(0, 200)}`);
+    });
+  };
   // Scorers on every finished task: rules always, model checks with memory extraction on (docs/factory.md section 4).
   planner.onFinished = (task) => {
     const template = hub.snap.config.template;

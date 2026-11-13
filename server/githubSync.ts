@@ -131,6 +131,7 @@ export class GitHubSync {
       if (!seen.has(old.number) && !old.merged && !old.closed) next.push(complete || recentlyClosed.has(old.number) ? { ...old, closed: true } : old);
 
     this.hub.snap.pullRequests = next;
+    for (const t of this.hub.snap.tasks) if (t.status === "in-review") this.planner.askVerifier(t); // files and head commit arrive with the PR
     for (const pr of next) {
       const old = this.prev.get(pr.number);
       if (JSON.stringify(old) !== JSON.stringify(pr)) this.hub.emit({ type: "pr.updated", pr: { ...pr } });

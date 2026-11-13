@@ -44,6 +44,7 @@ import { PushDevices, pushRegistrationBody } from "./push";
 import { z } from "zod";
 import { accountModels } from "./models";
 import { metricsReport } from "./metrics";
+import { CONTENT_TYPE, evidenceFile } from "./evidence";
 import { isAgentCli } from "../src/data/types";
 
 const passwordChange = z.object({ currentPassword: z.string().max(200), newPassword: z.string().min(10).max(200) });
@@ -477,6 +478,18 @@ export function startHttp(o: Options) {
           // Agent-written text on HQ's own origin: no scripts, no fetches, styles only.
           if (format === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
           return send(res, 200, redactor().redact(text), out.type);
+        }
+        // The verifier's evidence files (docs/factory.md section 7): /api/projects/<id>/evidence/<task>/<sha>/<file>. Read-only.
+        if (parts.length === 7 && parts[3] === "evidence" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const file = evidenceFile(rt.slug, decodeURIComponent(parts[4]), decodeURIComponent(parts[5]), decodeURIComponent(parts[6]));
+          if (!file) return send(res, 404, JSON.stringify({ error: "no such evidence" }), "application/json");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Cache-Control", "private, max-age=86400, immutable"); // a commit's evidence never changes
+          res.setHeader("Content-Security-Policy", "default-src 'none'");
+          res.writeHead(200, { "Content-Type": CONTENT_TYPE[file.split(".").pop()!] ?? "application/octet-stream" });
+          return void res.end(readFileSync(file));
         }
         // Factory metrics (docs/factory.md section 3): the last `days` against the ones before. Read-only.
         if (parts.length === 4 && parts[3] === "metrics" && req.method === "GET") {

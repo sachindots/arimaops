@@ -10,7 +10,7 @@ import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import { accounts } from "./credentials/registry";
 import type { RepoInfo } from "./repo";
-import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
+import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, buildVerifierCommand, VERIFIER_IMAGE, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -263,6 +263,15 @@ async function checkAgentImage(dockerOk: boolean): Promise<Check> {
   return { ...base, status: "missing", detail: "Not built yet. Takes a few minutes the first time (Node, git, gh and the agent CLIs).", fix: fix(buildCommand(), true, null) };
 }
 
+/** The verifier's image (Playwright and Chromium), when the team has a verifier: without it the verifier can't start in container mode. */
+async function checkVerifierImage(agentImageOk: boolean): Promise<Check> {
+  const base = { id: "verifier-image" as const, label: `Verifier image (${VERIFIER_IMAGE})`, neededFor: "container" as const };
+  if (!agentImageOk) return { ...base, status: "missing", detail: "Build the agent image first.", fix: null };
+  const r = await run("docker", ["image", "inspect", VERIFIER_IMAGE, "--format", "{{.Created}}"], { timeoutMs: 8000 });
+  if (r.ok) return { ...base, status: "ok", detail: `Built ${r.stdout.trim().slice(0, 10)}.`, fix: fix(buildVerifierCommand(), true, null) };
+  return { ...base, status: "warning", detail: "Not built yet: the verifier takes screenshots of UI changes with Playwright and Chromium, which only this image carries.", fix: fix(buildVerifierCommand(), true, null) };
+}
+
 /** A container on hq-agents tries to reach the internet without the proxy; it must fail. */
 async function checkEgressLock(imageOk: boolean): Promise<Check> {
   const base = { id: "egress-lock" as const, label: "Containers can only go through HQ's proxy", neededFor: "container" as const };
@@ -408,6 +417,7 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
     const reach = await checkHqReach(imageOk, hqPort);
     const logins = await Promise.all(loginsNeeded.map(([c, acct]) => checkContainerLogin(c, imageOk, hqPort, acct)));
     checks.push(docker, image, lock, reach, ...logins);
+    if (team.some((a) => a.roleId === "verifier")) checks.push(await checkVerifierImage(imageOk));
     const scopeFw = project ? await checkScopeFirewall(project, team) : null;
     if (scopeFw) checks.push(scopeFw);
     containerReady = docker.status === "ok" && imageOk && lock.status !== "missing" && reach.status === "ok" && tmux.status === "ok";

@@ -98,6 +98,60 @@ function Checks({ scores }: { scores: TaskScore[] }) {
   );
 }
 
+/** The URL HQ serves an evidence file at (read-only; the browser's token goes along, as for screen previews). */
+function evidenceUrl(projectId: string, taskId: string, sha: string, file: string): string {
+  let tok = "";
+  try {
+    tok = sessionStorage.getItem("hq-token") ?? "";
+  } catch {
+    /* private window */
+  }
+  return `/api/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(taskId)}/${sha}/${encodeURIComponent(file)}${tok ? `?token=${encodeURIComponent(tok)}` : ""}`;
+}
+
+/** The verifier's screenshots of the running app for the task's PR: thumbnails that open full size, and its steps. */
+function Evidence({ task }: { task: Task }) {
+  const ev = task.evidence!;
+  const projectId = useOffice((s) => s.snap?.config.project.id ?? "");
+  const head = useOffice((s) => s.snap?.pullRequests.find((p) => p.number === task.prNumber)?.headSha);
+  const verifier = useOffice((s) => s.snap?.config.team.find((a) => a.id === ev.by)?.name ?? ev.by);
+  const [open, setOpen] = useState(false);
+  const stale = !!head && head !== ev.sha;
+  return (
+    <div className="mt-1 text-[12px]">
+      <button className="flex w-full items-center gap-1.5 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className={stale ? "text-[#F59E0B]" : "text-green"}>▣ Evidence</span>
+        <span className="font-mono text-[11px] text-muted">
+          {ev.shots.length} · {ev.sha.slice(0, 7)} · {verifier}
+        </span>
+        <span className="flex-1" />
+        <span className="text-muted">{open ? "▾" : "▸"}</span>
+      </button>
+      {stale && <div className="leading-tight text-[#F59E0B]">New commits since: the verifier takes it again.</div>}
+      <div className="mt-1 grid grid-cols-2 gap-1">
+        {(open ? ev.shots : ev.shots.slice(0, 2)).map((s) => {
+          const url = evidenceUrl(projectId, task.id, ev.sha, s.file);
+          const video = /\.(webm|mp4)$/.test(s.file);
+          return (
+            <a key={s.file} href={url} target="_blank" rel="noreferrer" className="block border border-ink bg-black" title={`${s.label}: open full size`}>
+              {video ? <video src={url} className="aspect-[4/3] w-full object-cover object-top" muted /> : <img src={url} alt={s.label} loading="lazy" className="aspect-[4/3] w-full object-cover object-top" />}
+              <span className="block truncate px-1 py-0.5 text-[10px] text-muted">{s.label}</span>
+            </a>
+          );
+        })}
+      </div>
+      {!open && ev.shots.length > 2 && <div className="text-[11px] text-muted">+{ev.shots.length - 2} more</div>}
+      {open && ev.steps.length > 0 && (
+        <ol className="m-0 mt-1 list-decimal pl-4 leading-snug text-muted">
+          {ev.steps.map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /** A finished Dev or Research task can join the benchmark suite, to be replayed on other models from a terminal. */
 function SuiteButton({ task }: { task: Task }) {
   const template = useOffice((s) => s.snap?.config.template);
@@ -146,6 +200,7 @@ function TaskCard({ task }: { task: Task }) {
       {task.deliverablePath && <div className="mt-0.5 truncate font-term text-[14px] text-green">↳ {task.deliverablePath}</div>}
       {task.status === "blocked" && task.note && <div className="text-[12px] text-red">{task.note}</div>}
       {task.scores && task.scores.length > 0 && <Checks scores={task.scores} />}
+      {task.evidence && <Evidence task={task} />}
       {task.status === "done" && <SuiteButton task={task} />}
       <div className="mt-1 flex items-center gap-1.5 text-[12px]">
         {owner ? (

@@ -1,4 +1,15 @@
 import type { TaskScore } from "./scorers";
+
+/** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
+export interface TaskEvidence {
+  sha: string;
+  prNumber: number | null;
+  by: string;
+  at: string;
+  steps: string[];
+  /** Files under ~/.arima/<project>/evidence/<task>/<sha>/, served by HQ. */
+  shots: { file: string; label: string }[];
+}
 import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
 
 export type { Finding };
@@ -327,6 +338,8 @@ export interface Task {
   scores?: TaskScore[];
   /** Its id in the benchmark suite (~/.arima-bench/suite), once added (docs/factory.md section 6). */
   benchmark?: string;
+  /** Screenshots of the running app for its PR, taken by the verifier (docs/factory.md section 7). */
+  evidence?: TaskEvidence;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -350,6 +363,8 @@ export interface PullRequest {
   testsChanged?: boolean;
   /** The paths it changes, as GitHub last reported them (first 100). */
   files?: string[];
+  /** The PR's head commit, as GitHub last reported it. */
+  headSha?: string;
   /** Every check on the head commit finished green; false with no checks at all. */
   ciGreen?: boolean;
 }
@@ -441,6 +456,7 @@ export type SetupCheckId =
   | "google-secret"
   | "docker"
   | "agent-image"
+  | "verifier-image"
   | "egress-lock"
   | "hq-reach"
   | "scope-firewall"

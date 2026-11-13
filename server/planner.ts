@@ -3,7 +3,7 @@
 
 import { lessonsForBrief, templateIdOf } from "./lessons";
 import type { LessonPromotion } from "./lessonPromotion";
-import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
+import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskEvidence, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
@@ -11,10 +11,11 @@ import { HISTORY, type Inbox } from "./inbox";
 import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
 import { taskUsage } from "./usageEvents";
-import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
+import { syncDeliverablesFromAgent, syncRepoToWorkspace, workspaceFor } from "./workspace";
+import { saveEvidence } from "./evidence";
 import { approveSpec, vendorOf, assertTaskMove, gateContext, gateEvents, loadSpec, recordGate, saveSpec, type Spec } from "./planStore";
 import { ownerAway } from "./presence";
-import { isHighStakes, PERSON_GATES, stagesLeft, unmetGates, type UnmetGate } from "./gates";
+import { isHighStakes, PERSON_GATES, stagesLeft, uiFilesOf, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
@@ -249,6 +250,62 @@ export class Planner {
   }
 
   private secondAsked = new Set<string>(); // task ids: asked once per task
+  private verifierAsked = new Set<string>(); // "task@sha": asked once per commit
+
+  /**
+   * A task in review whose PR changes UI files at a commit with no evidence yet: the verifier seat checks it out, runs
+   * the app and takes screenshots (docs/factory.md section 7). Called on in-review and whenever GitHub reports PRs.
+   */
+  askVerifier(task: Task) {
+    const gate = this.snap.config.template?.flow.stages.flatMap((st) => st.gates).find((g): g is Extract<typeof g, { kind: "evidence" }> => g.kind === "evidence");
+    if (!gate || task.status !== "in-review") return;
+    const pr = this.snap.pullRequests.find((p) => p.number === task.prNumber && p.taskId === task.id);
+    if (!pr?.files || !pr.headSha || pr.merged) return;
+    const ui = uiFilesOf(gate, pr.files);
+    const key = `${task.id}@${pr.headSha}`;
+    if (!ui.length || task.evidence?.sha === pr.headSha || this.verifierAsked.has(key)) return;
+    this.verifierAsked.add(key);
+    const seat = this.snap.config.team.find((a) => a.roleId === "verifier" && a.id !== task.ownerId);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!seat) {
+      if (lead) this.notify(lead.id, `${task.id} (PR #${pr.number}) changes UI files and needs screenshots of the running app, and the team has no verifier seat. Add one (Settings → Team, role Verifier), or ask the owner to waive the evidence gate.`);
+      return;
+    }
+    const files = `${ui.slice(0, 6).join(", ")}${ui.length > 6 ? ` and ${ui.length - 6} more` : ""}`;
+    const msg = this.record("hq", seat.id, `Verify ${task.id} (PR #${pr.number}) at ${pr.headSha.slice(0, 7)}`);
+    this.inbox.push(seat.id, {
+      fromId: "hq", kind: "notice", msgId: msg.id,
+      text: [
+        `Verify ${task.id} (PR #${pr.number}, branch ${pr.branch ?? "?"}): ${task.title}. It changes ${files}.`,
+        `1. In your workspace: git fetch origin && git checkout --detach ${pr.headSha}. Install and start the app with the repo's dev command (repo facts, README or package.json) on your port ($PORT).`,
+        `2. Open the pages these files render and take screenshots at desktop (1280x800) and tablet (820x1180) width with Playwright, for example: npx playwright screenshot --viewport-size=1280,800 http://localhost:$PORT/ evidence/home-desktop.png. A short recording is fine for an interaction.`,
+        `3. Call attach_evidence with taskId ${task.id}, sha ${pr.headSha}, the steps you took (what you opened and clicked, what looked wrong), and the files with a label each.`,
+        "Don't change the code or push. If the app won't start, say why in the steps and attach what you have; the reviewer decides.",
+      ].join("\n"),
+    });
+    this.onReady(seat.id);
+    this.hub.activity("review.started", seat.id, `HQ asked ${seat.name} to verify ${task.id} at ${pr.headSha.slice(0, 7)} (screenshots of the running app)`);
+  }
+
+  /** The PR comment and anything else the project does with new evidence (set in project.ts). */
+  onEvidence: (task: Task, ev: TaskEvidence) => void = () => {};
+
+  /** The verifier's screenshots for a task's PR, copied from its workspace into HQ (never into the repo). */
+  attachEvidence(agentId: string, input: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }): TaskEvidence {
+    const task = this.task(input.taskId);
+    if (!task) throw new Error(`No task ${input.taskId}.`);
+    if (task.ownerId === agentId) throw new Error("You can't take the evidence for your own task.");
+    const agent = this.hub.cfg(agentId);
+    if (!agent) throw new Error("Only a seat of this team can attach evidence.");
+    const ev = saveEvidence(this.hub.slug, workspaceFor(agent, this.hub.slug), { ...input, prNumber: task.prNumber, by: agentId });
+    task.evidence = ev;
+    this.hub.emit({ type: "task.updated", task: { ...task } });
+    this.hub.activity("review.passed", agentId, `${this.hub.name(agentId)} attached ${ev.shots.length} screenshot${ev.shots.length === 1 ? "" : "s"} of ${task.id} at ${ev.sha.slice(0, 7)}`);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead && lead.id !== agentId) this.notify(lead.id, `${this.hub.name(agentId)} attached evidence for ${task.id} at ${ev.sha.slice(0, 7)}: ${ev.steps.slice(0, 3).join(" ")}`);
+    this.onEvidence(task, ev);
+    return ev;
+  }
 
   /**
    * A task went into review and its flow wants a second opinion on it (always, or because it is high-stakes): ask a
@@ -374,7 +431,10 @@ export class Planner {
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
     if (task.status === "in-review" && task.prNumber && (changes.status === "in-review" || changes.prNumber)) this.startUnblocked(task); // tasks that can stack on its PR
-    if (changes.status === "in-review") this.askSecondOpinion(task);
+    if (changes.status === "in-review") {
+      this.askSecondOpinion(task);
+      this.askVerifier(task);
+    }
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     return task;
@@ -483,7 +543,10 @@ export class Planner {
       this.startUnblocked(task);
     }
     if (status === "in-review" && task.prNumber) this.startUnblocked(task); // tasks that can stack on its PR
-    if (status === "in-review") this.askSecondOpinion(task);
+    if (status === "in-review") {
+      this.askSecondOpinion(task);
+      this.askVerifier(task);
+    }
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);

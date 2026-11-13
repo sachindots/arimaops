@@ -112,6 +112,7 @@ export const GATE_KINDS = [
   "file-delivered",
   "findings-report",
   "scope-set",
+  "evidence",
 ] as const;
 export type GateKind = (typeof GATE_KINDS)[number];
 
@@ -132,6 +133,8 @@ export type Gate = { id: string } & (
   | { kind: "file-delivered" }
   | { kind: "findings-report" }
   | { kind: "scope-set" }
+  /** A PR that changes UI files needs screenshots of the running app at its head commit (docs/factory.md section 7). */
+  | { kind: "evidence"; uiFiles?: string[] }
 );
 
 export const GATE_STATES = ["passed", "failed", "waived", "reset"] as const;

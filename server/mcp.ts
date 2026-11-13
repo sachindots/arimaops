@@ -223,6 +223,24 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   );
 
   server.registerTool(
+    "attach_evidence",
+    {
+      description:
+        "Verifier: attach screenshots (or a short recording) of the running app for a task's PR, at the commit you checked out. HQ copies the files from your workspace (PNG, JPEG, WebP, WebM or MP4, at most 12, 15 MB each), keeps them on the HQ machine (never in the repo), shows them on the task and comments on the PR. The evidence gate passes when this commit is still the PR's head; a new push needs new evidence.",
+      inputSchema: {
+        taskId: z.string(),
+        sha: z.string().describe("The full commit you checked out and ran (git rev-parse HEAD)"),
+        steps: z.array(z.string().max(300)).max(20).describe("What you did and saw, one step per line: the page opened, what you clicked, what looked wrong"),
+        files: z.array(z.object({ path: z.string().max(300).describe("Path in your workspace"), label: z.string().max(80).describe("What it shows: 'Settings, tablet'") })).min(1).max(12),
+      },
+    },
+    guard(({ taskId, sha, steps, files }: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }) => {
+      const ev = planner.attachEvidence(me, { taskId, sha: sha.trim().toLowerCase(), steps, files });
+      return ok(`Attached ${ev.shots.length} file${ev.shots.length === 1 ? "" : "s"} to ${taskId} at ${ev.sha.slice(0, 7)}. The reviewer and the owner see them on the task; the PR gets a comment.`);
+    }),
+  );
+
+  server.registerTool(
     "set_my_status",
     {
       description: "Update your current task: in-progress, blocked (say why), in-review (PR opened or deliverable ready), or done. The lead is told automatically.",
