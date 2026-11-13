@@ -74,7 +74,7 @@ export function followBuilding(): () => void {
       sockets.set(
         p.id,
         src.connect((e) => {
-          if (e.type === "terminal.output" || e.type === "workspace.info" || e.type === "remote.stepup") return;
+          if (e.type === "terminal.output" || e.type === "workspace.info" || e.type === "remote.stepup" || e.type === "template.file" || e.type === "template.imported") return;
           useBuilding.setState((s) => {
             const o = s.others[p.id];
             if (!o) return {};

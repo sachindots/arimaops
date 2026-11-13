@@ -127,6 +127,19 @@ As built (`src/data/commsTemplates.ts`, `src/data/outbound.ts`):
 - **Import:** checked by `validateTemplate` (Phase 1) plus the packs it names: a pack missing from `skill-packs.lock.json` goes through the owner's add-and-scan step (section 2) before the template can be used. Saved to the library under a new id; nothing runs until a project uses it.
 - Done when a template exported from one HQ imports on a fresh one and makes the same team and flow.
 
+As built (`src/data/templateFile.ts`, `server/templateIO.ts`):
+- **Save as file** (Settings → Team → Template file) downloads `<id>.arimaops-template.json` on the device that asked: `{format: "arimaops-template", v: 1, exportedAt, template, packs}`. `template` keeps only a TeamTemplate's own fields. `packs` pins each pack the roles name, with this HQ's commit and the hashes of the skills used.
+- **Import a template…** is in the welcome and in Settings → Team. It's owner-only, and from a remote device it asks for the authenticator code.
+  - The file is checked: 512 KB at most, the format and version, `templateErrors`, a hash for every pack skill used. Unknown fields and pins for unused packs are dropped.
+  - Packs:
+    - **Vetted here:** used at this HQ's vetted commit, noted when it differs from the file's.
+    - **Already approved here:** must be at the same commit.
+    - **Rejected here:** refuses the file.
+    - **New:** fetched at the file's commit (not the newest), and each skill's hash compared with the file's. A mismatch refuses the import and leaves nothing behind. When the hashes match, the pack is scanned and waits for the owner in Action items.
+  - Saved under a new id (`marketing-2`). It never overwrites, and a built-in keeps its own.
+- **Using it:** `copyToProject` refuses any template with a pack that isn't usable yet, saying which. The welcome lists the library (built-ins in their order, then the owner's), marks the owner's templates "yours · vN" and the ones waiting on the owner "waits for you", and disables Create team for those.
+- Checked: 25 checks in `scripts/template-file-test.ts`, and live: a Marketing template saved from one throwaway HQ and imported on a fresh one made the same team (lead, 3 copywriters, editor).
+
 ## 8. Lesson promotion (4.5)
 
 - **What:** certified Lessons, Decisions and Dead ends from a project, offered to its template's library copy, so the next project from that template starts with them in its briefs.

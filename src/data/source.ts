@@ -1,3 +1,4 @@
+import type { TemplateFile } from "./templateFile";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -38,6 +39,7 @@ import type {
   AgentMode,
   GitHubAppState,
   SkillPackView,
+  TemplateEntry,
 } from "./types";
 
 export type OfficeEvent =
@@ -64,6 +66,10 @@ export type OfficeEvent =
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
+  | { type: "templates.updated"; templateLibrary: TemplateEntry[] }
+  /** Answer to exportTemplate: the file to download (only the device that asked saves it). */
+  | { type: "template.file"; file: TemplateFile }
+  | { type: "template.imported"; ok: boolean; message: string; id?: string }
   /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
   | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
@@ -150,6 +156,10 @@ export interface OfficeDataSource {
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
   /** Owner only: lifts the scope requirement for CTFs and practice ranges. */
   setLabMode(on: boolean): void;
+  /** The project's template as a file; answered with a `template.file` event. */
+  exportTemplate(): void;
+  /** Imports a template file's text into this HQ's library; answered with `template.imported`. */
+  importTemplate(text: string): void;
   /** Owner only: per-project caps in USD on API-key accounts. */
   setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
   /** Owner only: trades GitHub's manifest code for the App's credentials. */

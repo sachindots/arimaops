@@ -24,6 +24,10 @@ interface OfficeState {
   presets: DataPreset[] | null;
   live: boolean; // connected to a real HQ server (vs. the demo mock)
   workspaceInfo: Record<string, WorkspaceInfo>; // answers to inspectWorkspace
+  /** This device asked for the template file (other devices watching the project don't download it). */
+  templateExportAsked: boolean;
+  /** The last template import's answer, for the dialog that sent it. */
+  templateImport: { ok: boolean; message: string; id?: string } | null;
   connection: ConnectionStatus;
   source: OfficeDataSource;
 }
@@ -114,6 +118,8 @@ export const useOffice = create<OfficeState>(() => ({
   presets: source.dev?.presets ?? null,
   live: token !== null || loggedIn, // a saved device login is just as live as a token link
   workspaceInfo: {},
+  templateExportAsked: false,
+  templateImport: null,
   connection: "connecting",
   source,
 }));
@@ -179,6 +185,11 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, githubApp: e.githubApp };
     case "skillPacks.updated":
       return { ...snap, skillPacks: e.skillPacks };
+    case "templates.updated":
+      return { ...snap, templateLibrary: e.templateLibrary };
+    case "template.file":
+    case "template.imported":
+      return snap;
     case "memory.digest":
       return snap;
     case "mcp.updated":
@@ -198,6 +209,18 @@ function handle(e: OfficeEvent) {
   }
   if (e.type === "workspace.info") {
     useOffice.setState((s) => ({ workspaceInfo: { ...s.workspaceInfo, [e.info.agentId]: e.info } }));
+    return;
+  }
+  if (e.type === "template.file") {
+    if (!useOffice.getState().templateExportAsked) return;
+    useOffice.setState({ templateExportAsked: false });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(e.file, null, 2)], { type: "application/json" }));
+    Object.assign(document.createElement("a"), { href: url, download: `${e.file.template.id}.arimaops-template.json` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
+  }
+  if (e.type === "template.imported") {
+    useOffice.setState({ templateImport: { ok: e.ok, message: e.message, id: e.id } });
     return;
   }
   if (e.type === "snapshot") clearTerminals();
@@ -270,6 +293,14 @@ export const officeActions = {
   restoreMemory: (date: string) => source.restoreMemory(date),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
   setLabMode: (on: boolean) => source.setLabMode(on),
+  exportTemplate: () => {
+    useOffice.setState({ templateExportAsked: true });
+    source.exportTemplate();
+  },
+  importTemplate: (text: string) => {
+    useOffice.setState({ templateImport: null });
+    source.importTemplate(text);
+  },
   setSpendCaps: (caps: { dailyUsd: number; monthlyUsd: number }) => source.setSpendCaps(caps),
   finishGithubApp: (code: string) => source.finishGithubApp(code),
   setTeamMode: (mode: AgentMode) => source.setTeamMode(mode),

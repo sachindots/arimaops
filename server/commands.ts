@@ -1,5 +1,7 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
+import { broadcastLibrary, exportTemplate, importTemplate } from "./templateIO";
+import { ownerPacks, packsState } from "./skillPacks";
 import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
@@ -267,6 +269,36 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         const t = resyncProject(hqDb(), hub.slug);
         afterTemplate(t, `Template re-synced to ${t.name} v${t.version}. Restart agents to give them the change.`);
       }),
+
+    exportTemplate: () => {
+      const t = hub.snap.config.template;
+      if (!t) return hub.activity("config", null, "This project was made before templates: there's no template to save.");
+      hub.emit({ type: "template.file", file: exportTemplate(t) });
+    },
+
+    /** Imports a template file into the library. Its packs are pinned (and scanned for the owner) before any project can use it. */
+    importTemplate: async (text) => {
+      try {
+        const r = await importTemplate(hqDb(), typeof text === "string" ? text : "", "you");
+        for (const source of r.pending) {
+          const p = ownerPacks()[source];
+          if (p?.status === "pending") planner.actions?.addSkillPack(source, { commit: p.commit, skills: Object.keys(p.skills).length, blocked: p.blocked, warnings: p.findings.filter((f) => f.level === "warn"), licence: p.licence });
+        }
+        const skillPacks = packsState();
+        for (const h of liveHubs()) {
+          h.snap.skillPacks = skillPacks;
+          h.emit({ type: "skillPacks.updated", skillPacks });
+        }
+        broadcastLibrary(hqDb());
+        const message = `Imported ${r.template.name} as "${r.template.id}".${r.pending.length ? ` Before a project can use it, check the skills from ${r.pending.join(", ")} (Action items).` : " New projects can use it now."}${r.notes.length ? ` ${r.notes.join(" ")}` : ""}`;
+        hub.activity("config", null, message);
+        hub.emit({ type: "template.imported", ok: true, message, id: r.template.id });
+      } catch (e) {
+        const message = `Template not imported: ${e instanceof Error ? e.message : String(e)}`;
+        hub.activity("config", null, message);
+        hub.emit({ type: "template.imported", ok: false, message });
+      }
+    },
 
     /** Saves a template to this machine's library (built-in ones are saved under a new id). */
     saveTemplate: (raw) =>

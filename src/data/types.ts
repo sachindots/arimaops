@@ -156,6 +156,13 @@ export interface GitHubAppState {
   lastDeliveryAt: string | null;
 }
 
+/** A template in this HQ's library. problems: why a project can't use it yet (packs waiting for the owner). */
+export interface TemplateEntry {
+  template: TeamTemplate;
+  builtin: boolean;
+  problems: string[];
+}
+
 /** A skill pack on this machine (docs/templates.md section 2). */
 export interface SkillPackView {
   source: string;
@@ -506,6 +513,8 @@ export interface OfficeSnapshot {
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
+  /** This HQ's template library (built-in and saved or imported), for the welcome. */
+  templateLibrary?: TemplateEntry[];
   actionItems?: ActionItem[];
   findings?: Finding[];
 }

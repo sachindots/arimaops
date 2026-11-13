@@ -1,6 +1,7 @@
 // One project's runtime inside the shared server: its hub, agents, planner, sandbox and GitHub sync.
 // main.ts starts one per registered project; http.ts routes browsers (by ?project=) and agents (by their own token) to it.
 
+import { broadcastLibrary, libraryState } from "./templateIO";
 import { existsSync, lstatSync, mkdirSync, renameSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -147,6 +148,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   hub.snap.accounts = accountsState();
   hub.snap.githubApp = githubAppState();
   hub.snap.skillPacks = packsState();
+  hub.snap.templateLibrary = libraryState(hqDb());
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
@@ -253,6 +255,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       h.snap.skillPacks = skillPacks;
       h.emit({ type: "skillPacks.updated", skillPacks });
     }
+    broadcastLibrary(hqDb()); // an approved pack can make a template usable
   };
   // Skill packs nobody pinned: fetched, hashed and scanned in the background, then the owner decides.
   const proposing = new Set<string>();

@@ -38,7 +38,7 @@ export interface OwnerPack extends PackPin {
   blocked: string[];
 }
 
-type Fetcher = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+export type Fetcher = (url: string) => Promise<{ ok: boolean; status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
 
 const SOURCE = /^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,100}$/;
 const SKILL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
@@ -172,10 +172,10 @@ function packNotice(source: string, pin: PackPin, licence: string | null): strin
 }
 
 /**
- * A pack nobody vetted: pin its current commit, fetch every skill, hash and scan them, and keep the result for the
+ * A pack nobody vetted: pin its current commit (or the one given), fetch every skill, hash and scan them, and keep the result for the
  * owner to approve. Nothing is copied to an agent until they do. Returns the pending (or existing) record.
  */
-export async function proposePack(source: string, get: Fetcher = fetch, now = new Date()): Promise<OwnerPack> {
+export async function proposePack(source: string, get: Fetcher = fetch, now = new Date(), atCommit?: string): Promise<OwnerPack> {
   if (!SOURCE.test(source)) throw new Error(`"${source}" isn't a GitHub owner/repo.`);
   if (vettedPacks()[source]) throw new Error(`${source} is already vetted.`);
   const packs = ownerPacks();
@@ -183,9 +183,13 @@ export async function proposePack(source: string, get: Fetcher = fetch, now = ne
   const repo = await get(`https://api.github.com/repos/${source}`);
   if (!repo.ok) throw new Error(`GitHub doesn't know ${source} (${repo.status}).`);
   const info = JSON.parse(await repo.text()) as { default_branch?: string; license?: { spdx_id?: string } | null };
-  const head = await get(`https://api.github.com/repos/${source}/commits/${encodeURIComponent(info.default_branch ?? "HEAD")}`);
-  if (!head.ok) throw new Error(`Couldn't read ${source}'s latest commit (${head.status}).`);
-  const commit = String((JSON.parse(await head.text()) as { sha?: string }).sha ?? "");
+  // An imported template names the commit it was made with; otherwise the newest one.
+  let commit = atCommit ?? "";
+  if (!commit) {
+    const head = await get(`https://api.github.com/repos/${source}/commits/${encodeURIComponent(info.default_branch ?? "HEAD")}`);
+    if (!head.ok) throw new Error(`Couldn't read ${source}'s latest commit (${head.status}).`);
+    commit = String((JSON.parse(await head.text()) as { sha?: string }).sha ?? "");
+  }
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`${source}: no commit to pin.`);
   const entries = await tree(source, commit, get);
   const dirs = skillsInTree(entries);
@@ -203,6 +207,14 @@ export async function proposePack(source: string, get: Fetcher = fetch, now = ne
   const pack: OwnerPack = { commit, licence: spdx, use: "any", skills, status: "pending", addedAt: now.toISOString(), findings: findings.sort((a, b) => (a.level === b.level ? 0 : a.level === "block" ? -1 : 1)).slice(0, 200), blocked };
   saveOwnerPacks({ ...ownerPacks(), [source]: pack });
   return pack;
+}
+
+/** Drops a proposed pack that was never approved (an import that failed its hash check). */
+export function forgetPendingPack(source: string) {
+  const packs = ownerPacks();
+  if (packs[source]?.status !== "pending") return;
+  delete packs[source];
+  saveOwnerPacks(packs);
 }
 
 /** The owner's answer on a proposed pack. Blocked skills stay unusable even in an approved pack. */

@@ -1,4 +1,6 @@
 import { agentPalette } from "../../theme/tokens";
+import { readTemplateFile, toTemplateFile } from "../templateFile";
+import { BUILTIN_TEMPLATES } from "../templates";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
 import { HOST_TERMINAL, type AccessRequest, type GitHubAppState, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
@@ -395,6 +397,23 @@ export function createMockSource(): OfficeDataSource {
         world.emit({ type: "spend.updated", spend: structuredClone(spend) });
       }
       world.configChanged();
+    },
+    exportTemplate() {
+      const t = world.snap.config.template;
+      if (t) world.emit({ type: "template.file", file: toTemplateFile(t, {}) });
+    },
+    importTemplate(text) {
+      try {
+        const { template } = readTemplateFile(text);
+        const lib = world.snap.templateLibrary ?? BUILTIN_TEMPLATES.map((x) => ({ template: x, builtin: true, problems: [] }));
+        let id = template.id;
+        for (let i = 2; lib.some((e) => e.template.id === id); i++) id = `${template.id}-${i}`;
+        world.snap.templateLibrary = [...lib, { template: { ...template, id }, builtin: false, problems: [] }];
+        world.emit({ type: "templates.updated", templateLibrary: structuredClone(world.snap.templateLibrary) });
+        world.emit({ type: "template.imported", ok: true, message: `Imported ${template.name} as "${id}". New projects can use it now.`, id });
+      } catch (e) {
+        world.emit({ type: "template.imported", ok: false, message: `Template not imported: ${(e as Error).message}` });
+      }
     },
     setLabMode(on) {
       world.snap.config.rules.labMode = on;

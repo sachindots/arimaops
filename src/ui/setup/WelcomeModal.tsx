@@ -6,6 +6,7 @@ import { BUILTIN_TEMPLATES } from "../../data/templates";
 import type { ReviewTool } from "../../data/types";
 import { officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, RoleBadge } from "../kit";
+import { TemplateImport } from "./TemplateImport";
 
 /** First run on a repo or folder: name the project and pick the team template it runs. */
 export function WelcomeModal() {
@@ -18,7 +19,9 @@ export function WelcomeModal() {
   const [sending, setSending] = useState(false);
   const [stack, setStack] = useState<StackConfig>(EMPTY_STACK);
   if (!snap) return null;
-  const template = BUILTIN_TEMPLATES.find((t) => t.id === templateId) ?? BUILTIN_TEMPLATES[0];
+  const library = snap.templateLibrary ?? BUILTIN_TEMPLATES.map((t) => ({ template: t, builtin: true, problems: [] as string[] }));
+  const entry = library.find((e) => e.template.id === templateId) ?? library[0];
+  const template = entry.template;
   const usesPrs = template.flow.stages.some((st) => st.gates.some((g) => g.kind === "pr-merged"));
 
   const submit = () => {
@@ -59,7 +62,7 @@ export function WelcomeModal() {
           <section>
             <h3 className="mb-1.5 text-[16px] font-bold">Team template</h3>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Team template">
-              {BUILTIN_TEMPLATES.map((t) => (
+              {library.map(({ template: t, builtin, problems }) => (
                 <button
                   key={t.id}
                   type="button"
@@ -68,7 +71,11 @@ export function WelcomeModal() {
                   className={`flex flex-col items-start gap-1.5 border-[3px] bg-white p-2.5 text-left ${t.id === template.id ? "border-red" : "border-ink"}`}
                   onClick={() => setTemplateId(t.id)}
                 >
-                  <b className="text-[14px]">{t.name}</b>
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <b className="text-[14px]">{t.name}</b>
+                    {!builtin && <span className="chip text-[10px]" style={{ ["--c" as string]: "#b388ff" }}>yours · v{t.version}</span>}
+                    {problems.length > 0 && <span className="chip text-[10px]" style={{ ["--c" as string]: "#ff9100" }}>waits for you</span>}
+                  </span>
                   <span className="text-[12px] leading-snug text-muted">{t.description}</span>
                   <span className="flex flex-wrap gap-1">
                     {t.roles.map((r) => (
@@ -78,6 +85,11 @@ export function WelcomeModal() {
                 </button>
               ))}
             </div>
+            {entry.problems.length > 0 && (
+              <p className="mt-2 border-l-[3px] border-[#ff9100] pl-2 text-[13px]">
+                {template.name} can't be used yet: {entry.problems.join("; ")}.
+              </p>
+            )}
             <ul className="mt-2 flex flex-col gap-0.5 text-[13px] text-muted">
               {template.roles.map((r) => (
                 <li key={r.id}>
@@ -87,6 +99,9 @@ export function WelcomeModal() {
                 </li>
               ))}
             </ul>
+            <div className="mt-2">
+              <TemplateImport onImported={(id) => id !== templateId && setTemplateId(id)} />
+            </div>
           </section>
 
           <WelcomeStack stack={stack} setStack={setStack} />
@@ -113,7 +128,7 @@ export function WelcomeModal() {
 
         <div className="flex items-center justify-between gap-3 border-t-[3px] border-ink px-4 py-2">
           <span className="text-[12px] text-muted">Agents don't start until you press Start.</span>
-          <button className="btn" disabled={sending} onClick={submit}>
+          <button className="btn" disabled={sending || entry.problems.length > 0} onClick={submit}>
             {sending ? "Creating…" : "Create team"}
           </button>
         </div>

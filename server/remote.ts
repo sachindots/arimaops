@@ -30,6 +30,7 @@ export const RISKY_COMMANDS = new Set([
   "updateProjectTemplate",
   "resyncTemplate",
   "saveTemplate",
+  "importTemplate",
   "updateSandbox",
   "setSecret",
   "saveAccount",

@@ -1,4 +1,5 @@
 import { BRAND } from "../../data/brand";
+import { TemplateImport } from "../setup/TemplateImport";
 import { useState } from "react";
 import type { Role } from "../../data/model";
 import { nextAgentName } from "../../data/names";
@@ -111,6 +112,18 @@ export function TeamSettings() {
         </div>
       </section>
       <AddAgent roles={template.roles.filter((r) => !r.isLead)} defaultMode={snap.setup.sandboxReady ? "sandbox" : "local"} />
+      <section>
+        <SectionTitle>Template file</SectionTitle>
+        <p className="mb-2 text-[13px] text-muted">
+          Save this project's template ({template.name}: roles, flow, rules and the pins of its skill packs; no keys, agents or project data) to use on another HQ. An imported template joins this HQ's library for new projects; its skill packs are checked first.
+        </p>
+        <div className="flex flex-wrap items-start gap-3">
+          <button type="button" className="btn px-2 text-[12px]" onClick={() => officeActions.exportTemplate()}>
+            Save as file
+          </button>
+          <TemplateImport />
+        </div>
+      </section>
       {removing && <RemoveAgentDialog agent={removing} onClose={() => setRemoving(null)} />}
     </div>
   );

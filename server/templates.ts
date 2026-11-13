@@ -10,6 +10,7 @@ import { LEAD_NAME, nextAgentName } from "../src/data/names";
 import { BUILTIN_TEMPLATES } from "../src/data/templates";
 import { agentPalette } from "../src/theme/tokens";
 import { slugify } from "./paths";
+import { packProblems } from "./templateIO";
 
 export const defaultSandbox = (): SandboxSettings => ({
   resources: { cpus: null, memoryGb: null }, // sbx's own defaults
@@ -65,6 +66,8 @@ export function saveTemplate(db: DatabaseSync, t: TeamTemplate, by: string): Tea
 export function copyToProject(db: DatabaseSync, projectId: string, templateId: string): TeamTemplate {
   const t = getTemplate(db, templateId);
   if (!t) throw new TemplateError(`No template "${templateId}".`);
+  const packs = packProblems(t);
+  if (packs.length) throw new TemplateError(`${t.name} can't be used yet: ${packs.join("; ")}.`);
   if (projectTemplate(db, projectId)) throw new TemplateError(`Project "${projectId}" already has a template. Re-sync it instead.`);
   db.prepare("INSERT INTO projects_model (project_id, template_id, template_version, body, updated_at) VALUES (?, ?, ?, ?, ?)").run(
     projectId,
