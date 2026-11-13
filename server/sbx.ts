@@ -407,7 +407,8 @@ export class Sbx {
     // Security engagement: in-scope domains are allowed and out-of-scope ones denied for every sandbox.
     const project = this.hub.snap.config.project;
     const sec = this.hub.snap.config.rules.findings;
-    const allow = [...agent.sandbox.allow, ...(sec ? scopeDomains(project.scope) : [])];
+    // The template's own hosts (Research: the paper APIs) come with every seat.
+    const allow = [...agent.sandbox.allow, ...(this.hub.snap.config.rules?.egress ?? []), ...(sec ? scopeDomains(project.scope) : [])];
     const deny = [...agent.sandbox.deny, ...(sec ? outOfScopeDomains(project.scope) : [])];
     const want = new Set([...allow.map((r) => key("allow", r)), ...deny.map((r) => key("deny", r))]);
     const owned = new Set(this.owned[name] ?? []);

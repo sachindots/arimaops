@@ -238,6 +238,37 @@ Priority order: **1. Correct → 2. Safe → 3. Holds under load → 4. Tested �
 3. **Correction Diff:** Provide exact replacement wording for any inaccurate or overstated claim.`,
   },
 
+  {
+    id: "paper-search",
+    name: "Paper Search (arXiv, OpenAlex, Crossref)",
+    domain: "research",
+    description: "Find and log scholarly sources through three free APIs that need no key, and keep a PRISMA-style source log.",
+    body: `# Paper Search
+
+Three free APIs, no keys. Be polite: one request at a time, a few seconds apart, small pages.
+
+## arXiv (preprints: CS, physics, maths, statistics…)
+\`curl -s 'https://export.arxiv.org/api/query?search_query=all:%22retrieval%20augmented%22+AND+cat:cs.CL&start=0&max_results=20&sortBy=submittedDate'\`
+Atom XML: each \`<entry>\` has \`<id>\` (the arXiv URL), \`<title>\`, \`<published>\`, \`<author>\` and \`<summary>\`. Wait 3 seconds between calls.
+
+## OpenAlex (250M+ works across fields, with citation counts)
+\`curl -s 'https://api.openalex.org/works?search=retrieval%20augmented%20generation&filter=from_publication_date:2023-01-01,type:article&per-page=25&select=id,doi,title,publication_year,cited_by_count,primary_location'\`
+JSON \`results[]\`. \`cited_by_count\` helps rank; it is not quality.
+
+## Crossref (DOIs and publisher metadata)
+- Search: \`curl -s 'https://api.crossref.org/works?query.bibliographic=retrieval+augmented+generation&rows=20&select=DOI,title,issued,container-title,type'\`
+- One DOI: \`curl -s 'https://api.crossref.org/works/10.48550/arXiv.2005.11401'\`
+Use it to confirm a citation is real: title, year and venue must match.
+
+## The source log (PRISMA-style)
+Keep \`deliverables/sources.md\`. Log every search, not only the hits you kept:
+- \`Q3. 2026-11-13 · OpenAlex · "retrieval augmented generation" from 2023 · 412 hits, screened the top 25\`
+- \`S7. Lewis et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. doi:10.48550/arXiv.2005.11401 · kept: the original RAG paper\`
+- \`X4. … · dropped: a blog summary of S7, not a primary source\`
+
+Every claim in the report cites its sources as [S7]. A claim without a source is not a finding: say it is unknown, or find one.`,
+  },
+
   // ---------------------------------------------------------------- Content & Documentation
   {
     id: "technical-writing",

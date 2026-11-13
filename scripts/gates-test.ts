@@ -408,6 +408,33 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("verified by the Gemini seat or a person, it passes", met(severeGate, ctx({ ...base, severe: [{ id: "F-1", reporterId: "x1", verifiedBy: "gem" }, { id: "F-2", reporterId: "x1", verifiedBy: "you" }] })));
 }
 
+// Research template (Phase 4 step 5).
+{
+  const { RESEARCH_TEMPLATE: res } = await import("../src/data/researchTemplate");
+  const { BUILTIN_TEMPLATES } = await import("../src/data/templates");
+  const { templateErrors } = await import("../src/data/model");
+  const { vendorOf: makerOf } = await import("../server/planStore");
+  const { findBuiltinSkill } = await import("../src/data/skillCatalog");
+  const { hostAllowed } = await import("../server/containers");
+  check("the Research template is valid and offered", templateErrors(res).length === 0 && BUILTIN_TEMPLATES.some((t) => t.id === "research"), JSON.stringify(templateErrors(res)));
+  check("Sources → Claims → Fact-check → Report, files not PRs", res.flow.stages.map((x) => x.id).join() === "sources,claims,factcheck,report" && !res.flow.stages.some((x) => x.gates.some((g) => g.kind === "pr-merged")));
+  check("every skill it names is a built-in, paper-search among them", res.roles.every((r) => r.skills.every((sk) => !!findBuiltinSkill(sk))) && !!findBuiltinSkill("paper-search"));
+  const maker = (id: string) => { const r = res.roles.find((x) => x.id === id)!; return makerOf(r.cli, r.model); };
+  check("researchers, fact-checker and second opinion are three makers", new Set([maker("researcher"), maker("fact-checker"), maker("second-opinion")]).size === 3, [maker("researcher"), maker("fact-checker"), maker("second-opinion")].join());
+  check("the paper APIs are on the egress allowlist, other hosts aren't", ["export.arxiv.org", "api.openalex.org", "api.crossref.org", "doi.org"].every((h) => hostAllowed(res.rules.egress, h, 443)) && !hostAllowed(res.rules.egress, "example.com", 443));
+  check("no findings, plans, scope or outbound", !res.rules.findings && !res.rules.plans && !res.rules.scopeRequired && res.rules.outbound === "none" && res.memoryTypes.join() === "Source,Claim");
+
+  const fc = res.flow.stages.find((x) => x.id === "factcheck")!.gates[0];
+  const roleOf = (id: string) => ({ r1: "researcher", r2: "researcher", fc: "fact-checker", lead: "lead", so: "second-opinion" })[id] ?? null;
+  const t = { ...task, ownerId: "r1" };
+  check("a claims task leaves Fact-check only when the fact-checker accepts it", !met(fc, ctx({ task: t, roleOf, actor: agent("r2") })) && !met(fc, ctx({ task: t, roleOf, actor: agent("lead") })) && met(fc, ctx({ task: t, roleOf, actor: agent("fc") })));
+  const so = res.flow.stages.at(-1)!.gates.find((g) => g.kind === "second-opinion")!;
+  const vendorOf = (id: string) => ({ lead: "anthropic", fc: "anthropic", so: "openai" })[id] ?? null;
+  const signed = (by: string) => [{ taskId: t.id, gateId: so.id, state: "passed", by: agent(by), at: "" }] as never;
+  const lt = { ...task, ownerId: "lead" };
+  check("the lead's report needs the second opinion from another maker", !met(so, ctx({ task: lt, roleOf, vendorOf, events: [] })) && !met(so, ctx({ task: lt, roleOf, vendorOf, events: signed("fc") })) && met(so, ctx({ task: lt, roleOf, vendorOf, events: signed("so") })));
+}
+
 if (fails) {
   console.error(`\n${fails} failed`);
   process.exit(1);

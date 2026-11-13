@@ -222,7 +222,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
       if (s.ok) return { ok: true, why: "" };
       if (s.why.includes("explicitly")) return { ok: false, why: s.why };
     }
-    if (hostAllowed([...BASE_ALLOW, ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
+    if (hostAllowed([...BASE_ALLOW, ...(who.rt.hub.snap.config.rules?.egress ?? []), ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
     const key = `${who.rt.slug}/${agent.id}/${host}`;
     if (!asked.has(key)) {
       asked.add(key);

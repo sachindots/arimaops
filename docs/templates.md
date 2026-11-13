@@ -86,6 +86,13 @@ Skills per the vetted list (roadmap): BugHunter for red/lead (scoped only), ToB 
 
 Stages: Sources (a PRISMA-style log: every source searched, kept or dropped and why) → Claims (each claim linked to sources) → Fact-check (`reviewer` by the fact-checker role, someone other than the writer) → Report (`second-opinion`). Memory types: Source, Claim. Roles: lead, researcher (2), fact-checker. Paper search through free, keyless APIs (decision 3), added to the container egress allowlist (`rules.egress`); the open web through the CLIs' own search. A claim without a source fails the fact-check gate.
 
+As built (`src/data/researchTemplate.ts`):
+- Roles: lead (Claude Opus), researcher ×2 (agy Gemini), fact-checker (Claude Sonnet), second opinion (Codex). The researchers, the fact-checker and the second opinion are three different makers, so a check is never the same model reading its own work.
+- Stages: `sources` (lead, researcher) → `claims` (researcher) → `factcheck` (`reviewer` gate, role fact-checker) → `report` (`file-delivered`, `second-opinion` always). Deliverables, not PRs. Starter board "Question".
+- New built-in skill `paper-search`: arXiv, OpenAlex and Crossref queries with their polite limits, and the log format in `deliverables/sources.md` (Q searches, S sources kept, X dropped and why; claims cite `[S7]`).
+- `rules.egress` (`export.arxiv.org`, `arxiv.org`, `api.openalex.org`, `api.crossref.org`, `doi.org`) now reaches every seat: the sbx network rules and the container proxy both add the template's egress to the agent's own allowlist.
+- Limits: "a claim without a source fails" is the fact-checker's job (its role text), not a deterministic check on claims.md. Other hosts still go through the per-host access request in container mode.
+
 ## 6. Marketing and Sales templates (4.2)
 
 `rules.outbound: "drafts-only"`, enforced, not just written in the role text:

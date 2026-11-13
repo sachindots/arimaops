@@ -9,8 +9,8 @@ import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 export function RoleBadge({ role, color, compact = false }: { role: string; color: string; compact?: boolean }) {
   return (
     <span
-      className={`inline-flex max-w-[14ch] items-center truncate border font-mono font-bold uppercase tracking-wider ${
-        compact ? "px-1 py-0 text-[9px] leading-[14px]" : "px-1.5 py-0.5 text-[10px] leading-tight"
+      className={`inline-flex items-center truncate border font-mono font-bold uppercase tracking-wider ${
+        compact ? "max-w-full px-1 py-0 text-[9px] leading-[14px]" : "max-w-[14ch] px-1.5 py-0.5 text-[10px] leading-tight"
       }`}
       style={{ color, borderColor: `${color}66`, backgroundColor: `${color}18` }}
       title={role}
