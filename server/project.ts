@@ -301,7 +301,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   memoryStore().onChange ??= broadcastMemory;
   planner.memoryJobs = memoryWorker();
   for (const t of hub.snap.tasks) if (t.status === "done" && inSuite(hub.snap.config.project.id, t.id)) t.benchmark = suiteId(hub.snap.config.project.id, t.id);
-  for (const t of hub.snap.tasks) if (t.prNumber) t.evidence = latestEvidence(hub.slug, t.id) ?? undefined;
+  for (const t of hub.snap.tasks) t.evidence = latestEvidence(hub.slug, t.id) ?? undefined; // one existsSync per task when there's none
   // New evidence: a comment on the PR with what the verifier did and where to see it (docs/factory.md section 7).
   planner.onEvidence = (task, ev) => {
     if (!task.prNumber || !hub.repo.github) return;

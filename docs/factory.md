@@ -96,3 +96,13 @@ Decided 2026-11-13:
 8. Demo on a throwaway HQ, tablet check, evidence in HANDOFF.
 
 Not checked locally without the owner's go-ahead: real model checks and proposal drafts (Haiku, paid), real replays (paid), and a verifier run against a real app with a real model.
+
+## 10. As built
+
+Built 2026-11-13 on `phase-4-factory`, one commit per step; evidence in HANDOFF.md. Where it differs from the sections above:
+- **Task history (3):** `task_events.owner_id` is who held the task at the change, not who made it (the plan save doesn't know who moved it).
+- **Metrics API (3):** `GET /api/projects/<id>/metrics?days=7`, inside the projects API so it shares its sign-in. A project has one template, so versions are compared in the same reply instead of a `template` filter. A task counts as finished once its history says so: tasks finished before the history have none.
+- **Scorers (4):** a template's optional `scorers` list; without one, HQ picks the checks that fit (a PR flow, Sources, drafts only, findings). The model check sees the PR's diff only when its branch is in the local clone.
+- **Proposals (5):** counted per different task, at the library's current version, from open projects that allow lesson promotion. Approving a built-in's change saves `<id>-yours`; existing projects stay on the built-in until the owner decides how they move.
+- **Own-task benchmarks (6):** replays are scored by the rule checks and by reaching review (no GitHub to merge in a throwaway HQ); the Haiku checks are left out of replays. The base commit is the first-parent commit when the task first went in progress.
+- **Evidence (7):** the Dev template is v3 (verifier role, `evidence` gate). The verifier runs in `arimaops-verifier`; Playwright stays out of the agent image.

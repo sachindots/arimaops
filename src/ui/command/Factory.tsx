@@ -50,7 +50,7 @@ function useMetrics(projects: string[], live: boolean, ms = 60_000): Record<stri
 }
 
 const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
-const hours = (ms: number) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))} min` : ms < 48 * 3_600_000 ? `${(ms / 3_600_000).toFixed(1)} h` : `${(ms / 86_400_000).toFixed(1)} d`);
+const hours = (ms: number) => (ms < 60_000 ? "<1 min" : ms < 3_600_000 ? `${Math.round(ms / 60_000)} min` : ms < 48 * 3_600_000 ? `${(ms / 3_600_000).toFixed(1)} h` : `${(ms / 86_400_000).toFixed(1)} d`);
 const cost = (c: Cost | null) => (!c ? "—" : c.usd !== null ? `$${c.usd.toFixed(2)}` : `${short(c.tokens)} tok`);
 const many = (n: number, one: string, more = `${one}s`) => `${n} ${n === 1 ? one : more}`;
 const costNum = (c: Cost | null) => (!c ? null : c.usd ?? c.tokens);
