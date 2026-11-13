@@ -506,7 +506,9 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow";
+  /** kind overflow: the seat, its task and the fallback it would move to (Move = done, Wait = dismissed). */
+  overflow?: { agentId: string; taskId: string; cli: AgentCli; model: string };
   /** kind approval: the gate the lead passed and the stage it belongs to. */
   approval?: { gateId: string; stageId: string };
   /** kind memory: the memories still to decide. */

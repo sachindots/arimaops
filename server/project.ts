@@ -19,6 +19,7 @@ import { setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { OnDemand } from "./onDemand";
+import { Overflow } from "./overflow";
 import { capsOf, SpendGuard } from "./spendCaps";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
@@ -176,6 +177,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
   const onDemand = new OnDemand(hub, sessions);
+  const overflow = new Overflow(hub, planner, sessions);
   const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
     try {
       return accounts().views().map((a) => a.id); // API-key and cloud accounts: the ones with a bill
@@ -211,6 +213,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   const refreshUsage = () => {
     planner.checkStalls(Date.now());
     void onDemand.tick();
+    overflow.tick();
     for (const a of hub.snap.config.team) {
       const m = byModelOf(a.id);
       const u = m && sumModels(m);
@@ -238,6 +241,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
+  planner.actions.onMove = (m) => overflow.move(m);
   planner.onLeadApproval = (task, gateId, stageId, note) => {
     const lead = hub.snap.config.team.find((a) => a.isLead);
     if (lead) planner.actions?.addApproval(lead.id, task.id, task.title, gateId, stageId, note);
@@ -264,6 +268,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   sessions.onLimit = (id, until) => {
     const agentCfg = hub.cfg(id);
     if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name, account: accountOf(agentCfg) });
+    if (overflow.offer(id, until)) return; // the owner decides: Move to the fallback, or Wait
     const lead = hub.snap.config.team.find((a) => a.isLead);
     const agent = hub.cfg(id);
     if (!lead || !agent || lead.id === id) return;

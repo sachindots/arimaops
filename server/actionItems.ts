@@ -70,6 +70,10 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "overflow") {
+      if (decision === "done" && item.overflow) void this.onMove(item.overflow).catch((err) => this.hub.activity("config", item.overflow!.agentId, `Couldn't move to the fallback: ${err instanceof Error ? err.message : err}`));
+      return; // Wait: nothing changes, the agent goes on when its limit resets
+    }
     if (item.kind === "approval") {
       if (decision === "dismissed" && item.taskId && item.approval) this.planner.undoLeadApproval(item.taskId, item.approval.gateId, item.approval.stageId, item.note ?? undefined);
       else if (decision === "done") this.planner.notify(item.fromId, `The owner kept your approval: ${item.title}.`);
@@ -85,17 +89,36 @@ export class ActionItems {
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
   }
 
-  /** A spend alert or pause (docs/agent-engine.md section 8), filed once per id (one per cap and period). */
-  addSpend(id: string, title: string, details: string): ActionItem | null {
-    if (this.items.some((i) => i.id === id)) return null;
+  /** The owner chose Move on an overflow item (set by the project: server/overflow.ts). */
+  onMove: (m: NonNullable<ActionItem["overflow"]>) => Promise<void> = async () => {};
+
+  /** A seat at its usage limit could continue on its role's fallback: ask first (docs/agent-engine.md section 7). Once per seat and task. */
+  addOverflow(m: NonNullable<ActionItem["overflow"]>, title: string, details: string): ActionItem | null {
+    const id = `overflow-${m.agentId}-${m.taskId}`;
+    if (this.items.some((i) => i.id === id && i.status === "open")) return null;
+    const old = this.items.findIndex((i) => i.id === id);
+    if (old >= 0) this.items.splice(old, 1); // a closed one from an earlier limit: ask again
     const item: ActionItem = {
-      id, fromId: "hq", taskId: null, title, details, waiting: false, kind: "spend",
+      id, fromId: m.agentId, taskId: m.taskId, title: title.slice(0, 160), details, waiting: true, kind: "overflow", overflow: m,
       status: "open", note: null, at: new Date().toISOString(), closedAt: null,
     };
     this.items.unshift(item);
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
-    this.hub.activity("agent.needs-input", null, title);
+    return item;
+  }
+
+  /** A spend alert or pause (docs/agent-engine.md section 8), filed once per id (one per cap and period). */
+  addSpend(id: string, title: string, details: string): ActionItem | null {
+    if (this.items.some((i) => i.id === id)) return null;
+    const item: ActionItem = {
+      id, fromId: "hq", taskId: null, title, details, waiting: /^Paused/.test(title), kind: "spend",
+      status: "open", note: null, at: new Date().toISOString(), closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    this.hub.activity("config", null, title);
     return item;
   }
 

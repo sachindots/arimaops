@@ -80,6 +80,7 @@ Each gate kind gets a checker. "Observed" means HQ decides from what it can see;
 
 - When a seat hits its CLI's usage limit (`detectLimit`) and its role has a `fallback`, HQ files an Action item: "Arul hit the Claude limit until 15:00 on T-12. Continue it on Codex (gpt-6.1-sol) now?" with **Move to Codex** and **Wait**.
 - Move: HQ stops the seat, starts it with the fallback CLI and model for this task only (the role is unchanged), with the handoff "You're taking over T-12 from a Claude session; read get_my_task and the branch's last commits." When the task is done, the seat's next start uses the role's own CLI again.
+- **As built** (`server/overflow.ts`): the offer is one Action item per seat and task (a later limit on the same task asks again), marked waiting so ntfy sends it at high priority. The lead isn't offered (it has no task to carry), and a seat already on its fallback isn't either. While the offer is open the lead isn't told to reassign. The switch is in memory: after an HQ restart the seat is back on its role's CLI.
 - Never automatic, even with the owner away. No fallback in the role → only the limit notice, as today.
 - Done when: a simulated limit screen files the item; Move restarts the seat on the fallback; Wait changes nothing.
 
@@ -100,7 +101,7 @@ Each gate kind gets a checker. "Observed" means HQ decides from what it can see;
 
 ## 10. Alerts always on (3.9)
 
-- There are no quiet hours today and none are added. Phase 3's new alerts (stall replans, lead approvals, overflow, caps) go through the same push and ntfy paths, with urgent ones (cap pause, third stall) at high priority.
+- There are no quiet hours today and none are added. Lead approvals, spend alerts and pauses, and overflow offers are Action items, so they push like any other; the pause and the overflow offer wait on the owner and go at high priority on ntfy. A third stall pushes through its "needs input" activity. Phase 3's new alerts (stall replans, lead approvals, overflow, caps) go through the same push and ntfy paths, with urgent ones (cap pause, third stall) at high priority.
 
 ## 11. Owner's decisions (2026-11-13)
 

@@ -157,6 +157,20 @@ export class World {
         }))
         .concat([
           {
+            id: "ai-demo-overflow",
+            fromId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq",
+            taskId: tasks[1]?.id ?? null,
+            title: `${preset.config.team.find((a) => !a.isLead)?.name ?? "A worker"} hit the Claude Code limit until 15:00 on ${tasks[1]?.id ?? "T-2"}. Continue it on Codex (gpt-6.1-sol) now?`,
+            details: `${tasks[1]?.title ?? "Rate limit the login"}\n\nMove: HQ stops it and starts it on Codex for this task only, with a handoff. Its role stays Claude Code.\nWait: nothing changes; it goes on at 15:00.`,
+            waiting: true,
+            kind: "overflow" as const,
+            overflow: { agentId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq", taskId: tasks[1]?.id ?? "T-2", cli: "codex" as const, model: "gpt-6.1-sol" },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
             id: "ai-demo-approval",
             fromId: preset.config.team.find((a) => a.isLead)?.id ?? "hq",
             taskId: tasks[0]?.id ?? null,
