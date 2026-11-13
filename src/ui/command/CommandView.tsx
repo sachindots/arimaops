@@ -9,6 +9,7 @@ import { readPref, writePref } from "../../lib/prefs";
 import { ago, Portrait, StateChip, TokensChip, useNow } from "../kit";
 import { FILTERS, matches, rowsOf, sortRows, tokensOf, type Filter, type Row } from "./rank";
 import { useScreens } from "./screens";
+import { FactoryCard } from "./Factory";
 
 const MODE_COLOR: Record<Mode, string> = {
   "needs-input": "#F59E0B",
@@ -166,6 +167,8 @@ export function CommandView() {
       </div>
 
       <Stats projects={projects} rows={all} off={projectsOff} toggle={toggleProject} />
+
+      {!maxRow && <FactoryCard projects={projects.filter((p) => !projectsOff.has(p.id))} live={live} />}
 
       {maxRow ? (
         <div className="min-h-0 flex-1">

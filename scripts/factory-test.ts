@@ -67,5 +67,51 @@ items.resolve(ask.id, "done"); // already closed: ignored
 const answers = db.prepare("SELECT kind, decision FROM action_answers WHERE project_id = ?").all(project) as { kind: string; decision: string }[];
 check("an answer is kept with its kind and decision, once", answers.length === 1 && answers[0].kind === "request" && answers[0].decision === "dismissed", JSON.stringify(answers));
 
+// Metrics (section 3): a seeded project, every number checked against a hand count.
+{
+  const { factoryMetrics, metricsReport } = await import("../server/metrics");
+  const P = "metrics-test";
+  const H = 3_600_000;
+  const T0 = Date.UTC(2026, 10, 10);
+  db.prepare("INSERT INTO boards (project_id, id, title, status, ord) VALUES (?, 'B', 'Board', 'active', 0)").run(P);
+  const task = (id: string, status: string, pr: number | null, version: number | null) =>
+    db.prepare("INSERT INTO tasks (project_id, id, board_id, stage_id, title, status, updated_at, pr_number, template_id, template_version) VALUES (?, ?, 'B', 'build', ?, ?, 0, ?, ?, ?)").run(P, id, id, status, pr, version === null ? null : "dev", version);
+  const ev = (id: string, status: string, at: number) => db.prepare("INSERT INTO task_events (project_id, task_id, at, status, stage_id, owner_id) VALUES (?, ?, ?, ?, 'build', NULL)").run(P, id, at, status);
+  const use = (id: string | null, tokens: number, usd: number | null) =>
+    db.prepare("INSERT INTO usage_events (at, project_id, task_id, agent_id, source, account, provider, cli, model, input, cached, output, cost_usd) VALUES (?, ?, ?, 'lea', 'agent', 'a', 'anthropic', 'claude', 'm', ?, 50, ?, ?)").run(T0, P, id, tokens / 2, tokens / 2, usd);
+  const gate = (id: string, state: string, by: "agent" | "user", at: number) =>
+    db.prepare("INSERT INTO gate_events (project_id, task_id, gate_id, state, by_kind, by_id, proof, at) VALUES (?, ?, 'g', ?, ?, ?, '{}', ?)").run(P, id, state, by, by === "user" ? "you" : "lea", at);
+  const led = (kind: string, at: number) => db.prepare("INSERT INTO ledger (project_id, task_id, ledger, kind, text, by, at) VALUES (?, NULL, 'progress', ?, 'x', 'lea', ?)").run(P, kind, at);
+
+  // A: v1, created T0, started +2h, done +10h, a PR, 1000 tokens $2, two failed gates.
+  task("A", "done", 7, 1); ev("A", "todo", T0); ev("A", "in-progress", T0 + 2 * H); ev("A", "done", T0 + 10 * H);
+  use("A", 600, 1.5); use("A", 400, 0.5); gate("A", "failed", "agent", T0 + 5 * H); gate("A", "failed", "agent", T0 + 6 * H); gate("A", "passed", "user", T0 + 9 * H);
+  // B: v2, created T0, started +1h, done +5h, no PR, 3000 tokens unpriced.
+  task("B", "done", null, 2); ev("B", "todo", T0); ev("B", "in-progress", T0 + H); ev("B", "done", T0 + 5 * H); use("B", 3000, null);
+  // C: older than the history (no version): finished, but its cycle time is unknown. 2000 tokens $1.
+  task("C", "done", 9, null); ev("C", "done", T0 + 3 * H); use("C", 2000, 1);
+  // D: done before the window; E: still in progress. Neither counts.
+  task("D", "done", null, 1); ev("D", "todo", T0 - 50 * H); ev("D", "done", T0 - 40 * H); use("D", 99999, 50);
+  task("E", "in-progress", null, 2); ev("E", "todo", T0); ev("E", "in-progress", T0 + H); gate("E", "failed", "agent", T0 + 2 * H);
+  use(null, 777, 3); // helper runs with no task
+  led("stall", T0 + H); led("stall", T0 + 2 * H); led("replan", T0 + 3 * H); led("stall", T0 - 30 * H);
+  db.prepare("INSERT INTO action_answers (project_id, id, kind, decision, at) VALUES (?, 'x1', 'gate', 'done', ?), (?, 'x2', 'plan', 'dismissed', ?)").run(P, T0 + H, P, T0 - 30 * H);
+
+  const w = { since: T0 - 24 * H + 1, until: T0 + 24 * H };
+  const m = factoryMetrics(db, P, w, [T0 + 4 * H, T0 - 40 * H]);
+  check("finished tasks and merged PRs in the window", m.finished === 3 && m.merged === 2, JSON.stringify(m));
+  check("cost per finished task: tokens always, dollars where priced", m.costPerTask!.tokens === 2000 && m.costPerTask!.usd === 1, JSON.stringify(m.costPerTask));
+  check("cost per merged PR", m.costPerPr!.tokens === 1500 && m.costPerPr!.usd === 1.5, JSON.stringify(m.costPerPr));
+  check("cycle time: medians, and tasks without history are unknown, not guessed", m.cycle.created === 7.5 * H && m.cycle.started === 6 * H && m.cycle.unknown === 1, JSON.stringify(m.cycle));
+  check("rework: failed gates on the finished tasks", m.rework.failed === 2 && m.rework.perTask === 2 / 3, JSON.stringify(m.rework));
+  check("stalls and replans in the window", m.stalls === 2 && m.replans === 1);
+  check("owner interventions: gates, answers and messages in the window", JSON.stringify(m.interventions) === JSON.stringify({ gates: 1, answers: 1, messages: 1, total: 3 }), JSON.stringify(m.interventions));
+  const r = metricsReport(db, P, 2, [], T0 + 24 * H);
+  check("the report compares with the window before it", r.now.finished === 3 && r.before.finished === 1 && r.before.stalls === 1, JSON.stringify([r.now.finished, r.before.finished, r.before.stalls]));
+  check("versions are compared side by side", JSON.stringify(r.versions.map((v) => [v.version, v.finished, v.costPerTask?.tokens, v.cycleCreated, v.reworkPerTask])) === JSON.stringify([[1, 2, 50499.5, 10 * H, 1], [2, 1, 3000, 5 * H, 0]]), JSON.stringify(r.versions));
+  const empty = factoryMetrics(db, "nothing-here", w);
+  check("an empty project has nothing, not zeros pretending to be numbers", empty.finished === 0 && empty.costPerTask === null && empty.cycle.created === null && empty.rework.perTask === null);
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);
