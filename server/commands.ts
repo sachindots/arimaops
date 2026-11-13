@@ -56,6 +56,7 @@ import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
 import { mergeByNotice } from "./githubSync";
 import { cleanEntry } from "./scope";
+import { finishManifest } from "./githubApp";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -419,6 +420,20 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       hub.snap.config.project.spendCaps = { dailyUsd, monthlyUsd };
       hub.configChanged();
       hub.activity("config", null, `Spend caps: $${dailyUsd} a day, $${monthlyUsd} a month (API-key accounts)`);
+    },
+
+    // The GitHub App's manifest code, handed back by GitHub through /api/github/app/callback. Owner only.
+    finishGithubApp: async (code) => {
+      try {
+        const state = await finishManifest(str(code, 100));
+        for (const h of liveHubs()) {
+          h.snap.githubApp = state;
+          h.emit({ type: "githubApp.updated", githubApp: state });
+        }
+        hub.activity("config", null, `GitHub App ${state.app?.slug} created. Install it on the repo, then turn on the webhook with deploy/github-webhook.sh.`);
+      } catch (err) {
+        hub.activity("config", null, `GitHub App not created: ${err instanceof Error ? err.message : err}`);
+      }
     },
 
     setMemoryExtraction: (raw) => {

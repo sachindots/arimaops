@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { OfficeSnapshot } from "./data/types";
-import { connectOffice, useOffice } from "./store/office";
+import { connectOffice, officeActions, useOffice } from "./store/office";
+import { GITHUB_STATE_KEY } from "./data/githubApp";
 import { checkAuth, useAuth } from "./store/auth";
 import { prefKey } from "./lib/prefs";
 import { SignIn } from "./ui/auth/SignIn";
@@ -17,7 +18,7 @@ import { Tooltip } from "./ui/hud/Tooltip";
 import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
-import { DialogHost } from "./ui/dialog";
+import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
 import { closeTopPanel, useNativePush } from "./lib/native";
@@ -91,6 +92,45 @@ function useSetupPrompt() {
 }
 
 /** `?open=actions` / `?open=agent:<id>` / `?open=board` (links from push notifications): open it once connected. */
+/**
+ * GitHub's manifest flow lands here with a one-time code. Read once when the app loads (effects may run twice), and
+ * kept only if it answers the form this browser sent.
+ */
+const githubReturn = (() => {
+  const url = new URL(location.href);
+  const code = url.searchParams.get("github_code");
+  if (!code) return null;
+  const state = url.searchParams.get("github_state") ?? "";
+  url.searchParams.delete("github_code");
+  url.searchParams.delete("github_state");
+  history.replaceState(null, "", url.toString());
+  let expected: string | null = null;
+  try {
+    expected = sessionStorage.getItem(GITHUB_STATE_KEY);
+    sessionStorage.removeItem(GITHUB_STATE_KEY);
+  } catch {
+    /* no storage: refused */
+  }
+  return { code, ok: !!expected && expected === state, used: false };
+})();
+
+function useGithubAppReturn() {
+  useEffect(() => {
+    if (!githubReturn || githubReturn.used) return;
+    if (!githubReturn.ok) return void ((githubReturn.used = true), ask.alert("GitHub App not created", "That return from GitHub doesn't match a form this browser sent. Create the App again from Settings → Workflow."));
+    let done = false;
+    const send = () => {
+      if (done) return;
+      done = true;
+      githubReturn.used = true; // once, even if the effect runs again
+      officeActions.finishGithubApp(githubReturn.code);
+      ui.openSettings("workflow");
+    };
+    if (useOffice.getState().snap) return send();
+    return useOffice.subscribe((st) => st.snap && send());
+  }, []);
+}
+
 function useDeepLink() {
   // Read once: dev StrictMode runs the effect twice, and the first run strips the param from the URL.
   const [open] = useState(() => new URL(location.href).searchParams.get("open"));
@@ -119,6 +159,7 @@ export function App() {
   const auth = useAuth((s) => s.status);
   const pushError = useNativePush(auth === "signed-in");
   useDeepLink();
+  useGithubAppReturn();
   useKeyboard();
   useSetupPrompt();
   const ready = useOffice((s) => s.snap !== null);

@@ -19,6 +19,7 @@ import { setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { OnDemand } from "./onDemand";
+import { githubAppState } from "./githubApp";
 import { Overflow } from "./overflow";
 import { capsOf, SpendGuard } from "./spendCaps";
 import { detectRepo } from "./repo";
@@ -142,6 +143,7 @@ export async function startProject(path: string, port: number, paused: boolean):
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root, config), setup);
   hub.snap.accounts = accountsState();
+  hub.snap.githubApp = githubAppState();
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);

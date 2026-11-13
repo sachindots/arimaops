@@ -29,7 +29,12 @@ const LOW_REMAINING = 800; // below this, poll at most every 2 minutes
 
 /** Polls with `gh`. `ready` says whether gh is signed in (the setup check); until then nothing is fetched. */
 export class GhPolling implements GitHubEvents {
-  constructor(private ready: () => boolean = () => true, private fetch = fetchPrs) {}
+  constructor(
+    private ready: () => boolean = () => true,
+    private fetch = fetchPrs,
+    /** True while webhooks bring this repo's news: the poll is then only a safety net, every 5 minutes. */
+    private slow: (repo: string) => boolean = () => false,
+  ) {}
 
   watch(repo: string, on: (e: GitHubEvent) => void): GitHubWatch {
     let running = true;
@@ -74,7 +79,7 @@ export class GhPolling implements GitHubEvents {
       await poll();
       if (!running) return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void tick(), Math.max(interval, pausedUntil - Date.now()));
+      timer = setTimeout(() => void tick(), Math.max(this.slow(repo) ? MAX_POLL_MS : interval, pausedUntil - Date.now()));
     };
     void tick();
 

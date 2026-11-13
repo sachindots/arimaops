@@ -39,6 +39,7 @@ export const RISKY_COMMANDS = new Set([
   "setMemoryExtraction",
   "setLabMode",
   "setSpendCaps",
+  "finishGithubApp",
   "decideMemories",
   "removeSecret",
   "setProxy",

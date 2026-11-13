@@ -1,7 +1,7 @@
 import { agentPalette } from "../../theme/tokens";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
-import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
+import { HOST_TERMINAL, type AccessRequest, type GitHubAppState, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -19,6 +19,7 @@ export function createMockSource(): OfficeDataSource {
   let timers: number[] = [];
   let last = 0;
   let inputBuf = new Map<string, string>();
+  let githubApp: GitHubAppState | undefined; // machine-wide, like the real one: survives a reconnect
 
   function findPreset(id: string): Preset {
     return presets.find((p) => p.id === id) ?? presets[0];
@@ -37,6 +38,7 @@ export function createMockSource(): OfficeDataSource {
   }
 
   function boot() {
+    if (githubApp) world.snap.githubApp = githubApp;
     world.setEmitter((e) => listener?.(e));
     listener?.({ type: "snapshot", snapshot: structuredClone(world.snap) });
     sim.start();
@@ -361,6 +363,11 @@ export function createMockSource(): OfficeDataSource {
     saveMemory() {},
     restoreMemory() {},
     setMemoryExtraction() {},
+    finishGithubApp() {
+      githubApp = { app: { id: 1, slug: "arimaops-demo", htmlUrl: "https://github.com/apps/arimaops-demo", owner: "demo", installUrl: "https://github.com/apps/arimaops-demo/installations/new" }, webhookPath: "/api/github/webhook", lastDeliveryAt: null };
+      world.snap.githubApp = githubApp;
+      world.emit({ type: "githubApp.updated", githubApp });
+    },
     setSpendCaps(caps) {
       world.snap.config.project.spendCaps = caps;
       const spend = world.snap.spend;

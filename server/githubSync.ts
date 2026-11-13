@@ -2,8 +2,9 @@
 // comments → tell the author; passed → tell the lead; merged → task done.
 
 import type { PullRequest } from "../src/data/types";
-import { branchAgent, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
+import { branchAgent, fetchPrs, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
 import { GhPolling, type GitHubEvent, type GitHubEvents, type GitHubWatch } from "./githubEvents";
+import { GitHubAppWebhooks, webhooksHealthy } from "./githubApp";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
 import type { Planner } from "./planner";
@@ -51,7 +52,7 @@ export class GitHubSync {
     private hub: Hub,
     private planner: Planner,
     private repo: string | null,
-    private events: GitHubEvents = new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok")),
+    private events: GitHubEvents = new GitHubAppWebhooks(new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok"), fetchPrs, webhooksHealthy)),
   ) {}
 
   start() {

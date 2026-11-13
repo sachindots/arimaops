@@ -222,6 +222,16 @@ await migrateLegacy(repo, "legacyproj");
 check("repo .jsmhq (untracked) moves to .arima", existsSync(join(repo, ".arima", "config.json")) && !existsSync(join(repo, ".jsmhq")));
 check("~/.jsmhq/<project> moves to ~/.arima/<project>", existsSync(join(process.env.HOME, ".arima", "legacyproj", "dwight")) && !existsSync(join(process.env.HOME, ".jsmhq", "legacyproj")));
 
+// The GitHub webhook path: public, so nothing but GitHub's signature gets through.
+{
+  const hook = (init: RequestInit) => fetch(`${BASE}/api/github/webhook`, init);
+  check("webhook: GET is refused", (await hook({})).status === 405);
+  check("webhook: no App on this machine, 503 without a session", (await hook({ method: "POST", headers: { "X-GitHub-Event": "pull_request", "X-Hub-Signature-256": "sha256=00" }, body: "{}" })).status === 503);
+  const cb = await fetch(`${BASE}/api/github/app/callback?code=abc_123&state=s1`, { redirect: "manual" });
+  check("manifest callback hands the code to the page, nothing else", cb.status === 302 && cb.headers.get("location") === "/?github_code=abc_123&github_state=s1");
+  check("manifest callback refuses a code that isn't one", (await fetch(`${BASE}/api/github/app/callback?code=%3Cscript%3E`, { redirect: "manual" })).status === 400);
+}
+
 for (const c of [local, script, proxied, phone, phone2]) c.ws.close();
 server.close();
 console.log(fails ? `\n${fails} failed` : "\nall passed");

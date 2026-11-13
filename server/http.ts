@@ -6,6 +6,7 @@
 //   GET  /*                     the built UI (dist/), when present
 
 import { ownerSeen } from "./presence";
+import { githubAppState, handleWebhook, WEBHOOK_PATH } from "./githubApp";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -121,7 +122,7 @@ interface Who {
 }
 
 /** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps"]);
+const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps", "finishGithubApp"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
@@ -195,8 +196,41 @@ export function startHttp(o: Options) {
     res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? "; Secure" : ""}`);
   };
 
+  let deliveryEmitAt = 0;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+    // GitHub App webhooks: the one path Tailscale Funnel makes public. No cookie or origin, only GitHub's signature.
+    if (url.pathname === WEBHOOK_PATH) {
+      if (req.method !== "POST") return send(res, 405, "POST only");
+      let body: string;
+      try {
+        body = await readBody(req, 5 * 1024 * 1024);
+      } catch {
+        return send(res, 413, "too large");
+      }
+      const code = handleWebhook(req.headers, body);
+      if (code === 202 && Date.now() - deliveryEmitAt > 60_000) {
+        deliveryEmitAt = Date.now();
+        const state = githubAppState();
+        for (const rt of o.projects.values()) {
+          rt.hub.snap.githubApp = state;
+          rt.hub.emit({ type: "githubApp.updated", githubApp: state });
+        }
+      }
+      if (code === 401) log.warn(`github webhook: bad signature from ${clientIp(req)}`);
+      return send(res, code, code === 202 ? "ok" : code === 401 ? "bad signature" : code === 503 ? "no GitHub App here" : "");
+    }
+
+    // The manifest flow's way back: GitHub sends the owner's browser here with a one-time code. The cookie isn't sent
+    // on that cross-site hop, so this only hands the code to the page, where the owner's own session finishes it.
+    if (req.method === "GET" && url.pathname === "/api/github/app/callback") {
+      const code = url.searchParams.get("code") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(code) || !/^[A-Za-z0-9_-]{0,100}$/.test(state)) return send(res, 400, "bad code");
+      res.writeHead(302, { Location: `/?${new URLSearchParams({ github_code: code, github_state: state })}` });
+      return res.end();
+    }
 
     if (req.method === "POST" && url.pathname === "/api/login") {
       if (!okOrigin(req)) return send(res, 403, "bad origin");

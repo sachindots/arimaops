@@ -284,6 +284,7 @@ export class Planner {
       this.startUnblocked(task);
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
+    if (task.status === "in-review" && task.prNumber && (changes.status === "in-review" || changes.prNumber)) this.startUnblocked(task); // tasks that can stack on its PR
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     return task;
@@ -340,7 +341,9 @@ export class Planner {
     }
     const text = isDeliverables
       ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
-      : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
+      : this.stackBase(task)
+        ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id}.${this.stackNote(task)} Call the hq get_my_task tool for the details.`
+        : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
     const msg = this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id, taskId: task.id });
     this.onReady(agentId);
@@ -373,6 +376,7 @@ export class Planner {
       this.afterDone(task);
       this.startUnblocked(task);
     }
+    if (status === "in-review" && task.prNumber) this.startUnblocked(task); // tasks that can stack on its PR
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
     this.hub.activity(status === "blocked" ? "agent.needs-input" : "task.started", agentId, `${name} ${words} ${task.id}${note ? `: ${note}` : ""}`);
@@ -561,21 +565,59 @@ export class Planner {
     }
   }
 
-  /** Ids of the tasks `task` still waits on. */
+  /**
+   * Ids of the tasks `task` still waits on. A task that waits on exactly one task whose PR is open doesn't wait: it is
+   * stacked on that PR's branch (docs/agent-engine.md section 6).
+   */
   waitingOn(task: Task): string[] {
-    return task.needs.filter((n) => this.task(n)?.status !== "done");
+    const open = task.needs.filter((n) => this.task(n)?.status !== "done");
+    return open.length === 1 && this.stackBase(task) ? [] : open;
   }
 
-  /** `done` finished: tells each owner whose queued task no longer waits on anything to start it. */
-  private startUnblocked(done: Task) {
+  /** The open PR `task` can stack on: its one unfinished dependency, in review with an open PR on GitHub. Pull-request flows only. */
+  stackBase(task: Task): { taskId: string; prNumber: number; branch: string } | null {
+    if (this.snap.config.workflow.mode !== "github-pr") return null;
+    const open = task.needs.map((n) => this.task(n)).filter((d): d is Task => !!d && d.status !== "done");
+    const dep = open.length === 1 ? open[0] : null;
+    if (!dep || dep.status !== "in-review" || !dep.prNumber) return null;
+    const pr = (this.snap.pullRequests ?? []).find((p) => p.number === dep.prNumber && p.taskId === dep.id);
+    return pr && !pr.merged && !pr.closed && pr.branch ? { taskId: dep.id, prNumber: pr.number, branch: pr.branch } : null;
+  }
+
+  /** What an agent starting `task` on top of an unmerged PR has to do differently. */
+  private stackNote(task: Task): string {
+    const base = this.stackBase(task);
+    return base
+      ? ` It builds on ${base.taskId}, whose PR #${base.prNumber} isn't merged yet: branch from origin/${base.branch} (not main) and open your PR with --base ${base.branch}. HQ tells you when to rebase onto main.`
+      : "";
+  }
+
+  /**
+   * `dep` finished, or opened its PR: tells each owner whose queued task no longer waits on anything to start it.
+   * Once `dep` is merged, the tasks stacked on its branch are told to move onto main.
+   */
+  private startUnblocked(dep: Task) {
     for (const t of this.snap.tasks) {
-      if (!t.ownerId || t.status !== "todo" || !t.needs.includes(done.id) || this.waitingOn(t).length) continue;
+      if (!t.ownerId || !t.needs.includes(dep.id)) continue;
+      if (dep.status === "done" && (t.status === "in-progress" || t.status === "in-review")) {
+        // Started before `dep` was done, so it was stacked on dep's branch.
+        const branch = (this.snap.pullRequests ?? []).find((p) => p.taskId === dep.id && p.number === dep.prNumber)?.branch;
+        if (!branch) continue;
+        const msg = this.record("hq", t.ownerId, `Rebase ${t.id} onto main (${dep.id} is merged)`);
+        this.inbox.push(t.ownerId, {
+          fromId: "hq", kind: "message", taskId: t.id, msgId: msg.id,
+          text: `${dep.id} (PR #${dep.prNumber}) is merged. Move ${t.id} onto main: git fetch origin && git rebase --onto origin/main origin/${branch}, push with --force-with-lease${t.prNumber ? `, then gh pr edit ${t.prNumber} --base main` : ", and open your PR against main"}.`,
+        });
+        continue;
+      }
+      if (t.status !== "todo" || this.waitingOn(t).length) continue;
       const busy = this.currentTask(t.ownerId);
       const later = busy && busy.id !== t.id && busy.status === "in-progress" ? busy.id : null;
       if (!later) this.hub.setStatus(t.ownerId, { currentTaskId: t.id }); // else get_my_task moves on once `later` is done
-      const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${done.id} is done)`);
+      const why = dep.status === "done" ? `${dep.id} is done` : `${dep.id}'s PR is open`;
+      const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${why})`);
       const when = later ? `once you finish ${later}` : "now";
-      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
+      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${why}, so start ${t.id} (${t.title}) ${when}.${this.stackNote(t)} Call the hq get_my_task tool for the details.`, msgId: msg.id });
       this.onReady(t.ownerId);
     }
   }

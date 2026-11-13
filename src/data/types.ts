@@ -146,6 +146,14 @@ export interface ProjectConfig {
   spendCaps?: { dailyUsd: number; monthlyUsd: number };
 }
 
+/** The machine's GitHub App (docs/agent-engine.md section 6); null app = none created yet. */
+export interface GitHubAppState {
+  app: { id: number; slug: string; htmlUrl: string; owner: string; installUrl: string } | null;
+  /** The path GitHub posts to; made public with Tailscale Funnel (deploy/github-webhook.sh). */
+  webhookPath: string;
+  lastDeliveryAt: string | null;
+}
+
 /** A project's spend against its caps, on API-key accounts only (subscriptions have no bill). */
 export interface SpendState {
   day: { usd: number; cap: number };
@@ -481,6 +489,7 @@ export interface OfficeSnapshot {
   accounts?: AccountsState;
   memory?: MemoryState;
   spend?: SpendState;
+  githubApp?: GitHubAppState;
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
