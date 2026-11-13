@@ -18,6 +18,7 @@ import { Planner } from "./planner";
 import { setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
+import { OnDemand } from "./onDemand";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -173,12 +174,19 @@ export async function startProject(path: string, port: number, paused: boolean):
     return meter.readByModel(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), home, a.model || a.cli);
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
+  const onDemand = new OnDemand(hub, sessions);
+  planner.onReady = (id) => onDemand.ready(id);
+  inbox.holds = (agentId, item) => {
+    if (!onDemand.onDemand(agentId) || item.kind !== "message" || item.fromId === "you") return false;
+    return !hub.cfg(item.fromId)?.isLead;
+  };
   inbox.isStale = (agentId, taskId) => {
     const t = planner.task(taskId);
     return !t || t.ownerId !== agentId || t.status === "done";
   };
   const refreshUsage = () => {
     planner.checkStalls(Date.now());
+    void onDemand.tick();
     for (const a of hub.snap.config.team) {
       const m = byModelOf(a.id);
       const u = m && sumModels(m);

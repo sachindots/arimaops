@@ -267,8 +267,12 @@ export class Planner {
       : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
     const msg = this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id, taskId: task.id });
+    this.onReady(agentId);
     return task;
   }
+
+  /** An agent has a task it can start now (set by the project: starts an on-demand seat that is stopped). */
+  onReady: (agentId: string) => void = () => {};
 
   setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number, deliverablePath?: string): Task {
     const flow = this.writable().flow;
@@ -480,6 +484,7 @@ export class Planner {
       const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${done.id} is done)`);
       const when = later ? `once you finish ${later}` : "now";
       this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
+      this.onReady(t.ownerId);
     }
   }
 

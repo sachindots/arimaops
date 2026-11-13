@@ -26,11 +26,12 @@ How HQ runs the team: who gets a task, when a worker starts and stops, what the 
 
 ## 3. On-demand workers (3.2)
 
-- **Start:** assigning a task to a stopped on-demand seat starts it. The launch prompt (the CLI's first message, passed as an argument, not typed) is the assign text: "Start T-12 (…). Call get_my_task." A seat that is starting or running gets the assign through its inbox as today.
-- **Stop:** when a worker's task is done (or reassigned) and it has no other open task, HQ stops its session after a **2 min grace** (a quick follow-up reuses it). The workspace folder stays; only the CLI process ends. Its last handoff note and the memory carry the context to the next start; no CLI session is resumed.
-- **Messages:** the inbox types into a terminal only messages from the lead or the owner. Messages from other agents and HQ notices wait for the Stop hook (Claude Code) or the next start (folded into the launch prompt). Codex and agy have no Stop hook: their non-urgent messages wait for the next start or for the lead to forward them.
-- **Never on demand:** the lead (checked since Phase 1). Seats the owner started by hand stay up until the owner stops them (`manual: true` on the status), so nothing the owner runs gets stopped under them.
-- **Parallel workers:** no limit per project (owner's choice). The existing RAM cap (`maxAgents`) is the backstop: a start over the cap waits in a queue (oldest task first) instead of failing, and starts when a session ends.
+- **Start:** when a stopped on-demand seat gets a task it can begin (assigned, or the task it waited on is done), HQ starts it. The assign message waits in its inbox and is typed at the new session's first prompt (SessionStart), the same path every queued message already takes, so no CLI needs a launch-prompt flag.
+- **Stop:** when a worker HQ started has no open task and sits idle for a **2 min grace** (a quick follow-up reuses it), HQ stops its session. The workspace folder stays; only the CLI process ends. Its last handoff note and the memory carry the context to the next start; no CLI session is resumed.
+- **Only HQ's own starts are stopped.** A seat the owner started by hand, or one found running after an HQ restart, is never stopped by HQ (`server/onDemand.ts` keeps the set of seats it started).
+- **Messages:** an on-demand worker's idle prompt gets typed messages only from the lead, the owner and HQ. Messages from other agents wait for its Stop hook (Claude Code), or go in with the next typed delivery or its first prompt after a start, in their order. The lead and always-on seats get everything typed, as before. Codex and agy have no Stop hook: their peer messages wait for the next typed delivery.
+- **Never on demand:** the lead (checked since Phase 1).
+- **Parallel workers:** no limit per project (owner's choice). The existing RAM cap (`maxAgents`) is the backstop: an on-demand start over the cap waits in a queue (first come, first started) with a note on the seat, and starts when a slot frees. Starts by hand over the cap still fail with the message they have today.
 - Done when: an idle project (no open tasks) has exactly one session, the lead's; assigning starts a worker; finishing stops it after the grace.
 
 ## 4. The lead plans and decides (3.3)

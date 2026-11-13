@@ -140,9 +140,8 @@ export class Sessions {
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
 
     // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
-    const hubs = liveHubs().includes(hub) ? liveHubs() : [...liveHubs(), hub];
     const cap = maxAgents();
-    if (runningAgents(hubs) >= cap)
+    if (this.atCap())
       return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);
 
     const name = this.name(id);
@@ -216,6 +215,12 @@ export class Sessions {
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /** True when as many agents run (or start) across the loaded projects as this machine allows. */
+  atCap(): boolean {
+    const hubs = liveHubs().includes(this.hub) ? liveHubs() : [...liveHubs(), this.hub];
+    return runningAgents(hubs) >= maxAgents();
   }
 
   async stop(id: string) {

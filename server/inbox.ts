@@ -43,6 +43,8 @@ export class Inbox {
   private lastHook = new Map<string, number>();
   private lastSubmit = new Map<string, number>();
   private typing = new Set<string>();
+  /** Started since its last typed delivery: everything held for it goes in with its first one. */
+  private fresh = new Set<string>();
   private timer: NodeJS.Timeout;
   private file: string;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -122,7 +124,10 @@ export class Inbox {
   /** Every hook event goes through here (before the state change it causes). */
   noteHook(agentId: string, event: string) {
     this.lastHook.set(agentId, Date.now());
-    if (event === "SessionStart") this.sessionUp.add(agentId);
+    if (event === "SessionStart") {
+      this.sessionUp.add(agentId);
+      this.fresh.add(agentId);
+    }
     if (event === "SessionEnd") this.sessionUp.delete(agentId);
     if (event === "UserPromptSubmit") this.lastSubmit.set(agentId, Date.now());
     if (event === "Stop" || event === "SessionStart" || event === "Notification") setTimeout(() => void this.tryType(agentId), QUIET_MS + 100);
@@ -153,6 +158,12 @@ export class Inbox {
     this.delivered(q, "on-stop");
     return this.format(q);
   }
+
+  /**
+   * Set by the project: true when this item isn't typed into this agent's idle prompt. It waits for the agent's
+   * Stop hook or its next start instead (on-demand workers get only the lead's, the owner's and HQ's typed).
+   */
+  holds: (agentId: string, item: InboxItem) => boolean = () => false;
 
   /** Set by the project: true when an "assign" no longer applies (task reassigned or done). */
   isStale: (agentId: string, taskId: string) => boolean = () => false;
@@ -195,7 +206,12 @@ export class Inbox {
     if (this.keys.promptReady && !(await this.keys.promptReady(agentId))) return; // retried every 2 s
     if (q[0].kind === "reset") return this.typeReset(agentId, q.splice(0, 1)[0]);
     const nextReset = q.findIndex((i) => i.kind === "reset");
-    const items = q.splice(0, nextReset === -1 ? q.length : nextReset);
+    const upTo = q.slice(0, nextReset === -1 ? q.length : nextReset);
+    const fresh = this.fresh.has(agentId);
+    if (!fresh && upTo.every((i) => this.holds(agentId, i))) return; // only held items: they wait
+    const items = upTo; // anything typed takes the held items with it, so nothing is reordered
+    q.splice(0, items.length);
+    this.fresh.delete(agentId);
     this.typing.add(agentId);
     const typedAt = Date.now();
     try {
