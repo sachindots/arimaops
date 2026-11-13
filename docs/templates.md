@@ -1,0 +1,123 @@
+# Templates, skills and methods (Phase 4)
+
+The four launch templates, the skills their roles get, how those skills are fetched safely, and how templates are shared and improved. Builds on the Phase 1 model (`docs/core-model.md`: templates, roles, flows, gates, findings), the Phase 2 memory (`docs/memory-core.md`) and the Phase 3 engine (`docs/agent-engine.md`). Status: **design, 2026-11-13**; the owner's decisions are in section 10.
+
+## 1. What changes
+
+| Today (end of Phase 3) | After Phase 4 |
+|---|---|
+| Two built-in templates: Dev (build → review) and Blank | Dev v2 plus Security Red, Purple and Blue, Research, Marketing and Sales; Blank stays |
+| A role's `owner/repo` skill is installed with `npx skills add` at whatever is latest, unscanned | Third-party skills come only from **pinned packs**: an exact commit, a content hash, and a scan before anything reaches an agent |
+| Templates live in the HQ database only | Save and import as JSON, checked like a built-in |
+| What a project learns stays in that project | Certified lessons can be promoted into the template, masked, rewritten and approved by the owner |
+| No way to compare runs | A benchmark harness: the same sample project, the same metrics, run to run |
+
+## 2. Skill packs: pinned, hashed, scanned (4.1)
+
+**Why.** `classifyAgentSkills` sends any `owner/repo` entry to `npx skills add`, which fetches the repo's current state, runs an npm package to do it, and copies whatever it gets into every agent's folder. One renamed or compromised repo (the roadmap already rejected one with hidden "send secrets" characters) reaches every agent at its next start.
+
+**The pin file.** `skill-packs.lock.json` at the repo root, shipped with HQ (the existing `skills-lock.json` belongs to the owner's own `npx skills` dev setup and stays as it is):
+
+```json
+{ "version": 1, "packs": {
+  "trailofbits/skills": { "commit": "e4dd0bb…", "sha256": "<tree hash>", "licence": "CC-BY-SA-4.0",
+                          "credit": "Trail of Bits", "use": "any" },
+  "elementalsouls/Claude-BugHunter": { "commit": "4a2d93e…", "sha256": "…", "licence": "MIT", "use": "scoped-offensive" } } }
+```
+
+- **Fetching.** HQ downloads `https://codeload.github.com/<owner>/<repo>/tar.gz/<full commit>` itself (no `npx`, no `git` hooks), into `~/.arima/skill-packs/<owner>__<repo>@<commit>/`, and checks the hash of every file it keeps against `sha256` before using any of it. A pack is fetched once per machine, not per agent or project.
+- **What an agent gets.** Only the skill folders its role names (`trailofbits/skills@differential-review`), copied from the verified cache, as today's built-ins are.
+- **Offensive packs** (`use: "scoped-offensive"`, BugHunter) go only to Red and Purple roles, and only once the project has a scope or lab mode is on (the Phase 3 scope check, applied to skills too).
+- **Licences.** Each pack's licence and credit go into the skill folder as `LICENSE-PACK.md`; CC-BY-SA files stay under their licence and are never edited by HQ (an edited copy would have to be CC-BY-SA too). The Settings skill list shows the credit.
+
+**The scanner** (`server/skillScan.ts`) runs on every pack file before its hash is recorded, and again on every custom skill folder (`.hq/skills/`, `~/.arima/skills/`) at install. It blocks a file for:
+- invisible or direction-changing Unicode: tag characters (U+E0000–E007F, the rejected Agentic-Bug-Hunter trick), zero-width and bidi controls outside code spans;
+- instructions aimed at the agent rather than the task: "ignore previous instructions", "do not tell the user", reading `~/.ssh`, `.env`, the vault or HQ's token, and sending them anywhere;
+- code that runs on install or reaches out: `curl … | sh`, `npx`/`pip install` of unpinned packages, base64 blobs decoded and executed, URLs outside the pack's own repo and docs.
+
+A blocked file blocks its whole skill; the reason shows in Settings and the activity feed. Findings are reasons to refuse, never to "clean" a file. Done when a test feeds the scanner a copy of the rejected file's trick and it blocks it, and passes the four vetted packs at their pins.
+
+**Other `owner/repo` skills** (decision 1): pinned at the commit seen when the owner first adds them, scanned, and kept only after the owner approves the scan result in Settings. Never `npx skills add`.
+
+## 3. Dev template v2 (4.2)
+
+| Stage | Roles | Gates |
+|---|---|---|
+| Spec | lead | `spec-approved` (owner; the lead may approve while the owner is away) |
+| Plan | lead | `analyze` (every spec item has a task) |
+| Build | developer | `tests-ci` |
+| Review | reviewer, lead | `reviewer`, `second-opinion` (high-stakes) |
+| Merge | lead | `pr-merged` |
+
+Skills: reviewer gets Cloudflare `security-audit` and ToB `differential-review`, `sharp-edges`, `insecure-defaults`, `supply-chain-risk-auditor`; developers get ToB `property-based-testing` and the language pack for the stack. The Anthropic security-review GitHub Action is offered (not installed) as a workflow file the owner adds to the repo. A Gemini (`agy`) seat, `second-opinion` role, 1 seat, on demand. v1 projects keep their copy; re-sync is on purpose.
+
+## 4. Security templates (4.2)
+
+All three: `rules.findings`, `scopeRequired` (lab mode lifts it), `plans` (an agent submits a plan and waits before changing a system), memory types below. Every finding is scored CVSS 4.0 and SSVC (Phase 1 schema); critical and high findings and the final report need a `second-opinion`. Reports export as PDF, Markdown, HackerOne, Bugcrowd, JSON and SARIF (Phase 1 `reports.ts`).
+
+| Template | Stages (PTES / NIST) | Roles | Memory types |
+|---|---|---|---|
+| **Red** | Scope (`scope-set`) → Recon → Threat model → Vulnerability analysis → Exploitation → Post-exploitation → Report (`findings-report`, WSTG coverage) | lead, recon, exploit (2), reporter | Asset, Finding, Technique |
+| **Purple** | Red's stages, plus Detect after Exploitation: each finding gets its ATT&CK ↔ D3FEND mapping and a detection check (Atomic Red Team test where one exists) | Red's + defender | + Detection |
+| **Blue** | Prepare → Detect & analyse → Contain (`owner-approval: containment`) → Eradicate & recover → Lessons learned | lead, analyst (2), responder | Incident, Asset |
+
+Skills per the vetted list (roadmap): BugHunter for red/lead (scoped only), ToB audit set and Cloudflare for blue/purple/code audit.
+
+## 5. Research template (4.2)
+
+Stages: Sources (a PRISMA-style log: every source searched, kept or dropped and why) → Claims (each claim linked to sources) → Fact-check (`reviewer` by the fact-checker role, someone other than the writer) → Report (`second-opinion`). Memory types: Source, Claim. Roles: lead, researcher (2), fact-checker. Paper search through free, keyless APIs (decision 3), added to the container egress allowlist (`rules.egress`); the open web through the CLIs' own search. A claim without a source fails the fact-check gate.
+
+## 6. Marketing and Sales templates (4.2)
+
+`rules.outbound: "drafts-only"`, enforced, not just written in the role text:
+- no email, CRM or social MCP servers can be attached in these projects (the MCP settings refuse them by name and category);
+- the container egress allowlist has no mail or social hosts;
+- drafts are deliverables (`file-delivered`), and the last gate is `owner-approval: outbound`, which the lead can never pass. The owner sends by hand.
+
+| Template | Stages | Memory types |
+|---|---|---|
+| Marketing | Jobs-to-be-Done brief → Drafts (checked against the brief) → Owner approval | Audience, Campaign |
+| Sales | MEDDICC qualification → Outreach drafts → Owner approval | Lead, Account |
+
+## 7. Save and import (4.4)
+
+- **Export** (Settings → Team → template menu): the project's template copy as JSON (`arimaops-template` v1: the `TeamTemplate` plus its pinned packs), no secrets, no seats, no project data.
+- **Import:** checked by `validateTemplate` (Phase 1) plus the packs it names: a pack missing from `skill-packs.lock.json` goes through the owner's add-and-scan step (section 2) before the template can be used. Saved to the library under a new id; nothing runs until a project uses it.
+- Done when a template exported from one HQ imports on a fresh one and makes the same team and flow.
+
+## 8. Lesson promotion (4.5)
+
+- **What:** certified Lessons, Decisions and Dead ends from a project, offered to its template's library copy, so the next project from that template starts with them in its briefs.
+- **How:** `cleanMemory` (secrets, personal data, keep-out names), then a Haiku rewrite that removes the project's specifics (hosts, IPs, names, product names, paths outside the stack), then the owner approves each in Action items. Stored in the template as `lessons` (text and type only, no project id).
+- **Off by default for security engagements** (any template with `rules.findings`): a lesson from a client's network must never leak into the next client's brief. The owner can switch it on per project.
+- Haiku runs only once the owner turns it on (as with Phase 2 extraction) and counts toward spend caps on API-key accounts.
+- Done when a test feeds lessons full of hosts, IPs, names and keys, and none survives promotion.
+
+## 9. Benchmarks (4.3)
+
+- **Harness** (`scripts/bench/`): a benchmark is a template, a sample project (a repo or a target), a fixed brief and a time and spend limit. A run records findings (matched against the target's known list), cost, time, gate rejections and replans, as JSON, and compares to the last run.
+- **Security targets** (decision 2): OWASP Juice Shop, DVWA and crAPI as local Docker containers on an isolated network, the project in lab mode with the target as its only scope entry; code-audit repos with published CVEs at the vulnerable commit.
+- **Other templates:** 3–5 practice projects each (a small app for Dev, a question with a known answer set for Research, a product brief for Marketing and Sales).
+- Every run uses real models and costs money: the harness never starts one without the owner's go-ahead per run.
+
+## 10. Owner's decisions (2026-11-13)
+
+1. **Other `owner/repo` skills are pinned at first add, scanned, and kept only after the owner approves the scan.** `npx skills add` goes.
+2. **Benchmarks run on the laptop**, targets in local Docker on an isolated network, lab mode, each paid run asked first.
+3. **Paper search uses arXiv, OpenAlex and Crossref** (free, no keys).
+4. **The four vetted packs may be downloaded** from GitHub at their pinned commits during step 2.
+
+## 11. Work order
+
+1. This design and the owner's decisions.
+2. Skill scanner and pinned packs; `npx skills add` replaced (section 2).
+3. Dev template v2 (section 3).
+4. Security templates: Red, Purple, Blue (section 4).
+5. Research template (section 5).
+6. Marketing and Sales, drafts only (section 6).
+7. Save and import (section 7).
+8. Lesson promotion (section 8).
+9. Benchmark harness (section 9).
+10. Demo on a throwaway HQ, tablet check, evidence in HANDOFF.
+
+Not checked locally without the owner's go-ahead: real benchmark runs (paid) and the Haiku rewrite in lesson promotion (paid).
