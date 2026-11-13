@@ -189,6 +189,7 @@ export class World {
             closedAt: null,
           },
         ]),
+      spend: { day: { usd: 4.12, cap: 5 }, month: { usd: 31.4, cap: 50 }, paused: null, unpriced: 3 },
       memory: {
         source: "env" as const,
         url: "bolt://127.0.0.1:7687",

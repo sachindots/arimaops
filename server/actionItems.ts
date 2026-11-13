@@ -69,7 +69,7 @@ export class ActionItems {
     item.closedAt = new Date().toISOString();
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
-    if (item.kind === "memory") return; // dismissed memories stay uncertified and fade; no agent to tell
+    if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
     if (item.kind === "approval") {
       if (decision === "dismissed" && item.taskId && item.approval) this.planner.undoLeadApproval(item.taskId, item.approval.gateId, item.approval.stageId, item.note ?? undefined);
       else if (decision === "done") this.planner.notify(item.fromId, `The owner kept your approval: ${item.title}.`);
@@ -83,6 +83,20 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  /** A spend alert or pause (docs/agent-engine.md section 8), filed once per id (one per cap and period). */
+  addSpend(id: string, title: string, details: string): ActionItem | null {
+    if (this.items.some((i) => i.id === id)) return null;
+    const item: ActionItem = {
+      id, fromId: "hq", taskId: null, title, details, waiting: false, kind: "spend",
+      status: "open", note: null, at: new Date().toISOString(), closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    this.hub.activity("agent.needs-input", null, title);
+    return item;
   }
 
   /** The lead passed a person gate for the away owner (docs/agent-engine.md section 4): Keep or Undo. */

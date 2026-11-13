@@ -90,6 +90,7 @@ Each gate kind gets a checker. "Observed" means HQ decides from what it can see;
 - **80%:** one alert (push and Action item) per period.
 - **100%:** the project is **paused**: HQ stops its workers' sessions, refuses new starts and model runs (extraction, second opinions) for it, and tells the lead it is paused. The lead stays up but idle. An Action item offers **Raise the cap** and **Resume tomorrow**. The pause lifts itself when the period rolls over.
 - Checked on every usage poll (30 s), so a runaway agent stops within about a minute of crossing the cap; a test drives fake usage events past the cap and sees the pause.
+- **As built** (`server/spendCaps.ts`): "API-key accounts" are the accounts in Settings → Accounts (API keys and cloud), never the CLI sign-ins. The caps live in the project config (`spendCaps`); Settings → Project shows today's and this month's spend against them, owner only to change (step-up from a remote device). A new cap takes effect at the next usage poll (30 s). Paused, a worker start says why, and HQ's own model runs (memory extraction) for that project are refused. The alert and pause items in Action items have **Raise the cap** (opens Settings → Project) and **OK** / **Resume when it resets**.
 - Customers use API keys only (launch requirement): their usage is exact. The owner's subscription sign-ins have no bill; their estimated cost shows either way.
 
 ## 9. API-key containers (3.8)

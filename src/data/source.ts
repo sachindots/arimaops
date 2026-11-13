@@ -34,6 +34,7 @@ import type {
   AccountsState,
   MemoryInput,
   MemoryState,
+  SpendState,
 } from "./types";
 
 export type OfficeEvent =
@@ -57,6 +58,7 @@ export type OfficeEvent =
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
   | { type: "memory.updated"; memory: MemoryState }
+  | { type: "spend.updated"; spend: SpendState }
   /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
   | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
@@ -143,6 +145,8 @@ export interface OfficeDataSource {
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
   /** Owner only: lifts the scope requirement for CTFs and practice ranges. */
   setLabMode(on: boolean): void;
+  /** Owner only: per-project caps in USD on API-key accounts. */
+  setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
   decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
   keepOutOfMemory(name: string): void;
 

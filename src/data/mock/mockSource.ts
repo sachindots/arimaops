@@ -361,6 +361,17 @@ export function createMockSource(): OfficeDataSource {
     saveMemory() {},
     restoreMemory() {},
     setMemoryExtraction() {},
+    setSpendCaps(caps) {
+      world.snap.config.project.spendCaps = caps;
+      const spend = world.snap.spend;
+      if (spend) {
+        spend.day.cap = caps.dailyUsd;
+        spend.month.cap = caps.monthlyUsd;
+        spend.paused = spend.month.usd >= caps.monthlyUsd ? "month" : spend.day.usd >= caps.dailyUsd ? "day" : null;
+        world.emit({ type: "spend.updated", spend: structuredClone(spend) });
+      }
+      world.configChanged();
+    },
     setLabMode(on) {
       world.snap.config.rules.labMode = on;
       world.configChanged();

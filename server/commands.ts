@@ -408,6 +408,19 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (lead) planner.notify(lead.id, labMode ? "The owner turned lab mode on: this is a CTF or practice range, and agents may start without a scope." : "The owner turned lab mode off: no agent but you starts until the engagement scope is set.");
     },
 
+    // Spend caps on API-key accounts (USD, per project). Owner only; a remote device needs the step-up.
+    setSpendCaps: (raw) => {
+      const p = (raw ?? {}) as { dailyUsd?: unknown; monthlyUsd?: unknown };
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 100_000 ? Math.round(v * 100) / 100 : null);
+      const dailyUsd = num(p.dailyUsd);
+      const monthlyUsd = num(p.monthlyUsd);
+      if (dailyUsd === null || monthlyUsd === null) throw new Error("Caps are amounts in USD above 0.");
+      if (dailyUsd > monthlyUsd) throw new Error("The daily cap can't be more than the monthly one.");
+      hub.snap.config.project.spendCaps = { dailyUsd, monthlyUsd };
+      hub.configChanged();
+      hub.activity("config", null, `Spend caps: $${dailyUsd} a day, $${monthlyUsd} a month (API-key accounts)`);
+    },
+
     setMemoryExtraction: (raw) => {
       const input = (raw ?? {}) as { enabled?: boolean; account?: string };
       try {

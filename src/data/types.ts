@@ -142,6 +142,18 @@ export interface ProjectConfig {
   officeName?: string; // the sign on the office wall; empty = ".HQ"
   /** Security engagements: what agents may touch. */
   scope?: Scope;
+  /** Spend caps in USD on API-key accounts (docs/agent-engine.md section 8); missing = $5 a day, $50 a month. */
+  spendCaps?: { dailyUsd: number; monthlyUsd: number };
+}
+
+/** A project's spend against its caps, on API-key accounts only (subscriptions have no bill). */
+export interface SpendState {
+  day: { usd: number; cap: number };
+  month: { usd: number; cap: number };
+  /** Over a cap: workers stopped, no new starts or model runs until the period rolls over or the cap is raised. */
+  paused: "day" | "month" | null;
+  /** Events on models without a price row (GPT, Gemini): counted as $0. */
+  unpriced: number;
 }
 
 /** Engagement scope: domains ("example.com", "*.example.com"), IPs or IPv4 CIDRs. Out of scope always wins. */
@@ -468,6 +480,7 @@ export interface OfficeSnapshot {
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
   memory?: MemoryState;
+  spend?: SpendState;
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
@@ -493,7 +506,7 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend";
   /** kind approval: the gate the lead passed and the stage it belongs to. */
   approval?: { gateId: string; stageId: string };
   /** kind memory: the memories still to decide. */

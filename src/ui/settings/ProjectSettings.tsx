@@ -33,6 +33,67 @@ function FontPicker() {
 }
 
 /** Engagement scope: one entry per line. The server keeps only domains, IPs and CIDRs. */
+const money = (n: number) => `$${n.toFixed(2)}`;
+
+/** Spend caps per project on API-key accounts (docs/agent-engine.md section 8). */
+function SpendCaps() {
+  const caps = useOffice((s) => s.snap?.config.project.spendCaps) ?? { dailyUsd: 5, monthlyUsd: 50 };
+  const spend = useOffice((s) => s.snap?.spend);
+  const [daily, setDaily] = useState(String(caps.dailyUsd));
+  const [monthly, setMonthly] = useState(String(caps.monthlyUsd));
+  const d = Number(daily);
+  const m = Number(monthly);
+  const valid = d > 0 && m > 0 && d <= m;
+  const dirty = d !== caps.dailyUsd || m !== caps.monthlyUsd;
+  const bar = (used: number, cap: number) => {
+    const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+    const color = pct >= 100 ? "#ff1744" : pct >= 80 ? "#ffab00" : "#00c853";
+    return (
+      <div className="mt-1 h-3 border-2 border-ink bg-cream-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+        <div className="h-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    );
+  };
+  return (
+    <section className="border-[3px] border-ink bg-white p-3">
+      <SectionTitle>Spend caps</SectionTitle>
+      {spend?.paused && (
+        <div className="mb-2 border-[3px] border-ink bg-[#ff1744] px-2 py-1 text-[13px] font-bold text-white" role="status">
+          Paused: the {spend.paused === "day" ? "daily" : "monthly"} cap is reached. Workers are stopped until {spend.paused === "day" ? "midnight" : "next month"}, or raise the cap.
+        </div>
+      )}
+      <p className="mb-2 text-[13px] text-muted">
+        On API-key accounts only: your own subscription sign-ins have no bill and aren't counted. At 80% you get one alert; at 100% HQ stops this project's workers until the period ends. Costs are estimates from list prices.
+      </p>
+      {spend && (
+        <div className="mb-3 grid gap-3 md:grid-cols-2">
+          <div className="text-[13px]">
+            <b>Today</b> {money(spend.day.usd)} of {money(spend.day.cap)}
+            {bar(spend.day.usd, spend.day.cap)}
+          </div>
+          <div className="text-[13px]">
+            <b>This month</b> {money(spend.month.usd)} of {money(spend.month.cap)}
+            {bar(spend.month.usd, spend.month.cap)}
+          </div>
+          {spend.unpriced > 0 && <p className="text-[12px] text-muted md:col-span-2">{spend.unpriced} usage events this month are on models without a price (GPT, Gemini) and count as $0.</p>}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Per day (USD)">
+          <input className="field" inputMode="decimal" type="number" min="0.01" step="0.5" value={daily} onChange={(e) => setDaily(e.target.value)} />
+        </Field>
+        <Field label="Per month (USD)">
+          <input className="field" inputMode="decimal" type="number" min="0.01" step="5" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+        </Field>
+      </div>
+      {!valid && <p className="text-[12px] font-bold">Both caps are above $0, and the daily one is at most the monthly one.</p>}
+      <button className="btn mt-2 min-h-[44px]" disabled={!dirty || !valid} onClick={() => officeActions.setSpendCaps({ dailyUsd: d, monthlyUsd: m })}>
+        Save caps
+      </button>
+    </section>
+  );
+}
+
 function ScopeEditor() {
   const scope = useOffice((s) => s.snap?.config.project.scope);
   const rulesCfg = useOffice((s) => s.snap?.config.rules);
@@ -129,6 +190,7 @@ export function ProjectSettings() {
           />
         </Field>
       </section>
+      <SpendCaps />
       {snap?.config.rules.findings && <ScopeEditor />}
       <section>
         <SectionTitle>Plan</SectionTitle>

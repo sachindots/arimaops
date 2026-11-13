@@ -119,6 +119,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
         {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
+        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff1744" }}>spend</span>}
         {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffab00" }}>lead approved · undoable</span>}
         {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>waiting</span>}
       </div>
@@ -142,6 +143,22 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
+      {item.kind === "spend" ? (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            className="btn min-h-[44px] px-2 text-[12px]"
+            onClick={() => {
+              officeActions.resolveActionItem(item.id, "done");
+              ui.openSettings("project");
+            }}
+          >
+            Raise the cap
+          </button>
+          <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed")}>
+            {/^Paused/.test(item.title) ? "Resume when it resets" : "OK"}
+          </button>
+        </div>
+      ) : (
       <div className="mt-2 flex items-center gap-2">
         <input
           className="field min-w-0 flex-1 text-[13px]"
@@ -157,6 +174,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {item.kind === "plan" ? "Reject" : item.kind === "approval" ? "Undo" : "Dismiss"}
         </button>
       </div>
+      )}
     </li>
   );
 }

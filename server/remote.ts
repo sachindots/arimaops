@@ -38,6 +38,7 @@ export const RISKY_COMMANDS = new Set([
   "restoreMemory",
   "setMemoryExtraction",
   "setLabMode",
+  "setSpendCaps",
   "decideMemories",
   "removeSecret",
   "setProxy",

@@ -22,6 +22,7 @@ import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
 import { scopeBlocksStart } from "./scope";
+import { spendPaused } from "./spendCaps";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
@@ -143,6 +144,8 @@ export class Sessions {
     // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
     const unscoped = scopeBlocksStart(hub.snap.config, agent);
     if (unscoped) return fail(unscoped);
+    const over = spendPaused(hub.slug);
+    if (over && !agent.isLead) return fail(`Paused: the project's ${over === "day" ? "daily" : "monthly"} spend cap is reached. Raise it in Settings → Project, or wait for the ${over === "day" ? "next day" : "next month"}.`);
 
     const cap = maxAgents();
     if (this.atCap())

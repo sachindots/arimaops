@@ -173,6 +173,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, accounts: e.accounts };
     case "memory.updated":
       return { ...snap, memory: e.memory };
+    case "spend.updated":
+      return { ...snap, spend: e.spend };
     case "memory.digest":
       return snap;
     case "mcp.updated":
@@ -264,6 +266,7 @@ export const officeActions = {
   restoreMemory: (date: string) => source.restoreMemory(date),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
   setLabMode: (on: boolean) => source.setLabMode(on),
+  setSpendCaps: (caps: { dailyUsd: number; monthlyUsd: number }) => source.setSpendCaps(caps),
   decideMemories: (itemId: string, decisions: Record<string, "certify" | "reject">) => source.decideMemories(itemId, decisions),
   keepOutOfMemory: (name: string) => source.keepOutOfMemory(name),
   refreshMcp: () => source.refreshMcp(),

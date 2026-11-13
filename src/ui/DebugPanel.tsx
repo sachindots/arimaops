@@ -48,6 +48,7 @@ function summary(e: OfficeEvent): string {
     case "mcp.updated": return `${e.mcp.servers.length} MCP servers`;
     case "accounts.updated": return `${e.accounts.list.length} accounts`;
     case "memory.digest": return `${e.count} memories to check${e.urgent ? " (urgent)" : ""}`;
+    case "spend.updated": return `spend $${e.spend.day.usd.toFixed(2)} today${e.spend.paused ? " (paused)" : ""}`;
     case "memory.updated": return `memory ${e.memory.status}${e.memory.queued ? `, ${e.memory.queued} queued` : ""}`;
     case "remote.stepup": return `step-up ${e.status}${e.cmd ? ` ${e.cmd}` : ""}`;
     case "finding.updated": return `finding ${e.finding.id} ${e.finding.status}`;

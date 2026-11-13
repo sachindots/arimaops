@@ -19,6 +19,7 @@ import { setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
 import { OnDemand } from "./onDemand";
+import { capsOf, SpendGuard } from "./spendCaps";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -175,6 +176,29 @@ export async function startProject(path: string, port: number, paused: boolean):
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
   const onDemand = new OnDemand(hub, sessions);
+  const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
+    try {
+      return accounts().views().map((a) => a.id); // API-key and cloud accounts: the ones with a bill
+    } catch {
+      return []; // vault locked: nothing to count
+    }
+  }, {
+    stopWorkers: async () => {
+      for (const a of hub.snap.config.team) {
+        const s = hub.status(a.id)?.session.state;
+        if (!a.isLead && (s === "running" || s === "starting")) await sessions.stop(a.id);
+      }
+    },
+    tellLead: (text) => {
+      const lead = hub.snap.config.team.find((a) => a.isLead);
+      if (lead) planner.notify(lead.id, text);
+    },
+    alert: (id, title, details) => planner.actions?.addSpend(id, title, details),
+    changed: (spend) => {
+      hub.snap.spend = spend;
+      hub.emit({ type: "spend.updated", spend });
+    },
+  });
   planner.onReady = (id) => onDemand.ready(id);
   inbox.holds = (agentId, item) => {
     if (!onDemand.onDemand(agentId) || item.kind !== "message" || item.fromId === "you") return false;
@@ -200,6 +224,7 @@ export async function startProject(path: string, port: number, paused: boolean):
         log.warn(`couldn't record usage for ${a.id}: ${err instanceof Error ? err.message : err}`);
       }
     }
+    void spendGuard.check().catch((err) => log.warn(`spend check failed: ${err instanceof Error ? err.message : err}`));
   };
   const guard = new LoopGuard(
     async () => null, // no model judge: the repeated-failure rule decides
