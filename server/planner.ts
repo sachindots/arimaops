@@ -300,7 +300,7 @@ export class Planner {
     const agent = this.hub.cfg(agentId)!;
     const stage = template.flow.stages.find((s) => s.id === task.stageId);
     if (stage && agent.roleId && !stage.roleIds.includes(agent.roleId))
-      throw new Error(`${task.id} is in the ${stage.name} stage, which ${stage.roleIds.join(" or ")} work. ${agent.name} is a ${agent.roleId}. Assign a seat of those roles, or move the task to a stage ${agent.name}'s role works first.`);
+      throw new Error(`${task.id} is in the ${stage.name} stage, where only ${stage.roleIds.join(" or ")} seats work. ${agent.name} is a ${agent.roleId}. Assign one of those, or first move the task to a stage ${agent.name}'s role works in.`);
     if (task.cli && agent.cli !== task.cli) {
       const fits = this.snap.config.team.filter((a) => a.cli === task.cli && !a.isLead).map((a) => a.name);
       throw new Error(`${task.id} runs on ${CLI_LABEL[task.cli]}, but ${agent.name} runs ${CLI_LABEL[agent.cli]}. ${fits.length ? `Agents on ${CLI_LABEL[task.cli]}: ${fits.join(", ")}.` : `No agent runs ${CLI_LABEL[task.cli]}; add one or clear the task's "runs on".`}`);

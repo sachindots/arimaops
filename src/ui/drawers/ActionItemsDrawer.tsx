@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BRAND } from "../../data/brand";
 import type { ActionItem } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
@@ -84,7 +85,7 @@ export function ActionItemsDrawer() {
               <ul className="mt-2 flex flex-col gap-1 text-[13px] text-muted">
                 {closed.map((i) => (
                   <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
-                    <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? i.fromId)} ·{" "}
+                    <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
                     {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
@@ -131,7 +132,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
             {from.name}
           </button>
         ) : (
-          <span>{item.fromId}</span>
+          <span>{item.fromId === "hq" ? BRAND.name : item.fromId}</span>
         )}
         {item.taskId && <span>· {item.taskId}</span>}
         <span>· {ago(item.at, now)} ago</span>

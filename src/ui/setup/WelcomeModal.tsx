@@ -1,3 +1,4 @@
+import { DEFAULT_OFFICE_NAME, OFFICE_NAME_MAX } from "../../data/names";
 import { BRAND } from "../../data/brand";
 import { useState } from "react";
 import { EMPTY_STACK, frameworks, STACK_CATEGORIES, toolsIn, type StackConfig } from "../../data/stack";
@@ -10,7 +11,7 @@ import { Field, RoleBadge } from "../kit";
 export function WelcomeModal() {
   const snap = useOffice((s) => s.snap);
   const [projectName, setProjectName] = useState(snap?.config.project.name ?? "");
-  const [officeName, setOfficeName] = useState(snap?.config.project.officeName ?? ".HQ");
+  const [officeName, setOfficeName] = useState(snap?.config.project.officeName ?? "");
   const [templateId, setTemplateId] = useState(BUILTIN_TEMPLATES[0].id);
   const [reviewEnabled, setReviewEnabled] = useState(snap?.config.workflow.review.enabled ?? true);
   const [reviewTool, setReviewTool] = useState<ReviewTool>(snap?.config.workflow.review.tool ?? "human");
@@ -51,7 +52,7 @@ export function WelcomeModal() {
               <input className="field w-full" value={projectName} maxLength={80} onChange={(e) => setProjectName(e.target.value)} />
             </Field>
             <Field label="Office wall sign">
-              <input className="field w-full font-mono" value={officeName} maxLength={12} onChange={(e) => setOfficeName(e.target.value)} />
+              <input className="field w-full font-mono" value={officeName} maxLength={OFFICE_NAME_MAX} placeholder={DEFAULT_OFFICE_NAME} onChange={(e) => setOfficeName(e.target.value)} />
             </Field>
           </div>
 

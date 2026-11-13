@@ -3,6 +3,7 @@
 // .mcp.json. The lead manages the plan; everyone can message everyone.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { spendPaused } from "./spendCaps";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -176,7 +177,10 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     guard(({ taskId, agent }: { taskId: string; agent: string }) => {
       leadOnly();
       const t = planner.assign(taskId, agent, me);
-      return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
+      const waiting = planner.waitingOn(t);
+      const paused = spendPaused(hub.slug);
+      if (waiting.length) return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. It waits on ${waiting.join(", ")}; HQ tells them to start once that's done.`);
+      return ok(paused ? `Assigned ${t.id} to ${hub.name(t.ownerId)}. The project is paused at its ${paused === "day" ? "daily" : "monthly"} spend cap, so they start when it lifts.` : `Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
     }),
   );
 

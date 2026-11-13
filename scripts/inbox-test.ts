@@ -203,6 +203,18 @@ inbox4.stop();
   st.get("d2")!.session.state = "stopped";
   await od.tick(t0 + 20 * GRACE_MS);
   check("…and starts when a slot frees", log.join() === "start d1", log.join());
+  // While the project is paused at its spend cap, starts wait and go ahead once it lifts.
+  let pausedFor: string | null = "the spend cap to lift";
+  const od2 = new OnDemand(hub as never, { ...sessions, atCap: () => false }, () => pausedFor);
+  log.length = 0;
+  for (const id of ["d1", "d2"]) st.get(id)!.session.state = "stopped";
+  od2.ready("d1");
+  check("paused: the start waits, and says why", !log.length && /spend cap/.test(st.get("d1")!.note ?? ""));
+  await od2.tick(t0 + 30 * GRACE_MS);
+  check("…still paused: still waiting", !log.length);
+  pausedFor = null;
+  await od2.tick(t0 + 31 * GRACE_MS);
+  check("…the pause lifts: it starts", log.join() === "start d1", log.join());
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

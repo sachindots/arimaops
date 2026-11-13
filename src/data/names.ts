@@ -16,6 +16,6 @@ export const DEFAULT_OFFICE_NAME = BRAND.officeSign;
 
 export function officeSign(name?: string): string {
   const clean = (name ?? "").trim();
-  if (!clean || /^jsm\s*hq$/i.test(clean)) return DEFAULT_OFFICE_NAME;
+  if (!clean || /^(jsm\s*hq|\.hq)$/i.test(clean)) return DEFAULT_OFFICE_NAME; // old default names
   return clean.slice(0, OFFICE_NAME_MAX);
 }

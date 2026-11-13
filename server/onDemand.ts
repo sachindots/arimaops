@@ -2,7 +2,8 @@
 // On-demand workers (docs/agent-engine.md section 3). A seat whose role is on demand starts when it gets a task
 // it can begin, and stops once it has no open task for GRACE_MS. Only seats HQ started this way are ever
 // stopped: a session the owner started, or one found running after an HQ restart, is left alone.
-// Over the machine's agent cap (`maxAgents`), a start waits in a queue, oldest first.
+// Over the machine's agent cap (`maxAgents`), or while the project is paused at its spend cap, a start waits in a
+// queue, oldest first, and goes ahead when there is room again.
 
 import type { Hub } from "./hub";
 
@@ -25,6 +26,8 @@ export class OnDemand {
   constructor(
     private hub: Pick<Hub, "snap" | "cfg" | "status" | "setStatus" | "activity">,
     private sessions: Starter,
+    /** Why starts must wait (the project is paused at its spend cap), or null. */
+    private paused: () => string | null = () => null,
   ) {}
 
   /** Whether this seat's role is started per task. The lead never is. */
@@ -46,10 +49,12 @@ export class OnDemand {
   /** `agentId` has a task it can start now. */
   ready(agentId: string) {
     if (!this.onDemand(agentId) || this.up(agentId) || this.queue.includes(agentId)) return;
-    if (this.sessions.atCap()) {
+    const hold = this.paused();
+    if (hold || this.sessions.atCap()) {
       this.queue.push(agentId);
-      this.hub.setStatus(agentId, { note: "Waiting for a free slot (this machine runs as many agents as it allows)" });
-      this.hub.activity("session", agentId, `${this.hub.cfg(agentId)?.name} waits for a free slot to start`);
+      const why = hold ?? "a free slot (this machine runs as many agents as it allows)";
+      this.hub.setStatus(agentId, { note: `Waiting for ${why}` });
+      this.hub.activity("session", agentId, `${this.hub.cfg(agentId)?.name} waits for ${why} to start`);
       return;
     }
     this.started.add(agentId);
@@ -78,7 +83,7 @@ export class OnDemand {
       this.hub.activity("session", id, `${this.hub.cfg(id)?.name} has no open task: stopping it until the next one`);
       await this.sessions.stop(id);
     }
-    while (this.queue.length && !this.sessions.atCap()) {
+    while (this.queue.length && !this.paused() && !this.sessions.atCap()) {
       const id = this.queue.shift()!;
       if (this.openTasks(id)) this.ready(id);
     }

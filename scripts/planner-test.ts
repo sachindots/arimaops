@@ -232,7 +232,7 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   let err = "";
   const t3b = p2.createTask({ title: "Build it", doneWhen: "x" } as never, "lea");
   try { p2.assign(t3b.id, "rv", "you"); } catch (e) { err = (e as Error).message; }
-  check("a build-stage task can't go to the reviewer, for people too", /Build stage, which developer work/.test(err) && t3b.ownerId === null, err);
+  check("a build-stage task can't go to the reviewer, for people too", /Build stage, where only developer seats work/.test(err) && t3b.ownerId === null, err);
   err = "";
   try { p2.assign(t3b.id, "reviewer", "lea"); } catch (e) { err = (e as Error).message; }
   check("nor to the reviewer role", /Build stage/.test(err), err);

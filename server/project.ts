@@ -21,7 +21,7 @@ import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from 
 import { OnDemand } from "./onDemand";
 import { githubAppState } from "./githubApp";
 import { Overflow } from "./overflow";
-import { capsOf, SpendGuard } from "./spendCaps";
+import { capsOf, SpendGuard, spendPaused } from "./spendCaps";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -178,7 +178,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     return meter.readByModel(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), home, a.model || a.cli);
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
-  const onDemand = new OnDemand(hub, sessions);
+  const onDemand = new OnDemand(hub, sessions, () => (spendPaused(slug) ? "the spend cap to lift (the project is paused)" : null));
   const overflow = new Overflow(hub, planner, sessions);
   const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
     try {

@@ -141,7 +141,7 @@ export interface ProjectConfig {
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
-  officeName?: string; // the sign on the office wall; empty = ".HQ"
+  officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
   /** Spend caps in USD on API-key accounts (docs/agent-engine.md section 8); missing = $5 a day, $50 a month. */
