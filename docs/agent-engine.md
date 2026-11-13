@@ -1,6 +1,6 @@
 # Agent engine (Phase 3)
 
-How HQ runs the team: who gets a task, when a worker starts and stops, what the lead may decide alone, how every gate is checked, and what stops a runaway agent. Builds on the Phase 1 model (`docs/core-model.md`: roles, flows, gates, usage events) and the Phase 2 memory (`docs/memory-core.md`: ledgers, briefs). Status: **design, 2026-11-13**; the owner's decisions are in section 11.
+How HQ runs the team: who gets a task, when a worker starts and stops, what the lead may decide alone, how every gate is checked, and what stops a runaway agent. Builds on the Phase 1 model (`docs/core-model.md`: roles, flows, gates, usage events) and the Phase 2 memory (`docs/memory-core.md`: ledgers, briefs). Status: **built locally 2026-11-13**, waiting for the owner's approval; the owner's decisions are in section 11. Not checked yet: a real GitHub App's webhooks (3.5) and the EC2 start (3.8).
 
 ## 1. What changes
 
