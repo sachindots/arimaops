@@ -37,6 +37,11 @@ The four launch templates, the skills their roles get, how those skills are fetc
 
 A blocked file blocks its whole skill; the reason shows in Settings and the activity feed. Findings are reasons to refuse, never to "clean" a file. Done when a test feeds the scanner a copy of the rejected file's trick and it blocks it, and passes the four vetted packs at their pins.
 
+**As built** (`server/skillScan.ts`, `server/skillPacks.ts`, `skill-packs.lock.json`, 3a1ea81):
+- Packs are fetched per skill, not as a whole repo: the tree from GitHub's API at the pinned commit, then only the skill folders' files from raw.githubusercontent.com (a whole-repo tarball of `vercel/next.js`, which one stack skill comes from, would be huge). The lock pins a commit per pack and a hash per skill; links, submodules and `.git` paths are refused.
+- The four vetted packs are pinned at their full commits (182 skills). On their real files nothing blocks inside a skill folder; Trail of Bits' three blocked files are plugin hooks outside any skill folder, which HQ never copies. Security skills quote attack strings, so text aimed at the agent blocks only in plain prose; quoted, in code or in a table row it is a warning. A plain `install.sh` or `setup.py` is a warning (it runs only if someone runs it); CLI hooks, settings files and package install scripts block.
+- An unpinned source (including the stack's vendor skills: Clerk, Supabase, Stripe…) is proposed: pinned at its current commit, hashed and scanned in the background, then an Action item (**Approve** / **Reject**) shows the scan. Blocked skills stay out of an approved pack. Settings → Stack lists every pack with its status, licence and credit.
+
 **Other `owner/repo` skills** (decision 1): pinned at the commit seen when the owner first adds them, scanned, and kept only after the owner approves the scan result in Settings. Never `npx skills add`.
 
 ## 3. Dev template v2 (4.2)

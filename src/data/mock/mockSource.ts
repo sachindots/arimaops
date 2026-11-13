@@ -355,6 +355,12 @@ export function createMockSource(): OfficeDataSource {
       item.note = note?.trim() || null;
       item.closedAt = new Date().toISOString();
       world.emit({ type: "action.updated", item: { ...item } });
+      if (item.kind === "skills" && item.pack && world.snap.skillPacks) {
+        const pack = world.snap.skillPacks.find((p) => p.source === item.pack);
+        if (pack) pack.status = decision === "done" ? "approved" : "rejected";
+        world.emit({ type: "skillPacks.updated", skillPacks: structuredClone(world.snap.skillPacks) });
+        return;
+      }
       world.message("you", item.fromId, decision === "done" ? `Done: ${item.title}${item.note ? ` (${item.note})` : ""}` : `Dismissed: ${item.title}${item.note ? ` (${item.note})` : ""}`);
     },
 

@@ -157,6 +157,20 @@ export class World {
         }))
         .concat([
           {
+            id: "ai-demo-skills",
+            fromId: "hq",
+            taskId: null,
+            title: "Skills from clerk/skills wait for your check",
+            details: "clerk/skills at commit 3f9c2a7d1e04: 8 skills, licence MIT.\nNothing blocked by the scanner.\n\nWorth a read before you approve:\n- skills/clerk-setup/SKILL.md:41: pipes a download into an interpreter\n\nApprove: agents get these skills at this commit only; a new commit needs a new approval. Reject: they're never installed.",
+            waiting: false,
+            kind: "skills" as const,
+            pack: "clerk/skills",
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
             id: "ai-demo-overflow",
             fromId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq",
             taskId: tasks[1]?.id ?? null,
@@ -203,6 +217,13 @@ export class World {
             closedAt: null,
           },
         ]),
+      skillPacks: [
+        { source: "trailofbits/skills", commit: "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff", licence: "CC-BY-SA-4.0", credit: "Trail of Bits", use: "any" as const, skills: 98, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "cloudflare/security-audit-skill", commit: "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8", licence: "MIT", credit: "Cloudflare", use: "any" as const, skills: 1, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "elementalsouls/Claude-BugHunter", commit: "4a2d93e887fa4dfdc91da78bd614418b5837b535", licence: "MIT", credit: "elementalsouls", use: "scoped-offensive" as const, skills: 83, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "anthropics/claude-code-security-review", commit: "0c6a49f1fa56a1d472575da86a94dbc1edb78eda", licence: "MIT", credit: "Anthropic", use: "github-action" as const, skills: 0, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "clerk/skills", commit: "3f9c2a7d1e0400000000000000000000000000aa", licence: "MIT", credit: null, use: "any" as const, skills: 8, status: "pending" as const, blocked: [], warnings: 1 },
+      ],
       spend: { day: { usd: 4.12, cap: 5 }, month: { usd: 31.4, cap: 50 }, paused: null, unpriced: 3 },
       memory: {
         source: "env" as const,
