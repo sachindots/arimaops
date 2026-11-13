@@ -1,6 +1,7 @@
 // One project's runtime inside the shared server: its hub, agents, planner, sandbox and GitHub sync.
 // main.ts starts one per registered project; http.ts routes browsers (by ?project=) and agents (by their own token) to it.
 
+import { LessonPromotion } from "./lessonPromotion";
 import { broadcastLibrary, libraryState } from "./templateIO";
 import { existsSync, lstatSync, mkdirSync, renameSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
@@ -248,6 +249,8 @@ export async function startProject(path: string, port: number, paused: boolean):
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
+  planner.lessons = new LessonPromotion(hub, () => planner.actions);
+  planner.actions.onLessonDecided = (id, approve) => planner.lessons?.decide(id, approve);
   planner.actions.onMove = (m) => overflow.move(m);
   const broadcastPacks = () => {
     const skillPacks = packsState();

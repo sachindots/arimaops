@@ -31,6 +31,7 @@ function summary(e: OfficeEvent): string {
     case "snapshot": return "full snapshot";
     case "workspace.info": return `${e.info.agentId} ${e.info.path}`;
     case "templates.updated": return `${e.templateLibrary.length} templates`;
+    case "lessons.updated": return `${e.lessons.approved.length} approved, ${e.lessons.pending} waiting`;
     case "template.file": return e.file.template.id;
     case "template.imported": return e.message;
     case "sbx.updated": return `base ${e.sbx.basePolicy}, ${Object.keys(e.sbx.agents).length} sandboxes`;

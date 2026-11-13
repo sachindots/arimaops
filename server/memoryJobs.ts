@@ -20,11 +20,17 @@ const providerOf = (id: string): Provider | null => {
   }
 };
 
+let runner: MeteredRunner | null = null;
+
+/** The metered runner HQ's own helper calls use (extraction, lesson promotion): usage counts toward spend caps. */
+export function helperRunner(): MeteredRunner {
+  return (runner ??= new MeteredRunner(hqDb(), { provider: providerOf }, new ClaudeCliRunner(), new AnthropicKeyRunner((id) => accounts().keyFor(id, "anthropic"))));
+}
+
 export function memoryWorker(): MemoryWorker {
   if (!shared) {
     const db = hqDb();
-    const runner = new MeteredRunner(db, { provider: providerOf }, new ClaudeCliRunner(), new AnthropicKeyRunner((id) => accounts().keyFor(id, "anthropic")));
-    shared = new MemoryWorker(memoryStore(), runner, extractionSettings, (p) => projectTemplate(db, p)?.memoryTypes ?? []);
+    shared = new MemoryWorker(memoryStore(), helperRunner(), extractionSettings, (p) => projectTemplate(db, p)?.memoryTypes ?? []);
   }
   return shared;
 }

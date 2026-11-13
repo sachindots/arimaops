@@ -270,6 +270,10 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         afterTemplate(t, `Template re-synced to ${t.name} v${t.version}. Restart agents to give them the change.`);
       }),
 
+    promoteLessons: () => void planner.lessons?.run(),
+    setLessonPromotion: (on) => planner.lessons?.setEnabled(on === true),
+    removeLesson: (id) => planner.lessons?.decide(str(id, 40), false),
+
     exportTemplate: () => {
       const t = hub.snap.config.template;
       if (!t) return hub.activity("config", null, "This project was made before templates: there's no template to save.");

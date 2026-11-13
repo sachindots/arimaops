@@ -217,6 +217,22 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE specs ADD COLUMN approved_version INTEGER;
   ALTER TABLE specs ADD COLUMN approved_by TEXT;
   `,
+  // Phase 4 step 8: lessons promoted from a project into its template, for the next project's briefs (status pending,
+  // approved, rejected, or dropped: tried, failed the check, text not kept). origin is a
+  // hash of the project and memory id (so a memory is offered once); the project id itself isn't kept.
+  `
+  CREATE TABLE template_lessons (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    UNIQUE (template_id, origin)
+  );
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

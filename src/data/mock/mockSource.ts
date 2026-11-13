@@ -398,6 +398,39 @@ export function createMockSource(): OfficeDataSource {
       }
       world.configChanged();
     },
+    promoteLessons() {
+      const l = world.snap.lessons;
+      if (!l) return;
+      const lesson = { id: `L-demo${Date.now().toString(36)}`, templateId: l.templateId ?? "dev", type: "DeadEnd", text: "Polling the auth provider for sign-outs misses revoked sessions; subscribe to its session webhook instead.", status: "pending" as const, createdAt: new Date().toISOString() };
+      world.snap.lessons = { ...l, pending: l.pending + 1, last: "Lessons for the template: 1 waiting for your check (Action items), 2 dropped because the rewrite still named something of this project." };
+      const item = {
+        id: `ai-${lesson.id}`,
+        fromId: "hq",
+        taskId: null,
+        title: `Add this dead end to the ${lesson.templateId} template?`,
+        details: `${lesson.text}\n\nApprove: every new project from this template gets it in its briefs. Reject: it's never offered again.`,
+        waiting: true,
+        kind: "lesson" as const,
+        lesson: { id: lesson.id, templateId: lesson.templateId, type: lesson.type },
+        status: "open" as const,
+        note: null,
+        at: new Date().toISOString(),
+        closedAt: null,
+      };
+      world.snap.actionItems = [item, ...(world.snap.actionItems ?? [])];
+      world.emit({ type: "action.updated", item: structuredClone(item) });
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
+    setLessonPromotion(on) {
+      if (!world.snap.lessons) return;
+      world.snap.lessons = { ...world.snap.lessons, enabled: on };
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
+    removeLesson(id) {
+      if (!world.snap.lessons) return;
+      world.snap.lessons = { ...world.snap.lessons, approved: world.snap.lessons.approved.filter((l) => l.id !== id) };
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
     exportTemplate() {
       const t = world.snap.config.template;
       if (t) world.emit({ type: "template.file", file: toTemplateFile(t, {}) });

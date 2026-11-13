@@ -1,6 +1,8 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
+import { lessonsForBrief, templateIdOf } from "./lessons";
+import type { LessonPromotion } from "./lessonPromotion";
 import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
@@ -45,6 +47,8 @@ export class Planner {
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
   actions: ActionItems | null = null;
+  /** Lesson promotion for this project (set by the project). */
+  lessons: LessonPromotion | null = null;
   /** Set by project.ts: security findings (Team MCP report_finding). */
   findings: Findings | null = null;
   /** Set by main: ledgers and, from Phase 2, the team's memory. */
@@ -590,7 +594,7 @@ export class Planner {
       spec: this.specFor(task),
       handoffs,
       ledger,
-      memory: await this.memoryFor(task),
+      memory: [await this.memoryFor(task), lessonsForBrief(hqDb(), templateIdOf(hqDb(), this.snap.config.project.id))].filter(Boolean).join("\n\n"),
       facts: readFacts(this.hub.repo.root),
       skills: this.hub.cfg(agentId)?.skills ?? [],
       gates: this.openGates(task, agentId).map((g) => ({ id: g.gate.id, kind: g.gate.kind, needs: g.why })),

@@ -40,6 +40,7 @@ import type {
   GitHubAppState,
   SkillPackView,
   TemplateEntry,
+  LessonsState,
 } from "./types";
 
 export type OfficeEvent =
@@ -67,6 +68,7 @@ export type OfficeEvent =
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
   | { type: "templates.updated"; templateLibrary: TemplateEntry[] }
+  | { type: "lessons.updated"; lessons: LessonsState }
   /** Answer to exportTemplate: the file to download (only the device that asked saves it). */
   | { type: "template.file"; file: TemplateFile }
   | { type: "template.imported"; ok: boolean; message: string; id?: string }
@@ -160,6 +162,12 @@ export interface OfficeDataSource {
   exportTemplate(): void;
   /** Imports a template file's text into this HQ's library; answered with `template.imported`. */
   importTemplate(text: string): void;
+  /** Offers this project's certified lessons to its template (Haiku rewrite, then the owner approves each). */
+  promoteLessons(): void;
+  /** Allows or stops lesson promotion for this project. */
+  setLessonPromotion(on: boolean): void;
+  /** Takes an approved lesson out of the template. */
+  removeLesson(id: string): void;
   /** Owner only: per-project caps in USD on API-key accounts. */
   setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
   /** Owner only: trades GitHub's manifest code for the App's credentials. */

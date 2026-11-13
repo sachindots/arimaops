@@ -187,6 +187,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, skillPacks: e.skillPacks };
     case "templates.updated":
       return { ...snap, templateLibrary: e.templateLibrary };
+    case "lessons.updated":
+      return { ...snap, lessons: e.lessons };
     case "template.file":
     case "template.imported":
       return snap;
@@ -297,6 +299,9 @@ export const officeActions = {
     useOffice.setState({ templateExportAsked: true });
     source.exportTemplate();
   },
+  promoteLessons: () => source.promoteLessons(),
+  setLessonPromotion: (on: boolean) => source.setLessonPromotion(on),
+  removeLesson: (id: string) => source.removeLesson(id),
   importTemplate: (text: string) => {
     useOffice.setState({ templateImport: null });
     source.importTemplate(text);

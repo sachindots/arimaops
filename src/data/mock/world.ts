@@ -245,6 +245,17 @@ export class World {
             closedAt: null,
           },
         ]),
+      lessons: {
+        templateId: preset.config.template?.id ?? "dev",
+        enabled: true,
+        approved: [
+          { id: "L-demo1", templateId: preset.config.template?.id ?? "dev", type: "Lesson", text: "Enable row-level security before seeding a Postgres database, or the seed writes rows nobody can read back.", status: "approved" as const, createdAt: now() },
+          { id: "L-demo2", templateId: preset.config.template?.id ?? "dev", type: "Decision", text: "Rate limits run in middleware before auth, so anonymous floods never reach the database.", status: "approved" as const, createdAt: now() },
+        ],
+        pending: 0,
+        running: false,
+        last: null,
+      },
       skillPacks: [
         { source: "trailofbits/skills", commit: "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff", licence: "CC-BY-SA-4.0", credit: "Trail of Bits", use: "any" as const, skills: 98, status: "vetted" as const, blocked: [], warnings: 0 },
         { source: "cloudflare/security-audit-skill", commit: "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8", licence: "MIT", credit: "Cloudflare", use: "any" as const, skills: 1, status: "vetted" as const, blocked: [], warnings: 0 },

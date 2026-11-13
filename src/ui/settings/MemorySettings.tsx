@@ -80,6 +80,8 @@ export function MemorySettings() {
         </Field>
       </section>
 
+      <LessonsSection extractionOn={state.extraction.enabled} />
+
       <section className="flex max-w-[560px] flex-col gap-2">
         <SectionTitle>Keep out of memory</SectionTitle>
         <p className="m-0 text-[13px] text-muted">
@@ -182,5 +184,54 @@ export function MemorySettings() {
         )
       )}
     </div>
+  );
+}
+
+const LESSON_LABEL: Record<string, string> = { Lesson: "Lesson", Decision: "Decision", DeadEnd: "Dead end" };
+
+/** Certified lessons offered to the project's template, and the ones already in it. */
+function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
+  const lessons = useOffice((s) => s.snap?.lessons);
+  const security = useOffice((s) => !!s.snap?.config.rules?.findings);
+  if (!lessons?.templateId) return null;
+  return (
+    <section className="flex max-w-[560px] flex-col gap-2">
+      <SectionTitle>Lessons for the template</SectionTitle>
+      <p className="m-0 text-[13px] text-muted">
+        Certified lessons, decisions and dead ends from this project, offered to its template (<b className="text-ink">{lessons.templateId}</b>) so new
+        projects from it start with them in their briefs. Claude Haiku rewrites each without this project's names, hosts or paths; any that still
+        mention one are dropped, and you approve each of the rest in Action items.
+        {security && " Off by default here: a lesson from one engagement must never reach the next client's brief."}
+      </p>
+      <label className="flex items-center gap-2 text-[14px]">
+        <input type="checkbox" checked={lessons.enabled} disabled={isViewer} onChange={(e) => officeActions.setLessonPromotion(e.target.checked)} />
+        Allow this project's lessons into its template
+      </label>
+      {!isViewer && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn px-3 text-[12px]" disabled={!lessons.enabled || !extractionOn || lessons.running} onClick={() => officeActions.promoteLessons()}>
+            {lessons.running ? "Rewriting…" : "Offer lessons now"}
+          </button>
+          {!extractionOn && <span className="text-[12px] text-muted">Needs extraction on (it uses the same Haiku account).</span>}
+          {lessons.pending > 0 && <span className="text-[12px] text-muted">{lessons.pending} waiting for you in Action items</span>}
+        </div>
+      )}
+      {lessons.last && <p className="m-0 text-[12px] text-muted" role="status">{lessons.last}</p>}
+      {lessons.approved.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {lessons.approved.map((l) => (
+            <li key={l.id} className="flex items-start gap-2 border-2 border-ink bg-white px-2 py-1.5 text-[13px]">
+              <span className="chip shrink-0 text-[10px]">{LESSON_LABEL[l.type] ?? l.type}</span>
+              <span className="min-w-0 flex-1">{l.text}</span>
+              {!isViewer && (
+                <button className="btn shrink-0 px-2 text-[11px]" onClick={() => officeActions.removeLesson(l.id)} aria-label={`Remove lesson: ${l.text.slice(0, 40)}`}>
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

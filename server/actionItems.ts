@@ -5,7 +5,7 @@
 
 import { join } from "node:path";
 import type { Memory } from "../src/data/model";
-import type { ActionItem, PendingMemory } from "../src/data/types";
+import type { ActionItem, PendingMemory, TemplateLesson } from "../src/data/types";
 import type { Hub } from "./hub";
 import { projectHome } from "./paths";
 import type { Planner } from "./planner";
@@ -70,6 +70,10 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "lesson" && item.lesson) {
+      this.onLessonDecided(item.lesson.id, decision === "done");
+      return;
+    }
     if (item.kind === "gate" && item.gate) {
       this.planner.ownerGate(item.gate.taskId, item.gate.gateId, decision === "done", item.note ?? undefined);
       return;
@@ -161,6 +165,30 @@ export class ActionItems {
 
   /** The owner approved or rejected a skill pack's scan (set by the project: server/skillPacks.ts). */
   onPackDecided: (source: string, approve: boolean) => void = () => {};
+  /** The owner approved or rejected a lesson for the template (set by the project: server/lessonPromotion.ts). */
+  onLessonDecided: (id: string, approve: boolean) => void = () => {};
+
+  /** A lesson, made general, waiting to join the project's template. */
+  addLesson(l: TemplateLesson): ActionItem {
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      fromId: "hq",
+      taskId: null,
+      title: `Add this ${l.type === "DeadEnd" ? "dead end" : l.type.toLowerCase()} to the ${l.templateId} template?`,
+      details: `${l.text}\n\nApprove: every new project from this template gets it in its briefs. Reject: it's never offered again. Rewritten by Claude Haiku from a certified memory of this project, with the project's names, hosts and paths taken out; check that nothing of it is left.`,
+      waiting: true,
+      kind: "lesson",
+      lesson: { id: l.id, templateId: l.templateId, type: l.type },
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
+  }
 
   /** A pack a role or the stack named, scanned and waiting for the owner (docs/templates.md section 2). Once per pack. */
   addSkillPack(source: string, summary: { commit: string; skills: number; blocked: string[]; warnings: { path: string; why: string }[]; licence: string | null }): ActionItem | null {

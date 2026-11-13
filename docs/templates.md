@@ -148,6 +148,20 @@ As built (`src/data/templateFile.ts`, `server/templateIO.ts`):
 - Haiku runs only once the owner turns it on (as with Phase 2 extraction) and counts toward spend caps on API-key accounts.
 - Done when a test feeds lessons full of hosts, IPs, names and keys, and none survives promotion.
 
+As built (`server/lessons.ts`, `server/lessonPromotion.ts`):
+- **Where they live:** in the `template_lessons` table (migration 9), keyed by the library template id, not inside the template body. Built-ins are rewritten from code on every HQ update, so a body field would be lost. No project id is stored, only a hash of project and memory id, so each memory is tried once. A rewrite that fails the check is kept as `dropped`, without its text, so it isn't paid for again.
+- **Run:** Settings → Memory → Lessons for the template → **Offer lessons now** (owner only, authenticator code from a remote device). It needs memory extraction on and uses the same account through the metered runner, so it counts toward spend caps.
+  1. Only certified Lessons, Decisions and Dead ends are taken, at most 30 per run.
+  2. `cleanMemory` masks secrets, vault values, emails, keep-out names and public IPs before Haiku sees the text.
+  3. Haiku rewrites each lesson, or gives up on it.
+  4. The rewrite is cleaned again, then **refused** if `specificsIn` still finds a URL, an email, an IP (local ones too), a host on a common TLD, an absolute or home path, a mask, or one of the project's own words (id, name, repo, office sign, scope entries, keep-out names). Conventional file names like `middleware.ts` pass.
+  5. Each survivor is an Action item of kind `lesson`: Approve or Reject.
+- **Briefs:** up to 8 approved lessons, dead ends first, are added to the Memory section of every brief in projects made from that template, even while Neo4j is down. Settings lists the approved ones, and you can remove any.
+- **Security engagements:** off by default (`project.promoteLessons`, missing = `!rules.findings`). The owner can switch it on per project.
+- **Checked:** 19 checks in `scripts/lessons-test.ts`. Lessons full of hosts, IPs, URLs, names, keys, a vault value and paths go through three fake models: one that changes nothing, one that slips specifics back in, and one that rewrites well. No sensitive value survives any of them.
+- **Not checked:** a real Haiku run (paid, waiting for the owner's go-ahead).
+- **Limit:** a product or company name that isn't one of the project's own words can only be caught by Haiku or by you at approval.
+
 ## 9. Benchmarks (4.3)
 
 - **Harness** (`scripts/bench/`): a benchmark is a template, a sample project (a repo or a target), a fixed brief and a time and spend limit. A run records findings (matched against the target's known list), cost, time, gate rejections and replans, as JSON, and compares to the last run.

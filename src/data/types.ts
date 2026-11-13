@@ -146,6 +146,30 @@ export interface ProjectConfig {
   scope?: Scope;
   /** Spend caps in USD on API-key accounts (docs/agent-engine.md section 8); missing = $5 a day, $50 a month. */
   spendCaps?: { dailyUsd: number; monthlyUsd: number };
+  /** Lesson promotion to the template (docs/templates.md section 8); missing = on, except security engagements. */
+  promoteLessons?: boolean;
+}
+
+/** A lesson a project offered to its template: general, no project id. Approved ones go into the next projects' briefs. */
+export interface TemplateLesson {
+  id: string;
+  templateId: string;
+  type: string;
+  text: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+/** Settings → Memory: this project's template and its lessons. */
+export interface LessonsState {
+  templateId: string | null;
+  /** Promotion allowed for this project (off by default for security engagements). */
+  enabled: boolean;
+  approved: TemplateLesson[];
+  pending: number;
+  running: boolean;
+  /** The last promotion run's outcome, in words. */
+  last: string | null;
 }
 
 /** The machine's GitHub App (docs/agent-engine.md section 6); null app = none created yet. */
@@ -515,6 +539,7 @@ export interface OfficeSnapshot {
   skillPacks?: SkillPackView[];
   /** This HQ's template library (built-in and saved or imported), for the welcome. */
   templateLibrary?: TemplateEntry[];
+  lessons?: LessonsState;
   actionItems?: ActionItem[];
   findings?: Finding[];
 }
@@ -540,7 +565,9 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson";
+  /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */
+  lesson?: { id: string; templateId: string; type: string };
   /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */
   gate?: { taskId: string; gateId: string; reason: string };
   /** kind spec: the board spec version waiting for the owner (Approve = done, Send back = dismissed). */
