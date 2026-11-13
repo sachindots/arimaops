@@ -10,7 +10,7 @@ import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
 import { taskUsage } from "./usageEvents";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
-import { assertTaskMove, gateContext, recordGate } from "./planStore";
+import { assertTaskMove, gateContext, gateEvents, loadSpec, recordGate, saveSpec, type Spec } from "./planStore";
 import { ownerAway } from "./presence";
 import { PERSON_GATES, stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
@@ -28,9 +28,14 @@ export interface NewTask {
   needs?: string[];
   cli?: AgentCli | null;
   model?: string | null;
+  specItems?: string[];
+  highStakes?: boolean;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId" | "specItems" | "highStakes">>;
+
+/** "s4", " S12 " → "S4", "S12"; anything else is dropped. */
+const cleanItems = (items: string[] | undefined) => [...new Set((items ?? []).map((i) => i.trim().toUpperCase()).filter((i) => /^S\d+$/.test(i)))];
 
 const now = () => new Date().toISOString();
 
@@ -120,14 +125,14 @@ export class Planner {
 
   /** Throws with every unmet gate when the task can't move to `toStageId` (null: finish it). */
   private assertMove(task: Task, toStageId: string | null, byId: string) {
-    assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? []);
+    assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root });
   }
 
   /** What still stands between `byId` finishing this task: the unmet gates of its stage and the ones after it. */
   openGates(task: Task, byId: string): UnmetGate[] {
     const t = this.snap.config.template;
     if (!t) return [];
-    return unmetGates(stagesLeft(t.flow, task.stageId, null), gateContext(this.snap.config, task, byId, this.snap.pullRequests ?? []));
+    return unmetGates(stagesLeft(t.flow, task.stageId, null), gateContext(this.snap.config, task, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root }));
   }
 
   /** Records gate evidence from an agent (its id) or a person ("you"). */
@@ -173,6 +178,41 @@ export class Planner {
     this.hub.activity("config", null, `You undid the lead's approval of ${gateId} on ${task.id}`);
   }
 
+  /**
+   * The lead writes (or rewrites) a board's spec. Items are its lines that start with S1., S2.… A new version
+   * resets the spec approvals of the board's tasks: the owner approves what the spec says now.
+   */
+  writeSpec(boardId: string | undefined, text: string, byId: string): Spec {
+    const template = this.writable();
+    const board = boardId ? this.snap.boards.find((b) => b.id === boardId) : this.defaultBoard();
+    if (!board) throw new Error(`No board ${boardId}. Boards: ${this.snap.boards.map((b) => b.id).join(", ")}`);
+    const clean = text.trim().slice(0, 20_000);
+    if (!clean) throw new Error("The spec is empty.");
+    const projectId = this.snap.config.project.id;
+    const spec = saveSpec(hqDb(), projectId, board.id, clean, byId);
+    const specGates = template.flow.stages.flatMap((st) => st.gates).filter((g) => g.kind === "spec-approved" || (g.kind === "owner-approval" && g.reason === "spec"));
+    if (spec.version > 1)
+      for (const t of this.snap.tasks.filter((x) => x.boardId === board.id && x.status !== "done"))
+        for (const g of specGates)
+          if (gateEvents(hqDb(), projectId, t.id).some((e) => e.gateId === g.id))
+            recordGate(hqDb(), template, t, { projectId, gateId: g.id, state: "reset", by: { kind: "hq", id: "hq" }, proof: { note: `Spec v${spec.version} replaces the approved one` } });
+    this.hub.activity("config", byId === HUMAN_ID ? null : byId, `${this.hub.name(byId)} wrote the spec for ${board.title} (v${spec.version}, ${spec.items.length} items)`);
+    return spec;
+  }
+
+  /** The spec text a task's brief shows: the items it covers, else the whole spec (the brief trims it to fit). */
+  specFor(task: Task): string {
+    const spec = loadSpec(hqDb(), this.snap.config.project.id, task.boardId);
+    if (!spec) return "";
+    const mine = new Set(task.specItems ?? []);
+    if (!mine.size) return spec.text;
+    const lines = spec.text.split("\n").filter((l) => {
+      const m = l.match(/^\s*(?:[-*]\s*)?(S\d+)[.:)]/);
+      return m && mine.has(m[1].toUpperCase());
+    });
+    return `${lines.join("\n")}\n(Spec v${spec.version}; the whole spec covers ${spec.items.join(", ")}.)`;
+  }
+
   createBoard(title: string, status: Board["status"] = "planned"): Board {
     this.writable();
     const clean = title.trim().slice(0, 80) || "Board";
@@ -212,6 +252,7 @@ export class Planner {
       id, boardId: board.id, stageId: template.flow.stages[0].id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
+      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes,
     };
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
@@ -226,6 +267,7 @@ export class Planner {
     if (!task) throw new Error(`No task ${id}`);
     const wasDone = task.status === "done";
     const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as TaskPatch;
+    if (changes.specItems) changes.specItems = cleanItems(changes.specItems);
     const next = { ...task, ...changes, stageId: task.stageId };
     const at = (id?: string) => flow.stages.findIndex((s) => s.id === id);
     if (changes.stageId !== undefined && at(changes.stageId) < 0) throw new Error(`No stage "${changes.stageId}". Stages: ${flow.stages.map((s) => s.id).join(", ")}.`);
@@ -438,7 +480,7 @@ export class Planner {
     const ledger = (this.memory?.ledger(this.snap.config.project.id, { ledger: "task" }) ?? []).filter((e) => e.taskId === task.id || e.taskId === null);
     return buildBrief({
       task,
-      spec: "",
+      spec: this.specFor(task),
       handoffs,
       ledger,
       memory: await this.memoryFor(task),

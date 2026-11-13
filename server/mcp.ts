@@ -115,9 +115,11 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
         cli: z.enum(AGENT_CLIS).optional().describe("Runs on: only an agent with this CLI may take it (pick per task by strength and by who is under their usage limit)"),
         model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
+        specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
+        highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean }) => {
       leadOnly();
       return ok(planner.createTask(args, me));
     }),
@@ -140,11 +142,28 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
         deliverablePath: z.string().max(300).optional(),
         stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
+        specItems: z.array(z.string()).optional().describe("The spec items it covers (replaces the list)"),
+        highStakes: z.boolean().optional(),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean }) => {
       leadOnly();
       return ok(planner.updateTask(taskId, patch, me));
+    }),
+  );
+
+  server.registerTool(
+    "write_spec",
+    {
+      description:
+        "Lead only. Write or rewrite a board's spec in markdown. Number each requirement on its own line: `S1. …`, `S2. …`. Then give every item a task (create_task specItems): the analyze gate checks that. A new version resets the owner's spec approval for the board's open tasks.",
+      inputSchema: { boardId: z.string().optional().describe("Defaults to the first active board"), text: z.string().max(20_000) },
+    },
+    guard(({ boardId, text }: { boardId?: string; text: string }) => {
+      leadOnly();
+      const spec = planner.writeSpec(boardId, text, me);
+      const uncovered = spec.items.filter((i) => !hub.snap.tasks.some((t) => t.boardId === spec.boardId && t.specItems?.includes(i)));
+      return ok(`Spec v${spec.version} for ${spec.boardId}: ${spec.items.length} items (${spec.items.join(", ") || "none: number them S1., S2."}).${uncovered.length ? ` Not covered by a task yet: ${uncovered.join(", ")}.` : " Every item has a task."}`);
     }),
   );
 
@@ -183,7 +202,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     "record_gate",
     {
       description:
-        "Record evidence for a flow gate of a task: a review you did, a second opinion, the analyze check, tests and CI, a findings report. You can't pass gates of your own task's review, and only the owner approves or waives. get_my_task lists the gates a task still needs.",
+        "Record evidence for a flow gate of a task: a review you did, or a second opinion (it counts only from a provider other than the task owner's). HQ checks tests and CI, the analyze check and the findings report itself. You can't pass gates of your own task's review, and only the owner approves or waives (the lead may approve a spec for the owner after 2 h without a word from them). get_my_task lists the gates a task still needs.",
       inputSchema: {
         taskId: z.string(),
         gateId: z.string(),

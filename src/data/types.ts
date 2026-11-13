@@ -247,6 +247,10 @@ export interface Task {
   model?: string | null;
   /** Tokens recorded against it while it was its owner's current task (usage events). */
   usage?: Tokens | null;
+  /** The board spec's items this task covers ("S1", "S4"); the analyze gate checks every item has one. */
+  specItems?: string[];
+  /** The lead marked it high-stakes (sensitive files make it so too): a second opinion is required. */
+  highStakes?: boolean;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -266,6 +270,10 @@ export interface PullRequest {
   closed?: boolean; // closed without merging — hidden from the board
   conflict?: boolean; // has merge conflicts with the base branch
   reviewNote?: string | null; // e.g. "CodeRabbit: review rate limited"
+  /** The PR adds or changes a test file (unknown until GitHub sends the PR's files). */
+  testsChanged?: boolean;
+  /** Every check on the head commit finished green; false with no checks at all. */
+  ciGreen?: boolean;
 }
 
 export type EnvironmentStatus = "live" | "deploying" | "sleeping";

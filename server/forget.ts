@@ -35,6 +35,7 @@ const TABLES: [table: string, what: string][] = [
   ["findings", "Findings"],
   ["ledger", "Ledger entries (before Phase 2)"],
   ["task_summaries", "Task summaries"],
+  ["specs", "Board specs"],
   ["memory_keep_out", "Keep-out names"],
   ["usage_marks", "Usage meter marks"],
   ["projects_model", "Team template copy"],

@@ -361,6 +361,10 @@ export function createMockSource(): OfficeDataSource {
     saveMemory() {},
     restoreMemory() {},
     setMemoryExtraction() {},
+    setLabMode(on) {
+      world.snap.config.rules.labMode = on;
+      world.configChanged();
+    },
     decideMemories(itemId, decisions) {
       const item = world.snap.actionItems?.find((i) => i.id === itemId && i.status === "open");
       if (!item) return;

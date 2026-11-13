@@ -17,7 +17,8 @@ import { log } from "./lib/log";
 import { renderMarkdown } from "./reports";
 import { checkScope } from "./scope";
 
-const REPORT = join("deliverables", "security-report.md");
+export const FINDINGS_REPORT = join("deliverables", "security-report.md");
+const REPORT = FINDINGS_REPORT;
 const clip = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 /** Network assets must be in scope; code, cloud and app findings name things scope doesn't list. */
 const NETWORK: ReadonlySet<AssetKind> = new Set(["url", "host", "ip"]);

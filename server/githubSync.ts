@@ -115,7 +115,11 @@ export class GitHubSync {
       const task = taskId ? this.planner.task(taskId) : undefined;
       const fromBranch = branchAgent(gh.headRefName);
       const authorId = task?.ownerId ?? (fromBranch && team.has(fromBranch) ? fromBranch : "");
-      return toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+      const pr = toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+      // Merged PRs come without files and checks: keep what was seen while it was open (the tests-ci gate reads it).
+      // shortcut: a PR merged while HQ was down has no files seen; the owner waives tests-ci then. Fetch its files if that gets common.
+      const was = this.prev.get(pr.number);
+      return pr.testsChanged === undefined && was?.testsChanged !== undefined ? { ...pr, testsChanged: was.testsChanged, ciGreen: was.ciGreen } : pr;
     });
     // PRs we showed as open that are now neither open nor recently merged were closed. A full page of
     // open PRs may have left older ones out, so then only the recently-closed list proves it.

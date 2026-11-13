@@ -350,11 +350,7 @@ export function updateCrossProjectTask(
     if (patch.note !== undefined) t.note = patch.note;
     if (patch.ownerId !== undefined) {
       if (patch.ownerId) {
-        try {
-          return currentPlanner.assign(taskId, patch.ownerId, "cto");
-        } catch {
-          t.ownerId = patch.ownerId;
-        }
+        return currentPlanner.assign(taskId, patch.ownerId, "cto"); // its errors (stage roles, limits) reach the caller
       } else {
         t.ownerId = null;
       }
@@ -368,7 +364,7 @@ export function updateCrossProjectTask(
   const task = plan.tasks.find((t) => t.id.toLowerCase() === taskId.trim().toLowerCase());
   if (!task) throw new Error(`Task "${taskId}" not found in project "${target.config.project.name}".`);
   if (patch.status === "done" && task.status !== "done") {
-    assertTaskMove(target.config, { ...task, ...patch }, null, reviewerId, []);
+    assertTaskMove(target.config, { ...task, ...patch }, null, reviewerId, [], { tasks: plan.tasks, repoRoot: target.path });
     task.stageId = target.config.template.flow.stages.at(-1)!.id;
   }
   if (patch.title !== undefined) task.title = patch.title;

@@ -4,7 +4,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { Actor, Gate, GateEvent, GateState, TeamTemplate } from "../src/data/model";
-import type { Board, HqConfig, PullRequest, Task } from "../src/data/types";
+import type { AgentCli, Board, HqConfig, PullRequest, Task } from "../src/data/types";
+import { statSync } from "node:fs";
+import { join } from "node:path";
+import { FINDINGS_REPORT } from "./findings";
 import { hqDb } from "./lib/db";
 import { taskUsage } from "./usageEvents";
 import { tx } from "./lib/docs";
@@ -19,6 +22,7 @@ interface TaskRow {
   id: string; board_id: string; stage_id: string; title: string; owner_id: string | null; status: Task["status"];
   needs: string; files: string; description: string | null; done_when: string | null; note: string | null;
   pr_number: number | null; deliverable_path: string | null; cli: Task["cli"]; model: string | null;
+  spec_items: string; high_stakes: number;
 }
 
 /** The project's plan, or null before its first save. */
@@ -45,6 +49,8 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       cli: r.cli,
       model: r.model,
       usage: used.get(r.id) ?? null,
+      specItems: JSON.parse(r.spec_items),
+      highStakes: !!r.high_stakes,
     }),
   );
   return { boards, tasks };
@@ -58,11 +64,12 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
      ON CONFLICT (project_id, id) DO UPDATE SET title = excluded.title, status = excluded.status, ord = excluded.ord`,
   );
   const task = db.prepare(
-    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at, spec_items, high_stakes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (project_id, id) DO UPDATE SET board_id = excluded.board_id, stage_id = excluded.stage_id, title = excluded.title, owner_id = excluded.owner_id,
        status = excluded.status, needs = excluded.needs, files = excluded.files, description = excluded.description, done_when = excluded.done_when, note = excluded.note,
-       pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, updated_at = excluded.updated_at`,
+       pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, updated_at = excluded.updated_at,
+       spec_items = excluded.spec_items, high_stakes = excluded.high_stakes`,
   );
   const keep = (ids: string[]) => JSON.stringify(ids);
   tx(db, () => {
@@ -71,6 +78,7 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
       task.run(
         projectId, t.id, t.boardId, t.stageId ?? firstStage, t.title, t.ownerId, t.status, JSON.stringify(t.needs ?? []), JSON.stringify(t.files ?? []),
         t.description ?? null, t.doneWhen ?? null, t.note ?? null, t.prNumber ?? null, t.deliverablePath ?? null, t.cli ?? null, t.model ?? null, now,
+        JSON.stringify(t.specItems ?? []), t.highStakes ? 1 : 0,
       );
     db.prepare("DELETE FROM tasks WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.tasks.map((t) => t.id)));
     db.prepare("DELETE FROM boards WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.boards.map((b) => b.id)));
@@ -123,18 +131,73 @@ const actorOf = (id: string, team: HqConfig["team"]): Actor =>
  * Throws with every unmet gate when `task` can't move to stage `toStageId` (null: finish it).
  * Projects made before templates have no flow: they are read-only, so nothing moves.
  */
-export function assertTaskMove(cfg: HqConfig, task: Task, toStageId: string | null, byId: string, prs: PullRequest[]) {
+export function assertTaskMove(cfg: HqConfig, task: Task, toStageId: string | null, byId: string, prs: PullRequest[], more: ContextMore = {}) {
   if (!cfg.template) throw new Error("This project was made before templates and is read-only.");
-  assertGates(cfg.template.flow, toStageId, gateContext(cfg, task, byId, prs));
+  assertGates(cfg.template.flow, toStageId, gateContext(cfg, task, byId, prs, more));
 }
 
-export function gateContext(cfg: HqConfig, task: Task, byId: string, prs: PullRequest[]): GateContext {
+/** What the gate check reads beyond the task: the board's other tasks (analyze) and the repo (findings report). */
+export interface ContextMore {
+  tasks?: Task[];
+  repoRoot?: string;
+}
+
+/** Who makes each CLI's models: a second opinion must come from another one. */
+const VENDOR: Record<AgentCli, string> = { claude: "anthropic", codex: "openai", agy: "google", gemini: "google", copilot: "github", opencode: "opencode" };
+
+export function gateContext(cfg: HqConfig, task: Task, byId: string, prs: PullRequest[], more: ContextMore = {}): GateContext {
+  const db = hqDb();
+  const spec = task.boardId ? loadSpec(db, cfg.project.id, task.boardId) : null;
+  const covered = [...new Set((more.tasks ?? [task]).filter((t) => t.boardId === task.boardId).flatMap((t) => t.specItems ?? []))];
+  const findingsAt = (db.prepare("SELECT MAX(updated_at) AS at FROM findings WHERE project_id = ? AND task_id = ?").get(cfg.project.id, task.id) as { at: number | null }).at;
+  let reportAt: number | null = null;
+  try {
+    if (more.repoRoot) reportAt = statSync(join(more.repoRoot, FINDINGS_REPORT)).mtimeMs;
+  } catch {
+    /* not written yet */
+  }
   return {
     task,
     actor: actorOf(byId, cfg.team),
     roleOf: (id) => cfg.team.find((a) => a.id === id)?.roleId ?? null,
     prs,
     scopeSet: !!cfg.project.scope?.inScope.length,
-    events: gateEvents(hqDb(), cfg.project.id, task.id),
+    events: gateEvents(db, cfg.project.id, task.id),
+    spec: spec ? { items: spec.items, covered } : null,
+    vendorOf: (id) => {
+      const cli = cfg.team.find((a) => a.id === id)?.cli;
+      return cli ? VENDOR[cli] : null;
+    },
+    reportAt,
+    findingsAt,
   };
+}
+
+// ---------------------------------------------------------------- specs (docs/agent-engine.md section 5)
+
+export interface Spec {
+  boardId: string;
+  version: number;
+  text: string;
+  /** "S1", "S2"…: the lines that start with S<n>. */
+  items: string[];
+  by: string;
+  at: string;
+}
+
+export const specItemsOf = (text: string) => [...new Set([...text.matchAll(/^\s*(?:[-*]\s*)?(S\d+)[.:)]/gm)].map((m) => m[1].toUpperCase()))];
+
+export function loadSpec(db: DatabaseSync, projectId: string, boardId: string): Spec | null {
+  const r = db.prepare("SELECT version, text, by, at FROM specs WHERE project_id = ? AND board_id = ?").get(projectId, boardId) as { version: number; text: string; by: string; at: number } | undefined;
+  return r ? { boardId, version: r.version, text: r.text, items: specItemsOf(r.text), by: r.by, at: new Date(r.at).toISOString() } : null;
+}
+
+/** Saves a new version of a board's spec. */
+export function saveSpec(db: DatabaseSync, projectId: string, boardId: string, text: string, by: string): Spec {
+  const version = (loadSpec(db, projectId, boardId)?.version ?? 0) + 1;
+  db.prepare(
+    `INSERT INTO specs (project_id, board_id, version, text, by, at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (project_id, board_id) DO UPDATE SET version = excluded.version, text = excluded.text, by = excluded.by, at = excluded.at`,
+  ).run(projectId, boardId, version, text, by, Date.now());
+  return loadSpec(db, projectId, boardId)!;
 }

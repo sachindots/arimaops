@@ -263,6 +263,7 @@ export const officeActions = {
   saveMemory: (input: MemoryInput) => source.saveMemory(input),
   restoreMemory: (date: string) => source.restoreMemory(date),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
+  setLabMode: (on: boolean) => source.setLabMode(on),
   decideMemories: (itemId: string, decisions: Record<string, "certify" | "reject">) => source.decideMemories(itemId, decisions),
   keepOutOfMemory: (name: string) => source.keepOutOfMemory(name),
   refreshMcp: () => source.refreshMcp(),

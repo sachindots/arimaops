@@ -17,7 +17,23 @@ export interface GateContext {
   scopeSet: boolean;
   /** This task's gate events, oldest first. */
   events: GateEvent[];
+  /** The spec items of the task's board (null: the board has no spec), and the items its tasks cover. */
+  spec?: { items: string[]; covered: string[] } | null;
+  /** Who makes an agent's model ("anthropic", "openai", "google"...), for the second opinion. */
+  vendorOf?: (agentId: string) => string | null;
+  /** When the findings report was last written, and when this task's findings last changed (ms; null: never). */
+  reportAt?: number | null;
+  findingsAt?: number | null;
 }
+
+/** Files that make a task high-stakes on their own (docs/agent-engine.md section 5). */
+export const SENSITIVE = /(^|[/._-])(auth|login|session|crypto|secret|token|password|payment|billing|migrations?)([/._-]|$)|(^|\/)\.github\/workflows\//i;
+
+/** The lead marked it, or it touches sensitive files: a "high-stakes" second opinion applies. */
+export const isHighStakes = (task: Pick<Task, "highStakes" | "files">) => !!task.highStakes || (task.files ?? []).some((f) => SENSITIVE.test(f));
+
+/** Test files by name or folder. shortcut: one default for every project; make it a project setting when a repo needs another. */
+export const TEST_FILE = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[a-z0-9]+$|_test\.[a-z0-9]+$/i;
 
 export interface UnmetGate {
   stageId: string;
@@ -26,7 +42,7 @@ export interface UnmetGate {
 }
 
 /** Gates HQ checks from what it can see; nobody records evidence for them (the owner can still waive one). */
-export const OBSERVED_GATES: ReadonlySet<Gate["kind"]> = new Set(["pr-merged", "file-delivered", "scope-set"]);
+export const OBSERVED_GATES: ReadonlySet<Gate["kind"]> = new Set(["pr-merged", "file-delivered", "scope-set", "tests-ci", "analyze", "findings-report"]);
 
 /** Gates only a person may pass: they approve, or decide what the team works on. */
 export const PERSON_GATES: ReadonlySet<Gate["kind"]> = new Set(["owner-approval", "spec-approved"]);
@@ -69,14 +85,32 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
       return approved(gate, last) ? null : `Waiting for the owner's approval (${gate.reason}).`;
     case "spec-approved":
       return approved(gate, last) ? null : "Waiting for the owner to approve the spec.";
-    case "tests-ci":
-      return passed ? null : "Needs evidence that the PR adds or changes tests and CI is green.";
-    case "analyze":
-      return passed ? null : "Needs the analyze check: every spec item maps to a task.";
-    case "second-opinion":
-      return passed ? null : "Needs a second opinion.";
+    case "tests-ci": {
+      const pr = ctx.prs.find((p) => p.number === task.prNumber && p.taskId === task.id);
+      if (!pr) return "Open the task's PR first (set_my_status in-review with its number).";
+      if (pr.testsChanged === undefined) return "Waiting for GitHub to report the PR's files and checks.";
+      if (!pr.testsChanged) return `PR #${pr.number} changes no test file. Add or update a test for this change.`;
+      return pr.ciGreen ? null : `CI on PR #${pr.number} isn't green yet (or no checks ran).`;
+    }
+    case "analyze": {
+      if (!ctx.spec?.items.length) return "The board has no spec with numbered items (S1., S2.…). The lead writes it with write_spec.";
+      const missing = ctx.spec.items.filter((i) => !ctx.spec!.covered.includes(i));
+      return missing.length ? `No task covers ${missing.join(", ")} of the spec. Give each one a task (specItems).` : null;
+    }
+    case "second-opinion": {
+      if (gate.when === "high-stakes" && !isHighStakes(task)) return null;
+      if (!passed) return "Needs a second opinion from an agent on another provider (a Gemini seat by default).";
+      if (last.by.kind === "user") return null;
+      const vendor = (id: string | null) => (id ? (ctx.vendorOf?.(id) ?? null) : null);
+      const mine = vendor(task.ownerId);
+      const theirs = vendor(last.by.id);
+      return last.by.kind === "agent" && last.by.id !== task.ownerId && theirs && theirs !== mine
+        ? null
+        : `The second opinion must come from another provider than ${task.ownerId ?? "the task's owner"}'s${mine ? ` (${mine})` : ""}.`;
+    }
     case "findings-report":
-      return passed ? null : "Needs the findings report.";
+      if (!ctx.reportAt) return "The findings report hasn't been written yet: report a finding first.";
+      return ctx.findingsAt && ctx.findingsAt > ctx.reportAt ? "The findings report is older than this task's findings. It's rewritten on every change; check that the last write worked." : null;
   }
 }
 

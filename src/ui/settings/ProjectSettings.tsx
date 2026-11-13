@@ -35,6 +35,7 @@ function FontPicker() {
 /** Engagement scope: one entry per line. The server keeps only domains, IPs and CIDRs. */
 function ScopeEditor() {
   const scope = useOffice((s) => s.snap?.config.project.scope);
+  const rulesCfg = useOffice((s) => s.snap?.config.rules);
   const [inScope, setIn] = useState((scope?.inScope ?? []).join("\n"));
   const [outOfScope, setOut] = useState((scope?.outOfScope ?? []).join("\n"));
   const [rules, setRules] = useState(scope?.rules ?? "");
@@ -43,6 +44,14 @@ function ScopeEditor() {
   return (
     <section className="border-[3px] border-ink bg-white p-3">
       <SectionTitle>Scope</SectionTitle>
+      {rulesCfg?.labMode && (
+        <div className="mb-2 border-[3px] border-ink bg-[#ffab00] px-2 py-1 text-[13px] font-bold text-ink" role="status">
+          Lab mode is on: agents start without a scope. Use it only for CTFs and practice ranges you're allowed to attack.
+        </div>
+      )}
+      {rulesCfg?.scopeRequired && !rulesCfg.labMode && !scope?.inScope.length && (
+        <p className="mb-2 text-[13px] font-bold">No agent but the lead starts until something is in scope.</p>
+      )}
       <p className="mb-2 text-[13px] text-muted">
         Agents may only touch in-scope targets; out of scope always wins. One per line: <code>example.com</code>, <code>*.example.com</code>, <code>10.0.0.0/24</code>,{" "}
         <code>203.0.113.7</code>, optionally <code>:port</code>. Web traffic to them is allowed through the proxy; for scanners in Container mode, the setup checklist shows the firewall commands.
@@ -65,6 +74,14 @@ function ScopeEditor() {
       >
         Save scope
       </button>
+      {rulesCfg?.scopeRequired && (
+        <label className="mt-3 flex min-h-[44px] items-center gap-2 text-[13px]">
+          <input type="checkbox" className="h-5 w-5" checked={!!rulesCfg.labMode} onChange={(e) => officeActions.setLabMode(e.target.checked)} />
+          <span>
+            <b>Lab mode</b>: a CTF or practice range. Agents start without a scope. Owner only.
+          </span>
+        </label>
+      )}
     </section>
   );
 }

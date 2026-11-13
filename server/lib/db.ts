@@ -198,6 +198,20 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE task_summaries ADD COLUMN extract_attempts INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE task_summaries ADD COLUMN extract_error TEXT;
   `,
+  // Phase 3 step 5: board specs (the analyze gate), and what each task covers or how much is at stake.
+  `
+  CREATE TABLE specs (
+    project_id TEXT NOT NULL,
+    board_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    by TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, board_id)
+  );
+  ALTER TABLE tasks ADD COLUMN spec_items TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tasks ADD COLUMN high_stakes INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

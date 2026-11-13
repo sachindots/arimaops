@@ -394,6 +394,20 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
       }
     },
+    // Lab mode (CTFs, practice ranges): agents start without a scope. Owner only; a remote device needs the step-up.
+    setLabMode: (on) => {
+      const cfg = hub.snap.config;
+      if (!cfg.template) throw new Error("This project was made before templates and is read-only.");
+      const labMode = on === true;
+      const t = cfg.template;
+      afterTemplate(
+        updateProjectTemplate(hqDb(), hub.slug, { ...t, rules: { ...t.rules, labMode } }),
+        labMode ? "Lab mode on: agents may start without a scope (CTF or practice range only)." : "Lab mode off: agents need the engagement scope again.",
+      );
+      const lead = cfg.team.find((a) => a.isLead);
+      if (lead) planner.notify(lead.id, labMode ? "The owner turned lab mode on: this is a CTF or practice range, and agents may start without a scope." : "The owner turned lab mode off: no agent but you starts until the engagement scope is set.");
+    },
+
     setMemoryExtraction: (raw) => {
       const input = (raw ?? {}) as { enabled?: boolean; account?: string };
       try {

@@ -21,6 +21,7 @@ import { containerLoginSaved } from "./setup";
 import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
+import { scopeBlocksStart } from "./scope";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
@@ -140,6 +141,9 @@ export class Sessions {
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
 
     // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
+    const unscoped = scopeBlocksStart(hub.snap.config, agent);
+    if (unscoped) return fail(unscoped);
+
     const cap = maxAgents();
     if (this.atCap())
       return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);

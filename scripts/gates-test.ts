@@ -64,13 +64,61 @@ check("reviewer with a role: fails for another role", !met(revRole, ctx({ actor:
 check("reviewer with a role: passes for that role", met(revRole, ctx({ actor: agent("rev") })));
 check("reviewer with a role: a person always fits", met(revRole, ctx({ actor: you })));
 
-for (const kind of ["tests-ci", "analyze", "second-opinion", "findings-report"] as const) {
-  const g = { id: "g", kind } as Gate;
-  check(`${kind}: fails without evidence`, !met(g));
-  check(`${kind}: passes with a recorded pass`, met(g, ctx({ events: [ev("g", "passed", agent("rev"))] })));
-  check(`${kind}: a later failure wins`, !met(g, ctx({ events: [ev("g", "passed", agent("rev")), ev("g", "failed", agent("rev"))] })));
-  check(`${kind}: a reset undoes a pass`, !met(g, ctx({ events: [ev("g", "passed", agent("rev")), ev("g", "reset", you)] })));
+// tests-ci (observed): the task's PR changes a test and every check is green.
+{
+  const g: Gate = { id: "g", kind: "tests-ci" };
+  const pr = { number: 7, taskId: "T1", merged: false } as PullRequest;
+  check("tests-ci: fails without the task's PR", /Open the task's PR/.test(gateProblem(g, ctx()) ?? ""));
+  check("tests-ci: waits until GitHub sends the PR's files", /Waiting for GitHub/.test(gateProblem(g, ctx({ prs: [pr] })) ?? ""));
+  check("tests-ci: fails when no test file changed", /changes no test file/.test(gateProblem(g, ctx({ prs: [{ ...pr, testsChanged: false, ciGreen: true }] })) ?? ""));
+  check("tests-ci: fails while CI isn't green", /isn't green/.test(gateProblem(g, ctx({ prs: [{ ...pr, testsChanged: true, ciGreen: false }] })) ?? ""));
+  check("tests-ci: passes with a test changed and CI green", met(g, ctx({ prs: [{ ...pr, testsChanged: true, ciGreen: true }] })));
+  const { TEST_FILE } = await import("../server/gates");
+  const tests = ["src/auth.test.ts", "tests/login.py", "pkg/__tests__/a.js", "server/x_test.go", "spec/models/user_spec.rb", "a/b.spec.tsx"];
+  const notTests = ["src/testing-utils.ts", "docs/latest.md", "src/contest.ts"];
+  check("test files are recognised by name and folder", tests.every((f) => TEST_FILE.test(f)) && !notTests.some((f) => TEST_FILE.test(f)), JSON.stringify([...tests.filter((f) => !TEST_FILE.test(f)), ...notTests.filter((f) => TEST_FILE.test(f))]));
+  const { ciGreen } = await import("../server/github");
+  const ghWith = (nodes: unknown[]) => ({ commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes } } } }] } }) as never;
+  check("CI green: every check succeeded, neutral or skipped", ciGreen(ghWith([{ __typename: "CheckRun", name: "test", status: "COMPLETED", conclusion: "SUCCESS" }, { __typename: "CheckRun", name: "lint", status: "COMPLETED", conclusion: "SKIPPED" }, { __typename: "StatusContext", context: "ci", state: "SUCCESS" }])));
+  check("CI not green: one still running, one failed, or none at all", !ciGreen(ghWith([{ __typename: "CheckRun", name: "test", status: "IN_PROGRESS", conclusion: null }])) && !ciGreen(ghWith([{ __typename: "StatusContext", context: "ci", state: "FAILURE" }])) && !ciGreen(ghWith([])));
 }
+
+// analyze (observed): every numbered spec item has a task.
+{
+  const g: Gate = { id: "g", kind: "analyze" };
+  check("analyze: fails without a spec", /no spec/.test(gateProblem(g, ctx()) ?? ""));
+  check("analyze: names the uncovered items", /No task covers S3 of the spec/.test(gateProblem(g, ctx({ spec: { items: ["S1", "S2", "S3"], covered: ["S1", "S2"] } })) ?? ""));
+  check("analyze: passes when every item is covered", met(g, ctx({ spec: { items: ["S1", "S2"], covered: ["S2", "S1", "S9"] } })));
+  const { specItemsOf } = await import("../server/planStore");
+  check("spec items are the lines that start with S<n>", specItemsOf("# Login\nS1. Email sign-in\n- S2: rate limit\n  S3) lockout\nNot S4. here\nS1. again").join() === "S1,S2,S3");
+}
+
+// second-opinion: from another provider than the task's owner; "high-stakes" only on high-stakes tasks.
+{
+  const vendorOf = (id: string) => ({ dev1: "anthropic", dev2: "anthropic", gem: "google" })[id] ?? null;
+  const always: Gate = { id: "g", kind: "second-opinion", when: "always" };
+  const hs: Gate = { id: "g", kind: "second-opinion", when: "high-stakes" };
+  check("second opinion: fails without one", !met(always, ctx({ vendorOf })));
+  check("second opinion: the same provider doesn't count", /another provider/.test(gateProblem(always, ctx({ vendorOf, events: [ev("g", "passed", agent("dev2"))] })) ?? ""));
+  check("second opinion: another provider does", met(always, ctx({ vendorOf, events: [ev("g", "passed", agent("gem"))] })));
+  check("second opinion: a later failure wins", !met(always, ctx({ vendorOf, events: [ev("g", "passed", agent("gem")), ev("g", "failed", agent("gem"))] })));
+  check("second opinion: a reset undoes a pass", !met(always, ctx({ vendorOf, events: [ev("g", "passed", agent("gem")), ev("g", "reset", you)] })));
+  check("high-stakes: an ordinary task doesn't need one", met(hs, ctx({ vendorOf, task: { ...task, files: ["src/ui/Button.tsx"] } })));
+  check("high-stakes: the lead's mark makes it needed", !met(hs, ctx({ vendorOf, task: { ...task, highStakes: true } })));
+  const { isHighStakes } = await import("../server/gates");
+  const sensitive = ["server/auth.ts", "app/login/page.tsx", "lib/crypto/keys.ts", "db/migrations/0003.sql", ".github/workflows/ci.yml", "src/billing.ts", "server/session-store.ts"];
+  const plain = ["src/author.ts", "docs/tokenomics.md", "src/ui/Button.tsx"];
+  check("sensitive files make a task high-stakes", sensitive.every((f) => isHighStakes({ files: [f] })) && !plain.some((f) => isHighStakes({ files: [f] })), JSON.stringify([...sensitive.filter((f) => !isHighStakes({ files: [f] })), ...plain.filter((f) => isHighStakes({ files: [f] }))]));
+}
+
+// findings-report (observed): written, and not older than the task's findings.
+{
+  const g: Gate = { id: "g", kind: "findings-report" };
+  check("findings report: fails before it's written", !met(g));
+  check("findings report: fails when older than the task's findings", !met(g, ctx({ reportAt: 1000, findingsAt: 2000 })));
+  check("findings report: passes when current", met(g, ctx({ reportAt: 3000, findingsAt: 2000 })));
+}
+
 for (const g of [{ id: "g", kind: "owner-approval", reason: "outbound" }, { id: "g", kind: "spec-approved" }] as Gate[]) {
   check(`${g.kind}: an agent's pass doesn't count`, !met(g, ctx({ events: [ev("g", "passed", agent("lead"))] })));
   check(`${g.kind}: the owner's pass does`, met(g, ctx({ events: [ev("g", "passed", you)] })));
@@ -89,8 +137,8 @@ const flow: Flow = {
 check("finishing leaves the current stage and every one after it", stagesLeft(flow, "build", null).map((s) => s.id).join() === "build,review");
 check("moving one stage on leaves only the current one", stagesLeft(flow, "spec", "build").map((s) => s.id).join() === "spec");
 check("an unknown stage is refused", throws(() => stagesLeft(flow, "spec", "ship"), /No stage "ship"/));
-check("a move lists every unmet gate it needs", throws(() => assertGates(flow, null, ctx()), /tests and CI.*merged/));
-check("a move with its gates met goes through", !throws(() => assertGates(flow, "review", ctx({ events: [ev("tests", "passed", agent("rev"))] })), /./));
+check("a move lists every unmet gate it needs", throws(() => assertGates(flow, null, ctx()), /task's PR.*merged/));
+check("a move with its gates met goes through", !throws(() => assertGates(flow, "review", ctx({ prs: [{ number: 7, taskId: "T1", merged: false, testsChanged: true, ciGreen: true } as PullRequest] })), /./));
 
 // Storage and who may record evidence.
 const db = hqDb();
@@ -99,8 +147,9 @@ savePlanTables(db, "p", plan, "build");
 const loaded = loadPlanTables(db, "p");
 check("a plan round-trips through the tables", loaded?.tasks[0].stageId === "build" && loaded.tasks[0].prNumber === 7 && loaded.tasks[0].deliverablePath === "out.md");
 const t: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow };
-recordGate(db, t, task, { projectId: "p", gateId: "tests", state: "passed", by: agent("rev"), proof: { note: "CI green" } });
-check("recorded evidence is read back", gateEvents(db, "p", "T1").at(-1)?.proof.note === "CI green");
+recordGate(db, t, task, { projectId: "p", gateId: "spec-ok", state: "passed", by: you, proof: { note: "Spec read" } });
+check("recorded evidence is read back", gateEvents(db, "p", "T1").at(-1)?.proof.note === "Spec read");
+check("nobody records tests and CI: HQ reads them from the PR", throws(() => recordGate(db, t, task, { projectId: "p", gateId: "tests", state: "passed", by: agent("rev"), proof: {} }), /checks tests/));
 check("an unknown gate is refused", throws(() => recordGate(db, t, task, { projectId: "p", gateId: "nope", state: "passed", by: agent("rev"), proof: {} }), /No gate/));
 check("an agent can't pass the spec", throws(() => recordGate(db, t, task, { projectId: "p", gateId: "spec-ok", state: "passed", by: agent("lead"), proof: {} }), /Only a person/));
 check("an agent can't waive", throws(() => recordGate(db, t, task, { projectId: "p", gateId: "tests", state: "waived", by: agent("lead"), proof: {} }), /Only a person can waive/));
@@ -188,6 +237,46 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("…the task is back in the spec stage", t8.stageId === "spec");
   check("…and the lead and the task's owner are told", told.some((m) => m.to === "lead" && /undid your approval/.test(m.text) && /rate limit/.test(m.text)) && told.some((m) => m.to === "dev1" && /undid the lead's approval/.test(m.text)), JSON.stringify(told));
   check("the gate waits for the owner again", throws(() => planner.updateTask("T8", { stageId: "build" }, "lead"), /approve the spec/));
+}
+
+// Specs through the planner: write_spec, analyze over the board's tasks, the brief's spec, and a rewrite resets approval.
+{
+  const st: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow: { stages: [
+    { id: "plan", name: "Plan", roleIds: ["lead", "developer"], gates: [{ id: "spec-ok", kind: "spec-approved" }, { id: "covered", kind: "analyze" }] },
+    { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
+  ] } };
+  const snap = { config: { template: st, project: { id: "spec-p" }, workflow: { mode: "deliverables", review: { enabled: false } }, team: [{ id: "lead", name: "Lea", roleId: "lead", isLead: true, cli: "claude" }, { id: "dev1", name: "Dev", roleId: "developer", cli: "claude" }] }, boards: [{ id: "B1", title: "Backlog", status: "active" as const, order: 0 }], tasks: [] as Task[], agents: [], messages: [], pullRequests: [] };
+  const hub = { slug: "spec-p", snap, emit: () => {}, planChanged: () => {}, activity: () => {}, name: (id: string) => id, setStatus: () => {}, status: () => null, cfg: (id: string) => snap.config.team.find((a) => a.id === id), repo: { root: process.env.HOME } };
+  const planner = new Planner(hub as never, { push: () => {}, save: () => {} } as never);
+  const spec = planner.writeSpec(undefined, "# Sign-in\nS1. Email and password sign-in.\nS2. Lock the account after 5 failed tries.\nS3. Rate limit by IP.", "lead");
+  check("write_spec saves a version with its items", spec.version === 1 && spec.items.join() === "S1,S2,S3");
+  const a = planner.createTask({ title: "Sign-in form", specItems: ["s1", "S2", "bogus"] } as never, "lead");
+  check("a task's spec items are cleaned", a.specItems?.join() === "S1,S2", JSON.stringify(a.specItems));
+  const sync = () => savePlanTables(hqDb(), "spec-p", { boards: snap.boards, tasks: snap.tasks }, "plan");
+  sync();
+  planner.recordGate(a.id, "spec-ok", "passed", "you");
+  check("analyze names what no task covers", throws(() => planner.updateTask(a.id, { stageId: "build" }, "lead"), /No task covers S3/));
+  const b = planner.createTask({ title: "Rate limit", specItems: ["S3"] } as never, "lead");
+  sync();
+  planner.updateTask(a.id, { stageId: "build" }, "lead");
+  check("with every item covered and the spec approved, the task moves on", a.stageId === "build");
+  const brief = planner.specFor(b);
+  check("the brief carries the items the task covers", /S3\. Rate limit by IP/.test(brief) && !/S1\./.test(brief), brief);
+  planner.writeSpec("B1", "S1. Email sign-in.\nS2. Lockout.\nS3. Rate limit.\nS4. Audit log.", "lead");
+  const evs = gateEvents(hqDb(), "spec-p", a.id);
+  check("a new spec version resets the approval of open tasks", evs.at(-1)?.state === "reset" && evs.at(-1)?.gateId === "spec-ok", JSON.stringify(evs.map((e) => e.state)));
+  check("…and nobody else's", gateEvents(hqDb(), "spec-p", b.id).length === 0);
+}
+
+// Scope before start (3.4): an unscoped red seat can't start; the lead can; lab mode lifts it.
+{
+  const { scopeBlocksStart } = await import("../server/scope");
+  const red = { rules: { scopeRequired: true, labMode: false }, project: { scope: { inScope: [], outOfScope: [], rules: "" } } };
+  check("an unscoped red agent can't start", /Set the engagement scope first/.test(scopeBlocksStart(red, { isLead: false }) ?? ""));
+  check("the lead can, to plan the scope", scopeBlocksStart(red, { isLead: true }) === null);
+  check("lab mode lifts it", scopeBlocksStart({ ...red, rules: { scopeRequired: true, labMode: true } }, { isLead: false }) === null);
+  check("a scope lifts it", scopeBlocksStart({ ...red, project: { scope: { inScope: ["10.0.0.0/24"], outOfScope: [], rules: "" } } }, { isLead: false }) === null);
+  check("dev projects never need one", scopeBlocksStart({ ...red, rules: { scopeRequired: false, labMode: false } }, { isLead: false }) === null);
 }
 
 if (fails) {

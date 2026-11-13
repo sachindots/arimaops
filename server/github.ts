@@ -3,6 +3,7 @@
 
 import type { PullRequest, ReviewState, ReviewTool } from "../src/data/types";
 import { run } from "./lib/exec";
+import { TEST_FILE } from "./gates";
 
 // ---------------------------------------------------------------- query
 
@@ -11,6 +12,7 @@ import { run } from "./lib/exec";
 // nested lists small, and fetch only the basics for merged PRs.
 const BASE_FIELDS = "number title url headRefName createdAt mergedAt state mergeable isDraft reviewDecision";
 const REVIEW_FIELDS = `
+  files(first: 100) { nodes { path } }
   reviews(last: 10) { nodes { author { login } state submittedAt } }
   reviewThreads(first: 30) { nodes { isResolved isOutdated comments(first: 1) { nodes { author { login } } } } }
   commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 25) { nodes {
@@ -70,6 +72,8 @@ export interface GhPr {
   reviews: { nodes: { author: { login: string } | null; state: string; submittedAt: string }[] };
   reviewThreads: { nodes: { isResolved: boolean; isOutdated: boolean; comments: { nodes: { author: { login: string } | null }[] } }[] };
   commits: { nodes: { commit: { statusCheckRollup: { contexts: { nodes: Ctx[] } } | null } }[] };
+  /** Open PRs only (merged ones are fetched with the basics). */
+  files?: { nodes: { path: string }[] };
 }
 
 type Ctx =
@@ -175,6 +179,12 @@ export function branchAgent(branch: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+/** Every check on the head commit finished green (success, neutral or skipped); false when none ran. */
+export function ciGreen(pr: GhPr): boolean {
+  const all = contexts(pr);
+  return all.length > 0 && all.every((c) => (c.__typename === "CheckRun" ? c.status === "COMPLETED" && ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(c.conclusion ?? "") : c.state === "SUCCESS"));
+}
+
 export function toPullRequest(pr: GhPr, tool: ReviewTool, reviewEnabled: boolean, taskId: string, authorId: string): PullRequest {
   const merged = pr.state === "MERGED";
   const r = reviewEnabled ? reviewOf(pr, tool) : { review: "passed" as ReviewState, openComments: 0, note: null };
@@ -193,5 +203,6 @@ export function toPullRequest(pr: GhPr, tool: ReviewTool, reviewEnabled: boolean
     closed: pr.state === "CLOSED",
     conflict: pr.mergeable === "CONFLICTING",
     reviewNote: pr.isDraft ? "Draft" : r.note,
+    ...(pr.files ? { testsChanged: pr.files.nodes.some((f) => TEST_FILE.test(f.path)), ciGreen: ciGreen(pr) } : {}),
   };
 }

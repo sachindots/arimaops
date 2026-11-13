@@ -141,6 +141,8 @@ export interface OfficeDataSource {
   saveMemory(input: MemoryInput): void;
   restoreMemory(date: string): void;
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
+  /** Owner only: lifts the scope requirement for CTFs and practice ranges. */
+  setLabMode(on: boolean): void;
   decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
   keepOutOfMemory(name: string): void;
 

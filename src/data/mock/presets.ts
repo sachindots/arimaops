@@ -56,7 +56,7 @@ function demoConfig({ secure = false, ...cfg }: Omit<HqConfig, "template" | "rul
       roles.push({ id: a.roleId!, title: a.role, isLead: a.isLead, roleMd: a.roleMd, cli: a.cli, model: a.model, fallback: null, skills: [], onDemand: false, seats: 0, color: a.color });
   for (const r of roles) r.seats = cfg.team.filter((a) => a.roleId === r.id).length;
   const stages = [{ id: "build", name: "Build", roleIds: roles.map((r) => r.id), gates: [] }];
-  const rules = { findings: secure, plans: false, scopeRequired: false, labMode: false, outbound: "none" as const, egress: [] };
+  const rules = { findings: secure, plans: false, scopeRequired: secure, labMode: false, outbound: "none" as const, egress: [] };
   const template: TeamTemplate = { id: "demo", version: 1, name: "Demo team", description: "", roles, flow: { stages }, starter: { boards: [], tasks: [] }, rules, memoryTypes: [] };
   return { ...cfg, template, rules };
 }

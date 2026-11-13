@@ -121,7 +121,7 @@ interface Who {
 }
 
 /** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy"]);
+const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
