@@ -317,6 +317,9 @@ export interface Task {
   specItems?: string[];
   /** The lead marked it high-stakes (sensitive files make it so too): a second opinion is required. */
   highStakes?: boolean;
+  /** The project's template when the task was made (docs/factory.md section 2); empty on older tasks. */
+  templateId?: string;
+  templateVersion?: number;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";

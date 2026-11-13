@@ -336,7 +336,7 @@ export class Planner {
       id, boardId: board.id, stageId: template.flow.stages[0].id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
-      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes,
+      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes, templateId: template.id, templateVersion: template.version,
     };
     if (input.stageId && input.stageId !== task.stageId) {
       if (!template.flow.stages.some((st) => st.id === input.stageId)) throw new Error(`No stage "${input.stageId}". Stages: ${template.flow.stages.map((st) => st.id).join(", ")}.`);

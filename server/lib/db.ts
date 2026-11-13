@@ -233,6 +233,29 @@ export const MIGRATIONS: readonly string[] = [
     UNIQUE (template_id, origin)
   );
   `,
+  // Factory step 2 (docs/factory.md sections 2-3): the template version each task ran under, one row per task status or
+  // stage change (cycle time; owner_id is who held the task then), and the owner's Action item answers (interventions).
+  `
+  ALTER TABLE tasks ADD COLUMN template_id TEXT;
+  ALTER TABLE tasks ADD COLUMN template_version INTEGER;
+  CREATE TABLE task_events (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    stage_id TEXT NOT NULL,
+    owner_id TEXT
+  );
+  CREATE INDEX task_events_task ON task_events (project_id, task_id, at);
+  CREATE TABLE action_answers (
+    project_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+  );
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

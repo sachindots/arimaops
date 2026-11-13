@@ -10,6 +10,7 @@ import type { Hub } from "./hub";
 import { projectHome } from "./paths";
 import type { Planner } from "./planner";
 import { readDoc, writeDoc } from "./lib/docs";
+import { hqDb } from "./lib/db";
 
 const KEEP_CLOSED = 100;
 
@@ -68,6 +69,7 @@ export class ActionItems {
     item.note = note?.trim().slice(0, 1000) || null;
     item.closedAt = new Date().toISOString();
     this.save();
+    hqDb().prepare("INSERT OR REPLACE INTO action_answers (project_id, id, kind, decision, at) VALUES (?, ?, ?, ?, ?)").run(this.hub.snap.config.project.id, item.id, item.kind ?? "request", decision, Date.parse(item.closedAt));
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
     if (item.kind === "lesson" && item.lesson) {

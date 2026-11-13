@@ -174,7 +174,7 @@ try {
   const db = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-")));
   // hqDb migrated to the end; rebuild a Phase 1 database by hand to test the step from 1 to 2.
   const old = hqDb(mkdtempSync(join(tmpdir(), "arima-memdb-old-")));
-  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DROP TABLE task_summaries; DROP TABLE memory_keep_out; DROP TABLE specs; DROP TABLE template_lessons; ALTER TABLE tasks DROP COLUMN spec_items; ALTER TABLE tasks DROP COLUMN high_stakes; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
+  old.exec("DROP TABLE memory_outbox; DROP TABLE memory_ids; DROP TABLE task_summaries; DROP TABLE memory_keep_out; DROP TABLE specs; DROP TABLE template_lessons; DROP TABLE task_events; DROP TABLE action_answers; ALTER TABLE tasks DROP COLUMN template_id; ALTER TABLE tasks DROP COLUMN template_version; ALTER TABLE tasks DROP COLUMN spec_items; ALTER TABLE tasks DROP COLUMN high_stakes; DELETE FROM schema_version; INSERT INTO schema_version VALUES (1);");
   const ins = old.prepare("INSERT INTO ledger (project_id, task_id, ledger, kind, text, by, at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id");
   const a = (ins.get("old", "T1", "task", "plan", "Parser first", "lead", Date.UTC(2026, 10, 1)) as { id: number }).id;
   const b = (ins.get("old", "T1", "task", "plan", "Lexer first", "lead", Date.UTC(2026, 10, 2)) as { id: number }).id;

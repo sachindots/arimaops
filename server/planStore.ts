@@ -22,7 +22,7 @@ interface TaskRow {
   id: string; board_id: string; stage_id: string; title: string; owner_id: string | null; status: Task["status"];
   needs: string; files: string; description: string | null; done_when: string | null; note: string | null;
   pr_number: number | null; deliverable_path: string | null; cli: Task["cli"]; model: string | null;
-  spec_items: string; high_stakes: number;
+  spec_items: string; high_stakes: number; template_id: string | null; template_version: number | null;
 }
 
 /** The project's plan, or null before its first save. */
@@ -51,6 +51,8 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       usage: used.get(r.id) ?? null,
       specItems: JSON.parse(r.spec_items),
       highStakes: !!r.high_stakes,
+      templateId: r.template_id ?? undefined,
+      templateVersion: r.template_version ?? undefined,
     }),
   );
   return { boards, tasks };
@@ -64,13 +66,16 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
      ON CONFLICT (project_id, id) DO UPDATE SET title = excluded.title, status = excluded.status, ord = excluded.ord`,
   );
   const task = db.prepare(
-    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at, spec_items, high_stakes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at, spec_items, high_stakes, template_id, template_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (project_id, id) DO UPDATE SET board_id = excluded.board_id, stage_id = excluded.stage_id, title = excluded.title, owner_id = excluded.owner_id,
        status = excluded.status, needs = excluded.needs, files = excluded.files, description = excluded.description, done_when = excluded.done_when, note = excluded.note,
        pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, updated_at = excluded.updated_at,
        spec_items = excluded.spec_items, high_stakes = excluded.high_stakes`,
   );
+  // The template columns are set once, when the task is first saved: a re-sync changes later tasks only.
+  const was = new Map((db.prepare("SELECT id, status, stage_id FROM tasks WHERE project_id = ?").all(projectId) as { id: string; status: string; stage_id: string }[]).map((r) => [r.id, r]));
+  const event = db.prepare("INSERT INTO task_events (project_id, task_id, at, status, stage_id, owner_id) VALUES (?, ?, ?, ?, ?, ?)");
   const keep = (ids: string[]) => JSON.stringify(ids);
   tx(db, () => {
     for (const b of plan.boards) board.run(projectId, b.id, b.title, b.status, b.order);
@@ -78,8 +83,13 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
       task.run(
         projectId, t.id, t.boardId, t.stageId ?? firstStage, t.title, t.ownerId, t.status, JSON.stringify(t.needs ?? []), JSON.stringify(t.files ?? []),
         t.description ?? null, t.doneWhen ?? null, t.note ?? null, t.prNumber ?? null, t.deliverablePath ?? null, t.cli ?? null, t.model ?? null, now,
-        JSON.stringify(t.specItems ?? []), t.highStakes ? 1 : 0,
+        JSON.stringify(t.specItems ?? []), t.highStakes ? 1 : 0, t.templateId ?? null, t.templateVersion ?? null,
       );
+    for (const t of plan.tasks) {
+      const stage = t.stageId ?? firstStage;
+      const old = was.get(t.id);
+      if (!old || old.status !== t.status || old.stage_id !== stage) event.run(projectId, t.id, now, t.status, stage, t.ownerId ?? null);
+    }
     db.prepare("DELETE FROM tasks WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.tasks.map((t) => t.id)));
     db.prepare("DELETE FROM boards WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.boards.map((b) => b.id)));
   });
