@@ -1,6 +1,6 @@
 # Templates, skills and methods (Phase 4)
 
-The four launch templates, the skills their roles get, how those skills are fetched safely, and how templates are shared and improved. Builds on the Phase 1 model (`docs/core-model.md`: templates, roles, flows, gates, findings), the Phase 2 memory (`docs/memory-core.md`) and the Phase 3 engine (`docs/agent-engine.md`). Status: **design, 2026-11-13**; the owner's decisions are in section 10.
+The four launch templates, the skills their roles get, how those skills are fetched safely, and how templates are shared and improved. Builds on the Phase 1 model (`docs/core-model.md`: templates, roles, flows, gates, findings), the Phase 2 memory (`docs/memory-core.md`) and the Phase 3 engine (`docs/agent-engine.md`). Status: **built locally 2026-11-13**, approved by the owner the same day; the owner's decisions are in section 10. Not checked yet: a real model run of any template, the Haiku rewrite in lesson promotion, and a paid benchmark run. ROADMAP 4.6–4.11 aren't in this design.
 
 ## 1. What changes
 
