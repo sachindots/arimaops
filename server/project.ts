@@ -213,6 +213,10 @@ export async function startProject(path: string, port: number, paused: boolean):
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
+  planner.onLeadApproval = (task, gateId, stageId, note) => {
+    const lead = hub.snap.config.team.find((a) => a.isLead);
+    if (lead) planner.actions?.addApproval(lead.id, task.id, task.title, gateId, stageId, note);
+  };
   const memoryReview = new MemoryReview(hub, planner.actions, memoryStore());
   void memoryReview.sync();
   planner.findings = new Findings(hub);

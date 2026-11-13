@@ -5,6 +5,7 @@
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
+import { ownerSeen } from "./presence";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -568,6 +569,7 @@ export function startHttp(o: Options) {
     // ?watch=1: the one-building office following another project. Status only (no terminal output), commands ignored.
     const watch = url.searchParams.get("watch") === "1";
     log.info(`ui connected: ${rt.slug} ${who.role}${watch ? " watching" : ""}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    if (who.role === "owner" && !watch) ownerSeen(); // a page or the phone app opening
     wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who, origin, remote, watch));
   });
 
@@ -598,6 +600,7 @@ export function startHttp(o: Options) {
         const me = current();
         if (!me) return void (audit("blocked"), ws.close());
         const role = me.role;
+        if (role === "owner") ownerSeen();
 
         // Step-up: { cmd: "elevate", args: [code, pendingCmd?, pendingArgs?] }
         if (cmd === "elevate") {

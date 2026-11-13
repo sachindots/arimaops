@@ -483,8 +483,11 @@ export interface ActionItem {
   waiting: boolean; // the agent can't continue without it
   status: "open" | "done" | "dismissed";
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
-   *  memory = new memories from one task, waiting to be certified or rejected (from "hq"). */
-  kind?: "request" | "plan" | "memory";
+   *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
+   *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
+  kind?: "request" | "plan" | "memory" | "approval";
+  /** kind approval: the gate the lead passed and the stage it belongs to. */
+  approval?: { gateId: string; stageId: string };
   /** kind memory: the memories still to decide. */
   memories?: PendingMemory[];
   note: string | null; // the user's note when closing it

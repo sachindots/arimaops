@@ -85,7 +85,7 @@ export function ActionItemsDrawer() {
                 {closed.map((i) => (
                   <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? i.fromId)} ·{" "}
-                    {i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
+                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
                 ))}
@@ -119,6 +119,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
         {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#00e5ff" }}>plan · needs approval</span>}
+        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffab00" }}>lead approved · undoable</span>}
         {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#c04dff" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
@@ -150,10 +151,10 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
         />
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done", note)}>
-          {item.kind === "plan" ? "Approve" : "Done"}
+          {item.kind === "plan" ? "Approve" : item.kind === "approval" ? "Keep" : "Done"}
         </button>
         <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed", note)}>
-          {item.kind === "plan" ? "Reject" : "Dismiss"}
+          {item.kind === "plan" ? "Reject" : item.kind === "approval" ? "Undo" : "Dismiss"}
         </button>
       </div>
     </li>

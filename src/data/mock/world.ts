@@ -157,6 +157,20 @@ export class World {
         }))
         .concat([
           {
+            id: "ai-demo-approval",
+            fromId: preset.config.team.find((a) => a.isLead)?.id ?? "hq",
+            taskId: tasks[0]?.id ?? null,
+            title: `${preset.config.team.find((a) => a.isLead)?.name ?? "The lead"} approved spec-ok on ${tasks[0]?.id ?? "T-1"} while you were away`,
+            details: `${tasks[0]?.title ?? "Sign-in flow"}\n\nThe lead's note: the spec covers every item in the brief; rate limits are S4.\n\nKeep it, or Undo: the gate waits for you again and the task goes back to that stage.`,
+            waiting: false,
+            kind: "approval" as const,
+            approval: { gateId: "spec-ok", stageId: "spec" },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
             id: "ai-demo-memory",
             fromId: "hq",
             taskId: tasks.find((t) => t.status === "done")?.id ?? null,

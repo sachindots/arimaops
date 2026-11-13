@@ -11,7 +11,8 @@ import { readFacts } from "./facts";
 import { taskUsage } from "./usageEvents";
 import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
 import { assertTaskMove, gateContext, recordGate } from "./planStore";
-import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
+import { ownerAway } from "./presence";
+import { PERSON_GATES, stagesLeft, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
@@ -135,8 +136,41 @@ export class Planner {
     const task = this.task(taskId);
     if (!task) throw new Error(`No task ${taskId}`);
     const by = byId === "you" ? ({ kind: "user", id: byId } as const) : ({ kind: "agent", id: byId } as const);
-    recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state, by, proof });
-    this.hub.activity(state === "passed" ? "review.passed" : state === "failed" ? "review.changes" : "config", byId === "you" ? null : byId, `${this.hub.name(byId)} marked gate ${gateId} of ${task.id} ${state}${proof.note ? `: ${proof.note.slice(0, 120)}` : ""}`);
+    const leadId = this.snap.config.team.find((a) => a.isLead)?.id ?? null;
+    const gate = recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state, by, proof }, { leadId, ownerAway: ownerAway() });
+    const onBehalf = PERSON_GATES.has(gate.kind) && byId === leadId && state === "passed";
+    this.hub.activity(state === "passed" ? "review.passed" : state === "failed" ? "review.changes" : "config", byId === "you" ? null : byId, `${this.hub.name(byId)} marked gate ${gateId} of ${task.id} ${state}${onBehalf ? " for the owner (away)" : ""}${proof.note ? `: ${proof.note.slice(0, 120)}` : ""}`);
+    if (onBehalf) {
+      const stageId = template.flow.stages.find((s) => s.gates.some((g) => g.id === gate.id))!.id;
+      this.onLeadApproval(task, gate.id, stageId, proof.note ?? "");
+    }
+  }
+
+  /** The lead passed a person gate for the away owner (set by the project: files a Keep / Undo action item). */
+  onLeadApproval: (task: Task, gateId: string, stageId: string, note: string) => void = () => {};
+
+  /**
+   * The owner undid a lead approval: a reset row (the history stays), the task back in the gate's stage if it had
+   * moved past it, and the lead and the task's owner told.
+   */
+  undoLeadApproval(taskId: string, gateId: string, stageId: string, note?: string) {
+    const template = this.writable();
+    const task = this.task(taskId);
+    if (!task) return;
+    recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state: "reset", by: { kind: "user", id: HUMAN_ID }, proof: { note: "Undone by the owner" } });
+    const at = (id?: string) => template.flow.stages.findIndex((s) => s.id === id);
+    if (at(task.stageId) > at(stageId)) {
+      task.stageId = stageId;
+      if (task.status === "done" || task.status === "in-review") task.status = "in-progress";
+      this.hub.emit({ type: "task.updated", task: { ...task } });
+      this.hub.planChanged();
+    }
+    const n = note ? ` Their note: ${note}` : "";
+    const text = `The owner undid your approval of ${gateId} on ${task.id} (${task.title}). It waits for the owner again${at(task.stageId) === at(stageId) ? `, and ${task.id} is back in its ${template.flow.stages[at(stageId)].name} stage` : ""}.${n}`;
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, text);
+    if (task.ownerId && task.ownerId !== lead?.id) this.notify(task.ownerId, `The owner undid the lead's approval of ${gateId} on ${task.id}: wait for the owner before going on.${n}`);
+    this.hub.activity("config", null, `You undid the lead's approval of ${gateId} on ${task.id}`);
   }
 
   createBoard(title: string, status: Board["status"] = "planned"): Board {
@@ -439,9 +473,12 @@ export class Planner {
       if (a.isLead || !st || !task || task.status !== "in-progress" || st.session.state !== "running") continue;
       if (st.limitedUntil && Date.parse(st.limitedUntil) > now) continue; // the usage-limit notice covers this
       const key = `${a.id}:${task.id}`;
-      if (this.stallNudged.has(key)) continue;
       // "Working" but no hook for a long time: frozen, or one command hanging. Typing into it would interrupt, so tell the lead.
       const quietMs = now - Math.max(this.lastActivityAt(a.id), Date.parse(st.stateSince));
+      if (this.stallNudged.has(key)) {
+        if (st.state === "working" && quietMs < silentMs) this.stallNudged.delete(key); // moving again: a later stall counts anew
+        continue;
+      }
       if (st.state === "working" && quietMs >= silentMs) {
         this.stallNudged.add(key);
         const mins = Math.round(quietMs / 60_000);
@@ -460,10 +497,23 @@ export class Planner {
     }
   }
 
-  /** HQ's progress ledger: each stall it saw, so the lead (and Phase 3's replanning) can count them. */
+  /**
+   * HQ's progress ledger: each stall it saw. The second stall on a task asks the lead to replan it; from the third
+   * the owner is pushed (docs/agent-engine.md section 4).
+   */
   private progress(taskId: string, text: string) {
+    const projectId = this.snap.config.project.id;
     try {
-      this.memory?.addLedger({ projectId: this.snap.config.project.id, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
+      this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
+      const stalls = this.memory?.ledger(projectId, { taskId, ledger: "progress" }).filter((e) => e.kind === "stall" && !e.supersededBy).length ?? 0;
+      const lead = this.snap.config.team.find((a) => a.isLead);
+      const task = this.task(taskId);
+      if (stalls === 2 && lead) {
+        this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "replan", text: `Stalled twice; asked ${lead.name} to replan`, by: "hq" });
+        this.notify(lead.id, `${taskId}${task ? ` (${task.title})` : ""} has stalled twice (latest: ${text}). Replan it: split it, reassign it, or drop it, and record the new plan with ledger_add kind plan.`);
+      } else if (stalls >= 3) {
+        this.hub.activity("agent.needs-input", lead?.id ?? null, `${taskId} has stalled ${stalls} times, after the lead's replan. It needs you.`);
+      }
     } catch {
       /* the ledger is a record, never a reason to stop a stall check */
     }

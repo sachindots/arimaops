@@ -70,6 +70,11 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory") return; // dismissed memories stay uncertified and fade; no agent to tell
+    if (item.kind === "approval") {
+      if (decision === "dismissed" && item.taskId && item.approval) this.planner.undoLeadApproval(item.taskId, item.approval.gateId, item.approval.stageId, item.note ?? undefined);
+      else if (decision === "done") this.planner.notify(item.fromId, `The owner kept your approval: ${item.title}.`);
+      return;
+    }
     const n = item.note ? ` Note from the user: ${item.note}` : "";
     if (item.kind === "plan") {
       if (decision === "done") this.planner.notify(item.fromId, `The user APPROVED your plan "${item.title}".${n} Go ahead and execute it, exactly as planned.`);
@@ -78,6 +83,28 @@ export class ActionItems {
     }
     if (decision === "done") this.planner.notify(item.fromId, `The user did your action item "${item.title}".${n} Continue with it.`);
     else this.planner.notify(item.fromId, `The user dismissed your action item "${item.title}".${n} Continue without it, or find another way.`);
+  }
+
+  /** The lead passed a person gate for the away owner (docs/agent-engine.md section 4): Keep or Undo. */
+  addApproval(leadId: string, taskId: string, taskTitle: string, gateId: string, stageId: string, note: string): ActionItem {
+    const item: ActionItem = {
+      id: `ai${Date.now().toString(36)}${++this.seq}`,
+      fromId: leadId,
+      taskId,
+      title: `${this.hub.name(leadId)} approved ${gateId} on ${taskId} while you were away`,
+      details: `${taskTitle}${note ? `\n\n${this.hub.name(leadId)}'s note: ${note.slice(0, 1000)}` : ""}\n\nKeep it, or Undo: the gate waits for you again and the task goes back to that stage.`,
+      waiting: false,
+      kind: "approval",
+      approval: { gateId, stageId },
+      status: "open",
+      note: null,
+      at: new Date().toISOString(),
+      closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    return item;
   }
 
   // ---------------------------------------------------------------- memories to check (docs/memory-core.md section 8)

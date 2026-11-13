@@ -140,6 +140,41 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   Object.assign(statuses.get("nyx")!, { state: "idle", stateSince: new Date().toISOString() });
 }
 
+// Replan (3.3): a second stall on the same task asks the lead to replan it; a third reaches the owner.
+{
+  const tR = createTask({ title: "Flaky export" } as never, "cipher");
+  planner.assign(tR.id, "nyx", "cipher");
+  planner.setStatus("nyx", "in-progress");
+  const nyx = statuses.get("nyx")!;
+  const stall = () => {
+    Object.assign(nyx, { state: "idle", stateSince: new Date(Date.now() - 10 * 60_000).toISOString() });
+    planner.checkStalls(Date.now());
+  };
+  const resume = () => {
+    Object.assign(nyx, { state: "working", stateSince: new Date().toISOString() });
+    planner.checkStalls(Date.now());
+  };
+  const acts: string[] = [];
+  (hub as unknown as { activity: (t: string, a: string | null, text: string) => void }).activity = (_t, _a, text) => acts.push(text);
+  const n = pushed.length;
+  stall();
+  check("one stall: no replan yet", !pushed.slice(n).some((p) => /stalled twice/.test(p.text)));
+  stall();
+  check("still idle: the same stall isn't counted twice", !pushed.slice(n).some((p) => /stalled twice/.test(p.text)));
+  resume();
+  stall();
+  const replan = pushed.slice(n).filter((p) => p.to === "cipher" && /stalled twice/.test(p.text));
+  check("after moving again, a second stall asks the lead to replan", replan.length === 1 && /Replan it/.test(replan[0].text), JSON.stringify(pushed.slice(n)));
+  const ledger = memory.ledger("plan-test", { taskId: tR.id, ledger: "progress" });
+  check("the replan is in the progress ledger", ledger.filter((e) => e.kind === "stall").length === 2 && ledger.some((e) => e.kind === "replan"), JSON.stringify(ledger.map((e) => e.kind)));
+  resume();
+  stall();
+  check("a third stall reaches the owner", acts.some((a) => new RegExp(`${tR.id} has stalled 3 times`).test(a)), JSON.stringify(acts));
+  (hub as unknown as { activity: () => void }).activity = () => {};
+  planner.setStatus("nyx", "done", "Exported.");
+  Object.assign(nyx, { state: "idle", stateSince: new Date().toISOString() });
+}
+
 // The user is away: their unanswered question goes to the lead after 30 min; plans keep waiting for the user.
 {
   const old = new Date(Date.now() - 40 * 60_000).toISOString();
@@ -201,6 +236,9 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   err = "";
   try { p2.assign(t3b.id, "reviewer", "lea"); } catch (e) { err = (e as Error).message; }
   check("nor to the reviewer role", /Build stage/.test(err), err);
+  err = "";
+  try { p2.assign(t3b.id, "lea", "lea"); } catch (e) { err = (e as Error).message; }
+  check("the lead can't take a build task itself", /Build stage/.test(err) && t3b.ownerId === null, err);
   err = "";
   try { p2.assign(t3b.id, "designer", "lea"); } catch (e) { err = (e as Error).message; }
   check("an unknown name lists agents and roles", /Roles: lead, developer, reviewer/.test(err), err);

@@ -141,7 +141,8 @@ export interface GateEvent {
   gateId: string;
   state: GateState;
   by: Actor;
-  proof: { url?: string; path?: string; sha?: string; note?: string };
+  /** onBehalf: the lead passed a person gate for the owner while the owner was away (undoable). */
+  proof: { url?: string; path?: string; sha?: string; note?: string; onBehalf?: boolean };
   at: string;
 }
 

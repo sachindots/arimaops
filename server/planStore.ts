@@ -3,12 +3,12 @@
 // Projects made before templates keep their plan.json row (store.ts).
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Actor, GateEvent, GateState, TeamTemplate } from "../src/data/model";
+import type { Actor, Gate, GateEvent, GateState, TeamTemplate } from "../src/data/model";
 import type { Board, HqConfig, PullRequest, Task } from "../src/data/types";
 import { hqDb } from "./lib/db";
 import { taskUsage } from "./usageEvents";
 import { tx } from "./lib/docs";
-import { assertGates, OBSERVED_GATES, PERSON_GATES, type GateContext } from "./gates";
+import { assertGates, leadMayApprove, OBSERVED_GATES, PERSON_GATES, type GateContext } from "./gates";
 
 export interface PlanFile {
   boards: Board[];
@@ -93,17 +93,27 @@ export function gateEvents(db: DatabaseSync, projectId: string, taskId: string):
 }
 
 /** Records gate evidence after checking who may record it. Throws with a reason the recorder can act on. */
-export function recordGate(db: DatabaseSync, t: TeamTemplate, task: Task, ev: Omit<GateEvent, "at" | "taskId">) {
+/**
+ * Records a gate event. `onBehalf`: the lead may pass a person gate that can be undone (leadMayApprove) while the
+ * owner is away; the event is marked so the check accepts it and the owner can undo it. Returns that gate.
+ */
+export function recordGate(db: DatabaseSync, t: TeamTemplate, task: Task, ev: Omit<GateEvent, "at" | "taskId">, away?: { leadId: string | null; ownerAway: boolean }): Gate {
   const gate = t.flow.stages.flatMap((s) => s.gates).find((g) => g.id === ev.gateId);
   if (!gate) throw new Error(`No gate "${ev.gateId}" in this flow. Gates: ${t.flow.stages.flatMap((s) => s.gates.map((g) => g.id)).join(", ") || "none"}.`);
   const person = ev.by.kind === "user";
   if (ev.state === "waived" && !person) throw new Error("Only a person can waive a gate.");
-  if (PERSON_GATES.has(gate.kind) && !person && ev.state !== "reset") throw new Error(`Only a person can pass ${gate.id} (${gate.kind}).`);
+  if (PERSON_GATES.has(gate.kind) && !person && ev.state !== "reset") {
+    const lead = ev.by.kind === "agent" && !!away?.leadId && ev.by.id === away.leadId;
+    if (!lead || ev.state !== "passed" || !leadMayApprove(gate)) throw new Error(`Only a person can pass ${gate.id} (${gate.kind}).${lead && !leadMayApprove(gate) ? " Merges, containment and outbound sends always wait for the owner." : ""}`);
+    if (!away?.ownerAway) throw new Error(`Only the owner passes ${gate.id} (${gate.kind}) while they are around. You may approve it for them after 2 h without a word from them.`);
+    ev = { ...ev, proof: { ...ev.proof, onBehalf: true } };
+  }
   if (OBSERVED_GATES.has(gate.kind) && !person) throw new Error(`HQ checks ${gate.id} (${gate.kind}) itself; nothing to record.`);
   if (gate.kind === "reviewer" && ev.state === "passed" && ev.by.id === task.ownerId) throw new Error("You can't review your own task.");
   db.prepare("INSERT INTO gate_events (project_id, task_id, gate_id, state, by_kind, by_id, proof, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
     ev.projectId, task.id, gate.id, ev.state, ev.by.kind, ev.by.id, JSON.stringify(ev.proof ?? {}), Date.now(),
   );
+  return gate;
 }
 
 const actorOf = (id: string, team: HqConfig["team"]): Actor =>

@@ -33,6 +33,13 @@ export const PERSON_GATES: ReadonlySet<Gate["kind"]> = new Set(["owner-approval"
 
 const latest = (events: GateEvent[], gateId: string) => events.filter((e) => e.gateId === gateId).at(-1);
 
+/** Person gates the lead may pass for the owner while the owner is away: they can be undone. Merges, containment and outbound sends never. */
+export const leadMayApprove = (gate: Gate) => gate.kind === "spec-approved" || (gate.kind === "owner-approval" && gate.reason === "spec");
+
+/** A person's pass, or the lead's on the owner's behalf for a gate it may approve. */
+const approved = (gate: Gate, last: GateEvent | undefined) =>
+  last?.state === "passed" && (last.by.kind === "user" || (!!last.proof.onBehalf && leadMayApprove(gate)));
+
 /** Why a gate is not met yet, or null when it is. */
 export function gateProblem(gate: Gate, ctx: GateContext): string | null {
   const { task } = ctx;
@@ -59,9 +66,9 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
       return reviewers.some(fits) ? null : `A ${gate.roleId} must accept this task.`;
     }
     case "owner-approval":
-      return passed && last.by.kind === "user" ? null : `Waiting for the owner's approval (${gate.reason}).`;
+      return approved(gate, last) ? null : `Waiting for the owner's approval (${gate.reason}).`;
     case "spec-approved":
-      return passed && last.by.kind === "user" ? null : "Waiting for the owner to approve the spec.";
+      return approved(gate, last) ? null : "Waiting for the owner to approve the spec.";
     case "tests-ci":
       return passed ? null : "Needs evidence that the PR adds or changes tests and CI is green.";
     case "analyze":

@@ -135,6 +135,61 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("a read-only project's plan never changes", throws(() => old.createTask({ title: "x" }, "lead"), /read-only/));
 }
 
+// The lead approves for the away owner (3.3): reversible gates only, logged and undoable.
+{
+  const away = { leadId: "lead", ownerAway: true };
+  const here = { leadId: "lead", ownerAway: false };
+  const lt: TeamTemplate = { ...t, flow: { stages: [
+    { id: "spec", name: "Spec", roleIds: ["lead"], gates: [{ id: "spec-ok", kind: "spec-approved" }, { id: "contain", kind: "owner-approval", reason: "containment" }] },
+    { id: "build", name: "Build", roleIds: ["developer"], gates: [{ id: "ship", kind: "owner-approval", reason: "merge" }] },
+  ] } };
+  const lt1: Task = { ...task, id: "T7", stageId: "spec" };
+  savePlanTables(db, "p", { ...plan, tasks: [lt1] }, "spec");
+  check("the lead can't pass the spec while the owner is around", throws(() => recordGate(db, lt, lt1, { projectId: "p", gateId: "spec-ok", state: "passed", by: agent("lead"), proof: {} }, here), /after 2 h/));
+  check("a worker can't, even with the owner away", throws(() => recordGate(db, lt, lt1, { projectId: "p", gateId: "spec-ok", state: "passed", by: agent("dev1"), proof: {} }, away), /Only a person/));
+  check("the lead can't approve containment, away or not", throws(() => recordGate(db, lt, lt1, { projectId: "p", gateId: "contain", state: "passed", by: agent("lead"), proof: {} }, away), /always wait for the owner/));
+  check("…nor a merge", throws(() => recordGate(db, lt, lt1, { projectId: "p", gateId: "ship", state: "passed", by: agent("lead"), proof: {} }, away), /always wait for the owner/));
+  recordGate(db, lt, lt1, { projectId: "p", gateId: "spec-ok", state: "passed", by: agent("lead"), proof: { note: "matches the brief" } }, away);
+  const evs = gateEvents(db, "p", "T7");
+  check("with the owner away the lead passes the spec, marked on their behalf", evs.at(-1)?.proof.onBehalf === true && evs.at(-1)?.by.id === "lead");
+  check("…and the spec gate counts as met", gateProblem({ id: "spec-ok", kind: "spec-approved" }, ctx({ task: lt1, events: evs })) === null);
+  check("a hand-made onBehalf row on a containment gate still doesn't count", gateProblem({ id: "contain", kind: "owner-approval", reason: "containment" }, ctx({ events: [{ ...ev("contain", "passed", agent("lead")), proof: { onBehalf: true } }] })) !== null);
+}
+
+// Undo through the planner: a reset row, the task back in the spec stage, lead and owner told.
+{
+  const { ActionItems } = await import("../server/actionItems");
+  const presence = await import("../server/presence");
+  const lt: TeamTemplate = { ...structuredClone(DEV_TEMPLATE), flow: { stages: [
+    { id: "spec", name: "Spec", roleIds: ["lead", "developer"], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
+    { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
+  ] } };
+  const t8: Task = { ...task, id: "T8", stageId: "spec", status: "in-progress", ownerId: "dev1" };
+  savePlanTables(db, "p", { ...plan, tasks: [t8] }, "spec");
+  const snap = { config: { template: lt, project: { id: "p" }, workflow: { mode: "deliverables", review: { enabled: false } }, team: [{ id: "lead", name: "Lea", roleId: "lead", isLead: true }, { id: "dev1", name: "Dev", roleId: "developer" }] }, boards: plan.boards, tasks: [t8], agents: [], messages: [], pullRequests: [], actionItems: [] };
+  const told: { to: string; text: string }[] = [];
+  const hub = { slug: "gates-undo", snap, emit: () => {}, planChanged: () => {}, activity: () => {}, name: (id: string) => snap.config.team.find((a) => a.id === id)?.name ?? id, setStatus: () => {}, status: () => null, cfg: (id: string) => snap.config.team.find((a) => a.id === id), repo: { root: process.env.HOME } };
+  const planner = new Planner(hub as never, { push: (to: string, i: { text: string }) => told.push({ to, text: i.text }), save: () => {} } as never);
+  const items = new ActionItems(hub as never, planner);
+  planner.onLeadApproval = (task, gateId, stageId, note) => items.addApproval("lead", task.id, task.title, gateId, stageId, note);
+  check("the lead can't approve with the owner just seen", throws(() => planner.recordGate("T8", "spec-ok", "passed", "lead"), /after 2 h/));
+  presence.ownerSeen(0); // no-op: seen can only move forward
+  const realNow = Date.now;
+  Date.now = () => realNow() + presence.AWAY_MS + 1000; // 2 h later, no owner action
+  planner.recordGate("T8", "spec-ok", "passed", "lead", { note: "spec is complete" });
+  const item = snap.actionItems.find((i: { kind?: string }) => i.kind === "approval") as { id: string; title: string; approval: { stageId: string } } | undefined;
+  check("a lead approval files a Keep / Undo item", !!item && /approved spec-ok on T8 while you were away/.test(item.title) && item.approval.stageId === "spec", JSON.stringify(item));
+  planner.updateTask("T8", { stageId: "build" }, "lead");
+  check("the approved spec lets the task move on", t8.stageId === "build");
+  Date.now = realNow;
+  items.resolve(item!.id, "dismissed", "the spec misses the rate limit");
+  const evs = gateEvents(db, "p", "T8");
+  check("Undo keeps the history and adds a reset row", evs.length === 2 && evs[0].state === "passed" && evs[1].state === "reset" && evs[1].by.kind === "user");
+  check("…the task is back in the spec stage", t8.stageId === "spec");
+  check("…and the lead and the task's owner are told", told.some((m) => m.to === "lead" && /undid your approval/.test(m.text) && /rate limit/.test(m.text)) && told.some((m) => m.to === "dev1" && /undid the lead's approval/.test(m.text)), JSON.stringify(told));
+  check("the gate waits for the owner again", throws(() => planner.updateTask("T8", { stageId: "build" }, "lead"), /approve the spec/));
+}
+
 if (fails) {
   console.error(`\n${fails} failed`);
   process.exit(1);
