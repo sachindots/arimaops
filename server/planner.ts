@@ -76,6 +76,33 @@ export class Planner {
     return team.find((a) => a.id === r || a.name.toLowerCase() === r)?.id ?? null;
   }
 
+  /**
+   * Picks a seat of role `roleRef` for `task` (docs/agent-engine.md section 2): free and running first, then
+   * free and stopped (on demand, it starts), then the busy one with the fewest open tasks. Seats at their usage
+   * limit or on another CLI than the task asks for are skipped. Null when `roleRef` isn't a role; throws when
+   * the role has no seat that can take the task.
+   */
+  seatOf(roleRef: string, task: Task): string | null {
+    const roleId = roleRef.trim().toLowerCase();
+    const role = this.snap.config.template?.roles.find((r) => r.id === roleId);
+    if (!role) return null;
+    const now = Date.now();
+    const seats = this.snap.config.team.filter((a) => a.roleId === roleId);
+    const fit = seats.filter((a) => {
+      const limited = this.hub.status(a.id)?.limitedUntil;
+      return !(limited && Date.parse(limited) > now) && (!task.cli || a.cli === task.cli);
+    });
+    if (!fit.length)
+      throw new Error(seats.length ? `Every ${role.title} seat is at its usage limit${task.cli ? ` or not on ${CLI_LABEL[task.cli]}` : ""}. Pick another role, or wait.` : `No seat has the ${role.title} role. Add one in the team panel.`);
+    const open = (id: string) => this.snap.tasks.filter((t) => t.ownerId === id && t.status !== "done" && t.id !== task.id).length;
+    const rank = (id: string) => {
+      const n = open(id);
+      if (n) return 2 + n;
+      return this.hub.status(id)?.session.state === "running" ? 0 : 1;
+    };
+    return fit.map((a) => ({ id: a.id, r: rank(a.id) })).sort((x, y) => x.r - y.r)[0].id;
+  }
+
   defaultBoard(): Board {
     const active = this.snap.boards.filter((b) => b.status === "active").sort((a, b) => a.order - b.order);
     if (active[0]) return active[0];
@@ -188,12 +215,15 @@ export class Planner {
 
   /** Gives a task to an agent and tells them to start. */
   assign(taskId: string, agentRef: string, byId: string): Task {
-    this.writable();
+    const template = this.writable();
     const task = this.task(taskId);
-    const agentId = this.agentId(agentRef);
     if (!task) throw new Error(`No task ${taskId}`);
-    if (!agentId) throw new Error(`No agent "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
+    const agentId = this.agentId(agentRef) ?? this.seatOf(agentRef, task);
+    if (!agentId) throw new Error(`No agent or role "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}. Roles: ${template.roles.map((r) => r.id).join(", ")}`);
     const agent = this.hub.cfg(agentId)!;
+    const stage = template.flow.stages.find((s) => s.id === task.stageId);
+    if (stage && agent.roleId && !stage.roleIds.includes(agent.roleId))
+      throw new Error(`${task.id} is in the ${stage.name} stage, which ${stage.roleIds.join(" or ")} work. ${agent.name} is a ${agent.roleId}. Assign a seat of those roles, or move the task to a stage ${agent.name}'s role works first.`);
     if (task.cli && agent.cli !== task.cli) {
       const fits = this.snap.config.team.filter((a) => a.cli === task.cli && !a.isLead).map((a) => a.name);
       throw new Error(`${task.id} runs on ${CLI_LABEL[task.cli]}, but ${agent.name} runs ${CLI_LABEL[agent.cli]}. ${fits.length ? `Agents on ${CLI_LABEL[task.cli]}: ${fits.join(", ")}.` : `No agent runs ${CLI_LABEL[task.cli]}; add one or clear the task's "runs on".`}`);

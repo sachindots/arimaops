@@ -168,5 +168,48 @@ check("unreviewed PR asks the lead to review, not merge", /review it yourself/.t
   check("each summary queues the task for the graph", queued.n >= done.length, String(queued.n));
 }
 
+// ---------------------------------------------------------------- routing by role (3.1)
+{
+  const { DEV_TEMPLATE } = await import("../src/data/templates");
+  const crew = [
+    { id: "lea", name: "Lea", roleId: "lead", isLead: true, cli: "claude", model: "" },
+    { id: "d1", name: "Dev One", roleId: "developer", isLead: false, cli: "claude", model: "" },
+    { id: "d2", name: "Dev Two", roleId: "developer", isLead: false, cli: "claude", model: "" },
+    { id: "d3", name: "Dev Three", roleId: "developer", isLead: false, cli: "claude", model: "" },
+    { id: "rv", name: "Rev", roleId: "reviewer", isLead: false, cli: "codex", model: "" },
+  ];
+  const st = new Map<string, Record<string, unknown>>(crew.map((a) => [a.id, { agentId: a.id, currentTaskId: null, session: { state: "running" } }]));
+  const later = new Date(Date.now() + 3600_000).toISOString();
+  Object.assign(st.get("d1")!, { limitedUntil: later }); // at its usage limit
+  Object.assign(st.get("d3")!, { session: { state: "stopped" } }); // on demand, stopped
+  const s2 = { config: { team: crew, template: DEV_TEMPLATE, workflow: { mode: "github-pr", review: { enabled: false } }, project: { id: "route-test" } }, boards: [], tasks: [] as { ownerId: string | null; status: string; id: string }[], messages: [], agents: [...st.values()] };
+  const h2 = { ...hub, snap: s2, cfg: (id: string) => crew.find((a) => a.id === id), name: (id: string) => crew.find((a) => a.id === id)?.name ?? id, status: (id: string) => st.get(id), setStatus: (id: string, patch: Record<string, unknown>) => Object.assign(st.get(id)!, patch) };
+  const p2 = new Planner(h2 as never, inbox as never);
+  p2.ask = async () => null;
+  const busy = p2.createTask({ title: "Busy work", doneWhen: "x" } as never, "lea");
+  p2.assign(busy.id, "d2", "lea"); // d2 is busy
+  const t = p2.createTask({ title: "Rate limit the login", doneWhen: "x" } as never, "lea");
+  p2.assign(t.id, "developer", "lea");
+  check("assigning to a role skips the limited and the busy seat, picks the stopped one", t.ownerId === "d3", String(t.ownerId));
+  const t2b = p2.createTask({ title: "Second", doneWhen: "x" } as never, "lea");
+  p2.assign(t2b.id, "developer", "lea");
+  check("with every free seat taken, the busy seat with fewest open tasks gets it", t2b.ownerId === "d2" || t2b.ownerId === "d3", String(t2b.ownerId));
+  let err = "";
+  const t3b = p2.createTask({ title: "Build it", doneWhen: "x" } as never, "lea");
+  try { p2.assign(t3b.id, "rv", "you"); } catch (e) { err = (e as Error).message; }
+  check("a build-stage task can't go to the reviewer, for people too", /Build stage, which developer work/.test(err) && t3b.ownerId === null, err);
+  err = "";
+  try { p2.assign(t3b.id, "reviewer", "lea"); } catch (e) { err = (e as Error).message; }
+  check("nor to the reviewer role", /Build stage/.test(err), err);
+  err = "";
+  try { p2.assign(t3b.id, "designer", "lea"); } catch (e) { err = (e as Error).message; }
+  check("an unknown name lists agents and roles", /Roles: lead, developer, reviewer/.test(err), err);
+  Object.assign(st.get("d2")!, { limitedUntil: later });
+  Object.assign(st.get("d3")!, { limitedUntil: later });
+  err = "";
+  try { p2.assign(t3b.id, "developer", "lea"); } catch (e) { err = (e as Error).message; }
+  check("every seat limited: says so", /Every Developer seat is at its usage limit/.test(err), err);
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

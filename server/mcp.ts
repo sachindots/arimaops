@@ -151,8 +151,8 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "assign_task",
     {
-      description: "Lead only. Give a task to an agent. HQ tells them to pull main and start it (right away if idle, otherwise when their current turn ends).",
-      inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name") },
+      description: "Lead only. Give a task to an agent, or to a role and HQ picks the seat (free first, skipping seats at their usage limit). The task's stage decides which roles may take it. HQ tells the agent to pull main and start it (right away if idle, otherwise when their current turn ends).",
+      inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name, or a role id (developer, reviewer...)") },
     },
     guard(({ taskId, agent }: { taskId: string; agent: string }) => {
       leadOnly();
