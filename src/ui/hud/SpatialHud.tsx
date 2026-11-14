@@ -18,6 +18,7 @@ import { AgentOrbit } from "./AgentOrbit";
 import { UsagePage } from "./UsagePage";
 import { CommandBar } from "./CommandBar";
 import { ParticleCore } from "./ParticleCore";
+import { StageStrip } from "./StageStrip";
 import { TopLeftBrand, TopRightTelemetry } from "./TelemetryCorners";
 import { projectMode } from "./theme";
 
@@ -144,6 +145,8 @@ export function SpatialHud() {
           caption={team.length ? `${team.length} agent${team.length === 1 ? "" : "s"} · ${workingCount} working${activeTasks ? ` · ${activeTasks} task${activeTasks === 1 ? "" : "s"} in flight` : ""}` : snap.config.template ? "No agents yet. Add a team in Settings → Team." : "No agents in this project."}
         />
       )}
+
+      {home && <StageStrip snap={snap} />}
 
       <header className="pointer-events-none fixed inset-x-5 top-3 z-30 flex items-center justify-between gap-3">
         <TopLeftBrand snap={snap} mode={projectMode(snap)} />

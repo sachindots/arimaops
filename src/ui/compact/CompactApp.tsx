@@ -22,6 +22,7 @@ import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
 import { FlowDrawer } from "../drawers/FlowDrawer";
+import { StageStrip } from "../hud/StageStrip";
 
 export type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
 
@@ -351,6 +352,7 @@ function HudHome() {
   return (
     <div className="hud-void relative min-h-0 flex-1 overflow-hidden" aria-label="Team">
       <ParticleCore compact workingCount={working} attentionCount={selectAttention(snap).total} redTeam={projectMode(snap) === "redteam" || projectMode(snap) === "purpleteam"} />
+      <StageStrip compact snap={snap} />
       <AgentOrbit compact team={team} tasks={snap.tasks} activeAgentId={null} caption={caption} redTeamProject={projectMode(snap) !== "build"} lift={!snap.welcome && !snap.config.template} />
     </div>
   );

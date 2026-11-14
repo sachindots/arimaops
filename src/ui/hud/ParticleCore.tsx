@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useOffice } from "../../store/office";
 import { hudFrame } from "./AgentOrbit";
 
 interface Particle {
@@ -48,8 +49,9 @@ function makeParticles(): Particle[] {
  */
 export function ParticleCore({ workingCount, attentionCount, redTeam, compact = false }: ParticleCoreProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stateRef = useRef({ workingCount, attentionCount, redTeam });
-  stateRef.current = { workingCount, attentionCount, redTeam };
+  const strip = useOffice((s) => (s.snap?.config.template?.flow.stages.length ?? 0) > 1);
+  const stateRef = useRef({ workingCount, attentionCount, redTeam, strip });
+  stateRef.current = { workingCount, attentionCount, redTeam, strip };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -101,7 +103,7 @@ export function ParticleCore({ workingCount, attentionCount, redTeam, compact = 
       const h = canvas.clientHeight;
       ctx.clearRect(0, 0, w, h);
 
-      const f = hudFrame(w, h, compact);
+      const f = hudFrame(w, h, compact, cur.strip);
       const cx = f.cx + smoothX * 6;
       const cy = f.cy + smoothY * 4;
       const baseR = f.r;

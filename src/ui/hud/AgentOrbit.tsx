@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { useReducedMotion } from "framer-motion";
 import { CLI_LABEL, type AgentConfig, type AgentStatus, type Task } from "../../data/types";
 import { modeOf, type Mode } from "../../data/mode";
-import { isViewer, officeActions } from "../../store/office";
+import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { fmtTokens, fmtUsd, Meter, Portrait, Sparkline, useCountUp } from "../kit";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
@@ -24,12 +24,13 @@ const STATE: Record<Mode, { color: string; label: string }> = {
  * Where the core and the ring sit inside a box of w × h. Desktop: the box is the window, minus the rail (92 px),
  * the top bar (64 px) and 16 px margins. Compact (phones, tablets): the box is the page between the header and the tabs.
  */
-export function hudFrame(w: number, h: number, compact = false) {
-  if (compact) return { cx: w / 2, cy: h / 2 - 8, width: w, height: h - 16, r: Math.min(w, h) * (w < 640 ? 0.17 : 0.2) };
+export function hudFrame(w: number, h: number, compact = false, strip = false) {
+  // `strip`: room under the ring for the flow's stage strip.
+  if (compact) return { cx: w / 2, cy: (h - (strip ? 52 : 0)) / 2 - 8, width: w, height: h - 16 - (strip ? 52 : 0), r: Math.min(w, h) * (w < 640 ? 0.17 : 0.2) };
   const left = 92;
   const top = 64;
   const width = w - left - 16;
-  const height = h - top - 16;
+  const height = h - top - 16 - (strip ? 60 : 0);
   return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.2 };
 }
 
@@ -58,7 +59,8 @@ export function AgentOrbit({ team, tasks, activeAgentId, caption, compact = fals
   const { w, h } = useBoxSize(box);
   const reduce = useReducedMotion();
   const usage = useAgentUsage(1);
-  const f = hudFrame(w, h, compact);
+  const stages = useOffice((s) => s.snap?.config.template?.flow.stages);
+  const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1);
   const kind = compact && w < 640 ? "node" : team.length > 6 ? "pill" : "card";
   const half = HALF[kind];
   const rx = Math.min(f.width * 0.36, f.width / 2 - half.x - 8 - (compact ? 0 : 16));
@@ -118,7 +120,7 @@ export function AgentOrbit({ team, tasks, activeAgentId, caption, compact = fals
               const selected = activeAgentId === m.config.id;
               return (
                 <div key={m.config.id} className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2" style={{ left: x, top: y }}>
-                  {kind === "node" ? <NodeCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : kind === "pill" ? <SmallCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : <AgentCard m={m} task={task} selected={selected} badge={!redTeamProject} use={usage.byId.get(m.config.id)} max={usage.max} />}
+                  {kind === "node" ? <NodeCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : kind === "pill" ? <SmallCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : <AgentCard m={m} task={task} stage={stages?.find((s) => s.id === task?.stageId)?.name} selected={selected} badge={!redTeamProject} use={usage.byId.get(m.config.id)} max={usage.max} />}
                 </div>
               );
             })}
@@ -136,12 +138,12 @@ function frame(mode: Mode, selected: boolean) {
   return "border-white/10 hover:border-accent/50";
 }
 
-function AgentCard({ m, task, selected, badge, use, max }: { m: Member; task?: Task; selected: boolean; badge: boolean; use?: AgentUsage; max: number }) {
+function AgentCard({ m, task, stage, selected, badge, use, max }: { m: Member; task?: Task; stage?: string; selected: boolean; badge: boolean; use?: AgentUsage; max: number }) {
   const { config, status } = m;
   const mode = modeOf(status);
   const st = STATE[mode];
   const running = status.session.state === "running";
-  const line = task ? `${task.id} · ${task.title}` : status.note;
+  const line = task ? `${stage ? `${stage} · ` : ""}${task.id} · ${task.title}` : status.note;
   return (
     <div
       className={`hud-glass hud-corners hud-scan w-[240px] rounded-2xl px-3 py-2.5 transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${frame(mode, selected)}`}
