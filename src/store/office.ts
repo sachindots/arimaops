@@ -6,7 +6,7 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type { AccountInput, MemoryInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentMode, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -24,6 +24,10 @@ interface OfficeState {
   presets: DataPreset[] | null;
   live: boolean; // connected to a real HQ server (vs. the demo mock)
   workspaceInfo: Record<string, WorkspaceInfo>; // answers to inspectWorkspace
+  /** This device asked for the template file (other devices watching the project don't download it). */
+  templateExportAsked: boolean;
+  /** The last template import's answer, for the dialog that sent it. */
+  templateImport: { ok: boolean; message: string; id?: string } | null;
   connection: ConnectionStatus;
   source: OfficeDataSource;
 }
@@ -114,6 +118,8 @@ export const useOffice = create<OfficeState>(() => ({
   presets: source.dev?.presets ?? null,
   live: token !== null || loggedIn, // a saved device login is just as live as a token link
   workspaceInfo: {},
+  templateExportAsked: false,
+  templateImport: null,
   connection: "connecting",
   source,
 }));
@@ -146,8 +152,13 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, agents: snap.agents.filter((a) => a.agentId !== e.agentId) };
     case "board.updated":
       return { ...snap, boards: upsert(snap.boards, e.board, (b) => b.id === e.board.id) };
-    case "task.updated":
-      return { ...snap, tasks: upsert(snap.tasks, e.task, (t) => t.id === e.task.id) };
+    case "task.updated": {
+      // HQ stamps movedAt when it saves, after this event; stamp a status change here so the board's ages are right now.
+      const prev = snap.tasks.find((t) => t.id === e.task.id);
+      const moved = !prev || prev.status !== e.task.status;
+      const task = { ...e.task, movedAt: moved ? new Date().toISOString() : (prev.movedAt ?? e.task.movedAt) };
+      return { ...snap, tasks: upsert(snap.tasks, task, (t) => t.id === task.id) };
+    }
     case "task.removed":
       return { ...snap, tasks: snap.tasks.filter((t) => t.id !== e.taskId) };
     case "pr.updated":
@@ -171,6 +182,23 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, findings: upsert(snap.findings ?? [], e.finding, (f) => f.id === e.finding.id) };
     case "accounts.updated":
       return { ...snap, accounts: e.accounts };
+    case "memory.updated":
+      return { ...snap, memory: e.memory };
+    case "spend.updated":
+      return { ...snap, spend: e.spend };
+    case "githubApp.updated":
+      return { ...snap, githubApp: e.githubApp };
+    case "skillPacks.updated":
+      return { ...snap, skillPacks: e.skillPacks };
+    case "templates.updated":
+      return { ...snap, templateLibrary: e.templateLibrary };
+    case "lessons.updated":
+      return { ...snap, lessons: e.lessons };
+    case "template.file":
+    case "template.imported":
+      return snap;
+    case "memory.digest":
+      return snap;
     case "mcp.updated":
       return { ...snap, mcp: e.mcp };
     case "remote.stepup":
@@ -188,6 +216,18 @@ function handle(e: OfficeEvent) {
   }
   if (e.type === "workspace.info") {
     useOffice.setState((s) => ({ workspaceInfo: { ...s.workspaceInfo, [e.info.agentId]: e.info } }));
+    return;
+  }
+  if (e.type === "template.file") {
+    if (!useOffice.getState().templateExportAsked) return;
+    useOffice.setState({ templateExportAsked: false });
+    const url = URL.createObjectURL(new Blob([JSON.stringify(e.file, null, 2)], { type: "application/json" }));
+    Object.assign(document.createElement("a"), { href: url, download: `${e.file.template.id}.arimaops-template.json` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
+  }
+  if (e.type === "template.imported") {
+    useOffice.setState({ templateImport: { ok: e.ok, message: e.message, id: e.id } });
     return;
   }
   if (e.type === "snapshot") clearTerminals();
@@ -238,6 +278,7 @@ export const officeActions = {
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),
   updateRole: source.updateRole.bind(source),
+  updateProjectTemplate: source.updateProjectTemplate.bind(source),
   removeAgent: (id: string, opts?: RemoveAgentOptions) => source.removeAgent(id, opts),
   inspectWorkspace: (id: string) => source.inspectWorkspace(id),
   updateSandbox: source.updateSandbox.bind(source),
@@ -256,6 +297,28 @@ export const officeActions = {
   resolveActionItem: (id: string, decision: "done" | "dismissed", note?: string) => source.resolveActionItem(id, decision, note),
   saveAccount: (input: AccountInput) => source.saveAccount(input),
   removeAccount: (id: string) => source.removeAccount(id),
+  saveMemory: (input: MemoryInput) => source.saveMemory(input),
+  restoreMemory: (date: string) => source.restoreMemory(date),
+  setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
+  setLabMode: (on: boolean) => source.setLabMode(on),
+  exportTemplate: () => {
+    useOffice.setState({ templateExportAsked: true });
+    source.exportTemplate();
+  },
+  promoteLessons: () => source.promoteLessons(),
+  setLessonPromotion: (on: boolean) => source.setLessonPromotion(on),
+  removeLesson: (id: string) => source.removeLesson(id),
+  proposeImprovements: () => source.proposeImprovements(),
+  addToSuite: (taskId: string) => source.addToSuite(taskId),
+  importTemplate: (text: string) => {
+    useOffice.setState({ templateImport: null });
+    source.importTemplate(text);
+  },
+  setSpendCaps: (caps: { dailyUsd: number; monthlyUsd: number }) => source.setSpendCaps(caps),
+  finishGithubApp: (code: string) => source.finishGithubApp(code),
+  setTeamMode: (mode: AgentMode) => source.setTeamMode(mode),
+  decideMemories: (itemId: string, decisions: Record<string, "certify" | "reject">) => source.decideMemories(itemId, decisions),
+  keepOutOfMemory: (name: string) => source.keepOutOfMemory(name),
   refreshMcp: () => source.refreshMcp(),
   addMcp: (input: NewMcpServer) => source.addMcp(input),
   authMcp: (name: string) => source.authMcp(name),

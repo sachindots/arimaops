@@ -1,13 +1,15 @@
 // One project's runtime inside the shared server: its hub, agents, planner, sandbox and GitHub sync.
 // main.ts starts one per registered project; http.ts routes browsers (by ?project=) and agents (by their own token) to it.
 
+import { LessonPromotion } from "./lessonPromotion";
+import { broadcastLibrary, libraryState } from "./templateIO";
 import { existsSync, lstatSync, mkdirSync, renameSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { ActionItems } from "./actionItems";
 import { Findings } from "./findings";
-import { makeCommands } from "./commands";
+import { broadcastMemory, makeCommands, projectMemoryState } from "./commands";
 import { GitHubSync } from "./githubSync";
 import { Hub } from "./hub";
 import { Inbox } from "./inbox";
@@ -15,9 +17,15 @@ import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { agentToken, sessionName } from "./paths";
 import { Planner } from "./planner";
-import { setLiveProject } from "./projectsRegistry";
+import { liveHubs, setLiveProject } from "./projectsRegistry";
 import { accountsState } from "./credentials/registry";
 import { accountHome, accountOf, markLimited, onAccountLimit, shareLimit } from "./accounts";
+import { OnDemand } from "./onDemand";
+import { githubAppState } from "./githubApp";
+import { decidePack, packsState, proposePack } from "./skillPacks";
+import { onUnpinnedPack } from "./skills";
+import { Overflow } from "./overflow";
+import { capsOf, SpendGuard, spendPaused } from "./spendCaps";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -29,7 +37,15 @@ import { LoopGuard, toolEvent } from "./loopguard";
 import { resolveUserSkillFolders } from "./skills";
 import { sumModels, UsageMeter } from "./usage";
 import { recordMeter } from "./usageEvents";
-import { SqliteMemory } from "./memory";
+import { extractionSettings, memoryStore, setMemoryScope } from "./memory";
+import { helperRunner, memoryWorker } from "./memoryJobs";
+import { gatherFacts, scoreTask } from "./scorers";
+import { inSuite } from "./suite";
+import { latestEvidence, prComment } from "./evidence";
+import { suiteId } from "../src/data/suite";
+import { EXTRACT_MODEL } from "./memoryExtract";
+import { estimateCost } from "./prices";
+import { MemoryReview } from "./memoryReview";
 import { hqDb } from "./lib/db";
 import { accounts } from "./credentials/registry";
 import type { Provider } from "../src/data/providers";
@@ -58,6 +74,8 @@ export interface Runtime {
   /** Project secret; each agent's token is derived from it (paths.agentTokenFor). */
   agentSecret: string;
   commands: Record<string, (...args: unknown[]) => unknown>;
+  /** Memories waiting for the user's check, and their pushes. */
+  memoryReview: MemoryReview;
   isNew: boolean;
   paused: boolean;
   recheckSetup(): Promise<void>;
@@ -70,9 +88,9 @@ export interface Runtime {
 
 /**
  * Moves a project's older folders to the ArimaOps names, once:
- * - <repo>/.hq or .jsmhq → <repo>/.arima, but only when git doesn't track it (a committed folder keeps
+ * - <repo>/.hq → <repo>/.arima, but only when git doesn't track it (a committed folder keeps
  *   working where it is; moving it would leave changes in your repo). `git mv .hq .arima` when convenient.
- * - ~/.jsmhq/<slug> → ~/.arima/<slug> (the whole ~/.arima is moved at start-up, see migrateHome).
+ * - ~/.hq/<slug> → ~/.arima/<slug> (the whole ~/.arima is moved at start-up, see migrateHome).
  * Skipped while that project's agents run in tmux (their folders are in use); the fallbacks in paths/store still find it.
  */
 export async function migrateLegacy(root: string, slug: string): Promise<void> {
@@ -135,6 +153,9 @@ export async function startProject(path: string, port: number, paused: boolean):
 
   const hub = new Hub(repo, slug, config, loadPlan(repo.root, config), setup);
   hub.snap.accounts = accountsState();
+  hub.snap.githubApp = githubAppState();
+  hub.snap.skillPacks = packsState();
+  hub.snap.templateLibrary = libraryState(hqDb());
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
@@ -169,12 +190,44 @@ export async function startProject(path: string, port: number, paused: boolean):
     return meter.readByModel(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), home, a.model || a.cli);
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
+  const onDemand = new OnDemand(hub, sessions, () => (spendPaused(slug) ? "the spend cap to lift (the project is paused)" : null));
+  const overflow = new Overflow(hub, planner, sessions);
+  const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
+    try {
+      return accounts().views().map((a) => a.id); // API-key and cloud accounts: the ones with a bill
+    } catch {
+      return []; // vault locked: nothing to count
+    }
+  }, {
+    stopWorkers: async () => {
+      for (const a of hub.snap.config.team) {
+        const s = hub.status(a.id)?.session.state;
+        if (!a.isLead && (s === "running" || s === "starting")) await sessions.stop(a.id);
+      }
+    },
+    tellLead: (text) => {
+      const lead = hub.snap.config.team.find((a) => a.isLead);
+      if (lead) planner.notify(lead.id, text);
+    },
+    alert: (id, title, details) => planner.actions?.addSpend(id, title, details),
+    changed: (spend) => {
+      hub.snap.spend = spend;
+      hub.emit({ type: "spend.updated", spend });
+    },
+  });
+  planner.onReady = (id) => onDemand.ready(id);
+  inbox.holds = (agentId, item) => {
+    if (!onDemand.onDemand(agentId) || item.kind !== "message" || item.fromId === "you") return false;
+    return !hub.cfg(item.fromId)?.isLead;
+  };
   inbox.isStale = (agentId, taskId) => {
     const t = planner.task(taskId);
     return !t || t.ownerId !== agentId || t.status === "done";
   };
   const refreshUsage = () => {
     planner.checkStalls(Date.now());
+    void onDemand.tick();
+    overflow.tick();
     for (const a of hub.snap.config.team) {
       const m = byModelOf(a.id);
       const u = m && sumModels(m);
@@ -188,6 +241,7 @@ export async function startProject(path: string, port: number, paused: boolean):
         log.warn(`couldn't record usage for ${a.id}: ${err instanceof Error ? err.message : err}`);
       }
     }
+    void spendGuard.check().catch((err) => log.warn(`spend check failed: ${err instanceof Error ? err.message : err}`));
   };
   const guard = new LoopGuard(
     async () => null, // no model judge: the repeated-failure rule decides
@@ -201,8 +255,88 @@ export async function startProject(path: string, port: number, paused: boolean):
   refreshUsage();
   const usageTimer = setInterval(refreshUsage, 30_000);
   planner.actions = new ActionItems(hub, planner);
+  planner.lessons = new LessonPromotion(hub, () => planner.actions);
+  planner.actions.onLessonDecided = (id, approve) => planner.lessons?.decide(id, approve);
+  planner.actions.onProposalDecided = (id, approve) => planner.lessons?.decideProposal(id, approve);
+  planner.actions.onMove = (m) => overflow.move(m);
+  const broadcastPacks = () => {
+    const skillPacks = packsState();
+    for (const h of liveHubs()) {
+      h.snap.skillPacks = skillPacks;
+      h.emit({ type: "skillPacks.updated", skillPacks });
+    }
+    broadcastLibrary(hqDb()); // an approved pack can make a template usable
+  };
+  // Skill packs nobody pinned: fetched, hashed and scanned in the background, then the owner decides.
+  const proposing = new Set<string>();
+  onUnpinnedPack(slug, (source) => {
+    if (proposing.has(source)) return;
+    proposing.add(source);
+    void proposePack(source)
+      .then((p) => {
+        if (p.status !== "pending") return;
+        planner.actions?.addSkillPack(source, { commit: p.commit, skills: Object.keys(p.skills).length, blocked: p.blocked, warnings: p.findings.filter((f) => f.level === "warn"), licence: p.licence });
+        broadcastPacks();
+      })
+      .catch((err) => hub.activity("config", null, `Couldn't check the skills in ${source}: ${err instanceof Error ? err.message : err}`))
+      .finally(() => proposing.delete(source));
+  });
+  planner.actions.onPackDecided = (source, approve) => {
+    try {
+      decidePack(source, approve);
+      hub.activity("config", null, approve ? `Skills from ${source} approved at their pinned commit: agents get them at their next start.` : `Skills from ${source} rejected: never installed.`);
+    } catch (err) {
+      hub.activity("config", null, `Couldn't record your answer on ${source}: ${err instanceof Error ? err.message : err}`);
+    }
+    broadcastPacks();
+  };
+  planner.onLeadApproval = (task, gateId, stageId, note) => {
+    const lead = hub.snap.config.team.find((a) => a.isLead);
+    if (lead) planner.actions?.addApproval(lead.id, task.id, task.title, gateId, stageId, note);
+  };
+  const memoryReview = new MemoryReview(hub, planner.actions, memoryStore());
+  void memoryReview.sync();
   planner.findings = new Findings(hub);
-  planner.memory = new SqliteMemory(hqDb());
+  planner.memory = memoryStore();
+  memoryStore().onChange ??= broadcastMemory;
+  planner.memoryJobs = memoryWorker();
+  for (const t of hub.snap.tasks) if (t.status === "done" && inSuite(hub.snap.config.project.id, t.id)) t.benchmark = suiteId(hub.snap.config.project.id, t.id);
+  for (const t of hub.snap.tasks) t.evidence = latestEvidence(hub.slug, t.id) ?? undefined; // one existsSync per task when there's none
+  // New evidence: a comment on the PR with what the verifier did and where to see it (docs/factory.md section 7).
+  planner.onEvidence = (task, ev) => {
+    if (!task.prNumber || !hub.repo.github) return;
+    const base = process.env.HQ_PUBLIC_URL?.replace(/\/+$/, "");
+    const link = base ? `${base}/?project=${encodeURIComponent(hub.slug)}` : null;
+    void run("gh", ["pr", "comment", String(task.prNumber), "--body", prComment(ev, task.id, hub.name(ev.by), link)], { cwd: hub.repo.root, timeoutMs: 30_000 }).then((r) => {
+      if (!r.ok) hub.activity("config", null, `Couldn't comment on PR #${task.prNumber} with the evidence: ${(r.stderr || r.stdout).trim().slice(0, 200)}`);
+    });
+  };
+  // Scorers on every finished task: rules always, model checks with memory extraction on (docs/factory.md section 4).
+  planner.onFinished = (task) => {
+    const template = hub.snap.config.template;
+    if (!template) return;
+    const projectId = hub.snap.config.project.id;
+    const settings = extractionSettings();
+    const pr = task.prNumber ? hub.snap.pullRequests.find((p) => p.number === task.prNumber) : undefined;
+    const facts = gatherFacts(hub.repo.root, task, pr, hub.snap.findings ?? [], hub.snap.config.workflow.mode === "deliverables");
+    const ask = settings.enabled
+      ? async (req: { system: string; prompt: string }) => {
+          const r = await helperRunner().run({ account: settings.account, model: EXTRACT_MODEL, system: req.system, prompt: req.prompt, maxTokens: 800, purpose: "helper", projectId, taskId: task.id });
+          return { text: r.text, costUsd: estimateCost(EXTRACT_MODEL, r.tokens) };
+        }
+      : null;
+    void scoreTask(task, { db: hqDb(), projectId, template, facts, ask })
+      .then(({ scores, modelError }) => {
+        task.scores = scores;
+        hub.emit({ type: "task.updated", task: { ...task } });
+        const failed = scores.filter((x) => !x.pass);
+        if (failed.length) hub.activity("task.scored", null, `${task.id} failed ${failed.length} check${failed.length === 1 ? "" : "s"}: ${failed.map((x) => x.scorer).join(", ")}`);
+        if (modelError) hub.activity("config", null, `Couldn't run the model checks on ${task.id}: ${modelError}`);
+      })
+      .catch((err) => log.warn(`couldn't score ${task.id}: ${err instanceof Error ? err.message : err}`));
+  };
+  setMemoryScope(hub.snap.config.project.id, () => hub.snap.config.project.scope);
+  hub.snap.memory = projectMemoryState(hub.snap.config.project.id);
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
   const stopListening = onAccountLimit((cli, until, from) => {
     const marked = markLimited(hub, cli, until, from);
@@ -217,6 +351,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   sessions.onLimit = (id, until) => {
     const agentCfg = hub.cfg(id);
     if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name, account: accountOf(agentCfg) });
+    if (overflow.offer(id, until)) return; // the owner decides: Move to the fallback, or Wait
     const lead = hub.snap.config.team.find((a) => a.isLead);
     const agent = hub.cfg(id);
     if (!lead || !agent || lead.id === id) return;
@@ -261,11 +396,13 @@ export async function startProject(path: string, port: number, paused: boolean):
       setLiveProject(repo.root, rt);
     },
     screens: (lines) => sessions.screens(lines),
+    memoryReview,
     shutdown() {
       rt.pause();
       inbox.stop();
       clearInterval(usageTimer);
       stopListening();
+      memoryReview.stop();
       sessions.shutdown();
     },
   };

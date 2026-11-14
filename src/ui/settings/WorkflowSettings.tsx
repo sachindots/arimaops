@@ -2,6 +2,106 @@ import type { DeployTool, ReviewTool, WorkflowMode } from "../../data/types";
 import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
+import { useState } from "react";
+import { appManifest, GITHUB_STATE_KEY, newAppUrl, securityReviewWorkflow, WEBHOOK_PATH } from "../../data/githubApp";
+import { BRAND } from "../../data/brand";
+import { useAuth } from "../../store/auth";
+
+
+/** Anthropic's security review on every PR (docs/templates.md section 3): a pinned workflow file the owner adds; HQ never commits it. */
+function SecurityReviewSection() {
+  const [copied, setCopied] = useState(false);
+  const yaml = securityReviewWorkflow();
+  return (
+    <section className="panel p-3">
+      <SectionTitle>Security review on every PR</SectionTitle>
+      <p className="mb-2 text-[13px] text-muted">
+        Anthropic&apos;s security review comments on each pull request. Add this file to the repo as <code>.github/workflows/security-review.yml</code> and a repository secret <code>CLAUDE_API_KEY</code>. The action is pinned to a commit, like the skill packs. Each run uses that API key.
+      </p>
+      <pre className="max-h-[220px] overflow-auto rounded-lg border border-white/10 bg-cream p-2 font-mono text-[12px]">{yaml}</pre>
+      <button
+        className="btn mt-2 min-h-[44px]"
+        onClick={() => {
+          void navigator.clipboard?.writeText(yaml).then(() => setCopied(true), () => setCopied(false));
+        }}
+      >
+        {copied ? "Copied" : "Copy the workflow"}
+      </button>
+    </section>
+  );
+}
+
+/**
+ * The GitHub App (docs/agent-engine.md section 6): webhooks bring PR news in seconds, polling stays the fallback.
+ * Created with GitHub's manifest flow; the webhook address is HQ's Tailscale Funnel URL.
+ */
+function GitHubAppSection() {
+  const gh = useOffice((s) => s.snap?.githubApp);
+  const { role } = useAuth();
+  // The webhook gets its own Funnel port (deploy/github-webhook.sh): never the port HQ's pages are on.
+  const funnel = location.protocol === "https:" && location.hostname.endsWith(".ts.net") ? `https://${location.hostname}:8443` : "";
+  const [hookBase, setHookBase] = useState(funnel);
+  const [org, setOrg] = useState("");
+  const base = hookBase.trim().replace(/\/+$/, "");
+  const validBase = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(base);
+  const create = () => {
+    const state = crypto.randomUUID().replace(/-/g, "");
+    try {
+      sessionStorage.setItem(GITHUB_STATE_KEY, state);
+    } catch {
+      /* private window: the callback can't be matched, so the code is refused */
+    }
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = newAppUrl(state, org.trim());
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "manifest";
+    input.value = JSON.stringify(appManifest(`${BRAND.name} HQ`, `${base}${WEBHOOK_PATH}`, `${location.origin}/api/github/app/callback`));
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  };
+  const owner = !role || role === "owner";
+  return (
+    <section className="panel p-3">
+      <SectionTitle>GitHub App</SectionTitle>
+      {gh?.app ? (
+        <>
+          <p className="text-[13px]">
+            <b>{gh.app.slug}</b>
+            {gh.app.owner ? ` (${gh.app.owner})` : ""}: webhooks bring PR news in seconds; HQ still polls every 5 minutes as a safety net, and at its normal pace when no webhook arrived for 10 minutes.
+          </p>
+          <p className="mt-1 text-[13px] text-muted">{gh.lastDeliveryAt ? `Last webhook: ${new Date(gh.lastDeliveryAt).toLocaleString()}` : "No webhook received yet. Install the App on the repo and turn on the Funnel (below)."}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a className="btn min-h-[44px] px-3 text-[13px]" href={gh.app.installUrl} target="_blank" rel="noreferrer">
+              Install on a repo
+            </a>
+            <a className="btn min-h-[44px] px-3 text-[13px]" href={gh.app.htmlUrl} target="_blank" rel="noreferrer">
+              App on GitHub
+            </a>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="mb-2 text-[13px] text-muted">
+            Without an App, HQ polls GitHub about once a minute. With one, GitHub tells HQ about PR changes in seconds. You create it on GitHub in one click; HQ keeps its key in the vault and reads only (pull requests, checks, contents).
+          </p>
+          <Field label="Webhook address (Tailscale Funnel)" hint={`Run deploy/github-webhook.sh on the server first: it makes only ${WEBHOOK_PATH} public, on port 8443. GitHub posts there.`}>
+            <input className="field font-term text-[12px]" value={hookBase} placeholder="https://hq.your-tailnet.ts.net" onChange={(e) => setHookBase(e.target.value)} />
+          </Field>
+          <Field label="Organization (optional)" hint="Leave empty to create the App on your own account.">
+            <input className="field" value={org} placeholder="your-org" onChange={(e) => setOrg(e.target.value)} />
+          </Field>
+          <button className="btn mt-1 min-h-[44px]" disabled={!validBase || !owner} onClick={create}>
+            Create GitHub App
+          </button>
+          {!owner && <p className="mt-1 text-[12px]">Only the owner creates the App.</p>}
+        </>
+      )}
+    </section>
+  );
+}
 
 const REVIEW_HINT: Record<ReviewTool, string> = {
   coderabbit: "Reads CodeRabbit's check and comments on each PR.",
@@ -19,15 +119,15 @@ export function WorkflowSettings() {
   const isDeliverables = mode === "deliverables";
 
   const stage = (name: string, on: boolean, detail: string) => (
-    <span className={`border-[3px] border-ink px-2 py-0.5 ${on ? "bg-white" : "bg-cream-2 text-muted line-through"}`}>
+    <span className={`rounded-lg border border-white/10 px-2 py-0.5 ${on ? "bg-white" : "bg-cream-2 text-muted line-through"}`}>
       <b>{name}</b> <span className="text-[12px]">{detail}</span>
     </span>
   );
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="border-[3px] border-ink bg-white p-3">
-        <SectionTitle>Mission Workflow Mode</SectionTitle>
+      <section className="panel p-3">
+        <SectionTitle>How tasks finish</SectionTitle>
         <p className="text-[14px] font-semibold">{isDeliverables ? "Deliverables (any task, no PRs)" : "GitHub pull requests"}</p>
         <p className="mt-1 text-[13px] text-muted">Set by the project's team template: its flow decides how a task is finished.</p>
         <p className="mt-2 text-[13px] text-muted">
@@ -64,7 +164,7 @@ export function WorkflowSettings() {
               {stage("Merge", true, wf.merge.by === "lead" ? "by the lead" : "by you")}
               <span>→</span>
               {live ? (
-                <span className="border-[3px] border-dashed border-ink bg-cream-2 px-2 py-0.5 text-muted">
+                <span className="rounded-xl border border-dashed border-white/15 bg-cream-2 px-2 py-0.5 text-muted">
                   <b>Deploy</b> <span className="text-[12px]">coming soon</span>
                 </span>
               ) : (
@@ -78,7 +178,7 @@ export function WorkflowSettings() {
 
       {!isDeliverables && (
         <>
-          <section className="border-[3px] border-ink bg-white p-3">
+          <section className="panel p-3">
             <div className="mb-3 flex items-center justify-between">
               <SectionTitle>Review</SectionTitle>
               <Toggle checked={wf.review.enabled} onChange={(v) => officeActions.updateWorkflow({ review: { enabled: v } })} label={wf.review.enabled ? "On" : "Off"} />
@@ -100,14 +200,17 @@ export function WorkflowSettings() {
               </Field>
               {wf.review.tool === "custom" && (
                 <Field label="Command" hint="Runs on the host against the PR branch.">
-                  <CommitInput className="field font-term text-[17px]" value={wf.review.command} placeholder="pnpm lint && pnpm test" onCommit={(v) => officeActions.updateWorkflow({ review: { command: v } })} />
+                  <CommitInput className="field font-term text-[13px]" value={wf.review.command} placeholder="pnpm lint && pnpm test" onCommit={(v) => officeActions.updateWorkflow({ review: { command: v } })} />
                 </Field>
               )}
             </div>
             <p className="mt-2 text-[12px] text-muted">When a review finishes with comments, HQ tells the PR's author to fix them.</p>
           </section>
 
-          <section className="border-[3px] border-ink bg-white p-3">
+          <GitHubAppSection />
+          <SecurityReviewSection />
+
+          <section className="panel p-3">
             <SectionTitle>Merge</SectionTitle>
             <div className="flex gap-2" role="radiogroup" aria-label="Who merges">
               {(["human", "lead"] as const).map((by) => (
@@ -121,18 +224,18 @@ export function WorkflowSettings() {
 
 
           {live ? (
-            <section className="border-[3px] border-dashed border-ink bg-cream-2 p-3">
+            <section className="rounded-xl border border-dashed border-white/15 bg-cream-2 p-3">
               <div className="mb-1 flex items-center justify-between">
                 <SectionTitle>Deploy</SectionTitle>
                 <span className="chip text-[12px]">Coming soon</span>
               </div>
               <p className="m-0 text-[13px] text-muted">
-                Preview deployments per PR (Vercel, InstaCloud) and one environment per agent, shown in the office's server room. Not available yet; agents can
+                Preview deployments per PR (Vercel, InstaCloud) and one environment per agent. Not available yet; agents can
                 still deploy with their own tools.
               </p>
             </section>
           ) : (
-            <section className="border-[3px] border-ink bg-white p-3">
+            <section className="panel p-3">
               <div className="mb-3 flex items-center justify-between">
                 <SectionTitle>Deploy</SectionTitle>
                 <Toggle checked={wf.deploy.enabled} onChange={(v) => officeActions.updateWorkflow({ deploy: { enabled: v } })} label={wf.deploy.enabled ? "On" : "Off"} />
@@ -154,7 +257,7 @@ export function WorkflowSettings() {
                 </Field>
                 {wf.deploy.tool === "custom" && (
                   <Field label="Command">
-                    <CommitInput className="field font-term text-[17px]" value={wf.deploy.command} placeholder="./scripts/deploy.sh" onCommit={(v) => officeActions.updateWorkflow({ deploy: { command: v } })} />
+                    <CommitInput className="field font-term text-[13px]" value={wf.deploy.command} placeholder="./scripts/deploy.sh" onCommit={(v) => officeActions.updateWorkflow({ deploy: { command: v } })} />
                   </Field>
                 )}
                 <div className="col-span-2">
@@ -170,7 +273,7 @@ export function WorkflowSettings() {
           )}
         </>
       )}
-          <section className="border-[3px] border-ink bg-white p-3">
+          <section className="panel p-3">
             <div className="mb-2 flex items-center justify-between">
               <SectionTitle>Token saving</SectionTitle>
               <Toggle

@@ -2,8 +2,9 @@
 // comments → tell the author; passed → tell the lead; merged → task done.
 
 import type { PullRequest } from "../src/data/types";
-import { branchAgent, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
+import { branchAgent, fetchPrs, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
 import { GhPolling, type GitHubEvent, type GitHubEvents, type GitHubWatch } from "./githubEvents";
+import { GitHubAppWebhooks, webhooksHealthy } from "./githubApp";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
 import type { Planner } from "./planner";
@@ -51,7 +52,7 @@ export class GitHubSync {
     private hub: Hub,
     private planner: Planner,
     private repo: string | null,
-    private events: GitHubEvents = new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok")),
+    private events: GitHubEvents = new GitHubAppWebhooks(new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok"), fetchPrs, webhooksHealthy)),
   ) {}
 
   start() {
@@ -115,7 +116,11 @@ export class GitHubSync {
       const task = taskId ? this.planner.task(taskId) : undefined;
       const fromBranch = branchAgent(gh.headRefName);
       const authorId = task?.ownerId ?? (fromBranch && team.has(fromBranch) ? fromBranch : "");
-      return toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+      const pr = toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+      // Merged PRs come without files and checks: keep what was seen while it was open (the tests-ci gate reads it).
+      // shortcut: a PR merged while HQ was down has no files seen; the owner waives tests-ci then. Fetch its files if that gets common.
+      const was = this.prev.get(pr.number);
+      return pr.testsChanged === undefined && was?.testsChanged !== undefined ? { ...pr, testsChanged: was.testsChanged, ciGreen: was.ciGreen, files: was.files } : pr;
     });
     // PRs we showed as open that are now neither open nor recently merged were closed. A full page of
     // open PRs may have left older ones out, so then only the recently-closed list proves it.
@@ -126,6 +131,7 @@ export class GitHubSync {
       if (!seen.has(old.number) && !old.merged && !old.closed) next.push(complete || recentlyClosed.has(old.number) ? { ...old, closed: true } : old);
 
     this.hub.snap.pullRequests = next;
+    for (const t of this.hub.snap.tasks) if (t.status === "in-review") this.planner.askVerifier(t); // files and head commit arrive with the PR
     for (const pr of next) {
       const old = this.prev.get(pr.number);
       if (JSON.stringify(old) !== JSON.stringify(pr)) this.hub.emit({ type: "pr.updated", pr: { ...pr } });

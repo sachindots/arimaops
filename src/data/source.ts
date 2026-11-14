@@ -1,3 +1,5 @@
+import type { TemplateFile } from "./templateFile";
+import type { TeamTemplate } from "./model";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -32,6 +34,14 @@ import type {
   WorkflowPatch,
   AccountInput,
   AccountsState,
+  MemoryInput,
+  MemoryState,
+  SpendState,
+  AgentMode,
+  GitHubAppState,
+  SkillPackView,
+  TemplateEntry,
+  LessonsState,
 } from "./types";
 
 export type OfficeEvent =
@@ -54,6 +64,17 @@ export type OfficeEvent =
   | { type: "access.updated"; request: AccessRequest }
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
+  | { type: "memory.updated"; memory: MemoryState }
+  | { type: "spend.updated"; spend: SpendState }
+  | { type: "githubApp.updated"; githubApp: GitHubAppState }
+  | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
+  | { type: "templates.updated"; templateLibrary: TemplateEntry[] }
+  | { type: "lessons.updated"; lessons: LessonsState }
+  /** Answer to exportTemplate: the file to download (only the device that asked saves it). */
+  | { type: "template.file"; file: TemplateFile }
+  | { type: "template.imported"; ok: boolean; message: string; id?: string }
+  /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
+  | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
   | { type: "finding.updated"; finding: Finding }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
@@ -115,6 +136,8 @@ export interface OfficeDataSource {
   updateAgent(id: string, patch: AgentPatch): void;
   /** Changes a role of the project's template: every seat of it, at its next start. */
   updateRole(roleId: string, patch: RolePatch): void;
+  /** Replaces this project's copy of its template (roles, flow, rules); the library is untouched. */
+  updateProjectTemplate(template: TeamTemplate): void;
   /** Stops the agent and removes it from the team; optionally deletes its sandbox and HQ-made folder. Ignored for the lead. */
   removeAgent(id: string, opts?: RemoveAgentOptions): void;
   /** Asks what removing would delete; answered with a `workspace.info` event. */
@@ -133,6 +156,31 @@ export interface OfficeDataSource {
   // Accounts (machine-wide): API keys and cloud credentials, stored encrypted on the server
   saveAccount(input: AccountInput): void;
   removeAccount(id: string): void;
+  saveMemory(input: MemoryInput): void;
+  restoreMemory(date: string): void;
+  setMemoryExtraction(input: { enabled: boolean; account: string }): void;
+  /** Owner only: lifts the scope requirement for CTFs and practice ranges. */
+  setLabMode(on: boolean): void;
+  /** The project's template as a file; answered with a `template.file` event. */
+  exportTemplate(): void;
+  /** Imports a template file's text into this HQ's library; answered with `template.imported`. */
+  importTemplate(text: string): void;
+  /** Offers this project's certified lessons to its template (Haiku rewrite, then the owner approves each). */
+  promoteLessons(): void;
+  /** Allows or stops lesson promotion for this project. */
+  setLessonPromotion(on: boolean): void;
+  /** Takes an approved lesson out of the template. */
+  removeLesson(id: string): void;
+  proposeImprovements(): void;
+  addToSuite(taskId: string): void;
+  /** Owner only: per-project caps in USD on API-key accounts. */
+  setSpendCaps(caps: { dailyUsd: number; monthlyUsd: number }): void;
+  /** Owner only: trades GitHub's manifest code for the App's credentials. */
+  finishGithubApp(code: string): void;
+  /** Every seat to one mode: stopped seats now, running ones at their next start. */
+  setTeamMode(mode: AgentMode): void;
+  decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
+  keepOutOfMemory(name: string): void;
 
   // MCP servers (Docker Sandboxes' registry)
   refreshMcp(): void;

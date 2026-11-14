@@ -5,7 +5,9 @@
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
-import { createReadStream, existsSync, rmSync, statSync } from "node:fs";
+import { ownerSeen } from "./presence";
+import { githubAppState, handleWebhook, WEBHOOK_PATH } from "./githubApp";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
@@ -28,7 +30,10 @@ import {
 import { run } from "./lib/exec";
 import { releasePortBlock } from "./ports";
 import { hqDb } from "./lib/db";
-import { forgetProjectTemplate } from "./templates";
+import { agentUsage } from "./usageEvents";
+import { forgetProject, recordsDir, saveRecord } from "./forget";
+import { memoryStore } from "./memory";
+import { backupsRoot } from "./memoryBackup";
 import { EXPORT_FORMATS, RENDER, type ExportFormat } from "./reports";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
@@ -39,6 +44,8 @@ import { BRAND } from "../src/data/brand";
 import { PushDevices, pushRegistrationBody } from "./push";
 import { z } from "zod";
 import { accountModels } from "./models";
+import { metricsReport } from "./metrics";
+import { CONTENT_TYPE, evidenceFile } from "./evidence";
 import { isAgentCli } from "../src/data/types";
 
 const passwordChange = z.object({ currentPassword: z.string().max(200), newPassword: z.string().min(10).max(200) });
@@ -117,8 +124,8 @@ interface Who {
   userName?: string;
 }
 
-/** Only the owner manages accounts (API keys) and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "setProxy"]);
+/** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
+const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps", "finishGithubApp", "importTemplate", "promoteLessons", "setLessonPromotion", "removeLesson", "proposeImprovements", "addToSuite"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
@@ -192,8 +199,41 @@ export function startHttp(o: Options) {
     res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? "; Secure" : ""}`);
   };
 
+  let deliveryEmitAt = 0;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+    // GitHub App webhooks: the one path Tailscale Funnel makes public. No cookie or origin, only GitHub's signature.
+    if (url.pathname === WEBHOOK_PATH) {
+      if (req.method !== "POST") return send(res, 405, "POST only");
+      let body: string;
+      try {
+        body = await readBody(req, 5 * 1024 * 1024);
+      } catch {
+        return send(res, 413, "too large");
+      }
+      const code = handleWebhook(req.headers, body);
+      if (code === 202 && Date.now() - deliveryEmitAt > 60_000) {
+        deliveryEmitAt = Date.now();
+        const state = githubAppState();
+        for (const rt of o.projects.values()) {
+          rt.hub.snap.githubApp = state;
+          rt.hub.emit({ type: "githubApp.updated", githubApp: state });
+        }
+      }
+      if (code === 401) log.warn(`github webhook: bad signature from ${clientIp(req)}`);
+      return send(res, code, code === 202 ? "ok" : code === 401 ? "bad signature" : code === 503 ? "no GitHub App here" : "");
+    }
+
+    // The manifest flow's way back: GitHub sends the owner's browser here with a one-time code. The cookie isn't sent
+    // on that cross-site hop, so this only hands the code to the page, where the owner's own session finishes it.
+    if (req.method === "GET" && url.pathname === "/api/github/app/callback") {
+      const code = url.searchParams.get("code") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(code) || !/^[A-Za-z0-9_-]{0,100}$/.test(state)) return send(res, 400, "bad code");
+      res.writeHead(302, { Location: `/?${new URLSearchParams({ github_code: code, github_state: state })}` });
+      return res.end();
+    }
 
     if (req.method === "POST" && url.pathname === "/api/login") {
       if (!okOrigin(req)) return send(res, 403, "bad origin");
@@ -411,12 +451,24 @@ export function startHttp(o: Options) {
           const slug = String(body.name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
           const path = body.path?.trim() || (create && slug ? join(homedir(), "projects", slug) : "");
           if (!path) return send(res, 400, JSON.stringify({ error: create ? "name or path required" : "path required" }), "application/json");
-          const project = registerProjectPath(path, create);
-          if (project) setRegistryArchived(project.path, null); // adding an archived folder again restores it
-          if (project && !o.projects.has(project.id)) { await o.loadProject(project.path); refreshPush(); }
-          return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
+          const added = registerProjectPath(path, create);
+          setRegistryArchived(added.path, null); // adding an archived folder again restores it
+          // A new folder has no config yet, so no overview until it's loaded (it opens on the welcome screen).
+          if (!added.project || !o.projects.has(added.project.id)) { await o.loadProject(added.path); refreshPush(); }
+          const projects = listProjectsOverview();
+          const project = projects.find((p) => p.path === added.path) ?? null;
+          return send(res, 200, JSON.stringify({ project, projects }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
+        // A deletion record, for the owner to hand to the client: /api/projects/deletion-records/<name>.html|.json
+        if (parts.length === 4 && parts[2] === "deletion-records" && req.method === "GET") {
+          if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can open deletion records" }), "application/json");
+          const m = /^([a-z0-9._-]+)\.(html|json)$/.exec(decodeURIComponent(parts[3]));
+          const file = m && join(recordsDir(), `${m[1]}.${m[2]}`);
+          if (!m || !file || !existsSync(file)) return send(res, 404, JSON.stringify({ error: "no such deletion record" }), "application/json");
+          if (m[2] === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+          return send(res, 200, readFileSync(file, "utf8"), m[2] === "html" ? "text/html; charset=utf-8" : "application/json");
+        }
         // Findings exports (Markdown, JSON, SARIF, printable HTML, HackerOne, Bugcrowd), secrets masked. Read-only.
         if (parts.length === 5 && parts[3] === "findings" && parts[4] === "export" && req.method === "GET") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));
@@ -430,6 +482,45 @@ export function startHttp(o: Options) {
           // Agent-written text on HQ's own origin: no scripts, no fetches, styles only.
           if (format === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
           return send(res, 200, redactor().redact(text), out.type);
+        }
+        // A task's history for its sheet: status and stage changes, and gate events, oldest first. Read-only.
+        if (parts.length === 6 && parts[3] === "tasks" && parts[5] === "history" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const pid = rt.hub.snap.config.project.id;
+          const taskId = decodeURIComponent(parts[4]);
+          const db = hqDb();
+          const events = (db.prepare("SELECT at, status, stage_id, owner_id FROM task_events WHERE project_id = ? AND task_id = ? ORDER BY at, rowid").all(pid, taskId) as { at: number; status: string; stage_id: string; owner_id: string | null }[]).map((e) => ({ at: e.at, status: e.status, stageId: e.stage_id, ownerId: e.owner_id }));
+          const gates = (db.prepare("SELECT at, gate_id, state, by_id, proof FROM gate_events WHERE project_id = ? AND task_id = ? ORDER BY id").all(pid, taskId) as { at: number; gate_id: string; state: string; by_id: string; proof: string }[]).map((g) => ({ at: g.at, gateId: g.gate_id, state: g.state, by: g.by_id, note: (JSON.parse(g.proof) as { note?: string }).note ?? null }));
+          return send(res, 200, redactor().redact(JSON.stringify({ events, gates })), "application/json");
+        }
+        // The verifier's evidence files (docs/factory.md section 7): /api/projects/<id>/evidence/<task>/<sha>/<file>. Read-only.
+        if (parts.length === 7 && parts[3] === "evidence" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const file = evidenceFile(rt.slug, decodeURIComponent(parts[4]), decodeURIComponent(parts[5]), decodeURIComponent(parts[6]));
+          if (!file) return send(res, 404, JSON.stringify({ error: "no such evidence" }), "application/json");
+          res.setHeader("X-Content-Type-Options", "nosniff");
+          res.setHeader("Cache-Control", "private, max-age=86400, immutable"); // a commit's evidence never changes
+          res.setHeader("Content-Security-Policy", "default-src 'none'");
+          res.writeHead(200, { "Content-Type": CONTENT_TYPE[file.split(".").pop()!] ?? "application/octet-stream" });
+          return void res.end(readFileSync(file));
+        }
+        // Factory metrics (docs/factory.md section 3): the last `days` against the ones before. Read-only.
+        if (parts.length === 4 && parts[3] === "metrics" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const days = Math.max(1, Math.min(90, Math.round(Number(url.searchParams.get("days")) || 7)));
+          const owner = rt.hub.snap.messages.filter((m) => m.fromId === "you").map((m) => Date.parse(m.at));
+          return send(res, 200, JSON.stringify(metricsReport(hqDb(), rt.hub.snap.config.project.id, days, owner)), "application/json");
+        }
+        // Per-agent tokens and cost over the last `days`, with a 24-slice series for sparklines. Read-only.
+        if (parts.length === 4 && parts[3] === "usage" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const days = Math.max(1, Math.min(90, Math.round(Number(url.searchParams.get("days")) || 1)));
+          const now = Date.now();
+          return send(res, 200, JSON.stringify({ days, agents: agentUsage(hqDb(), rt.hub.snap.config.project.id, now - days * 86_400_000, now) }), "application/json");
         }
         // The command center's tile previews: each running agent's last lines, secrets masked. Read-only.
         if (parts.length === 4 && parts[3] === "screens" && req.method === "GET") {
@@ -461,21 +552,25 @@ export function startHttp(o: Options) {
             return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
           }
           if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can delete a project" }), "application/json");
+          if (isRemote(req) && Date.now() > o.guard.deviceElevatedUntil(who.deviceId))
+            return send(res, 403, JSON.stringify({ error: "From a remote device, confirm with your authenticator code first (any risky action asks for it), then delete again." }), "application/json");
           const body = JSON.parse((await readBody(req)) || "{}") as { confirm?: string };
           if (body.confirm !== p.id) return send(res, 400, JSON.stringify({ error: `type the project id (${p.id}) to confirm` }), "application/json");
           // HQ's data for it: agent folders, secrets, logs under ~/.arima/<id>, and the repo's HQ folder when git doesn't track it.
           // The repo's own files and history are never touched.
-          if (/^[a-z0-9][a-z0-9._-]*$/.test(p.id)) for (const d of [BRAND.homeDir, ...BRAND.legacyHomeDirs]) rmSync(join(homedir(), d, p.id), { recursive: true, force: true });
+          const folders = /^[a-z0-9][a-z0-9._-]*$/.test(p.id) ? [BRAND.homeDir, ...BRAND.legacyHomeDirs].map((d) => join(homedir(), d, p.id)) : [];
           for (const d of [BRAND.repoDir, ...BRAND.legacyRepoDirs]) {
             const dir = join(p.path, d);
-            if (existsSync(dir) && !(await run("git", ["ls-files", "--error-unmatch", d], { cwd: p.path })).ok) rmSync(dir, { recursive: true, force: true });
+            if (existsSync(dir) && !(await run("git", ["ls-files", "--error-unmatch", d], { cwd: p.path })).ok) folders.push(dir);
           }
+          // Forget project (docs/memory-core.md section 9): graph, tables, backups, folders; then a record for the client.
+          const record = await forgetProject({ db: hqDb(), mem: memoryStore(), projectId: p.id, projectName: p.name, by: who.userName ?? "the owner", backupsRoot: backupsRoot(), folders });
+          const recordName = saveRecord(record);
           if (existsSync(p.path)) await run("git", ["worktree", "prune"], { cwd: p.path });
           for (const a of p.team) releasePortBlock(p.id, a.id);
-          forgetProjectTemplate(hqDb(), p.id);
           removeFromRegistry(p.path);
-          log.info(`deleted project ${p.id} (repo files kept at ${p.path})`);
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
+          log.info(`deleted project ${p.id} (repo files kept at ${p.path}); deletion record ${recordName}`);
+          return send(res, 200, JSON.stringify({ projects: listProjectsOverview(), record: recordName }), "application/json");
         }
         if (parts.length === 4 && (parts[3] === "pause" || parts[3] === "resume") && req.method === "POST") {
           const rt = o.projects.get(decodeURIComponent(parts[2]));
@@ -493,6 +588,7 @@ export function startHttp(o: Options) {
             description?: string;
             doneWhen?: string;
             ownerId?: string;
+            files?: unknown;
           };
           if (!body.title?.trim()) return send(res, 400, JSON.stringify({ error: "title required" }), "application/json");
           const task = createCrossProjectTask(
@@ -503,6 +599,7 @@ export function startHttp(o: Options) {
               description: body.description,
               doneWhen: body.doneWhen,
               ownerId: body.ownerId,
+              files: Array.isArray(body.files) ? body.files.filter((f): f is string => typeof f === "string").slice(0, 50).map((f) => f.slice(0, 300)) : undefined,
             },
           );
           return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");
@@ -553,6 +650,7 @@ export function startHttp(o: Options) {
     // ?watch=1: the one-building office following another project. Status only (no terminal output), commands ignored.
     const watch = url.searchParams.get("watch") === "1";
     log.info(`ui connected: ${rt.slug} ${who.role}${watch ? " watching" : ""}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    if (who.role === "owner" && !watch) ownerSeen(); // a page or the phone app opening
     wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who, origin, remote, watch));
   });
 
@@ -583,6 +681,7 @@ export function startHttp(o: Options) {
         const me = current();
         if (!me) return void (audit("blocked"), ws.close());
         const role = me.role;
+        if (role === "owner") ownerSeen();
 
         // Step-up: { cmd: "elevate", args: [code, pendingCmd?, pendingArgs?] }
         if (cmd === "elevate") {

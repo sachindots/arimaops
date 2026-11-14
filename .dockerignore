@@ -4,7 +4,6 @@ dist-server
 .git
 .arima
 .hq
-.jsmhq
 android
 pack
 *.tgz

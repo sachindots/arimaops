@@ -3,6 +3,7 @@
 // .mcp.json. The lead manages the plan; everyone can message everyone.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { spendPaused } from "./spendCaps";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -11,8 +12,9 @@ import { requestAccess } from "./access";
 import type { Planner } from "./planner";
 import { createCrossProjectTask, listProjectsOverview, updateCrossProjectTask } from "./projectsRegistry";
 import { AGENT_CLIS, type AgentCli } from "../src/data/types";
-import { ASSET_KINDS, EVIDENCE_KINDS, type LedgerEntry } from "../src/data/model";
+import { ASSET_KINDS, CORE_MEMORY_TYPES, EVIDENCE_KINDS, type LedgerEntry, type Memory } from "../src/data/model";
 import { LEAD_KINDS } from "./memory";
+import { isReadOnly } from "./legacy";
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -20,10 +22,10 @@ const ok = (value: unknown): Result => ({ content: [{ type: "text", text: typeof
 const fail = (msg: string): Result => ({ content: [{ type: "text", text: msg }], isError: true });
 
 /** Wraps a tool body: thrown errors become tool errors the agent can read. */
-function guard<A>(fn: (args: A) => Result) {
+function guard<A>(fn: (args: A) => Result | Promise<Result>) {
   return async (args: A): Promise<Result> => {
     try {
-      return fn(args);
+      return await fn(args);
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err));
     }
@@ -114,9 +116,12 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
         cli: z.enum(AGENT_CLIS).optional().describe("Runs on: only an agent with this CLI may take it (pick per task by strength and by who is under their usage limit)"),
         model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
+        specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
+        highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
+        stageId: z.string().optional().describe("Start it in this flow stage (its phase, e.g. recon or exploit), if the gates before it are met. Default: the first stage."),
       },
     },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string }) => {
+    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string }) => {
       leadOnly();
       return ok(planner.createTask(args, me));
     }),
@@ -139,31 +144,51 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
         deliverablePath: z.string().max(300).optional(),
         stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
+        specItems: z.array(z.string()).optional().describe("The spec items it covers (replaces the list)"),
+        highStakes: z.boolean().optional(),
       },
     },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string }) => {
+    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean }) => {
       leadOnly();
       return ok(planner.updateTask(taskId, patch, me));
     }),
   );
 
   server.registerTool(
+    "write_spec",
+    {
+      description:
+        "Lead only. Write or rewrite a board's spec in markdown. Number each requirement on its own line: `S1. …`, `S2. …`. Then give every item a task (create_task specItems): the analyze gate checks that. A new version resets the owner's spec approval for the board's open tasks.",
+      inputSchema: { boardId: z.string().optional().describe("Defaults to the first active board"), text: z.string().max(20_000) },
+    },
+    guard(({ boardId, text }: { boardId?: string; text: string }) => {
+      leadOnly();
+      const spec = planner.writeSpec(boardId, text, me);
+      const uncovered = spec.items.filter((i) => !hub.snap.tasks.some((t) => t.boardId === spec.boardId && t.specItems?.includes(i)));
+      return ok(`Spec v${spec.version} for ${spec.boardId}: ${spec.items.length} items (${spec.items.join(", ") || "none: number them S1., S2."}).${uncovered.length ? ` Not covered by a task yet: ${uncovered.join(", ")}.` : " Every item has a task."}`);
+    }),
+  );
+
+  server.registerTool(
     "assign_task",
     {
-      description: "Lead only. Give a task to an agent. HQ tells them to pull main and start it (right away if idle, otherwise when their current turn ends).",
-      inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name") },
+      description: "Lead only. Give a task to an agent, or to a role and HQ picks the seat (free first, skipping seats at their usage limit). The task's stage decides which roles may take it. HQ tells the agent to pull main and start it (right away if idle, otherwise when their current turn ends).",
+      inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name, or a role id (developer, reviewer...)") },
     },
     guard(({ taskId, agent }: { taskId: string; agent: string }) => {
       leadOnly();
       const t = planner.assign(taskId, agent, me);
-      return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
+      const waiting = planner.waitingOn(t);
+      const paused = spendPaused(hub.slug);
+      if (waiting.length) return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. It waits on ${waiting.join(", ")}; HQ tells them to start once that's done.`);
+      return ok(paused ? `Assigned ${t.id} to ${hub.name(t.ownerId)}. The project is paused at its ${paused === "day" ? "daily" : "monthly"} spend cap, so they start when it lifts.` : `Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
     }),
   );
 
   server.registerTool(
     "get_my_task",
     { description: "Your current task: title, description, the files you may edit, done-when, and what it needs. Marks it in progress." },
-    guard(() => {
+    guard(async () => {
       const t = planner.currentTask(me);
       if (!t) return ok("You have no task right now. Wait for the lead, or ask with send_message.");
       const blockedBy = planner.waitingOn(t);
@@ -172,9 +197,9 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       const rules = isDeliverables
         ? `Work only on this task. Write your output to the listed files (or deliverables/${t.id}.md). Submit in-review with verification results in note and your output path in deliverablePath. When review is enabled, a different reviewer must accept it.`
         : "Work only on this task, on its own branch. Edit only the listed files. Title the PR `[" + t.id + "] " + t.title + "`. When the PR is open, call set_my_status with in-review and the PR number.";
-      const start = "Start from `brief`: the task, the gates before it's done, the handoff notes it builds on, the lead's ledger and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
+      const start = "Start from `brief`: the task, the gates before it's done, the handoff notes it builds on, the lead's ledger, what the team remembers (don't repeat its dead ends) and repo facts (build/test commands, layout). Don't re-explore what it already tells you. Your set_my_status note becomes the next agent's handoff, so make it concrete. ";
       const stage = hub.snap.config.template?.flow.stages.find((s) => s.id === t.stageId);
-      return ok({ ...taskView(t.id), stage: stage?.name ?? null, waitingOn: blockedBy, brief: planner.brief(me, t).text, rules: start + rules });
+      return ok({ ...taskView(t.id), stage: stage?.name ?? null, waitingOn: blockedBy, brief: (await planner.brief(me, t)).text, rules: start + rules });
     }),
   );
 
@@ -182,7 +207,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     "record_gate",
     {
       description:
-        "Record evidence for a flow gate of a task: a review you did, a second opinion, the analyze check, tests and CI, a findings report. You can't pass gates of your own task's review, and only the owner approves or waives. get_my_task lists the gates a task still needs.",
+        "Record evidence for a flow gate of a task: a review you did, or a second opinion (it counts only from a provider other than the task owner's). HQ checks tests and CI, the analyze check and the findings report itself. You can't pass gates of your own task's review, and only the owner approves or waives (the lead may approve a spec for the owner after 2 h without a word from them). get_my_task lists the gates a task still needs.",
       inputSchema: {
         taskId: z.string(),
         gateId: z.string(),
@@ -194,6 +219,24 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     guard(({ taskId, gateId, state, note, url }: { taskId: string; gateId: string; state: "passed" | "failed" | "reset"; note?: string; url?: string }) => {
       planner.recordGate(taskId, gateId, state, me, { note, url });
       return ok(`Recorded: ${gateId} of ${taskId} ${state}.`);
+    }),
+  );
+
+  server.registerTool(
+    "attach_evidence",
+    {
+      description:
+        "Verifier: attach screenshots (or a short recording) of the running app for a task's PR, at the commit you checked out. HQ copies the files from your workspace (PNG, JPEG, WebP, WebM or MP4, at most 12, 15 MB each), keeps them on the HQ machine (never in the repo), shows them on the task and comments on the PR. The evidence gate passes when this commit is still the PR's head; a new push needs new evidence.",
+      inputSchema: {
+        taskId: z.string(),
+        sha: z.string().describe("The full commit you checked out and ran (git rev-parse HEAD)"),
+        steps: z.array(z.string().max(300)).max(20).describe("What you did and saw, one step per line: the page opened, what you clicked, what looked wrong"),
+        files: z.array(z.object({ path: z.string().max(300).describe("Path in your workspace"), label: z.string().max(80).describe("What it shows: 'Settings, tablet'") })).min(1).max(12),
+      },
+    },
+    guard(({ taskId, sha, steps, files }: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }) => {
+      const ev = planner.attachEvidence(me, { taskId, sha: sha.trim().toLowerCase(), steps, files });
+      return ok(`Attached ${ev.shots.length} file${ev.shots.length === 1 ? "" : "s"} to ${taskId} at ${ev.sha.slice(0, 7)}. The reviewer and the owner see them on the task; the PR gets a comment.`);
     }),
   );
 
@@ -298,7 +341,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "update_finding",
     {
-      description: "Lead only. Triage a finding: status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation.",
+      description: "Triage a finding (lead): status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation. Other agents may only set verified, on a finding someone else reported, after reproducing it.",
       inputSchema: {
         id: z.string(),
         status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
@@ -313,15 +356,21 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       },
     },
     guard(({ id, ...patch }: { id: string } & Record<string, unknown>) => {
-      leadOnly();
       if (!planner.findings) throw new Error("Findings aren't available.");
+      if (!isLead) {
+        // A second look from another seat (the report gate wants critical and high findings verified by a person or a
+        // model from another maker): any agent may set verified, and only that, on a finding someone else reported.
+        const fields = Object.keys(patch).filter((k) => patch[k] !== undefined);
+        if (fields.some((k) => k !== "verified") || !fields.length) throw new Error("Only the lead triages findings. You may set verified (and only that) on a finding someone else reported, after reproducing it.");
+        if (planner.findings.reporterOf(id) === me) throw new Error("You reported this finding: someone else has to verify it.");
+      }
       return ok(planner.findings.update(id, patch, me));
     }),
   );
 
   // ---------------------------------------------------------------- Lead: task ledger
   const memory = () => {
-    if (!planner.memory) throw new Error("The ledger isn't available.");
+    if (!planner.memory) throw new Error("Memory isn't available.");
     return planner.memory;
   };
   const projectId = hub.snap.config.project.id;
@@ -373,6 +422,79 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         task: memory().ledger(projectId, { ledger: "task", taskId }).map(view),
         progress: memory().ledger(projectId, { ledger: "progress", taskId }).slice(-20).map(view),
       });
+    }),
+  );
+
+  // ---------------------------------------------------------------- Everyone: the team's memory (docs/memory-core.md section 7)
+  const types = [...CORE_MEMORY_TYPES, ...(hub.snap.config.template?.memoryTypes ?? [])];
+  const memView = (m: Memory) => ({ id: m.id, type: m.type, text: m.text, about: m.about, task: m.taskId, certified: m.certified });
+  const writableMemory = () => {
+    if (isReadOnly(hub.snap.config)) throw new Error("This project was made before templates and is read-only.");
+    return memory();
+  };
+
+  server.registerTool(
+    "recall",
+    {
+      description:
+        "Search what the team remembers in this project: decisions, lessons and dead ends from earlier tasks (certified ones first). Use it before trying an approach that may have been tried.",
+      inputSchema: { query: z.string().max(500), types: z.array(z.string()).max(10).optional().describe(`Only these types: ${types.join(", ")}`) },
+    },
+    guard(async ({ query, types: only }: { query: string; types?: string[] }) => {
+      const found = await memory().recall(projectId, query, { types: only, limit: 10 });
+      return ok(found.length ? found.map(memView) : "Nothing remembered matches that.");
+    }),
+  );
+
+  server.registerTool(
+    "related",
+    {
+      description: "What the team remembers about one thing: a task (what it decided, learned or hit), a file or component, or another memory (by id). depth 2 also follows one more link.",
+      inputSchema: {
+        taskId: z.string().max(40).optional(),
+        path: z.string().max(300).optional().describe("A file path or component name"),
+        memoryId: z.string().max(40).optional(),
+        depth: z.union([z.literal(1), z.literal(2)]).optional(),
+      },
+    },
+    guard(async ({ taskId, path, memoryId, depth }: { taskId?: string; path?: string; memoryId?: string; depth?: 1 | 2 }) => {
+      if (!taskId && !path && !memoryId) throw new Error("Give a taskId, a path or a memoryId.");
+      const found = await memory().related(projectId, { taskId, path, memoryId }, { depth: depth ?? 1, limit: 10 });
+      return ok(found.length ? found.map(memView) : "Nothing remembered is linked to that.");
+    }),
+  );
+
+  server.registerTool(
+    "remember",
+    {
+      description: `Save something the team should know in later tasks: a Decision (and why), a Lesson, or a DeadEnd (what failed, and why)${
+        types.length > CORE_MEMORY_TYPES.length ? `, or this team's own types (${types.slice(CORE_MEMORY_TYPES.length).join(", ")})` : ""
+      }. One or two sentences that make sense alone. No names of people, emails, phones, passwords or keys: they are removed. The user certifies it later.`,
+      inputSchema: {
+        type: z.string().describe(types.join(", ")),
+        text: z.string().max(600),
+        about: z.array(z.string().max(300)).max(10).optional().describe("File paths or component names it concerns"),
+        taskId: z.string().max(40).optional().describe("Defaults to your current task"),
+      },
+    },
+    guard(({ type, text, about, taskId }: { type: string; text: string; about?: string[]; taskId?: string }) => {
+      const task = taskId ?? planner.currentTask(me)?.id ?? null;
+      if (task && !planner.task(task)) throw new Error(`No task ${task}.`);
+      const m = writableMemory().remember({ projectId, type, text, about, taskId: task, by: me });
+      return ok(`Remembered as ${m.id} (uncertified until the user checks it): ${m.text}`);
+    }),
+  );
+
+  server.registerTool(
+    "keep_out_of_memory",
+    {
+      description:
+        "Name a person or handle you came across (OSINT, sales, logs) so the team's memory never keeps it. It is also removed from what is already stored. Findings and reports keep their evidence; only memory forgets the name.",
+      inputSchema: { name: z.string().min(2).max(120) },
+    },
+    guard(({ name }: { name: string }) => {
+      writableMemory().keepOut(projectId, name, me);
+      return ok(`"${name}" will be kept out of memory.`);
     }),
   );
 

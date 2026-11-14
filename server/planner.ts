@@ -1,7 +1,9 @@
 // Boards, tasks, assignments and messages. Used by both the Team MCP tools
 // (agents) and the browser commands (you), so both follow the same rules.
 
-import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskStatus } from "../src/data/types";
+import { lessonsForBrief, templateIdOf } from "./lessons";
+import type { LessonPromotion } from "./lessonPromotion";
+import { CLI_LABEL, HUMAN_ID, isAgentCli, type AgentCli, type AgentMessage, type Board, type Task, type TaskEvidence, type TaskStatus } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { ActionItems } from "./actionItems";
 import type { Findings } from "./findings";
@@ -9,13 +11,16 @@ import { HISTORY, type Inbox } from "./inbox";
 import { CLEAR_COMMAND } from "./adapters";
 import { readFacts } from "./facts";
 import { taskUsage } from "./usageEvents";
-import { syncDeliverablesFromAgent, syncRepoToWorkspace } from "./workspace";
-import { assertTaskMove, gateContext, recordGate } from "./planStore";
-import { stagesLeft, unmetGates, type UnmetGate } from "./gates";
+import { syncDeliverablesFromAgent, syncRepoToWorkspace, workspaceFor } from "./workspace";
+import { saveEvidence } from "./evidence";
+import { approveSpec, vendorOf, assertTaskMove, gateContext, gateEvents, loadSpec, recordGate, saveSpec, type Spec } from "./planStore";
+import { ownerAway } from "./presence";
+import { isHighStakes, PERSON_GATES, stagesLeft, uiFilesOf, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, type Brief } from "./brief";
-import type { GateState } from "../src/data/model";
+import type { GateState, Memory } from "../src/data/model";
+import { log } from "./lib/log";
 
 export interface NewTask {
   boardId?: string;
@@ -26,9 +31,16 @@ export interface NewTask {
   needs?: string[];
   cli?: AgentCli | null;
   model?: string | null;
+  specItems?: string[];
+  highStakes?: boolean;
+  /** Start the task in this stage (its phase), if the gates before it are met; default the first stage. */
+  stageId?: string;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId" | "specItems" | "highStakes">>;
+
+/** "s4", " S12 " → "S4", "S12"; anything else is dropped. */
+const cleanItems = (items: string[] | undefined) => [...new Set((items ?? []).map((i) => i.trim().toUpperCase()).filter((i) => /^S\d+$/.test(i)))];
 
 const now = () => new Date().toISOString();
 
@@ -36,10 +48,14 @@ export class Planner {
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
   actions: ActionItems | null = null;
+  /** Lesson promotion for this project (set by the project). */
+  lessons: LessonPromotion | null = null;
   /** Set by project.ts: security findings (Team MCP report_finding). */
   findings: Findings | null = null;
   /** Set by main: ledgers and, from Phase 2, the team's memory. */
   memory: MemoryStore | null = null;
+  /** Set by main: extraction after a task, consolidation after a board (docs/memory-core.md section 5). */
+  memoryJobs: { taskFinished(): void; boardDone(projectId: string): void } | null = null;
 
 
   constructor(private hub: Hub, private inbox: Inbox) {}
@@ -73,6 +89,33 @@ export class Planner {
     return team.find((a) => a.id === r || a.name.toLowerCase() === r)?.id ?? null;
   }
 
+  /**
+   * Picks a seat of role `roleRef` for `task` (docs/agent-engine.md section 2): free and running first, then
+   * free and stopped (on demand, it starts), then the busy one with the fewest open tasks. Seats at their usage
+   * limit or on another CLI than the task asks for are skipped. Null when `roleRef` isn't a role; throws when
+   * the role has no seat that can take the task.
+   */
+  seatOf(roleRef: string, task: Task): string | null {
+    const roleId = roleRef.trim().toLowerCase();
+    const role = this.snap.config.template?.roles.find((r) => r.id === roleId);
+    if (!role) return null;
+    const now = Date.now();
+    const seats = this.snap.config.team.filter((a) => a.roleId === roleId);
+    const fit = seats.filter((a) => {
+      const limited = this.hub.status(a.id)?.limitedUntil;
+      return !(limited && Date.parse(limited) > now) && (!task.cli || a.cli === task.cli);
+    });
+    if (!fit.length)
+      throw new Error(seats.length ? `Every ${role.title} seat is at its usage limit${task.cli ? ` or not on ${CLI_LABEL[task.cli]}` : ""}. Pick another role, or wait.` : `No seat has the ${role.title} role. Add one in the team panel.`);
+    const open = (id: string) => this.snap.tasks.filter((t) => t.ownerId === id && t.status !== "done" && t.id !== task.id).length;
+    const rank = (id: string) => {
+      const n = open(id);
+      if (n) return 2 + n;
+      return this.hub.status(id)?.session.state === "running" ? 0 : 1;
+    };
+    return fit.map((a) => ({ id: a.id, r: rank(a.id) })).sort((x, y) => x.r - y.r)[0].id;
+  }
+
   defaultBoard(): Board {
     const active = this.snap.boards.filter((b) => b.status === "active").sort((a, b) => a.order - b.order);
     if (active[0]) return active[0];
@@ -89,14 +132,37 @@ export class Planner {
 
   /** Throws with every unmet gate when the task can't move to `toStageId` (null: finish it). */
   private assertMove(task: Task, toStageId: string | null, byId: string) {
-    assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? []);
+    try {
+      assertTaskMove(this.snap.config, task, toStageId, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root });
+    } catch (e) {
+      // Held by the owner's approval (outbound send, containment, merge): ask the owner in Action items, once per gate.
+      // Only once nothing else is missing: drafts the editor hasn't accepted don't reach the owner.
+      const open = /Waiting for the owner's approval/.test((e as Error).message) ? this.openGates(task, byId) : [];
+      const asks = open.flatMap((u) => (u.gate.kind === "owner-approval" && u.gate.reason !== "spec" ? [u.gate] : []));
+      if (open.length && asks.length === open.length) for (const g of asks) this.actions?.addGate(task, g.id, g.reason, byId);
+      throw e;
+    }
+  }
+
+  /** The owner answered an approval gate from Action items: the gate is recorded, and the lead and the task's owner told. */
+  ownerGate(taskId: string, gateId: string, approved: boolean, note?: string) {
+    const task = this.task(taskId);
+    if (!task) return;
+    this.recordGate(taskId, gateId, approved ? "passed" : "failed", "you", { note });
+    const n = note ? ` Their note: ${note}` : "";
+    const text = approved
+      ? `The owner approved ${gateId} on ${task.id} (${task.title}).${n} Finish the task (set_my_status done, or the lead updates it).`
+      : `The owner sent ${task.id} (${task.title}) back at ${gateId}.${n || " Ask them what to change."}`;
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, text);
+    if (task.ownerId && task.ownerId !== lead?.id) this.notify(task.ownerId, text);
   }
 
   /** What still stands between `byId` finishing this task: the unmet gates of its stage and the ones after it. */
   openGates(task: Task, byId: string): UnmetGate[] {
     const t = this.snap.config.template;
     if (!t) return [];
-    return unmetGates(stagesLeft(t.flow, task.stageId, null), gateContext(this.snap.config, task, byId, this.snap.pullRequests ?? []));
+    return unmetGates(stagesLeft(t.flow, task.stageId, null), gateContext(this.snap.config, task, byId, this.snap.pullRequests ?? [], { tasks: this.snap.tasks, repoRoot: this.hub.repo.root }));
   }
 
   /** Records gate evidence from an agent (its id) or a person ("you"). */
@@ -105,8 +171,187 @@ export class Planner {
     const task = this.task(taskId);
     if (!task) throw new Error(`No task ${taskId}`);
     const by = byId === "you" ? ({ kind: "user", id: byId } as const) : ({ kind: "agent", id: byId } as const);
-    recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state, by, proof });
-    this.hub.activity(state === "passed" ? "review.passed" : state === "failed" ? "review.changes" : "config", byId === "you" ? null : byId, `${this.hub.name(byId)} marked gate ${gateId} of ${task.id} ${state}${proof.note ? `: ${proof.note.slice(0, 120)}` : ""}`);
+    const leadId = this.snap.config.team.find((a) => a.isLead)?.id ?? null;
+    const gate = recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state, by, proof }, { leadId, ownerAway: ownerAway() });
+    const onBehalf = PERSON_GATES.has(gate.kind) && byId === leadId && state === "passed";
+    this.hub.activity(state === "passed" ? "review.passed" : state === "failed" ? "review.changes" : "config", byId === "you" ? null : byId, `${this.hub.name(byId)} marked gate ${gateId} of ${task.id} ${state}${onBehalf ? " for the owner (away)" : ""}${proof.note ? `: ${proof.note.slice(0, 120)}` : ""}`);
+    if (onBehalf) {
+      const stageId = template.flow.stages.find((s) => s.gates.some((g) => g.id === gate.id))!.id;
+      this.onLeadApproval(task, gate.id, stageId, proof.note ?? "");
+    }
+  }
+
+  /** The lead passed a person gate for the away owner (set by the project: files a Keep / Undo action item). */
+  onLeadApproval: (task: Task, gateId: string, stageId: string, note: string) => void = () => {};
+
+  /**
+   * The owner undid a lead approval: a reset row (the history stays), the task back in the gate's stage if it had
+   * moved past it, and the lead and the task's owner told.
+   */
+  undoLeadApproval(taskId: string, gateId: string, stageId: string, note?: string) {
+    const template = this.writable();
+    const task = this.task(taskId);
+    if (!task) return;
+    recordGate(hqDb(), template, task, { projectId: this.snap.config.project.id, gateId, state: "reset", by: { kind: "user", id: HUMAN_ID }, proof: { note: "Undone by the owner" } });
+    const at = (id?: string) => template.flow.stages.findIndex((s) => s.id === id);
+    if (at(task.stageId) > at(stageId)) {
+      task.stageId = stageId;
+      if (task.status === "done" || task.status === "in-review") task.status = "in-progress";
+      this.hub.emit({ type: "task.updated", task: { ...task } });
+      this.hub.planChanged();
+    }
+    const n = note ? ` Their note: ${note}` : "";
+    const text = `The owner undid your approval of ${gateId} on ${task.id} (${task.title}). It waits for the owner again${at(task.stageId) === at(stageId) ? `, and ${task.id} is back in its ${template.flow.stages[at(stageId)].name} stage` : ""}.${n}`;
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, text);
+    if (task.ownerId && task.ownerId !== lead?.id) this.notify(task.ownerId, `The owner undid the lead's approval of ${gateId} on ${task.id}: wait for the owner before going on.${n}`);
+    this.hub.activity("config", null, `You undid the lead's approval of ${gateId} on ${task.id}`);
+  }
+
+  /**
+   * The lead writes (or rewrites) a board's spec. Items are its lines that start with S1., S2.… A new version
+   * resets the spec approvals of the board's tasks: the owner approves what the spec says now.
+   */
+  writeSpec(boardId: string | undefined, text: string, byId: string): Spec {
+    const template = this.writable();
+    const board = boardId ? this.snap.boards.find((b) => b.id === boardId) : this.defaultBoard();
+    if (!board) throw new Error(`No board ${boardId}. Boards: ${this.snap.boards.map((b) => b.id).join(", ")}`);
+    const clean = text.trim().slice(0, 20_000);
+    if (!clean) throw new Error("The spec is empty.");
+    const projectId = this.snap.config.project.id;
+    const spec = saveSpec(hqDb(), projectId, board.id, clean, byId);
+    const specGates = template.flow.stages.flatMap((st) => st.gates).filter((g) => g.kind === "spec-approved" || (g.kind === "owner-approval" && g.reason === "spec"));
+    if (spec.version > 1)
+      for (const t of this.snap.tasks.filter((x) => x.boardId === board.id && x.status !== "done"))
+        for (const g of specGates)
+          if (gateEvents(hqDb(), projectId, t.id).some((e) => e.gateId === g.id))
+            recordGate(hqDb(), template, t, { projectId, gateId: g.id, state: "reset", by: { kind: "hq", id: "hq" }, proof: { note: `Spec v${spec.version} replaces the approved one` } });
+    this.hub.activity("config", byId === HUMAN_ID ? null : byId, `${this.hub.name(byId)} wrote the spec for ${board.title} (v${spec.version}, ${spec.items.length} items)`);
+    if (template.flow.stages.some((st) => st.gates.some((g) => g.kind === "spec-approved"))) this.actions?.addSpec(board.id, board.title, spec.version, spec.text, byId);
+    return spec;
+  }
+
+  /**
+   * The owner approves a board's spec (this version): every task on the board passes its spec gate until the spec
+   * changes. Refused when a newer version was written meanwhile.
+   */
+  approveBoardSpec(boardId: string, version: number, byId: string, note?: string) {
+    this.writable();
+    const projectId = this.snap.config.project.id;
+    const current = loadSpec(hqDb(), projectId, boardId);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!current || current.version !== version || !approveSpec(hqDb(), projectId, boardId, version, byId)) {
+      this.hub.activity("config", null, `Spec v${version} for ${boardId} wasn't approved: it was replaced by v${current?.version ?? "?"}. Check the newer one.`);
+      return false;
+    }
+    this.hub.activity("config", null, `You approved the spec for ${boardId} (v${version})`);
+    if (lead) this.notify(lead.id, `The owner approved the spec for ${boardId} (v${version}).${note ? ` Their note: ${note}` : ""} Its tasks can leave the Spec stage; plan them so every item has a task (the analyze gate).`);
+    return true;
+  }
+
+  private secondAsked = new Set<string>(); // task ids: asked once per task
+  private verifierAsked = new Set<string>(); // "task@sha": asked once per commit
+
+  /**
+   * A task in review whose PR changes UI files at a commit with no evidence yet: the verifier seat checks it out, runs
+   * the app and takes screenshots (docs/factory.md section 7). Called on in-review and whenever GitHub reports PRs.
+   */
+  askVerifier(task: Task) {
+    const gate = this.snap.config.template?.flow.stages.flatMap((st) => st.gates).find((g): g is Extract<typeof g, { kind: "evidence" }> => g.kind === "evidence");
+    if (!gate || task.status !== "in-review") return;
+    const pr = this.snap.pullRequests.find((p) => p.number === task.prNumber && p.taskId === task.id);
+    if (!pr?.files || !pr.headSha || pr.merged) return;
+    const ui = uiFilesOf(gate, pr.files);
+    const key = `${task.id}@${pr.headSha}`;
+    if (!ui.length || task.evidence?.sha === pr.headSha || this.verifierAsked.has(key)) return;
+    this.verifierAsked.add(key);
+    const seat = this.snap.config.team.find((a) => a.roleId === "verifier" && a.id !== task.ownerId);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!seat) {
+      if (lead) this.notify(lead.id, `${task.id} (PR #${pr.number}) changes UI files and needs screenshots of the running app, and the team has no verifier seat. Add one (Settings → Team, role Verifier), or ask the owner to waive the evidence gate.`);
+      return;
+    }
+    const files = `${ui.slice(0, 6).join(", ")}${ui.length > 6 ? ` and ${ui.length - 6} more` : ""}`;
+    const msg = this.record("hq", seat.id, `Verify ${task.id} (PR #${pr.number}) at ${pr.headSha.slice(0, 7)}`);
+    this.inbox.push(seat.id, {
+      fromId: "hq", kind: "notice", msgId: msg.id,
+      text: [
+        `Verify ${task.id} (PR #${pr.number}, branch ${pr.branch ?? "?"}): ${task.title}. It changes ${files}.`,
+        `1. In your workspace: git fetch origin && git checkout --detach ${pr.headSha}. Install and start the app with the repo's dev command (repo facts, README or package.json) on your port ($PORT).`,
+        `2. Open the pages these files render and take screenshots at desktop (1280x800) and tablet (820x1180) width with Playwright, for example: npx playwright screenshot --viewport-size=1280,800 http://localhost:$PORT/ evidence/home-desktop.png. A short recording is fine for an interaction.`,
+        `3. Call attach_evidence with taskId ${task.id}, sha ${pr.headSha}, the steps you took (what you opened and clicked, what looked wrong), and the files with a label each.`,
+        "Don't change the code or push. If the app won't start, say why in the steps and attach what you have; the reviewer decides.",
+      ].join("\n"),
+    });
+    this.onReady(seat.id);
+    this.hub.activity("review.started", seat.id, `HQ asked ${seat.name} to verify ${task.id} at ${pr.headSha.slice(0, 7)} (screenshots of the running app)`);
+  }
+
+  /** The PR comment and anything else the project does with new evidence (set in project.ts). */
+  onEvidence: (task: Task, ev: TaskEvidence) => void = () => {};
+
+  /** The verifier's screenshots for a task's PR, copied from its workspace into HQ (never into the repo). */
+  attachEvidence(agentId: string, input: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }): TaskEvidence {
+    const task = this.task(input.taskId);
+    if (!task) throw new Error(`No task ${input.taskId}.`);
+    if (task.ownerId === agentId) throw new Error("You can't take the evidence for your own task.");
+    const agent = this.hub.cfg(agentId);
+    if (!agent) throw new Error("Only a seat of this team can attach evidence.");
+    const ev = saveEvidence(this.hub.slug, workspaceFor(agent, this.hub.slug), { ...input, prNumber: task.prNumber, by: agentId });
+    task.evidence = ev;
+    this.hub.emit({ type: "task.updated", task: { ...task } });
+    this.hub.activity("review.passed", agentId, `${this.hub.name(agentId)} attached ${ev.shots.length} screenshot${ev.shots.length === 1 ? "" : "s"} of ${task.id} at ${ev.sha.slice(0, 7)}`);
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead && lead.id !== agentId) this.notify(lead.id, `${this.hub.name(agentId)} attached evidence for ${task.id} at ${ev.sha.slice(0, 7)}: ${ev.steps.slice(0, 3).join(" ")}`);
+    this.onEvidence(task, ev);
+    return ev;
+  }
+
+  /**
+   * A task went into review and its flow wants a second opinion on it (always, or because it is high-stakes): ask a
+   * seat whose model comes from another maker than the owner's, the second-opinion role first. On demand, it starts.
+   */
+  askSecondOpinion(task: Task) {
+    const flow = this.snap.config.template?.flow;
+    const gate = flow?.stages.flatMap((st) => st.gates).find((g): g is Extract<typeof g, { kind: "second-opinion" }> => g.kind === "second-opinion");
+    if (!gate || (gate.when === "high-stakes" && !isHighStakes(task)) || this.secondAsked.has(task.id)) return;
+    const owner = task.ownerId ? this.hub.cfg(task.ownerId) : null;
+    const mine = owner ? vendorOf(owner.cli, owner.model) : null;
+    const seats = this.snap.config.team.filter((a) => !a.isLead && a.id !== task.ownerId && vendorOf(a.cli, a.model) !== mine);
+    const seat = seats.find((a) => a.roleId === "second-opinion") ?? seats[0];
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!seat) {
+      if (lead) this.notify(lead.id, `${task.id} needs a second opinion from a model by another maker than ${owner?.name ?? "its owner"}'s, and no seat runs one. Add a seat on another CLI (a Gemini seat), or ask the owner to waive the gate.`);
+      return;
+    }
+    this.secondAsked.add(task.id);
+    const pr = task.prNumber ? ` (PR #${task.prNumber})` : "";
+    const msg = this.record("hq", seat.id, `Second opinion on ${task.id}${pr}`);
+    this.inbox.push(seat.id, {
+      fromId: "hq", kind: "notice", msgId: msg.id,
+      text: `Give a second opinion on ${task.id}${pr}: ${task.title}. It ${task.highStakes ? "is marked high-stakes" : "touches sensitive files"}${owner ? `; ${owner.name} wrote it` : ""}. Read the diff and the task (get_project_status or list_tasks), check what its author's model would miss, then record_gate ${task.id} second passed or failed, with what you found.`,
+    });
+    this.onReady(seat.id);
+    this.hub.activity("review.started", seat.id, `HQ asked ${seat.name} for a second opinion on ${task.id}`);
+  }
+
+  /** The owner sent a spec back. */
+  specSentBack(boardId: string, version: number, note?: string) {
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (lead) this.notify(lead.id, `The owner sent back the spec for ${boardId} (v${version}).${note ? ` Their note: ${note}` : " Ask them what to change."} Rewrite it with write_spec.`);
+  }
+
+  /** The spec text a task's brief shows: the items it covers, else the whole spec (the brief trims it to fit). */
+  specFor(task: Task): string {
+    const spec = loadSpec(hqDb(), this.snap.config.project.id, task.boardId);
+    if (!spec) return "";
+    const mine = new Set(task.specItems ?? []);
+    if (!mine.size) return spec.text;
+    const lines = spec.text.split("\n").filter((l) => {
+      const m = l.match(/^\s*(?:[-*]\s*)?(S\d+)[.:)]/);
+      return m && mine.has(m[1].toUpperCase());
+    });
+    return `${lines.join("\n")}\n(Spec v${spec.version}; the whole spec covers ${spec.items.join(", ")}.)`;
   }
 
   createBoard(title: string, status: Board["status"] = "planned"): Board {
@@ -127,7 +372,9 @@ export class Planner {
     const board = this.snap.boards.find((b) => b.id === id);
     if (!board) throw new Error(`No board ${id}`);
     if (patch.title?.trim()) board.title = patch.title.trim().slice(0, 80);
+    const finishing = patch.status === "done" && board.status !== "done";
     if (patch.status) board.status = patch.status;
+    if (finishing) this.memoryJobs?.boardDone(this.snap.config.project.id);
     this.hub.emit({ type: "board.updated", board: { ...board } });
     this.hub.planChanged();
     return board;
@@ -146,7 +393,13 @@ export class Planner {
       id, boardId: board.id, stageId: template.flow.stages[0].id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
+      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes, templateId: template.id, templateVersion: template.version,
     };
+    if (input.stageId && input.stageId !== task.stageId) {
+      if (!template.flow.stages.some((st) => st.id === input.stageId)) throw new Error(`No stage "${input.stageId}". Stages: ${template.flow.stages.map((st) => st.id).join(", ")}.`);
+      this.assertMove(task, input.stageId, byId);
+      task.stageId = input.stageId;
+    }
     this.snap.tasks.push(task);
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.activity("task.created", byId === "you" ? null : byId, `${this.hub.name(byId)} added ${task.id} ${task.title}`);
@@ -160,6 +413,7 @@ export class Planner {
     if (!task) throw new Error(`No task ${id}`);
     const wasDone = task.status === "done";
     const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as TaskPatch;
+    if (changes.specItems) changes.specItems = cleanItems(changes.specItems);
     const next = { ...task, ...changes, stageId: task.stageId };
     const at = (id?: string) => flow.stages.findIndex((s) => s.id === id);
     if (changes.stageId !== undefined && at(changes.stageId) < 0) throw new Error(`No stage "${changes.stageId}". Stages: ${flow.stages.map((s) => s.id).join(", ")}.`);
@@ -176,6 +430,11 @@ export class Planner {
       this.startUnblocked(task);
     }
     if (task.status === "done" || task.status === "in-review") void this.syncTaskDeliverables(task);
+    if (task.status === "in-review" && task.prNumber && (changes.status === "in-review" || changes.prNumber)) this.startUnblocked(task); // tasks that can stack on its PR
+    if (changes.status === "in-review") {
+      this.askSecondOpinion(task);
+      this.askVerifier(task);
+    }
     this.hub.emit({ type: "task.updated", task: { ...task } });
     this.hub.planChanged();
     return task;
@@ -183,12 +442,31 @@ export class Planner {
 
   /** Gives a task to an agent and tells them to start. */
   assign(taskId: string, agentRef: string, byId: string): Task {
-    this.writable();
+    const template = this.writable();
     const task = this.task(taskId);
-    const agentId = this.agentId(agentRef);
     if (!task) throw new Error(`No task ${taskId}`);
-    if (!agentId) throw new Error(`No agent "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
+    const agentId = this.agentId(agentRef) ?? this.seatOf(agentRef, task);
+    if (!agentId) throw new Error(`No agent or role "${agentRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}. Roles: ${template.roles.map((r) => r.id).join(", ")}`);
     const agent = this.hub.cfg(agentId)!;
+    const stages = template.flow.stages;
+    const at = stages.findIndex((s) => s.id === task.stageId);
+    const stage = stages[at];
+    if (stage && agent.roleId && !stage.roleIds.includes(agent.roleId)) {
+      // Out of the lead's own stages (Spec, Plan) a task moves on to the first stage this role works in, if the gates
+      // it leaves are met. A task in a worker's stage never jumps ahead just because someone else is assigned.
+      const leadRoles = new Set(template.roles.filter((r) => r.isLead).map((r) => r.id));
+      const leadOnly = (st: (typeof stages)[number]) => st.roleIds.every((r) => leadRoles.has(r));
+      const ahead = stages.slice(at + 1);
+      const to = ahead.findIndex((s) => s.roleIds.includes(agent.roleId!));
+      const next = leadOnly(stage) && to >= 0 && ahead.slice(0, to).every(leadOnly) ? ahead[to] : undefined;
+      if (!next) throw new Error(`${task.id} is in the ${stage.name} stage, where only ${stage.roleIds.join(" or ")} seats work. ${agent.name} is a ${agent.roleId}. Assign one of those, or first move the task to a stage ${agent.name}'s role works in.`);
+      try {
+        this.assertMove(task, next.id, byId);
+      } catch (e) {
+        throw new Error(`${task.id} has to reach the ${next.name} stage before ${agent.name} can take it: ${(e as Error).message}`);
+      }
+      task.stageId = next.id;
+    }
     if (task.cli && agent.cli !== task.cli) {
       const fits = this.snap.config.team.filter((a) => a.cli === task.cli && !a.isLead).map((a) => a.name);
       throw new Error(`${task.id} runs on ${CLI_LABEL[task.cli]}, but ${agent.name} runs ${CLI_LABEL[agent.cli]}. ${fits.length ? `Agents on ${CLI_LABEL[task.cli]}: ${fits.join(", ")}.` : `No agent runs ${CLI_LABEL[task.cli]}; add one or clear the task's "runs on".`}`);
@@ -229,11 +507,17 @@ export class Planner {
     }
     const text = isDeliverables
       ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id} and call the hq get_my_task tool for the details.`
-      : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
+      : this.stackBase(task)
+        ? `${by} assigned you ${task.id} (${task.title}). Start ${task.id}.${this.stackNote(task)} Call the hq get_my_task tool for the details.`
+        : `${by} assigned you ${task.id} (${task.title}). Pull main, start ${task.id}. Call the hq get_my_task tool for the details.`;
     const msg = this.record(byId, agentId, `Start ${task.id}: ${task.title}`);
     this.inbox.push(agentId, { fromId: byId, kind: "assign", text, msgId: msg.id, taskId: task.id });
+    this.onReady(agentId);
     return task;
   }
+
+  /** An agent has a task it can start now (set by the project: starts an on-demand seat that is stopped). */
+  onReady: (agentId: string) => void = () => {};
 
   setStatus(agentId: string, status: Extract<TaskStatus, "in-progress" | "blocked" | "in-review" | "done">, note?: string, prNumber?: number, deliverablePath?: string): Task {
     const flow = this.writable().flow;
@@ -257,6 +541,11 @@ export class Planner {
     if (status === "done") {
       this.afterDone(task);
       this.startUnblocked(task);
+    }
+    if (status === "in-review" && task.prNumber) this.startUnblocked(task); // tasks that can stack on its PR
+    if (status === "in-review") {
+      this.askSecondOpinion(task);
+      this.askVerifier(task);
     }
     const name = this.hub.name(agentId);
     const words = { "in-progress": "started", blocked: "is blocked on", "in-review": "sent for review", done: "finished" }[status];
@@ -284,7 +573,13 @@ export class Planner {
   private lean = () => this.snap.config.workflow.lean?.clearBetweenTasks !== false;
 
   /** Lean mode, once a task is done: its owner starts the next one in a fresh conversation, and the repo facts learn from it. */
+  /** A task just finished: its scorers run (server/scorers.ts, wired in project.ts). Never blocks finishing. */
+  onFinished: (task: Task) => void = () => {};
+
   private afterDone(done: Task) {
+    this.summarise(done);
+    // Deliverables are copied in first, so the scorers read what the agent delivered.
+    void this.syncTaskDeliverables(done).catch(() => {}).then(() => this.onFinished(done));
     if (!this.lean()) return;
     const id = done.ownerId;
     const agent = id ? this.hub.cfg(id) : undefined;
@@ -296,8 +591,63 @@ export class Planner {
     this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
   }
 
+  /**
+   * The brief's memory section: what the tasks it builds on produced, what is known about its files, and what
+   * matches its words. Certified first. Neo4j down never blocks a brief: the section says so instead.
+   */
+  private async memoryFor(task: Task): Promise<string> {
+    const memory = this.memory;
+    if (!memory) return "";
+    const p = this.snap.config.project.id;
+    try {
+      const lists = await Promise.all([
+        ...task.needs.slice(-8).map((id) => memory.related(p, { taskId: id }, { depth: 1, limit: 6 })),
+        ...(task.files ?? []).slice(0, 10).map((f) => memory.related(p, { path: f }, { depth: 1, limit: 6 })),
+        memory.recall(p, `${task.title} ${task.description ?? ""}`, { limit: 6 }),
+      ]);
+      const seen = new Map<string, Memory>();
+      for (const m of lists.flat()) if (!seen.has(m.id)) seen.set(m.id, m);
+      // Certified first; then dead ends (the brief says not to repeat them), decisions, and the rest.
+      const rank = (m: Memory) => (m.type === "DeadEnd" ? 0 : m.type === "Decision" ? 1 : 2);
+      const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified) || rank(a) - rank(b)).slice(0, 12);
+      return picked
+        .map((m) => `- ${m.type}${m.certified ? " (certified)" : ""}${m.taskId ? `, from ${m.taskId}` : ""}: ${m.text}${m.about.length ? ` [${m.about.join(", ")}]` : ""} (${m.id})`)
+        .join("\n");
+    } catch (err) {
+      return `Memory is offline right now (${err instanceof Error ? err.message : err}). Ask the lead if you need what the team learned before.`;
+    }
+  }
+
+  /** What a finished task leaves behind for the team's memory (docs/memory-core.md section 4). */
+  private summarise(task: Task) {
+    if (!this.memory) return;
+    const projectId = this.snap.config.project.id;
+    try {
+      this.memory.summarise({
+        projectId,
+        taskId: task.id,
+        title: task.title,
+        description: task.description?.trim() || null,
+        doneWhen: task.doneWhen?.trim() || null,
+        stageId: task.stageId ?? null,
+        ownerId: task.ownerId,
+        needs: task.needs,
+        files: task.files ?? [],
+        prNumber: task.prNumber,
+        deliverablePath: task.deliverablePath ?? null,
+        note: task.note ?? null,
+        ledger: this.memory.ledger(projectId, { ledger: "task", taskId: task.id }).map((e) => ({ kind: e.kind, text: e.text })),
+        usage: task.usage ?? null,
+        finishedAt: new Date().toISOString(),
+      });
+      this.memoryJobs?.taskFinished();
+    } catch (err) {
+      log.warn(`couldn't keep the summary of ${task.id}: ${err instanceof Error ? err.message : err}`); // never a reason to refuse finishing
+    }
+  }
+
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */
-  brief(agentId: string, task: Task): Brief {
+  async brief(agentId: string, task: Task): Promise<Brief> {
     // Least relevant first: the brief drops from the front when it is over budget.
     const mine = this.snap.tasks.filter((t) => t.ownerId === agentId && t.status === "done" && t.note && t.id !== task.id).at(-1);
     const deps = task.needs.map((n) => this.task(n)).filter((d): d is Task => !!d?.note).slice(-8);
@@ -309,10 +659,10 @@ export class Planner {
     const ledger = (this.memory?.ledger(this.snap.config.project.id, { ledger: "task" }) ?? []).filter((e) => e.taskId === task.id || e.taskId === null);
     return buildBrief({
       task,
-      spec: "",
+      spec: this.specFor(task),
       handoffs,
       ledger,
-      memory: "",
+      memory: [await this.memoryFor(task), lessonsForBrief(hqDb(), templateIdOf(hqDb(), this.snap.config.project.id))].filter(Boolean).join("\n\n"),
       facts: readFacts(this.hub.repo.root),
       skills: this.hub.cfg(agentId)?.skills ?? [],
       gates: this.openGates(task, agentId).map((g) => ({ id: g.gate.id, kind: g.gate.kind, needs: g.why })),
@@ -344,9 +694,12 @@ export class Planner {
       if (a.isLead || !st || !task || task.status !== "in-progress" || st.session.state !== "running") continue;
       if (st.limitedUntil && Date.parse(st.limitedUntil) > now) continue; // the usage-limit notice covers this
       const key = `${a.id}:${task.id}`;
-      if (this.stallNudged.has(key)) continue;
       // "Working" but no hook for a long time: frozen, or one command hanging. Typing into it would interrupt, so tell the lead.
       const quietMs = now - Math.max(this.lastActivityAt(a.id), Date.parse(st.stateSince));
+      if (this.stallNudged.has(key)) {
+        if (st.state === "working" && quietMs < silentMs) this.stallNudged.delete(key); // moving again: a later stall counts anew
+        continue;
+      }
       if (st.state === "working" && quietMs >= silentMs) {
         this.stallNudged.add(key);
         const mins = Math.round(quietMs / 60_000);
@@ -365,30 +718,82 @@ export class Planner {
     }
   }
 
-  /** HQ's progress ledger: each stall it saw, so the lead (and Phase 3's replanning) can count them. */
+  /**
+   * HQ's progress ledger: each stall it saw. The second stall on a task asks the lead to replan it; from the third
+   * the owner is pushed (docs/agent-engine.md section 4).
+   */
   private progress(taskId: string, text: string) {
+    const projectId = this.snap.config.project.id;
     try {
-      this.memory?.addLedger({ projectId: this.snap.config.project.id, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
+      this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
+      const stalls = this.memory?.ledger(projectId, { taskId, ledger: "progress" }).filter((e) => e.kind === "stall" && !e.supersededBy).length ?? 0;
+      const lead = this.snap.config.team.find((a) => a.isLead);
+      const task = this.task(taskId);
+      if (stalls === 2 && lead) {
+        this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "replan", text: `Stalled twice; asked ${lead.name} to replan`, by: "hq" });
+        this.notify(lead.id, `${taskId}${task ? ` (${task.title})` : ""} has stalled twice (latest: ${text}). Replan it: split it, reassign it, or drop it, and record the new plan with ledger_add kind plan.`);
+      } else if (stalls >= 3) {
+        this.hub.activity("agent.needs-input", lead?.id ?? null, `${taskId} has stalled ${stalls} times, after the lead's replan. It needs you.`);
+      }
     } catch {
       /* the ledger is a record, never a reason to stop a stall check */
     }
   }
 
-  /** Ids of the tasks `task` still waits on. */
+  /**
+   * Ids of the tasks `task` still waits on. A task that waits on exactly one task whose PR is open doesn't wait: it is
+   * stacked on that PR's branch (docs/agent-engine.md section 6).
+   */
   waitingOn(task: Task): string[] {
-    return task.needs.filter((n) => this.task(n)?.status !== "done");
+    const open = task.needs.filter((n) => this.task(n)?.status !== "done");
+    return open.length === 1 && this.stackBase(task) ? [] : open;
   }
 
-  /** `done` finished: tells each owner whose queued task no longer waits on anything to start it. */
-  private startUnblocked(done: Task) {
+  /** The open PR `task` can stack on: its one unfinished dependency, in review with an open PR on GitHub. Pull-request flows only. */
+  stackBase(task: Task): { taskId: string; prNumber: number; branch: string } | null {
+    if (this.snap.config.workflow.mode !== "github-pr") return null;
+    const open = task.needs.map((n) => this.task(n)).filter((d): d is Task => !!d && d.status !== "done");
+    const dep = open.length === 1 ? open[0] : null;
+    if (!dep || dep.status !== "in-review" || !dep.prNumber) return null;
+    const pr = (this.snap.pullRequests ?? []).find((p) => p.number === dep.prNumber && p.taskId === dep.id);
+    return pr && !pr.merged && !pr.closed && pr.branch ? { taskId: dep.id, prNumber: pr.number, branch: pr.branch } : null;
+  }
+
+  /** What an agent starting `task` on top of an unmerged PR has to do differently. */
+  private stackNote(task: Task): string {
+    const base = this.stackBase(task);
+    return base
+      ? ` It builds on ${base.taskId}, whose PR #${base.prNumber} isn't merged yet: branch from origin/${base.branch} (not main) and open your PR with --base ${base.branch}. HQ tells you when to rebase onto main.`
+      : "";
+  }
+
+  /**
+   * `dep` finished, or opened its PR: tells each owner whose queued task no longer waits on anything to start it.
+   * Once `dep` is merged, the tasks stacked on its branch are told to move onto main.
+   */
+  private startUnblocked(dep: Task) {
     for (const t of this.snap.tasks) {
-      if (!t.ownerId || t.status !== "todo" || !t.needs.includes(done.id) || this.waitingOn(t).length) continue;
+      if (!t.ownerId || !t.needs.includes(dep.id)) continue;
+      if (dep.status === "done" && (t.status === "in-progress" || t.status === "in-review")) {
+        // Started before `dep` was done, so it was stacked on dep's branch.
+        const branch = (this.snap.pullRequests ?? []).find((p) => p.taskId === dep.id && p.number === dep.prNumber)?.branch;
+        if (!branch) continue;
+        const msg = this.record("hq", t.ownerId, `Rebase ${t.id} onto main (${dep.id} is merged)`);
+        this.inbox.push(t.ownerId, {
+          fromId: "hq", kind: "message", taskId: t.id, msgId: msg.id,
+          text: `${dep.id} (PR #${dep.prNumber}) is merged. Move ${t.id} onto main: git fetch origin && git rebase --onto origin/main origin/${branch}, push with --force-with-lease${t.prNumber ? `, then gh pr edit ${t.prNumber} --base main` : ", and open your PR against main"}.`,
+        });
+        continue;
+      }
+      if (t.status !== "todo" || this.waitingOn(t).length) continue;
       const busy = this.currentTask(t.ownerId);
       const later = busy && busy.id !== t.id && busy.status === "in-progress" ? busy.id : null;
       if (!later) this.hub.setStatus(t.ownerId, { currentTaskId: t.id }); // else get_my_task moves on once `later` is done
-      const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${done.id} is done)`);
+      const why = dep.status === "done" ? `${dep.id} is done` : `${dep.id}'s PR is open`;
+      const msg = this.record("hq", t.ownerId, `Start ${t.id}: ${t.title} (${why})`);
       const when = later ? `once you finish ${later}` : "now";
-      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${done.id} is done, so start ${t.id} (${t.title}) ${when}. Call the hq get_my_task tool for the details.`, msgId: msg.id });
+      this.inbox.push(t.ownerId, { fromId: "hq", kind: "assign", taskId: t.id, text: `${why}, so start ${t.id} (${t.title}) ${when}.${this.stackNote(t)} Call the hq get_my_task tool for the details.`, msgId: msg.id });
+      this.onReady(t.ownerId);
     }
   }
 

@@ -10,10 +10,11 @@ export type DrawerState =
   | { kind: "terminal" }
   | { kind: "cto" }
   | { kind: "findings" }
+  | { kind: "flow" }
   | null;
 
-export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages";
-export type SettingsTab = "team" | "users" | "accounts" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages" | "usage";
+export type SettingsTab = "team" | "users" | "accounts" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
 
 /** Something in the office the camera can fly to. */
 export type FocusTarget =
@@ -80,7 +81,7 @@ function savedLayout(): LayoutChoice {
     return "auto";
   }
 }
-const isCompact = (choice: LayoutChoice) => choice === "compact" || window.matchMedia(choice === "auto" ? NARROW : TOO_NARROW).matches;
+const isCompact = (_choice: LayoutChoice) => true; // one layout on every screen: pages, no office scene
 
 const WIDTH_PREF = "drawerWidth";
 export const DRAWER_MIN = 420;
@@ -143,6 +144,9 @@ export const ui = {
   },
   openCto() {
     useUi.setState({ drawer: { kind: "cto" } });
+  },
+  openFlow() {
+    useUi.setState({ drawer: { kind: "flow" } });
   },
   openPrs() {
     useUi.setState({ drawer: { kind: "prs" } });

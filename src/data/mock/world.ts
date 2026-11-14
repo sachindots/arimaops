@@ -3,6 +3,7 @@
 
 import type { OfficeEvent, SimSpeed } from "../source";
 import type {
+  ActionItem,
   ActivityType,
   SbxState,
   SessionInfo,
@@ -11,6 +12,7 @@ import type {
   AgentStatus,
   Board,
   Environment,
+  HqConfig,
   OfficeSnapshot,
   PullRequest,
   Task,
@@ -86,6 +88,13 @@ export function mockSession(project: string, agentId: string): SessionInfo {
   return { state: "running", detail: null, workspace: `~/.arima/${slug(project)}/${agentId}`, sandbox: { cpus: 8, memoryGb: 8 } };
 }
 
+/** Demo tasks sit in a stage of the demo flow by their status, so the flow canvas has live counts. */
+function demoStage(config: HqConfig, status: Task["status"]): string | undefined {
+  const ids = config.template?.flow.stages.map((x) => x.id) ?? [];
+  const want = { todo: ids[1] ?? ids[0], "in-progress": "build", blocked: "build", "in-review": "review", done: ids.at(-1) }[status];
+  return want && ids.includes(want) ? want : ids[0];
+}
+
 export class World {
   snap: OfficeSnapshot;
   preset: Preset;
@@ -107,6 +116,7 @@ export class World {
   static initialSnapshot(preset: Preset): OfficeSnapshot {
     const config = structuredClone(preset.config);
     const tasks = structuredClone(preset.tasks);
+    for (const t of tasks) t.stageId ??= demoStage(config, t.status);
     const workers = config.team.filter((a) => !a.isLead);
     const pullRequests: PullRequest[] = tasks
       .filter((t) => t.prNumber !== null)
@@ -130,6 +140,7 @@ export class World {
         session: mockSession(config.project.name, a.id),
       })),
       boards: structuredClone(preset.boards),
+      findings: structuredClone(preset.findings ?? []),
       tasks,
       pullRequests,
       environments: [],
@@ -139,7 +150,7 @@ export class World {
       actionItems: preset.config.team
         .filter((a) => !a.isLead)
         .slice(0, 2)
-        .map((a, n) => ({
+        .map((a, n): ActionItem => ({
           id: `ai-demo-${n}`,
           fromId: a.id,
           taskId: null,
@@ -153,7 +164,129 @@ export class World {
           note: null,
           at: now(),
           closedAt: null,
-        })),
+        }))
+        .concat([
+          {
+            id: "ai-demo-spec",
+            fromId: preset.config.team.find((a) => a.isLead)?.id ?? "hq",
+            taskId: null,
+            title: "Approve the spec for Backlog (v2)?",
+            details: "# Checkout\nS1. Card payments through Stripe Checkout.\nS2. An order email after payment.\nS3. Refunds from the admin page.\n\nApprove: every task on this board passes its spec gate until the spec changes. Send back: the lead rewrites it (add a note).",
+            waiting: true,
+            kind: "spec" as const,
+            spec: { boardId: "B1", version: 2 },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
+            id: "ai-demo-gate",
+            fromId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq",
+            taskId: "B1-T03",
+            title: "Approve sending B1-T03: Launch email for the spring release?",
+            details: "Deliverable: deliverables/drafts/launch-email.md\n\nNote: 3 subject lines, one body; the editor checked it against the brief.\n\nApprove: the drafts are ready and you'll send them yourself (agents can't send). Send back: the writer hears your note.",
+            waiting: true,
+            kind: "gate" as const,
+            gate: { taskId: "B1-T03", gateId: "send-ok", reason: "outbound" },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
+            id: "ai-demo-skills",
+            fromId: "hq",
+            taskId: null,
+            title: "Skills from clerk/skills wait for your check",
+            details: "clerk/skills at commit 3f9c2a7d1e04: 8 skills, licence MIT.\nNothing blocked by the scanner.\n\nWorth a read before you approve:\n- skills/clerk-setup/SKILL.md:41: pipes a download into an interpreter\n\nApprove: agents get these skills at this commit only; a new commit needs a new approval. Reject: they're never installed.",
+            waiting: false,
+            kind: "skills" as const,
+            pack: "clerk/skills",
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
+            id: "ai-demo-overflow",
+            fromId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq",
+            taskId: tasks[1]?.id ?? null,
+            title: `${preset.config.team.find((a) => !a.isLead)?.name ?? "A worker"} hit the Claude Code limit until 15:00 on ${tasks[1]?.id ?? "T-2"}. Continue it on Codex (gpt-6.1-sol) now?`,
+            details: `${tasks[1]?.title ?? "Rate limit the login"}\n\nMove: HQ stops it and starts it on Codex for this task only, with a handoff. Its role stays Claude Code.\nWait: nothing changes; it goes on at 15:00.`,
+            waiting: true,
+            kind: "overflow" as const,
+            overflow: { agentId: preset.config.team.find((a) => !a.isLead)?.id ?? "hq", taskId: tasks[1]?.id ?? "T-2", cli: "codex" as const, model: "gpt-6.1-sol" },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
+            id: "ai-demo-approval",
+            fromId: preset.config.team.find((a) => a.isLead)?.id ?? "hq",
+            taskId: tasks[0]?.id ?? null,
+            title: `${preset.config.team.find((a) => a.isLead)?.name ?? "The lead"} approved spec-ok on ${tasks[0]?.id ?? "T-1"} while you were away`,
+            details: `${tasks[0]?.title ?? "Sign-in flow"}\n\nThe lead's note: the spec covers every item in the brief; rate limits are S4.\n\nKeep it, or Undo: the gate waits for you again and the task goes back to that stage.`,
+            waiting: false,
+            kind: "approval" as const,
+            approval: { gateId: "spec-ok", stageId: "spec" },
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+          {
+            id: "ai-demo-memory",
+            fromId: "hq",
+            taskId: tasks.find((t) => t.status === "done")?.id ?? null,
+            title: "3 memories to check",
+            details: "",
+            waiting: false,
+            kind: "memory" as const,
+            memories: [
+              { id: "M-41", type: "DeadEnd", text: "Polling Clerk's session endpoint for sign-out missed revoked sessions; the webhook is the only reliable signal.", about: ["app/api/webhooks/clerk/route.ts"], conflict: null },
+              { id: "M-42", type: "Decision", text: "Rate limits live in middleware.ts, before auth, so anonymous floods never reach the database.", about: ["middleware.ts"], conflict: { id: "M-17", text: "Rate limits run per route handler so each route sets its own budget." } },
+              { id: "M-43", type: "Lesson", text: "Supabase row-level security must be enabled before seeding, or the seed script writes rows nobody can read back.", about: ["supabase/seed.sql"], conflict: null },
+            ],
+            status: "open" as const,
+            note: null,
+            at: now(),
+            closedAt: null,
+          },
+        ]),
+      lessons: {
+        templateId: preset.config.template?.id ?? "dev",
+        enabled: true,
+        approved: [
+          { id: "L-demo1", templateId: preset.config.template?.id ?? "dev", type: "Lesson", text: "Enable row-level security before seeding a Postgres database, or the seed writes rows nobody can read back.", status: "approved" as const, createdAt: now() },
+          { id: "L-demo2", templateId: preset.config.template?.id ?? "dev", type: "Decision", text: "Rate limits run in middleware before auth, so anonymous floods never reach the database.", status: "approved" as const, createdAt: now() },
+        ],
+        pending: 0,
+        running: false,
+        improvements: { running: false, pending: 0, last: null },
+        last: null,
+      },
+      skillPacks: [
+        { source: "trailofbits/skills", commit: "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff", licence: "CC-BY-SA-4.0", credit: "Trail of Bits", use: "any" as const, skills: 98, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "cloudflare/security-audit-skill", commit: "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8", licence: "MIT", credit: "Cloudflare", use: "any" as const, skills: 1, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "elementalsouls/Claude-BugHunter", commit: "4a2d93e887fa4dfdc91da78bd614418b5837b535", licence: "MIT", credit: "elementalsouls", use: "scoped-offensive" as const, skills: 83, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "anthropics/claude-code-security-review", commit: "0c6a49f1fa56a1d472575da86a94dbc1edb78eda", licence: "MIT", credit: "Anthropic", use: "github-action" as const, skills: 0, status: "vetted" as const, blocked: [], warnings: 0 },
+        { source: "clerk/skills", commit: "3f9c2a7d1e0400000000000000000000000000aa", licence: "MIT", credit: null, use: "any" as const, skills: 8, status: "pending" as const, blocked: [], warnings: 1 },
+      ],
+      spend: { day: { usd: 4.12, cap: 5 }, month: { usd: 31.4, cap: 50 }, paused: null, unpriced: 3 },
+      memory: {
+        source: "env" as const,
+        url: "bolt://127.0.0.1:7687",
+        user: "neo4j",
+        passwordSet: true,
+        browserUrl: null,
+        status: "online" as const,
+        queued: 0,
+        extraction: { enabled: true, account: "default" },
+        keepOut: ["Ravi Kumar"],
+        backups: [0, 1, 2].map((d) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10)),
+      },
       mcp: {
         servers: [
           { name: "supabase-dev", transport: "remote http", status: "ready", nextStep: null },
@@ -267,7 +400,9 @@ export class World {
 
   patchTask(id: string, patch: Partial<Task>) {
     const t = this.task(id);
-    if (t) this.putTask({ ...t, ...patch });
+    if (!t) return;
+    const stageId = patch.status && !patch.stageId ? demoStage(this.snap.config, patch.status) : undefined;
+    this.putTask({ ...t, ...patch, ...(stageId ? { stageId } : {}) });
   }
 
   putPr(pr: PullRequest) {

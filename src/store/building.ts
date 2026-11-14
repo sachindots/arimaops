@@ -67,13 +67,13 @@ export function followBuilding(): () => void {
       set(id, null);
     }
     for (const p of want) {
-      set(p.id, { name: p.officeName || p.name });
+      set(p.id, { name: p.name });
       if (sockets.has(p.id)) continue;
       const src = createWsSource(token(), p.id, { watch: true });
       sockets.set(
         p.id,
         src.connect((e) => {
-          if (e.type === "terminal.output" || e.type === "workspace.info" || e.type === "remote.stepup") return;
+          if (e.type === "terminal.output" || e.type === "workspace.info" || e.type === "remote.stepup" || e.type === "template.file" || e.type === "template.imported") return;
           useBuilding.setState((s) => {
             const o = s.others[p.id];
             if (!o) return {};

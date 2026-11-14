@@ -1,5 +1,5 @@
 // Per-device preferences in localStorage, under "arimaops.<name>". Values saved
-// under the older prefixes ("dothq.", "jsmhq.") are still read, so a rename
+// under the older prefixes ("dothq.") are still read, so a rename
 // doesn't reset anyone's layout or font. Never throws (private windows).
 
 import { BRAND } from "../data/brand";

@@ -1,10 +1,15 @@
 // Browser commands → server actions. Names match OfficeDataSource methods.
 
+import { broadcastLibrary, exportTemplate, importTemplate } from "./templateIO";
+import { ownerPacks, packsState } from "./skillPacks";
 import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
-import type { AccountInput } from "../src/data/types";
+import type { AccountInput, MemoryInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
+import { memoryState, memoryStore, saveExtractionSettings, saveMemorySettings } from "./memory";
+import { listBackups, restoreProject } from "./memoryBackup";
+import { memoryWorker } from "./memoryJobs";
 
 /** Sends the accounts list (no secrets) to every loaded project. */
 function broadcastAccounts() {
@@ -14,13 +19,34 @@ function broadcastAccounts() {
     h.emit({ type: "accounts.updated", accounts: state });
   }
 }
+
+/** Where memory is, whether it answers, and the project's backups. */
+export function projectMemoryState(projectId: string, state = memoryState()): MemoryState {
+  let backups: string[] = [];
+  try {
+    backups = listBackups(projectId);
+  } catch {
+    /* an id that can't name a folder has no backups */
+  }
+  return { ...state, backups, keepOut: memoryStore().keptOut(projectId) };
+}
+
+/** Sends the memory state to every loaded project. */
+export function broadcastMemory() {
+  const state = memoryState();
+  for (const h of liveHubs()) {
+    h.snap.memory = projectMemoryState(h.snap.config.project.id, state);
+    h.emit({ type: "memory.updated", memory: h.snap.memory });
+  }
+}
 import { releasePortBlock } from "./ports";
 import { cleanAccount } from "./accounts";
 import { OFFICE_NAME_MAX } from "../src/data/names";
 import type { TeamTemplate } from "../src/data/model";
 import { hqDb } from "./lib/db";
+import { addToSuite, buildTaskBenchmark } from "./suite";
 import { isReadOnly, READ_ONLY_COMMANDS } from "./legacy";
-import { applyTemplate, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
+import { applyTemplate, changeMode, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
 import { ensureSkillCache } from "./skills";
@@ -33,6 +59,7 @@ import type { SbxMcp } from "./sbxMcp";
 import type { Sessions } from "./sessions";
 import { mergeByNotice } from "./githubSync";
 import { cleanEntry } from "./scope";
+import { finishManifest } from "./githubApp";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -74,6 +101,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     }
   };
   const team = () => hub.snap.config.team;
+  const sessionUp = (id: string) => ["running", "starting"].includes(hub.status(id)?.session.state ?? "");
 
   /** Runs a template change; a refused template is reported, not thrown at the browser. */
   const guardTemplate = (fn: () => void) => {
@@ -177,7 +205,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const seat = seatOf(agent);
       if (typeof p.name === "string" && p.name.trim()) seat.name = str(p.name, 40).trim();
       if (typeof p.color === "string") seat.color = str(p.color, 20);
-      if (isAgentMode(p.mode)) seat.mode = p.mode;
+      if (isAgentMode(p.mode)) changeMode(seat, p.mode, sessionUp(agent.id));
       // A seat can move to another worker role; the lead's seat stays the lead's.
       const role = t.roles.find((r) => r.id === p.roleId);
       if (role && !role.isLead && !agent.isLead) seat.roleId = role.id;
@@ -187,10 +215,31 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       if (p.workspacePath !== undefined) seat.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
       Object.assign(agent, resolveSeat(t, seat));
+      if (!seat.nextMode) delete agent.nextMode;
       if (!agent.account) delete agent.account;
       hub.configChanged();
       // Non-Claude CLIs and named container accounts add their own setup checks.
       if (`${agent.cli}/${agent.mode}/${agent.account ?? ""}` !== before) void sessions.recheckSetup();
+    },
+
+    /** Moves every seat to one mode (Container for EC2): stopped seats now, running ones at their next start. */
+    setTeamMode: (raw) => {
+      const t = hub.snap.config.template;
+      if (!t) throw new Error("This project was made before templates and is read-only.");
+      if (!isAgentMode(raw)) throw new Error("Mode is local, sandbox or container.");
+      let later = 0;
+      for (const agent of team()) {
+        const seat = seatOf(agent);
+        const up = sessionUp(agent.id);
+        changeMode(seat, raw, up);
+        if (seat.nextMode) later++;
+        Object.assign(agent, resolveSeat(t, seat));
+        if (!seat.nextMode) delete agent.nextMode;
+      }
+      hub.configChanged();
+      void sessions.recheckSetup();
+      const label = { local: "Local", sandbox: "Sandbox", container: "Container" }[raw];
+      hub.activity("config", null, later ? `The team moves to ${label} mode: ${later} running agent${later === 1 ? "" : "s"} switch at their next start, the rest now.` : `The team runs in ${label} mode.`);
     },
 
     /** Edits one role of this project's template; every seat of it picks the change up at its next start. */
@@ -221,6 +270,55 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         const t = resyncProject(hqDb(), hub.slug);
         afterTemplate(t, `Template re-synced to ${t.name} v${t.version}. Restart agents to give them the change.`);
       }),
+
+    promoteLessons: () => void planner.lessons?.run(),
+    setLessonPromotion: (on) => planner.lessons?.setEnabled(on === true),
+    removeLesson: (id) => planner.lessons?.decide(str(id, 40), false),
+    proposeImprovements: () => void planner.lessons?.improve(),
+    /** A finished Dev or Research task joins the benchmark suite (free, local): `pnpm bench task:<id>` replays it. */
+    addToSuite: (taskId) => {
+      const task = planner.task(str(taskId, 40));
+      const template = hub.snap.config.template;
+      if (!task || !template) return;
+      try {
+        const id = addToSuite(buildTaskBenchmark(hqDb(), { projectId: hub.snap.config.project.id, root: hub.repo.root, template, team: hub.snap.config.team }, task));
+        task.benchmark = id;
+        hub.emit({ type: "task.updated", task: { ...task } });
+        hub.activity("config", null, `${task.id} added to the benchmark suite as ${id}. Replay it on other models from a terminal: pnpm bench task:${id} --models <role>=<cli>/<model>`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't add ${task.id} to the suite: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+
+    exportTemplate: () => {
+      const t = hub.snap.config.template;
+      if (!t) return hub.activity("config", null, "This project was made before templates: there's no template to save.");
+      hub.emit({ type: "template.file", file: exportTemplate(t) });
+    },
+
+    /** Imports a template file into the library. Its packs are pinned (and scanned for the owner) before any project can use it. */
+    importTemplate: async (text) => {
+      try {
+        const r = await importTemplate(hqDb(), typeof text === "string" ? text : "", "you");
+        for (const source of r.pending) {
+          const p = ownerPacks()[source];
+          if (p?.status === "pending") planner.actions?.addSkillPack(source, { commit: p.commit, skills: Object.keys(p.skills).length, blocked: p.blocked, warnings: p.findings.filter((f) => f.level === "warn"), licence: p.licence });
+        }
+        const skillPacks = packsState();
+        for (const h of liveHubs()) {
+          h.snap.skillPacks = skillPacks;
+          h.emit({ type: "skillPacks.updated", skillPacks });
+        }
+        broadcastLibrary(hqDb());
+        const message = `Imported ${r.template.name} as "${r.template.id}".${r.pending.length ? ` Before a project can use it, check the skills from ${r.pending.join(", ")} (Action items).` : " New projects can use it now."}${r.notes.length ? ` ${r.notes.join(" ")}` : ""}`;
+        hub.activity("config", null, message);
+        hub.emit({ type: "template.imported", ok: true, message, id: r.template.id });
+      } catch (e) {
+        const message = `Template not imported: ${e instanceof Error ? e.message : String(e)}`;
+        hub.activity("config", null, message);
+        hub.emit({ type: "template.imported", ok: false, message });
+      }
+    },
 
     /** Saves a template to this machine's library (built-in ones are saved under a new id). */
     saveTemplate: (raw) =>
@@ -307,6 +405,31 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
     refreshSbx: () => sbx.refresh(),
 
+    // The user's check of new memories: owner and operators (step-up from a remote device); viewers can't.
+    decideMemories: (itemId, raw) => {
+      if (!planner.actions) return;
+      const decisions = Object.fromEntries(
+        Object.entries((raw ?? {}) as Record<string, unknown>).filter(([k, v]) => /^M-\d+$/.test(k) && (v === "certify" || v === "reject")),
+      ) as Record<string, "certify" | "reject">;
+      try {
+        const projectId = hub.snap.config.project.id;
+        const r = planner.actions.decideMemories(str(itemId, 40), decisions);
+        memoryStore().certify(projectId, r.certify, "user"); // the audit log records who
+        memoryStore().reject(projectId, r.reject);
+        hub.activity("config", null, `Memories checked: ${r.certify.length} certified, ${r.reject.length} rejected.`);
+      } catch (e) {
+        hub.activity("config", null, `Couldn't check those memories: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    keepOutOfMemory: (name) => {
+      try {
+        memoryStore().keepOut(hub.snap.config.project.id, str(name, 120), "user");
+        broadcastMemory();
+        hub.activity("config", null, "Added a name to this project's keep-out list; it's removed from what memory already holds.");
+      } catch (e) {
+        hub.activity("config", null, `Couldn't keep that name out: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
     resolveActionItem: (id, decision, note) => {
       const d = decision === "done" || decision === "dismissed" ? decision : null;
       if (d) planner.actions?.resolve(str(id, 40), d, typeof note === "string" ? str(note, 1000) : undefined);
@@ -335,6 +458,77 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       } catch (e) {
         hub.activity("config", null, `Couldn't save the account: ${e instanceof Error ? e.message : String(e)}`);
       }
+    },
+    saveMemory: (raw) => {
+      try {
+        void saveMemorySettings(raw as MemoryInput);
+        redactor().refresh(); // the Neo4j password is masked in terminal output like any vault secret
+        broadcastMemory();
+        hub.activity("config", null, "Saved the memory settings. HQ is connecting to Neo4j.");
+      } catch (e) {
+        hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    // Lab mode (CTFs, practice ranges): agents start without a scope. Owner only; a remote device needs the step-up.
+    setLabMode: (on) => {
+      const cfg = hub.snap.config;
+      if (!cfg.template) throw new Error("This project was made before templates and is read-only.");
+      const labMode = on === true;
+      const t = cfg.template;
+      afterTemplate(
+        updateProjectTemplate(hqDb(), hub.slug, { ...t, rules: { ...t.rules, labMode } }),
+        labMode ? "Lab mode on: agents may start without a scope (CTF or practice range only)." : "Lab mode off: agents need the engagement scope again.",
+      );
+      const lead = cfg.team.find((a) => a.isLead);
+      if (lead) planner.notify(lead.id, labMode ? "The owner turned lab mode on: this is a CTF or practice range, and agents may start without a scope." : "The owner turned lab mode off: no agent but you starts until the engagement scope is set.");
+    },
+
+    // Spend caps on API-key accounts (USD, per project). Owner only; a remote device needs the step-up.
+    setSpendCaps: (raw) => {
+      const p = (raw ?? {}) as { dailyUsd?: unknown; monthlyUsd?: unknown };
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 100_000 ? Math.round(v * 100) / 100 : null);
+      const dailyUsd = num(p.dailyUsd);
+      const monthlyUsd = num(p.monthlyUsd);
+      if (dailyUsd === null || monthlyUsd === null) throw new Error("Caps are amounts in USD above 0.");
+      if (dailyUsd > monthlyUsd) throw new Error("The daily cap can't be more than the monthly one.");
+      hub.snap.config.project.spendCaps = { dailyUsd, monthlyUsd };
+      hub.configChanged();
+      hub.activity("config", null, `Spend caps: $${dailyUsd} a day, $${monthlyUsd} a month (API-key accounts)`);
+    },
+
+    // The GitHub App's manifest code, handed back by GitHub through /api/github/app/callback. Owner only.
+    finishGithubApp: async (code) => {
+      try {
+        const state = await finishManifest(str(code, 100));
+        for (const h of liveHubs()) {
+          h.snap.githubApp = state;
+          h.emit({ type: "githubApp.updated", githubApp: state });
+        }
+        hub.activity("config", null, `GitHub App ${state.app?.slug} created. Install it on the repo, then turn on the webhook with deploy/github-webhook.sh.`);
+      } catch (err) {
+        hub.activity("config", null, `GitHub App not created: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+
+    setMemoryExtraction: (raw) => {
+      const input = (raw ?? {}) as { enabled?: boolean; account?: string };
+      try {
+        saveExtractionSettings(input, (id) => accounts().get(id)?.provider === "anthropic");
+        broadcastMemory();
+        hub.activity("config", null, input.enabled ? `Memory extraction is on: Claude Haiku reads each finished task (${input.account && input.account !== "default" ? `account ${input.account}` : "your Claude Code sign-in"}).` : "Memory extraction is off.");
+        if (input.enabled) memoryWorker()?.extractPending();
+      } catch (e) {
+        hub.activity("config", null, `Couldn't change memory extraction: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    restoreMemory: (date) => {
+      const day = str(date, 10);
+      const projectId = hub.snap.config.project.id;
+      hub.activity("config", null, `Restoring this project's memory from the ${day} backup…`);
+      restoreProject(memoryStore(), projectId, day)
+        .then(() => hub.activity("config", null, `Memory restored from the ${day} backup. Ledger entries written since then are gone.`))
+        .catch((e) => hub.activity("config", null, `Couldn't restore memory: ${e instanceof Error ? e.message : String(e)}`))
+        .finally(broadcastMemory);
     },
     removeAccount: (id) => {
       const acct = str(id, 40);

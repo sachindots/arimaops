@@ -5,6 +5,7 @@
 import type { Provider } from "./providers";
 import type { AgentCli, AgentMode, Board, FindingStatus, SandboxSettings, Severity, Task, Tokens } from "./types";
 import { AGENT_CLIS, isAgentCli } from "./types";
+import { isScorerId, SCORER_IDS } from "./scorers";
 
 // ── Team template (1.1) ──
 
@@ -19,6 +20,8 @@ export interface TeamTemplate {
   rules: ToolRules;
   /** Memory node types beyond the core ontology: "Asset", "Finding", "Source"… */
   memoryTypes: string[];
+  /** Checks run on each finished task (src/data/scorers.ts); left out, HQ picks ones that fit the template. */
+  scorers?: string[];
 }
 
 export interface Role {
@@ -75,6 +78,8 @@ export interface Seat {
   roleId: string;
   color: string;
   mode: AgentMode;
+  /** The mode it switches to at its next start (set when the mode changed while it ran). */
+  nextMode?: AgentMode | null;
   account: string; // "" = the default account for the role's CLI
   workspacePath: string | null; // null = HQ-managed clone
   sandbox: SandboxSettings;
@@ -107,6 +112,7 @@ export const GATE_KINDS = [
   "file-delivered",
   "findings-report",
   "scope-set",
+  "evidence",
 ] as const;
 export type GateKind = (typeof GATE_KINDS)[number];
 
@@ -127,6 +133,8 @@ export type Gate = { id: string } & (
   | { kind: "file-delivered" }
   | { kind: "findings-report" }
   | { kind: "scope-set" }
+  /** A PR that changes UI files needs screenshots of the running app at its head commit (docs/factory.md section 7). */
+  | { kind: "evidence"; uiFiles?: string[] }
 );
 
 export const GATE_STATES = ["passed", "failed", "waived", "reset"] as const;
@@ -141,7 +149,8 @@ export interface GateEvent {
   gateId: string;
   state: GateState;
   by: Actor;
-  proof: { url?: string; path?: string; sha?: string; note?: string };
+  /** onBehalf: the lead passed a person gate for the owner while the owner was away (undoable). */
+  proof: { url?: string; path?: string; sha?: string; note?: string; onBehalf?: boolean };
   at: string;
 }
 
@@ -216,6 +225,54 @@ export const LEDGERS = ["task", "progress"] as const;
 export type LedgerName = (typeof LEDGERS)[number];
 export const LEDGER_KINDS = ["fact", "guess", "plan", "stall", "replan", "note"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
+
+// ── Memory (Phase 2, docs/memory-core.md section 3) ──
+
+/** What the team learns, in every project. Templates add their own types through `memoryTypes`. */
+export const CORE_MEMORY_TYPES = ["Decision", "Lesson", "DeadEnd"] as const;
+/** The graph's own labels: the things memories are about. Never a memory type. */
+export const STRUCTURE_LABELS = ["Task", "Component", "Agent", "Person", "LedgerEntry", "Memory"] as const;
+export const RESERVED_LABELS = [...CORE_MEMORY_TYPES, ...STRUCTURE_LABELS] as const;
+
+export interface Memory {
+  id: string; // "M-41"
+  projectId: string;
+  /** A core type or one of the template's memoryTypes. */
+  type: string;
+  text: string;
+  taskId: string | null;
+  /** Components it is about: file paths or names. */
+  about: string[];
+  certified: boolean;
+  certifiedBy: string | null;
+  source: "extraction" | "remember" | "consolidation";
+  by: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+/** What a finished task leaves behind (2.3): built by HQ from what it already knows, no model call. Extraction reads it. */
+export interface TaskSummary {
+  projectId: string;
+  taskId: string;
+  title: string;
+  description: string | null;
+  doneWhen: string | null;
+  stageId: string | null;
+  ownerId: string | null;
+  /** Tasks it built on. */
+  needs: string[];
+  /** The files the task was given to edit. */
+  files: string[];
+  prNumber: number | null;
+  deliverablePath: string | null;
+  /** The owner's handoff note. */
+  note: string | null;
+  /** The lead's current task-ledger entries for it. */
+  ledger: { kind: LedgerKind; text: string }[];
+  usage: Tokens | null;
+  finishedAt: string;
+}
 
 export interface LedgerEntry {
   id: number;
@@ -325,7 +382,11 @@ export function templateErrors(t: TeamTemplate): string[] {
   if (cycle) say(`Starter tasks depend on each other in a loop: ${cycle.join(" → ")}.`);
 
   for (const id of dupes(t.memoryTypes ?? [])) say(`Memory type "${id}" is listed twice.`);
+  for (const m of t.memoryTypes ?? []) if ((RESERVED_LABELS as readonly string[]).includes(m)) say(`"${m}" is a core memory type already; leave it out of memoryTypes.`);
   if ((t.memoryTypes ?? []).some((m) => !/^[A-Z][A-Za-z]{1,39}$/.test(m))) say("Memory types are names like Asset or Finding.");
+  if (t.scorers !== undefined && !Array.isArray(t.scorers)) say("scorers is a list of scorer ids.");
+  for (const id of Array.isArray(t.scorers) ? t.scorers : []) if (!isScorerId(id)) say(`No scorer "${id}". Scorers: ${SCORER_IDS.join(", ")}.`);
+  for (const id of dupes(Array.isArray(t.scorers) ? t.scorers : [])) say(`Scorer "${id}" is listed twice.`);
   return errs;
 }
 

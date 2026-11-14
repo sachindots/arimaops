@@ -39,14 +39,13 @@ export interface RoleExtras {
   ports?: { first: number; last: number };
 }
 
-/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise the old upstream and earlier headers so it can be cleaned up. */
-const isHqRole = (text: string) =>
-  text.includes("## Team MCP (server `hq`)") && (text.includes("You are managed by JSM HQ.") || text.includes(`You are managed by ${BRAND.name}.`));
+/** HQ ≤ 0.3 wrote its role to ROLE.md; recognise it so it can be cleaned up. */
+const isHqRole = (text: string) => text.includes("## Team MCP (server `hq`)") && text.includes(`You are managed by ${BRAND.name}.`);
 
 /**
  * The folder's own ROLE.md, if it has one (it's included in the generated role). A ROLE.md that an
  * older HQ generated there is removed, along with the exclude line HQ added for it. Also cleans up
- * legacy .jsmhq-role.md / .jsmhq-hook.mjs files.
+ * legacy .hq-role.md / .hq-hook.mjs files.
  */
 export async function adoptRoleFile(dir: string): Promise<string | null> {
   for (const oldFile of LEGACY_FILES) {

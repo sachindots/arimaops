@@ -1,3 +1,15 @@
+import type { TaskScore } from "./scorers";
+
+/** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
+export interface TaskEvidence {
+  sha: string;
+  prNumber: number | null;
+  by: string;
+  at: string;
+  steps: string[];
+  /** Files under ~/.arima/<project>/evidence/<task>/<sha>/, served by HQ. */
+  shots: { file: string; label: string }[];
+}
 import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
 
 export type { Finding };
@@ -80,6 +92,8 @@ export interface AgentConfig {
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
+  /** Set while running: the mode it switches to at its next start (never mid-task). */
+  nextMode?: AgentMode | null;
   color: string; // hex, used for the robot, owner dots and chips
   skills: string[];
   roleMd: string; // contents of ROLE.md
@@ -135,13 +149,79 @@ export interface ProjectConfig {
   /** Fixed once created: names sandboxes, tmux sessions and ~/.arima/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
   name: string; // "Askwell"
-  repo: string; // "jsmastery-pro/askwell"
+  repo: string; // "acme/askwell"
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
-  officeName?: string; // the sign on the office wall; empty = ".HQ"
+  officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
+  /** Spend caps in USD on API-key accounts (docs/agent-engine.md section 8); missing = $5 a day, $50 a month. */
+  spendCaps?: { dailyUsd: number; monthlyUsd: number };
+  /** Lesson promotion to the template (docs/templates.md section 8); missing = on, except security engagements. */
+  promoteLessons?: boolean;
+}
+
+/** A lesson a project offered to its template: general, no project id. Approved ones go into the next projects' briefs. */
+export interface TemplateLesson {
+  id: string;
+  templateId: string;
+  type: string;
+  text: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+/** Settings → Memory: this project's template and its lessons. */
+export interface LessonsState {
+  templateId: string | null;
+  /** Promotion allowed for this project (off by default for security engagements). */
+  enabled: boolean;
+  approved: TemplateLesson[];
+  pending: number;
+  running: boolean;
+  /** The last promotion run's outcome, in words. */
+  last: string | null;
+  /** Template changes drafted from repeated failures (docs/factory.md section 5). */
+  improvements: { running: boolean; pending: number; last: string | null };
+}
+
+/** The machine's GitHub App (docs/agent-engine.md section 6); null app = none created yet. */
+export interface GitHubAppState {
+  app: { id: number; slug: string; htmlUrl: string; owner: string; installUrl: string } | null;
+  /** The path GitHub posts to; made public with Tailscale Funnel (deploy/github-webhook.sh). */
+  webhookPath: string;
+  lastDeliveryAt: string | null;
+}
+
+/** A template in this HQ's library. problems: why a project can't use it yet (packs waiting for the owner). */
+export interface TemplateEntry {
+  template: TeamTemplate;
+  builtin: boolean;
+  problems: string[];
+}
+
+/** A skill pack on this machine (docs/templates.md section 2). */
+export interface SkillPackView {
+  source: string;
+  commit: string;
+  licence: string | null;
+  credit: string | null;
+  use: "any" | "scoped-offensive" | "github-action";
+  skills: number;
+  status: "vetted" | "pending" | "approved" | "rejected";
+  blocked: string[];
+  warnings: number;
+}
+
+/** A project's spend against its caps, on API-key accounts only (subscriptions have no bill). */
+export interface SpendState {
+  day: { usd: number; cap: number };
+  month: { usd: number; cap: number };
+  /** Over a cap: workers stopped, no new starts or model runs until the period rolls over or the cap is raised. */
+  paused: "day" | "month" | null;
+  /** Events on models without a price row (GPT, Gemini): counted as $0. */
+  unpriced: number;
 }
 
 /** Engagement scope: domains ("example.com", "*.example.com"), IPs or IPv4 CIDRs. Out of scope always wins. */
@@ -247,6 +327,21 @@ export interface Task {
   model?: string | null;
   /** Tokens recorded against it while it was its owner's current task (usage events). */
   usage?: Tokens | null;
+  /** The board spec's items this task covers ("S1", "S4"); the analyze gate checks every item has one. */
+  specItems?: string[];
+  /** The lead marked it high-stakes (sensitive files make it so too): a second opinion is required. */
+  highStakes?: boolean;
+  /** The project's template when the task was made (docs/factory.md section 2); empty on older tasks. */
+  templateId?: string;
+  templateVersion?: number;
+  /** Its scorers' verdicts once it finished (docs/factory.md section 4). */
+  scores?: TaskScore[];
+  /** Its id in the benchmark suite (~/.arima-bench/suite), once added (docs/factory.md section 6). */
+  benchmark?: string;
+  /** Screenshots of the running app for its PR, taken by the verifier (docs/factory.md section 7). */
+  evidence?: TaskEvidence;
+  /** When it entered its current status (ISO), from the task's status events; missing on projects without them. */
+  movedAt?: string;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
@@ -266,6 +361,14 @@ export interface PullRequest {
   closed?: boolean; // closed without merging — hidden from the board
   conflict?: boolean; // has merge conflicts with the base branch
   reviewNote?: string | null; // e.g. "CodeRabbit: review rate limited"
+  /** The PR adds or changes a test file (unknown until GitHub sends the PR's files). */
+  testsChanged?: boolean;
+  /** The paths it changes, as GitHub last reported them (first 100). */
+  files?: string[];
+  /** The PR's head commit, as GitHub last reported it. */
+  headSha?: string;
+  /** Every check on the head commit finished green; false with no checks at all. */
+  ciGreen?: boolean;
 }
 
 export type EnvironmentStatus = "live" | "deploying" | "sleeping";
@@ -295,6 +398,7 @@ export type ActivityType =
   | "task.assigned"
   | "task.started"
   | "task.created"
+  | "task.scored"
   | "agent.needs-input"
   | "agent.answered"
   | "message"
@@ -354,6 +458,7 @@ export type SetupCheckId =
   | "google-secret"
   | "docker"
   | "agent-image"
+  | "verifier-image"
   | "egress-lock"
   | "hq-reach"
   | "scope-firewall"
@@ -459,8 +564,24 @@ export interface OfficeSnapshot {
   mcp?: McpState;
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
+  memory?: MemoryState;
+  spend?: SpendState;
+  githubApp?: GitHubAppState;
+  skillPacks?: SkillPackView[];
+  /** This HQ's template library (built-in and saved or imported), for the welcome. */
+  templateLibrary?: TemplateEntry[];
+  lessons?: LessonsState;
   actionItems?: ActionItem[];
   findings?: Finding[];
+}
+
+/** A memory waiting for the user's check. `conflict`: a certified memory of the same type about the same thing. */
+export interface PendingMemory {
+  id: string;
+  type: string;
+  text: string;
+  about: string[];
+  conflict?: { id: string; text: string } | null;
 }
 
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
@@ -472,8 +593,26 @@ export interface ActionItem {
   details: string; // steps; never secret values
   waiting: boolean; // the agent can't continue without it
   status: "open" | "done" | "dismissed";
-  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes. */
-  kind?: "request" | "plan";
+  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
+   *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
+   *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "proposal";
+  /** kind proposal: a template change drafted from a repeated failure, as before/after lines (Approve = saved as a new version). */
+  proposal?: { id: string; templateId: string; pattern: string; diff: string[] };
+  /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */
+  lesson?: { id: string; templateId: string; type: string };
+  /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */
+  gate?: { taskId: string; gateId: string; reason: string };
+  /** kind spec: the board spec version waiting for the owner (Approve = done, Send back = dismissed). */
+  spec?: { boardId: string; version: number };
+  /** kind skills: the skill pack (owner/repo) waiting for the owner's approval of its scan. */
+  pack?: string;
+  /** kind overflow: the seat, its task and the fallback it would move to (Move = done, Wait = dismissed). */
+  overflow?: { agentId: string; taskId: string; cli: AgentCli; model: string };
+  /** kind approval: the gate the lead passed and the stage it belongs to. */
+  approval?: { gateId: string; stageId: string };
+  /** kind memory: the memories still to decide. */
+  memories?: PendingMemory[];
   note: string | null; // the user's note when closing it
   at: string;
   closedAt: string | null;
@@ -556,6 +695,34 @@ export interface AccountsState {
   masterSource: "env" | "keychain" | "file" | null;
   /** Set when the vault exists but can't be opened (wrong or missing master key). */
   error?: string;
+}
+
+/** Where the team's memory (Neo4j) is and whether HQ reaches it. Never carries the password. */
+export interface MemoryState {
+  /** "env": set by compose (ARIMA_NEO4J_*), read-only here. "settings": saved in Settings → Memory. */
+  source: "env" | "settings" | null;
+  url: string;
+  user: string;
+  passwordSet: boolean;
+  /** The Neo4j Browser on the tailnet (ARIMA_NEO4J_BROWSER_URL), for the owner. */
+  browserUrl: string | null;
+  status: "unconfigured" | "offline" | "online";
+  error?: string;
+  /** Writes waiting for Neo4j. */
+  queued: number;
+  /** Claude Haiku reads finished tasks into memories (spends usage on `account`). */
+  extraction: { enabled: boolean; account: string };
+  /** Names this project keeps out of memory. */
+  keepOut: string[];
+  /** This project's nightly memory backups, newest first (dates). */
+  backups: string[];
+}
+
+export interface MemoryInput {
+  url: string;
+  user: string;
+  /** Empty keeps the stored one. */
+  password?: string;
 }
 
 /** What the Accounts form sends; the secret is optional when updating. */

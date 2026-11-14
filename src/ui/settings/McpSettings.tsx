@@ -6,8 +6,8 @@ import { TerminalView } from "../drawers/TerminalView";
 import { ask } from "../dialog";
 
 const STATUS: Record<string, [string, string]> = {
-  ready: ["Ready", "#00ff66"],
-  "needs-auth": ["Needs sign-in", "#c04dff"],
+  ready: ["Ready", "#3fb950"],
+  "needs-auth": ["Needs sign-in", "#a371f7"],
 };
 
 /** MCP servers from Docker Sandboxes' registry, and which agents get them. */
@@ -54,16 +54,16 @@ export function McpSettings() {
             Refresh
           </button>
         </div>
-        {mcp.error && <p className="mb-2 border-[3px] border-orange bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
+        {mcp.error && <p className="mb-2 border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">{mcp.error}</p>}
         {servers.length === 0 ? (
           <p className="text-[13px] text-muted">No MCP servers yet. Add one below.</p>
         ) : (
-          <div className="border-[3px] border-ink bg-white">
+          <div className="panel">
             {servers.map((s) => {
-              const [label, color] = STATUS[s.status] ?? [s.status, "#6e7b94"];
+              const [label, color] = STATUS[s.status] ?? [s.status, "#6b7280"];
               return (
                 <div key={s.name} className="flex items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
-                  <b className="font-term text-[17px]">{s.name}</b>
+                  <b className="font-term text-[13px]">{s.name}</b>
                   <span className="text-[12px] text-muted">{s.transport}</span>
                   <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: color }}>
                     {label}
@@ -107,7 +107,7 @@ export function McpSettings() {
           </div>
         )}
         {signingIn && (
-          <div className="mt-2 border-[3px] border-ink">
+          <div className="mt-2 rounded-lg border border-white/10">
             <div className="flex items-center justify-between bg-navy px-2 py-1 text-[13px] text-cream">
               <span>Signing in to {signingIn} · your browser opens; answer here if it asks</span>
               <button className="text-[12px] underline" onClick={() => setSigningIn(null)}>
@@ -127,7 +127,7 @@ export function McpSettings() {
           {sandboxed.length === 0 ? (
             <p className="text-[13px] text-muted">MCP servers attach to sandboxes. All agents are in Local mode.</p>
           ) : (
-            <table className="w-full border-[3px] border-ink bg-white text-[14px]">
+            <table className="w-full panel text-[14px]">
               <thead>
                 <tr className="bg-cream-2 text-left">
                   <th className="px-3 py-1.5">Server</th>
@@ -141,7 +141,7 @@ export function McpSettings() {
               <tbody>
                 {servers.map((s) => (
                   <tr key={s.name} className="border-t-2 border-dashed border-cream-3">
-                    <td className="px-3 py-1.5 font-term text-[16px]">{s.name}</td>
+                    <td className="px-3 py-1.5 font-term text-[12px]">{s.name}</td>
                     {sandboxed.map((a) => {
                       const on = (a.mcp ?? []).includes(s.name);
                       const attached = (mcp.attached[a.id] ?? []).includes(s.name);
@@ -159,7 +159,7 @@ export function McpSettings() {
           )}
           {team.some((a) => a.mode === "local") && <p className="mt-1 text-[12px] text-muted">Local-mode agents aren't listed: MCP servers attach to sandboxes.</p>}
           {stuck.map(({ agent, name }) => (
-            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 border-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
+            <p key={`${agent.id}-${name}`} className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
               <span className="flex-1">
                 {agent.name}'s sandbox still has <b>{name}</b>: sbx can't detach a server, so it goes when the sandbox is recreated. The folder and code are
                 kept; installed packages and the conversation are not.
@@ -177,7 +177,7 @@ export function McpSettings() {
         </section>
       )}
 
-      <section className="border-[3px] border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>Add a server</SectionTitle>
         {suggestions.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[13px]">
@@ -191,27 +191,27 @@ export function McpSettings() {
         )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Name" hint="Letters, numbers, - or _">
-            <input className="field w-full font-term text-[17px]" value={form.name} placeholder="supabase" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <input className="field w-full font-term text-[13px]" value={form.name} placeholder="supabase" onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           {form.local ? (
             <Field label="Command" hint="A program on this Mac (local stdio server)">
-              <input className="field w-full font-term text-[17px]" value={form.command} placeholder="npx" onChange={(e) => setForm({ ...form, command: e.target.value })} />
+              <input className="field w-full font-term text-[13px]" value={form.command} placeholder="npx" onChange={(e) => setForm({ ...form, command: e.target.value })} />
             </Field>
           ) : (
             <Field label="URL">
-              <input className="field w-full font-term text-[17px]" value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} />
+              <input className="field w-full font-term text-[13px]" value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} />
             </Field>
           )}
           {form.local ? (
             <Field label="Arguments" hint="Comma separated">
-              <input className="field w-full font-term text-[17px]" value={form.args} placeholder="-y, @supabase/mcp-server" onChange={(e) => setForm({ ...form, args: e.target.value })} />
+              <input className="field w-full font-term text-[13px]" value={form.args} placeholder="-y, @supabase/mcp-server" onChange={(e) => setForm({ ...form, args: e.target.value })} />
             </Field>
           ) : (
             <Field label="API key (optional)" hint="Sent as a Bearer token. Stored by Docker Sandboxes, never by HQ. Leave empty to sign in instead.">
               <input
                 type="password"
                 autoComplete="off"
-                className="field w-full font-term text-[17px]"
+                className="field w-full font-term text-[13px]"
                 value={form.apiKey}
                 placeholder="••••"
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}

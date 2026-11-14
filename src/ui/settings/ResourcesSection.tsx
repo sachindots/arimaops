@@ -22,7 +22,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
   const mismatch = session ? sizeMismatch(r, session, machine) : false;
 
   return (
-    <section className="border-[3px] border-ink bg-white p-3">
+    <section className="panel p-3">
       <SectionTitle>Resources</SectionTitle>
       <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Sandbox size">
         <button
@@ -53,20 +53,20 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
         <div className="mt-3 grid grid-cols-2 gap-4">
           <label className="flex flex-col gap-1 text-[14px]">
             <span className="flex justify-between font-semibold">
-              CPUs <span className="font-term text-[17px]">{draft.cpus} of {machine.cpus}</span>
+              CPUs <span className="font-term text-[13px]">{draft.cpus} of {machine.cpus}</span>
             </span>
             <input
-              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#00ff66]"
+              type="range" min={1} max={machine.cpus} step={1} value={draft.cpus} className="accent-[#3fb950]"
               onChange={(e) => setDraft({ ...draft, cpus: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />
           </label>
           <label className="flex flex-col gap-1 text-[14px]">
             <span className="flex justify-between font-semibold">
-              Memory <span className="font-term text-[17px]">{fmtGb(draft.memoryGb)} of {fmtGb(maxMem)} max</span>
+              Memory <span className="font-term text-[13px]">{fmtGb(draft.memoryGb)} of {fmtGb(maxMem)} max</span>
             </span>
             <input
-              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#00ff66]"
+              type="range" min={0.5} max={maxMem} step={0.5} value={draft.memoryGb} className="accent-[#3fb950]"
               onChange={(e) => setDraft({ ...draft, memoryGb: Number(e.target.value) })}
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />

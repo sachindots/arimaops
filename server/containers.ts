@@ -5,6 +5,7 @@
 //    mandatory (setup check "egress-lock"); HQ never runs sudo, so it shows the command.
 //  - Sign-in: one Docker volume per CLI (hq-auth-<cli>), shared by that CLI's containers; you sign in once.
 
+import { isOutboundHost } from "../src/data/outbound";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { homedir } from "node:os";
@@ -20,6 +21,9 @@ import { log } from "./lib/log";
 import type { Runtime } from "./project";
 
 export const IMAGE = "arimaops-agent";
+/** The verifier's image: the agent image plus Playwright and Chromium (docker/verifier.Dockerfile). */
+export const VERIFIER_IMAGE = "arimaops-verifier";
+export const imageFor = (agent: { roleId?: string }) => (agent.roleId === "verifier" ? VERIFIER_IMAGE : IMAGE);
 export const NETWORK = "hq-agents";
 export const BRIDGE = "br-hq";
 export const SUBNET = "172.30.0.0/24";
@@ -58,6 +62,9 @@ export const EGRESS_LOCK_CMD = `sudo iptables -I DOCKER-USER -i ${BRIDGE} -j DRO
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 export const buildCommand = () =>
   `docker build -t ${IMAGE} --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f "${join(repoRoot, "docker", "agent.Dockerfile")}" "${join(repoRoot, "docker")}"`;
+
+export const buildVerifierCommand = () =>
+  `docker build -t ${VERIFIER_IMAGE} --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f "${join(repoRoot, "docker", "verifier.Dockerfile")}" "${join(repoRoot, "docker")}"`;
 
 /** Base allowlist: AI services, sign-in pages, GitHub and package registries (like sbx's "balanced"). Agents ask for anything else. */
 export const BASE_ALLOW = [
@@ -139,7 +146,7 @@ export function runArgs(
     "-e", `NO_PROXY=${GATEWAY}`, "-e", `no_proxy=${GATEWAY}`, "-e", "TE_DISABLE=1",
     ...authEnvArgs(agent.cli),
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
-    IMAGE,
+    imageFor(agent),
     agent.cli,
     ...cliArgs,
   ];
@@ -215,6 +222,14 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     if (!who) return { ok: false, why: "unknown container" };
     const agent = who.rt.hub.cfg(who.agent.id) ?? who.agent; // live config: allow/deny change at runtime
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
+    if (who.rt.hub.snap.config.rules?.outbound === "drafts-only" && isOutboundHost(host)) {
+      const key = `${who.rt.slug}/${agent.id}/send/${host}`;
+      if (!asked.has(key)) {
+        asked.add(key);
+        who.rt.hub.activity("config", agent.id, `${who.rt.hub.name(agent.id)} tried to reach ${host}: blocked, this project is drafts only.`);
+      }
+      return { ok: false, why: "drafts only: agents write, the owner sends" };
+    }
     // Security engagement: in scope is allowed on any port; explicitly out of scope is never allowed.
     const project = who.rt.hub.snap.config.project;
     if (who.rt.hub.snap.config.rules.findings && project.scope) {
@@ -222,7 +237,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
       if (s.ok) return { ok: true, why: "" };
       if (s.why.includes("explicitly")) return { ok: false, why: s.why };
     }
-    if (hostAllowed([...BASE_ALLOW, ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
+    if (hostAllowed([...BASE_ALLOW, ...(who.rt.hub.snap.config.rules?.egress ?? []), ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
     const key = `${who.rt.slug}/${agent.id}/${host}`;
     if (!asked.has(key)) {
       asked.add(key);

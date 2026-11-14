@@ -79,6 +79,8 @@ rejects("starter tasks in a loop", (t) => t.starter.tasks[0].needs.push("T2"), /
 rejects("a bad template id", (t) => (t.id = "Dev Team"), /Template id/);
 rejects("version 0", (t) => (t.version = 0), /version/);
 rejects("a duplicate memory type", (t) => t.memoryTypes.push("Asset"), /listed twice/);
+rejects("a core memory type listed again", (t) => t.memoryTypes.push("DeadEnd"), /core memory type/);
+rejects("a graph label as a memory type", (t) => t.memoryTypes.push("Task"), /core memory type/);
 
 check("no loop in a chain", needsCycle([{ id: "a", needs: ["b"] }, { id: "b", needs: [] }]) === null);
 check("a task needing itself is a loop", needsCycle([{ id: "a", needs: ["a"] }])?.join(",") === "a,a");

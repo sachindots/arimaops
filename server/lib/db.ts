@@ -147,6 +147,149 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (project_id, agent_id, model)
   );
   `,
+  // Phase 2 step 1: the ledgers move into Neo4j (docs/memory-core.md). Writes go through this outbox, so
+  // they survive a Neo4j outage and replay in order. The old ledger rows are queued once, here.
+  `
+  CREATE TABLE memory_outbox (
+    id INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    op TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    failed TEXT
+  );
+  CREATE INDEX memory_outbox_project ON memory_outbox (project_id);
+
+  -- Ledger ids keep counting from the SQLite ledger, whether Neo4j is up or not.
+  CREATE TABLE memory_ids (id INTEGER PRIMARY KEY AUTOINCREMENT);
+  INSERT INTO memory_ids (id) SELECT max(id) FROM ledger WHERE id IS NOT NULL HAVING max(id) IS NOT NULL;
+
+  INSERT INTO memory_outbox (project_id, op, at)
+    SELECT project_id, json_object('op', 'ledger', 'e', json_object(
+      'id', id, 'projectId', project_id, 'taskId', task_id, 'ledger', ledger, 'kind', kind,
+      'text', text, 'by', by, 'at', strftime('%Y-%m-%dT%H:%M:%fZ', at / 1000.0, 'unixepoch'))), at
+    FROM ledger ORDER BY id;
+  INSERT INTO memory_outbox (project_id, op, at)
+    SELECT project_id, json_object('op', 'supersede', 'id', id, 'by', superseded_by), at
+    FROM ledger WHERE superseded_by IS NOT NULL ORDER BY id;
+  `,
+  // Phase 2 step 4: what each finished task leaves behind; finishing it again replaces it.
+  `
+  CREATE TABLE task_summaries (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    finished_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id)
+  );
+  `,
+  // Phase 2 step 5: names (people, handles) a project keeps out of memory.
+  `
+  CREATE TABLE memory_keep_out (
+    project_id TEXT NOT NULL,
+    term TEXT NOT NULL COLLATE NOCASE,
+    by TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, term)
+  );
+  `,
+  // Phase 2 step 6: which summaries Haiku has read, and why one failed.
+  `
+  ALTER TABLE task_summaries ADD COLUMN extracted_at INTEGER;
+  ALTER TABLE task_summaries ADD COLUMN extract_attempts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE task_summaries ADD COLUMN extract_error TEXT;
+  `,
+  // Phase 3 step 5: board specs (the analyze gate), and what each task covers or how much is at stake.
+  `
+  CREATE TABLE specs (
+    project_id TEXT NOT NULL,
+    board_id TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    by TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, board_id)
+  );
+  ALTER TABLE tasks ADD COLUMN spec_items TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tasks ADD COLUMN high_stakes INTEGER NOT NULL DEFAULT 0;
+  `,
+  // Phase 4 step 3: the owner approves a board's spec once, for every task on it, until a new version.
+  `
+  ALTER TABLE specs ADD COLUMN approved_version INTEGER;
+  ALTER TABLE specs ADD COLUMN approved_by TEXT;
+  `,
+  // Phase 4 step 8: lessons promoted from a project into its template, for the next project's briefs (status pending,
+  // approved, rejected, or dropped: tried, failed the check, text not kept). origin is a
+  // hash of the project and memory id (so a memory is offered once); the project id itself isn't kept.
+  `
+  CREATE TABLE template_lessons (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    UNIQUE (template_id, origin)
+  );
+  `,
+  // Factory step 2 (docs/factory.md sections 2-3): the template version each task ran under, one row per task status or
+  // stage change (cycle time; owner_id is who held the task then), and the owner's Action item answers (interventions).
+  `
+  ALTER TABLE tasks ADD COLUMN template_id TEXT;
+  ALTER TABLE tasks ADD COLUMN template_version INTEGER;
+  CREATE TABLE task_events (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    stage_id TEXT NOT NULL,
+    owner_id TEXT
+  );
+  CREATE INDEX task_events_task ON task_events (project_id, task_id, at);
+  CREATE TABLE action_answers (
+    project_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+  );
+  `,
+  // Factory step 4 (docs/factory.md section 4): each scorer's verdict on a finished task, with the template version it
+  // ran under and what a model check cost. Scoring again replaces the row.
+  `
+  CREATE TABLE scores (
+    project_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    scorer TEXT NOT NULL,
+    template_id TEXT,
+    template_version INTEGER,
+    pass INTEGER NOT NULL CHECK (pass IN (0, 1)),
+    reason TEXT NOT NULL,
+    cost_usd REAL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, task_id, scorer)
+  );
+  `,
+  // Factory step 5 (docs/factory.md section 5): template changes drafted from repeated failures. status pending,
+  // approved, rejected, or dropped (no change, invalid, or it named a project; text not kept). A pattern decided or
+  // dropped within 30 days isn't proposed again.
+  `
+  CREATE TABLE template_proposals (
+    id TEXT PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    from_version INTEGER NOT NULL,
+    pattern TEXT NOT NULL,
+    change TEXT NOT NULL,
+    why TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'dropped')),
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    new_version INTEGER
+  );
+  CREATE INDEX template_proposals_pattern ON template_proposals (template_id, pattern);
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

@@ -15,16 +15,16 @@ const reset = esc("0");
 const bold = esc("1");
 
 const c = {
-  tool: rgb("#00ff66"),
+  tool: rgb("#3fb950"),
   out: rgb("#8d99c4"),
-  ok: rgb("#00ff66"),
-  err: rgb("#ff1744"),
-  warn: rgb("#c04dff"),
-  think: rgb("#c04dff"),
-  say: rgb("#e6edf7"),
-  dim: rgb("#6e7b94"),
-  pink: rgb("#ff1744"),
-  yellow: rgb("#00ff66"),
+  ok: rgb("#3fb950"),
+  err: rgb("#f85149"),
+  warn: rgb("#a371f7"),
+  think: rgb("#a371f7"),
+  say: rgb("#e6e8eb"),
+  dim: rgb("#6b7280"),
+  pink: rgb("#f85149"),
+  yellow: rgb("#3fb950"),
 };
 
 const tool = (name: string, arg: string): TermLine => ({ text: `${c.tool}●${reset} ${bold}${name}${reset}(${arg})` });

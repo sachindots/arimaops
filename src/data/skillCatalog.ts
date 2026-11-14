@@ -1,7 +1,8 @@
 // Built-in ArimaOps skill library + external skills.sh parser.
 // Built-in skills are written directly as SKILL.md into .claude/skills/, .agents/skills/,
 // and .agent/skills/ (Antigravity), so they work immediately in any workspace without network access.
-// External skills formatted as "owner/repo" or "owner/repo@skill-name" are fetched via `npx skills add`.
+// External skills formatted as "owner/repo" or "owner/repo@skill-name" come from pinned packs only
+// (server/skillPacks.ts): a commit and a hash per skill, scanned before any agent gets them.
 
 import type { SkillSpec } from "./stack";
 
@@ -235,6 +236,97 @@ Priority order: **1. Correct → 2. Safe → 3. Holds under load → 4. Tested �
 1. **Claim Extraction:** Extract every falsifiable claim, metric, date, quote, or technical assertion from the target artifact.
 2. **Verification Verdict:** Grade each claim as \`VERIFIED\`, \`PARTIALLY TRUE\`, \`UNSUBSTANTIATED\`, or \`FALSE\` with direct evidence links or file references.
 3. **Correction Diff:** Provide exact replacement wording for any inaccurate or overstated claim.`,
+  },
+
+  {
+    id: "paper-search",
+    name: "Paper Search (arXiv, OpenAlex, Crossref)",
+    domain: "research",
+    description: "Find and log scholarly sources through three free APIs that need no key, and keep a PRISMA-style source log.",
+    body: `# Paper Search
+
+Three free APIs, no keys. Be polite: one request at a time, a few seconds apart, small pages.
+
+## arXiv (preprints: CS, physics, maths, statistics…)
+\`curl -s 'https://export.arxiv.org/api/query?search_query=all:%22retrieval%20augmented%22+AND+cat:cs.CL&start=0&max_results=20&sortBy=submittedDate'\`
+Atom XML: each \`<entry>\` has \`<id>\` (the arXiv URL), \`<title>\`, \`<published>\`, \`<author>\` and \`<summary>\`. Wait 3 seconds between calls.
+
+## OpenAlex (250M+ works across fields, with citation counts)
+\`curl -s 'https://api.openalex.org/works?search=retrieval%20augmented%20generation&filter=from_publication_date:2023-01-01,type:article&per-page=25&select=id,doi,title,publication_year,cited_by_count,primary_location'\`
+JSON \`results[]\`. \`cited_by_count\` helps rank; it is not quality.
+
+## Crossref (DOIs and publisher metadata)
+- Search: \`curl -s 'https://api.crossref.org/works?query.bibliographic=retrieval+augmented+generation&rows=20&select=DOI,title,issued,container-title,type'\`
+- One DOI: \`curl -s 'https://api.crossref.org/works/10.48550/arXiv.2005.11401'\`
+Use it to confirm a citation is real: title, year and venue must match.
+
+## The source log (PRISMA-style)
+Keep \`deliverables/sources.md\`. Log every search, not only the hits you kept:
+- \`Q3. 2026-11-13 · OpenAlex · "retrieval augmented generation" from 2023 · 412 hits, screened the top 25\`
+- \`S7. Lewis et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. doi:10.48550/arXiv.2005.11401 · kept: the original RAG paper\`
+- \`X4. … · dropped: a blog summary of S7, not a primary source\`
+
+Every claim in the report cites its sources as [S7]. A claim without a source is not a finding: say it is unknown, or find one.`,
+  },
+
+  {
+    id: "jtbd-brief",
+    name: "Jobs-to-be-Done Brief",
+    domain: "content",
+    description: "Write a campaign brief around the job the customer is hiring the product to do: situation, motivation, outcome, anxieties, and the one message.",
+    body: `# Jobs-to-be-Done Brief
+
+Write deliverables/brief.md before any copy. Every draft is checked against it.
+
+## Sections
+1. **The job:** "When <situation>, I want to <motivation>, so I can <expected outcome>." One sentence, in the customer's words. Quote real customers (reviews, support tickets, interviews) when you have them, and say where they came from.
+2. **Who:** the audience segment, and who is explicitly not the target.
+3. **Forces:** push (what's wrong today), pull (what's attractive about the new way), anxiety (what worries them about switching), habit (what keeps them where they are). Copy must answer the anxieties.
+4. **The one message:** one sentence. Two proof points that support it, each with its source.
+5. **Channel and format:** where it runs, length limits, the call to action.
+6. **Not saying:** claims we can't support, competitor names, prices or dates not yet confirmed.
+7. **Done when:** how the owner will judge the drafts.
+
+Unknowns are written as questions for the owner, not guessed.`,
+  },
+  {
+    id: "copywriting",
+    name: "Copywriting (drafts for review)",
+    domain: "content",
+    description: "Draft emails, posts and pages from a brief: one message, the reader's words, claims you can back, variants to choose from. Drafts only; a person sends.",
+    body: `# Copywriting
+
+You write drafts. You never send, post, schedule or publish anything: the owner does that by hand.
+
+## How
+- Start from the brief: the job, the one message, the anxieties to answer. If there is no brief, ask for one.
+- Lead with the reader's situation, not the product. Short sentences, concrete nouns, one call to action.
+- Every factual claim (numbers, customers, comparisons) needs a source in the brief or the project. No invented testimonials, statistics or urgency.
+- Respect the channel: subject line ≤ 50 characters and a preview line for email; the platform's length for social; a scannable heading structure for pages.
+- Write 2–3 variants that differ in angle, not just wording, and say which you'd pick and why.
+
+## Deliver
+One file per piece under deliverables/drafts/, with a header: channel, audience, the brief section it answers, sources for every claim, and "DRAFT: not sent".`,
+  },
+  {
+    id: "meddicc-qualification",
+    name: "MEDDICC Qualification",
+    domain: "content",
+    description: "Qualify an account with MEDDICC (Metrics, Economic buyer, Decision criteria, Decision process, Identify pain, Champion, Competition) from public sources, before any outreach.",
+    body: `# MEDDICC Qualification
+
+One file per account: deliverables/accounts/<account>.md. Public, professional sources only (the company's site, filings, press, job posts, the person's professional profile as published). No personal data beyond name, role and work context; never home addresses, personal phones or family.
+
+## The seven letters
+- **Metrics:** the measurable outcome they'd care about, with the evidence.
+- **Economic buyer:** the role that owns the budget (a name only when publicly stated).
+- **Decision criteria:** what they'll judge on (security, price, integration…), as far as public signals show.
+- **Decision process:** how they buy (procurement, trials, partners), or "unknown".
+- **Identify pain:** the problem, with a source (a job post, an outage, a filing).
+- **Champion:** who would push for it internally, or "not yet".
+- **Competition:** what they use today, if known.
+
+Score each letter: known / partial / unknown, with the source. An account with no identified pain isn't ready for outreach: say so.`,
   },
 
   // ---------------------------------------------------------------- Content & Documentation

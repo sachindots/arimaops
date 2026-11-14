@@ -1,4 +1,4 @@
-import type { Role, TeamTemplate } from "../model";
+import type { Finding, Role, Stage, TeamTemplate } from "../model";
 import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
 
 export interface Preset {
@@ -13,6 +13,17 @@ export interface Preset {
   taskPool: string[];
   questions: string[];
   leadQuestions: string[];
+  /** Security demos: findings already reported when the session starts. */
+  findings?: Finding[];
+}
+
+function finding(id: string, reporterId: string, title: string, severity: Finding["severity"], asset: string, hoursAgo: number, extra: Partial<Finding> = {}): Finding {
+  const at = new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
+  return {
+    id, projectId: "redcell-ops", taskId: null, reporterId, title, asset: { kind: "url", value: asset }, location: null, cvss: null, severity, ssvc: null,
+    cwe: [], attack: [], d3fend: [], wstg: null, description: "", impact: "", remediation: "", evidence: [], verified: false, verifiedBy: null,
+    status: "open", at, updatedAt: at, ...extra,
+  };
 }
 
 const sandbox = (extra: Partial<SandboxSettings> = {}): SandboxSettings => ({
@@ -55,8 +66,24 @@ function demoConfig({ secure = false, ...cfg }: Omit<HqConfig, "template" | "rul
     if (!roles.some((r) => r.id === a.roleId))
       roles.push({ id: a.roleId!, title: a.role, isLead: a.isLead, roleMd: a.roleMd, cli: a.cli, model: a.model, fallback: null, skills: [], onDemand: false, seats: 0, color: a.color });
   for (const r of roles) r.seats = cfg.team.filter((a) => a.roleId === r.id).length;
-  const stages = [{ id: "build", name: "Build", roleIds: roles.map((r) => r.id), gates: [] }];
-  const rules = { findings: secure, plans: false, scopeRequired: false, labMode: false, outbound: "none" as const, egress: [] };
+  const lead = roles.find((r) => r.isLead)?.id ?? roles[0].id;
+  const workers = roles.filter((r) => !r.isLead).map((r) => r.id);
+  const crew = workers.length ? workers : [lead];
+  const stages: Stage[] = secure
+    ? [
+        { id: "scope", name: "Scope", roleIds: [lead], gates: [{ id: "scoped", kind: "scope-set" }] },
+        { id: "recon", name: "Recon", roleIds: crew, gates: [] },
+        { id: "build", name: "Exploit", roleIds: crew, gates: [{ id: "verified", kind: "reviewer" }, { id: "second", kind: "second-opinion", when: "high-stakes" }] },
+        { id: "review", name: "Report", roleIds: [lead], gates: [{ id: "report", kind: "findings-report" }] },
+      ]
+    : [
+        { id: "spec", name: "Spec", roleIds: [lead], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
+        { id: "plan", name: "Plan", roleIds: [lead], gates: [{ id: "covered", kind: "analyze" }] },
+        { id: "build", name: "Build", roleIds: crew, gates: [{ id: "tests", kind: "tests-ci" }] },
+        { id: "review", name: "Review", roleIds: [...crew, lead], gates: [{ id: "reviewed", kind: "reviewer" }, { id: "evidence", kind: "evidence" }] },
+        { id: "merge", name: "Merge", roleIds: [lead], gates: [{ id: "merged", kind: "pr-merged" }] },
+      ];
+  const rules = { findings: secure, plans: false, scopeRequired: secure, labMode: false, outbound: "none" as const, egress: [] };
   const template: TeamTemplate = { id: "demo", version: 1, name: "Demo team", description: "", roles, flow: { stages }, starter: { boards: [], tasks: [] }, rules, memoryTypes: [] };
   return { ...cfg, template, rules };
 }
@@ -79,11 +106,11 @@ const askwell: Preset = {
   id: "askwell",
   label: "Askwell · 3 agents",
   config: demoConfig({
-    project: { id: "askwell", name: "Askwell", repo: "jsmastery-pro/askwell", path: "~/developer/askwell", hqPort: 7420 },
+    project: { id: "askwell", name: "Askwell", repo: "acme/askwell", path: "~/developer/askwell", hqPort: 7420 },
     team: [
-      agent("michael", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
-      agent("jim", "Vortex", "Frontend", "#00e5ff", { cli: "agy", model: "gemini-3-flash" }),
+      agent("michael", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
+      agent("jim", "Vortex", "Frontend", "#818cf8", { cli: "agy", model: "gemini-3-flash" }),
     ],
     workflow: {
       mode: "github-pr",
@@ -134,14 +161,17 @@ const redCell: Preset = {
   id: "red-cell",
   label: "RedCell · 5 agents (Cybersec)",
   config: demoConfig({
-    project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
+    project: {
+      id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420,
+      scope: { inScope: ["*.staging.example.com", "api.example.com", "10.20.0.0/16"], outOfScope: ["pay.example.com"], rules: "Weekdays 09:00–18:00 IST. No DoS, max 5 req/s. Contact: the owner." },
+    },
     secure: true,
     team: [
-      agent("cipher", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("ghost", "Ghost", "OSINT Analyst", "#00ff66", { cli: "agy", model: "gemini-3-flash" }),
-      agent("vortex", "Vortex", "Red Teamer", "#00e5ff", { cli: "claude", model: "Sonnet" }),
-      agent("nyx", "Nyx", "Security", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
-      agent("pulse", "Pulse", "SOC Analyst", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+      agent("cipher", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("ghost", "Ghost", "OSINT Analyst", "#3fb950", { cli: "agy", model: "gemini-3-flash" }),
+      agent("vortex", "Vortex", "Red Teamer", "#818cf8", { cli: "claude", model: "Sonnet" }),
+      agent("nyx", "Nyx", "Security", "#a371f7", { cli: "codex", model: "gpt-5.4" }),
+      agent("pulse", "Pulse", "SOC Analyst", "#db61a2", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
     ],
     workflow: {
       mode: "deliverables",
@@ -173,6 +203,18 @@ const redCell: Preset = {
     "Target Sigma output for Elastic or Splunk?",
   ],
   leadQuestions: ["Approve the Phase 3 hardening runbook?", "Sign off on the executive threat brief?"],
+  findings: [
+    finding("F-001", "vortex", "SSRF in webhook preview fetches internal metadata", "critical", "https://api.example.com/v1/webhooks/preview", 5, {
+      cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:N/SC:H/SI:L/SA:N", score: 9.3 }, cwe: ["CWE-918"], attack: ["T1190"], status: "confirmed", verified: true, verifiedBy: "cipher",
+      description: "The preview endpoint fetches any URL the caller gives, including 169.254.169.254.", impact: "Cloud credentials of the API role can be read.", remediation: "Allow-list outbound hosts; block link-local and private ranges.",
+      evidence: [{ kind: "request", content: "POST /v1/webhooks/preview\n{\"url\": \"http://169.254.169.254/latest/meta-data/iam/\"}" }],
+    }),
+    finding("F-002", "vortex", "JWT accepts alg=none on the legacy auth route", "high", "https://api.example.com/v0/session", 3, { cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", score: 8.7 }, cwe: ["CWE-347"] }),
+    finding("F-003", "nyx", "Webhook signatures compared with a non-constant-time check", "medium", "https://api.example.com/v1/webhooks", 26, { cwe: ["CWE-208"] }),
+    finding("F-004", "ghost", "Staging admin panel exposed without SSO", "medium", "https://admin.staging.example.com", 30, { status: "confirmed" }),
+    finding("F-005", "pulse", "Verbose stack traces on 500 responses", "low", "https://api.staging.example.com", 48),
+    finding("F-006", "ghost", "Server banner reveals nginx version", "info", "https://www.staging.example.com", 50, { status: "false-positive" }),
+  ],
 };
 
 // ---------------------------------------------------------------- Big team (7 agents)
@@ -181,14 +223,14 @@ const bigTeam: Preset = {
   id: "big-team",
   label: "Shipyard · 7 agents",
   config: demoConfig({
-    project: { id: "shipyard", name: "Shipyard", repo: "jsmastery-pro/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
+    project: { id: "shipyard", name: "Shipyard", repo: "acme/shipyard", path: "~/developer/shipyard", hqPort: 7420 },
     team: [
-      agent("maya", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("dwight", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
-      agent("jim", "Vortex", "Architect", "#00e5ff", { cli: "agy", model: "gemini-3.1-pro" }),
-      agent("kenji", "Nyx", "Developer", "#c04dff", { cli: "codex", model: "gpt-5.4" }),
-      agent("priya", "Pulse", "QA", "#ff2a85", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
-      agent("leo", "Zero", "Frontend", "#3ee0d0", { cli: "gemini", model: "gemini-3-flash" }),
+      agent("maya", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("dwight", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
+      agent("jim", "Vortex", "Architect", "#818cf8", { cli: "agy", model: "gemini-3.1-pro" }),
+      agent("kenji", "Nyx", "Developer", "#a371f7", { cli: "codex", model: "gpt-5.4" }),
+      agent("priya", "Pulse", "QA", "#db61a2", { cli: "opencode", model: "anthropic/claude-sonnet-4-6" }),
+      agent("leo", "Zero", "Frontend", "#4fb3c4", { cli: "gemini", model: "gemini-3-flash" }),
       agent("sam", "Hex", "Docs", "#5271ff", { cli: "copilot", model: "claude-sonnet-4.6" }),
     ],
     workflow: {
@@ -235,8 +277,8 @@ const duo: Preset = {
   config: demoConfig({
     project: { id: "notely", name: "Notely", repo: "you/notely", path: "~/code/notely", hqPort: 7420 },
     team: [
-      agent("ada", "Cipher", "Lead", "#ff1744", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
-      agent("max", "Ghost", "Developer", "#00ff66", { cli: "claude" }),
+      agent("ada", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
+      agent("max", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
     ],
     workflow: {
       mode: "github-pr",

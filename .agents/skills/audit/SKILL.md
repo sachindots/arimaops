@@ -1,6 +1,6 @@
 ---
 name: audit
-description: "Onboard the agentic workflow onto an existing codebase that was built without it. Reads the actual code to understand what exists, then generates project context file, context/index.md, and context/architecture.md from evidence — not assumption. Run once when bringing an existing project into the JSM workflow. After this runs, go straight to /plan for the next feature."
+description: "Onboard the agentic workflow onto an existing codebase that was built without it. Reads the actual code to understand what exists, then generates project context file, context/index.md, and context/architecture.md from evidence — not assumption. Run once when bringing an existing project into this workflow. After this runs, go straight to /plan for the next feature."
 ---
 
 ## Project Context File
@@ -338,7 +338,7 @@ Written:
 context/architecture.md under "What Was Not Confirmed."
 Review those when they become relevant.
 
-This project is now set up for the JSM workflow.
+This project is now set up for this workflow.
 Next step: /plan [feature-name] to start building.
 ```
 

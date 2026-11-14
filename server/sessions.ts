@@ -21,6 +21,8 @@ import { containerLoginSaved } from "./setup";
 import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
+import { scopeBlocksStart } from "./scope";
+import { spendPaused } from "./spendCaps";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
@@ -105,6 +107,13 @@ export class Sessions {
     const agent = hub.cfg(id);
     const st = hub.status(id);
     if (!agent || !st || st.session.state === "running" || st.session.state === "starting") return;
+    if (agent.nextMode) {
+      // A mode change made while it ran takes effect now, between tasks.
+      agent.mode = agent.nextMode;
+      delete agent.nextMode;
+      hub.configChanged();
+      hub.activity("session", id, `${agent.name} switches to ${agent.mode} mode`);
+    }
     const setup = hub.snap.setup;
     const fail = (detail: string) => {
       hub.setSession(id, { state: "failed", detail });
@@ -140,9 +149,13 @@ export class Sessions {
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
 
     // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
-    const hubs = liveHubs().includes(hub) ? liveHubs() : [...liveHubs(), hub];
+    const unscoped = scopeBlocksStart(hub.snap.config, agent);
+    if (unscoped) return fail(unscoped);
+    const over = spendPaused(hub.slug);
+    if (over && !agent.isLead) return fail(`Paused: the project's ${over === "day" ? "daily" : "monthly"} spend cap is reached. Raise it in Settings → Project, or wait for the ${over === "day" ? "next day" : "next month"}.`);
+
     const cap = maxAgents();
-    if (runningAgents(hubs) >= cap)
+    if (this.atCap())
       return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);
 
     const name = this.name(id);
@@ -158,7 +171,9 @@ export class Sessions {
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
-        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root);
+        const rules = hub.snap.config.rules;
+        const offensive = !!rules?.scopeRequired && (!!rules.labMode || !!hub.snap.config.project.scope?.inScope.length);
+        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root, { offensive });
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {
@@ -216,6 +231,12 @@ export class Sessions {
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /** True when as many agents run (or start) across the loaded projects as this machine allows. */
+  atCap(): boolean {
+    const hubs = liveHubs().includes(this.hub) ? liveHubs() : [...liveHubs(), this.hub];
+    return runningAgents(hubs) >= maxAgents();
   }
 
   async stop(id: string) {

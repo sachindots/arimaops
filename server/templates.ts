@@ -10,6 +10,7 @@ import { LEAD_NAME, nextAgentName } from "../src/data/names";
 import { BUILTIN_TEMPLATES } from "../src/data/templates";
 import { agentPalette } from "../src/theme/tokens";
 import { slugify } from "./paths";
+import { packProblems } from "./templateIO";
 
 export const defaultSandbox = (): SandboxSettings => ({
   resources: { cpus: null, memoryGb: null }, // sbx's own defaults
@@ -65,6 +66,8 @@ export function saveTemplate(db: DatabaseSync, t: TeamTemplate, by: string): Tea
 export function copyToProject(db: DatabaseSync, projectId: string, templateId: string): TeamTemplate {
   const t = getTemplate(db, templateId);
   if (!t) throw new TemplateError(`No template "${templateId}".`);
+  const packs = packProblems(t);
+  if (packs.length) throw new TemplateError(`${t.name} can't be used yet: ${packs.join("; ")}.`);
   if (projectTemplate(db, projectId)) throw new TemplateError(`Project "${projectId}" already has a template. Re-sync it instead.`);
   db.prepare("INSERT INTO projects_model (project_id, template_id, template_version, body, updated_at) VALUES (?, ?, ?, ?, ?)").run(
     projectId,
@@ -146,12 +149,23 @@ export function roleOf(t: TeamTemplate, seat: Pick<Seat, "roleId">): Role {
   return r;
 }
 
-const SEAT_KEYS = ["id", "name", "roleId", "color", "mode", "account", "workspacePath", "sandbox", "mcp"] as const;
+const SEAT_KEYS = ["id", "name", "roleId", "color", "mode", "nextMode", "account", "workspacePath", "sandbox", "mcp"] as const;
 
 /** What config.json keeps of an agent in a template project. */
 export function seatOf(a: AgentConfig): Seat {
   const s = Object.fromEntries(SEAT_KEYS.map((k) => [k, a[k]])) as unknown as Seat;
   return { ...s, account: a.account ?? "", mcp: a.mcp ?? [] };
+}
+
+/**
+ * A mode change for a seat: applied now when its session is down, else kept as `nextMode` for its next start, so a
+ * running agent never changes mode mid-task (docs/agent-engine.md section 9).
+ */
+export function changeMode(seat: Seat, mode: Seat["mode"], running: boolean) {
+  if (!running || mode === seat.mode) {
+    seat.mode = mode;
+    delete seat.nextMode;
+  } else seat.nextMode = mode;
 }
 
 /** The agent HQ runs for a seat: the seat plus its role's title, CLI, model, skills and role text. */

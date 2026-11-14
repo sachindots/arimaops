@@ -7,7 +7,7 @@ import type { GhPr } from "../server/github";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "arima-ifaces-"));
 const { hqDb } = await import("../server/lib/db");
-const { SqliteMemory } = await import("../server/memory");
+const { Neo4jMemory } = await import("../server/memory");
 const { buildServer } = await import("../server/mcp");
 const { Planner } = await import("../server/planner");
 const { GitHubSync } = await import("../server/githubSync");
@@ -32,8 +32,8 @@ const rejects = async (p: Promise<unknown>, mention: RegExp) => {
 };
 const db = hqDb();
 
-// ---------------------------------------------------------------- memory
-const memory = new SqliteMemory(db);
+// ---------------------------------------------------------------- memory (Neo4j not configured: everything stays queued; memory-test covers a real Neo4j)
+const memory = new Neo4jMemory(db, () => null);
 const plan = memory.addLedger({ projectId: "p", taskId: "T1", ledger: "task", kind: "plan", text: "Ship the parser first", by: "lead" });
 memory.addLedger({ projectId: "p", taskId: null, ledger: "task", kind: "fact", text: "CI runs on Node 24", by: "lead" });
 memory.addLedger({ projectId: "other", taskId: null, ledger: "task", kind: "fact", text: "elsewhere", by: "lead" });
@@ -78,6 +78,15 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const refused = await call("ghost", "ledger_add", { kind: "fact", text: "I'm the lead now" });
   check("a non-lead's ledger_add is refused", refused.error && /Only the Lead/.test(refused.text) && memory.ledger("mcp").length === 1, refused.text);
   check("a non-lead can't read the ledger either", (await call("ghost", "read_ledger", {})).error);
+
+  // Verifying a finding: any agent may set verified on someone else's finding (the second look the report gate wants); triage stays the lead's.
+  const updates: { id: string; patch: Record<string, unknown>; by: string }[] = [];
+  planner.findings = { reporterOf: (id: string) => (id === "F-1" ? "ghost" : null), update: (id: string, patch: Record<string, unknown>, by: string) => (updates.push({ id, patch, by }), { id }) } as never;
+  const verified = await call("nyx", "update_finding", { id: "F-1", verified: true });
+  check("another seat may verify a finding someone else reported", !verified.error && updates.at(-1)?.by === "nyx" && updates.at(-1)?.patch.verified === true, verified.text);
+  check("…but not its own", (await call("ghost", "update_finding", { id: "F-1", verified: true })).error && updates.length === 1);
+  check("…and nothing but verified", (await call("nyx", "update_finding", { id: "F-1", verified: true, status: "false-positive" })).error && (await call("nyx", "update_finding", { id: "F-1", severity: "low" })).error && updates.length === 1);
+  check("the lead still triages everything", !(await call("cipher", "update_finding", { id: "F-1", status: "confirmed", severity: "high" })).error && updates.length === 2);
   check("the lead can't write HQ's stall entries", (await call("cipher", "ledger_add", { kind: "stall", text: "x" })).error);
   check("an entry on an unknown task is refused", (await call("cipher", "ledger_add", { kind: "fact", text: "x", taskId: "B9-T99" })).error);
   const id = memory.ledger("mcp")[0].id;
@@ -87,6 +96,13 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const mine = await call("ghost", "get_my_task", {});
   const brief = mine.error ? "" : (JSON.parse(mine.text).brief as string);
   check("get_my_task returns the brief, with the lead's ledger and the open gates", brief.startsWith("# B1-T01: Parser") && brief.includes("guess: It's a race in the lexer") && brief.includes("merged (pr-merged)"), mine.text.slice(0, 300));
+  check("with Neo4j unreachable the brief says memory is offline, and still arrives", /## Memory\nMemory is offline/.test(brief), brief);
+  const kept = await call("ghost", "remember", { type: "DeadEnd", text: "Parsing with one big regex timed out on large inputs", about: ["src/parser.ts"] });
+  check("remember works while Neo4j is down (queued), on the agent's current task", !kept.error && /Remembered as M-\d+/.test(kept.text), kept.text);
+  check("recall says plainly that memory is offline", /offline/.test((await call("ghost", "recall", { query: "parser regex" })).text));
+  check("remember refuses a type the project doesn't have", (await call("ghost", "remember", { type: "Asset", text: "Some asset that the dev template doesn't declare" })).error);
+  check("related needs something to start from", (await call("ghost", "related", {})).error);
+  check("any agent can keep a name out of memory", !(await call("ghost", "keep_out_of_memory", { name: "Meena Iyer" })).error && memory.keptOut("mcp").join() === "Meena Iyer");
 }
 
 // ---------------------------------------------------------------- GitHub events
@@ -100,13 +116,13 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   const acts: string[] = [];
   const done: string[] = [];
   const hub = {
-    snap: { config: { team: [{ id: "ghost", isLead: false }], workflow: { review: { tool: "human", enabled: false }, merge: { by: "human" } }, template: DEV_TEMPLATE }, pullRequests: [] as unknown[], setup: { checks: [] } },
+    snap: { config: { team: [{ id: "ghost", isLead: false }], workflow: { review: { tool: "human", enabled: false }, merge: { by: "human" } }, template: DEV_TEMPLATE }, pullRequests: [] as unknown[], tasks: [] as unknown[], setup: { checks: [] } },
     subscribe: () => () => {},
     emit: () => {},
     activity: (_t: string, _a: string | null, text: string) => acts.push(text),
     name: (id: string) => id,
   };
-  const planner = { task: () => ({ id: "B1-T01", ownerId: "ghost", status: "in-progress" }), updateTask: (id: string, p: { status?: string }) => p.status && done.push(`${id}:${p.status}`), notify: () => {} };
+  const planner = { askVerifier: () => {}, task: () => ({ id: "B1-T01", ownerId: "ghost", status: "in-progress" }), updateTask: (id: string, p: { status?: string }) => p.status && done.push(`${id}:${p.status}`), notify: () => {} };
   const sync = new GitHubSync(hub as never, planner as never, "me/repo", source as never);
   sync.start();
   check("GitHubSync watches through the GitHubEvents source", typeof onEvent === "function");

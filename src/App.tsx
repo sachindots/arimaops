@@ -1,29 +1,24 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { OfficeSnapshot } from "./data/types";
-import { connectOffice, useOffice } from "./store/office";
+import { connectOffice, officeActions, useOffice } from "./store/office";
+import { GITHUB_STATE_KEY } from "./data/githubApp";
 import { checkAuth, useAuth } from "./store/auth";
 import { prefKey } from "./lib/prefs";
 import { SignIn } from "./ui/auth/SignIn";
 import { OwnerPrompt } from "./ui/auth/OwnerPrompt";
 import { ui, useUi } from "./store/ui";
-import { DebugPanel } from "./ui/DebugPanel";
 import { DrawerHost } from "./ui/drawers/Drawer";
-import { ActivityFeed } from "./ui/hud/ActivityFeed";
 import { ConnectionBanner } from "./ui/hud/ConnectionBanner";
 import { SetupChecklist } from "./ui/setup/SetupChecklist";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
-import { TeamPanel } from "./ui/hud/TeamPanel";
-import { Tooltip } from "./ui/hud/Tooltip";
-import { TopBar } from "./ui/hud/TopBar";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
-import { DialogHost } from "./ui/dialog";
+import { SpatialHud } from "./ui/hud/SpatialHud";
+import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
 import { closeTopPanel, useNativePush } from "./lib/native";
 
-// The office (PixiJS, most of the bundle) loads only when it's shown, so phones and tablets skip it.
-const OfficeCanvas = lazy(() => import("./office/OfficeCanvas").then((m) => ({ default: m.OfficeCanvas })));
 
 function useKeyboard() {
   useEffect(() => {
@@ -77,7 +72,8 @@ function useSetupPrompt() {
         .map((c) => c.id)
         .sort()
         .join(",");
-      const key = prefKey(`setupSeen.${s.snap.config.project.id}`);
+      // Per machine, not per project: the checks are about this computer, so switching project doesn't reopen them.
+      const key = prefKey("setupSeen");
       let seen: string | null = null;
       try {
         seen = localStorage.getItem(key);
@@ -91,6 +87,45 @@ function useSetupPrompt() {
 }
 
 /** `?open=actions` / `?open=agent:<id>` / `?open=board` (links from push notifications): open it once connected. */
+/**
+ * GitHub's manifest flow lands here with a one-time code. Read once when the app loads (effects may run twice), and
+ * kept only if it answers the form this browser sent.
+ */
+const githubReturn = (() => {
+  const url = new URL(location.href);
+  const code = url.searchParams.get("github_code");
+  if (!code) return null;
+  const state = url.searchParams.get("github_state") ?? "";
+  url.searchParams.delete("github_code");
+  url.searchParams.delete("github_state");
+  history.replaceState(null, "", url.toString());
+  let expected: string | null = null;
+  try {
+    expected = sessionStorage.getItem(GITHUB_STATE_KEY);
+    sessionStorage.removeItem(GITHUB_STATE_KEY);
+  } catch {
+    /* no storage: refused */
+  }
+  return { code, ok: !!expected && expected === state, used: false };
+})();
+
+function useGithubAppReturn() {
+  useEffect(() => {
+    if (!githubReturn || githubReturn.used) return;
+    if (!githubReturn.ok) return void ((githubReturn.used = true), ask.alert("GitHub App not created", "That return from GitHub doesn't match a form this browser sent. Create the App again from Settings → Workflow."));
+    let done = false;
+    const send = () => {
+      if (done) return;
+      done = true;
+      githubReturn.used = true; // once, even if the effect runs again
+      officeActions.finishGithubApp(githubReturn.code);
+      ui.openSettings("workflow");
+    };
+    if (useOffice.getState().snap) return send();
+    return useOffice.subscribe((st) => st.snap && send());
+  }, []);
+}
+
 function useDeepLink() {
   // Read once: dev StrictMode runs the effect twice, and the first run strips the param from the URL.
   const [open] = useState(() => new URL(location.href).searchParams.get("open"));
@@ -113,28 +148,39 @@ function useDeepLink() {
   }, [open]);
 }
 
+function useDesktopHud(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1000px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1000px)");
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return wide;
+}
+
 export function App() {
   useEffect(() => connectOffice(), []);
   useEffect(() => void checkAuth(), []);
   const auth = useAuth((s) => s.status);
   const pushError = useNativePush(auth === "signed-in");
   useDeepLink();
+  useGithubAppReturn();
   useKeyboard();
   useSetupPrompt();
+  const desktopHud = useDesktopHud();
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
   const readOnly = useOffice((s) => s.live && !!s.snap && !s.snap.welcome && !s.snap.config.template);
   const readOnlyNote = "Read-only: this project was made before team templates. You can watch, answer and stop its agents.";
   const compact = useUi((s) => s.compact);
-  const view = useUi((s) => s.view);
   const solo = useUi((s) => s.solo);
   const agentName = useOffice((s) => (solo?.kind === "agent" ? s.snap?.config.team.find((a) => a.id === solo.agentId)?.name : undefined));
   useEffect(() => {
     if (solo) document.title = solo.kind === "agent" ? `${agentName ?? "Agent"} · ArimaOps` : "Command · ArimaOps";
   }, [solo, agentName]);
-  // The office layout needs about 1180 px (a landscape tablet); narrower, when chosen anyway, the page scrolls instead of squeezing.
-  useEffect(() => void (document.body.style.minWidth = compact || solo ? "" : "1180px"), [compact, solo]);
+  useEffect(() => void (document.body.style.minWidth = ""), []);
   // A real HQ that doesn't know this device: sign in first (not the demo data).
   if (auth === "signed-out") return <SignIn />;
 
@@ -155,8 +201,8 @@ export function App() {
                 <DrawerHost />
               </>
             )}
-            <OwnerPrompt />
-            <Tooltip />
+            {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
+            {!welcome && !setupOpen && <OwnerPrompt />}
             <DialogHost />
           </>
         )}
@@ -168,12 +214,17 @@ export function App() {
       <>
         <ConnectionBanner />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
-        {readOnly && <div role="status" className="panel fixed bottom-16 left-1/2 z-40 w-[min(92vw,640px)] -translate-x-1/2 px-3 py-1.5 text-center text-sm text-muted">{readOnlyNote}</div>}
+        {readOnly && (
+          <div role="status" className="pointer-events-none fixed bottom-[70px] left-1/2 z-10 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-navy/85 px-3 py-1 text-center text-[12px] text-muted backdrop-blur-md min-[1000px]:bottom-3.5">
+            {readOnlyNote}
+          </div>
+        )}
         {ready && (
           <>
-            <CompactApp />
+            {desktopHud ? <SpatialHud /> : <CompactApp />}
             <SettingsModal />
-            <OwnerPrompt />
+            {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
+            {!welcome && !setupOpen && <OwnerPrompt />}
             {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
             <DialogHost />
           </>
@@ -181,36 +232,5 @@ export function App() {
       </>
     );
 
-  return (
-    <>
-      {view === "office" && (
-        <Suspense fallback={null}>
-          <OfficeCanvas />
-        </Suspense>
-      )}
-      <ConnectionBanner />
-      {pushError && <div role="status" className="fixed top-0 z-50 bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
-      {readOnly && <div role="status" className="panel fixed bottom-2 left-1/2 z-40 -translate-x-1/2 px-4 py-1.5 text-sm text-muted">{readOnlyNote}</div>}
-      {ready && (
-        <>
-          <TopBar />
-          {view === "command" ? (
-            <CommandView />
-          ) : (
-            <>
-              <TeamPanel />
-              <ActivityFeed />
-            </>
-          )}
-          <DrawerHost />
-          <DebugPanel />
-          <SettingsModal />
-          <OwnerPrompt />
-          {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
-          <Tooltip />
-          <DialogHost />
-        </>
-      )}
-    </>
-  );
+  return null; // isCompact is always true: the page layout above is the only one
 }

@@ -3,6 +3,9 @@
 // templates are added here the same way. Bump a template's version whenever its content changes.
 
 import type { Role, TeamTemplate } from "./model";
+import { SECURITY_BLUE_TEMPLATE, SECURITY_PURPLE_TEMPLATE, SECURITY_RED_TEMPLATE } from "./securityTemplates";
+import { RESEARCH_TEMPLATE } from "./researchTemplate";
+import { MARKETING_TEMPLATE, SALES_TEMPLATE } from "./commsTemplates";
 
 const LEAD_MD = `You are the lead. You run the team: you plan, assign, review and unblock. The user sets direction and makes only the calls that are truly theirs.
 
@@ -56,11 +59,12 @@ const lead = (over: Partial<Role> = {}): Role => ({
   skills: ["pstack-architect", "pstack-blast-radius", "ponytail", "product-prd"],
   onDemand: false,
   seats: 1,
-  color: "#ff1744",
+  color: "#f85149",
   ...over,
 });
 
-export const DEV_TEMPLATE: TeamTemplate = {
+/** Dev v1 (build → review): what Phase 1–3 projects were made from. Kept for them and for tests; no longer offered. */
+export const DEV_TEMPLATE_V1: TeamTemplate = {
   id: "dev",
   version: 1,
   name: "Dev team",
@@ -78,7 +82,7 @@ export const DEV_TEMPLATE: TeamTemplate = {
       skills: ["pstack-architect", "ponytail", "pstack-thermo-review", "pstack-blast-radius", "pstack-deslop"],
       onDemand: true,
       seats: 2,
-      color: "#00ff66",
+      color: "#3fb950",
     },
     {
       id: "reviewer",
@@ -91,13 +95,121 @@ export const DEV_TEMPLATE: TeamTemplate = {
       skills: ["pstack-thermo-review", "ponytail", "pstack-blast-radius", "pstack-deslop", "vuln-triage"],
       onDemand: true,
       seats: 1,
-      color: "#ffab00",
+      color: "#d29922",
     },
   ],
   flow: {
     stages: [
       { id: "build", name: "Build", roleIds: ["developer"], gates: [] },
       { id: "review", name: "Review", roleIds: ["reviewer", "lead"], gates: [{ id: "merged", kind: "pr-merged" }] },
+    ],
+  },
+  starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },
+  rules: { findings: false, plans: false, scopeRequired: false, labMode: false, outbound: "none", egress: [] },
+  memoryTypes: [],
+};
+
+const SECOND_OPINION_MD = `You give second opinions. You are deliberately a different model from the one that wrote the change, so you catch what it can't see in its own work.
+
+## How you work
+- HQ or the lead sends you a task in review with its PR. Read the diff, the task and its spec items, then run what you can.
+- Look first for what the author's model tends to miss: wrong assumptions about inputs, missing auth or validation checks, error paths, races, and anything the tests don't exercise.
+- Record your verdict with record_gate on the task's second-opinion gate: "passed" with what you checked, or "failed" with each problem, a concrete case that breaks it and the smallest fix.
+- Don't rewrite the change yourself. Don't repeat the reviewer's points; add what they didn't cover.
+
+## How you talk
+Short and specific: file, line, the input that breaks it, the fix.`;
+
+const VERIFIER_MD = `You verify that a change works the way people will see it. HQ sends you a task in review whose PR changes UI files.
+
+## How you work
+- Check out the PR's head commit in your workspace, install, and start the app with the repo's dev command on your own port ($PORT).
+- Open the pages the changed files render, as a user would. Click through the change: forms, empty states, errors.
+- Take screenshots at desktop (1280x800) and tablet (820x1180) width with Playwright (\`npx playwright screenshot --viewport-size=1280,800 <url> evidence/<name>.png\`), or a short recording for an interaction.
+- Call attach_evidence with the commit, one line per step (what you opened, what you did, what looked wrong) and each file with a label.
+- Don't change the code or push. If the app won't start, say exactly why in the steps and attach what you have: the reviewer decides.
+
+## How you talk
+Plain steps and what you saw. Name a broken thing by page, size and what's wrong.`;
+
+const SPEC_LEAD_MD = `${LEAD_MD}
+
+## The flow you run
+- **Spec:** before any code, write the board's spec with write_spec, one numbered requirement per line (S1., S2.…). The owner approves it once for the whole board in Action items.
+- **Plan:** cut the spec into small tasks, each naming the spec items it covers (specItems). The analyze gate lets tasks into Build only when every item has a task.
+- **Build:** assign tasks to the developer role; HQ picks the seat and starts it. A task leaves Build when its PR changes a test and CI is green.
+- **Review:** the reviewer and you review the PR. High-stakes tasks (auth, money, secrets, migrations, CI; or ones you mark highStakes) also get a second opinion from the Gemini seat; HQ asks it when such a task goes into review.
+- **Merge:** you merge in the order you set, or the owner does if they keep that.`;
+
+/**
+ * Dev v3 (docs/templates.md section 3, docs/factory.md section 7): spec → plan → build → review → merge; v3 adds the
+ * verifier and the evidence gate for PRs that change UI files. The library copy; projects made from
+ * v1 keep theirs until re-synced on purpose.
+ */
+export const DEV_TEMPLATE: TeamTemplate = {
+  id: "dev",
+  version: 3,
+  name: "Dev team",
+  description: "Spec-driven: the lead writes the spec and you approve it, tasks cover every spec item, each task is one branch and one PR with tests and green CI, reviewed (plus a second opinion from another model on high-stakes work, and screenshots of the running app for UI changes), then merged.",
+  roles: [
+    lead({ roleMd: SPEC_LEAD_MD }),
+    {
+      ...DEV_TEMPLATE_V1.roles[1],
+      skills: [...DEV_TEMPLATE_V1.roles[1].skills, "trailofbits/skills@property-based-testing"],
+    },
+    {
+      ...DEV_TEMPLATE_V1.roles[2],
+      skills: [
+        ...DEV_TEMPLATE_V1.roles[2].skills,
+        "cloudflare/security-audit-skill@security-audit",
+        "trailofbits/skills@differential-review",
+        "trailofbits/skills@sharp-edges",
+        "trailofbits/skills@supply-chain-risk-auditor",
+      ],
+    },
+    {
+      id: "second-opinion",
+      title: "Second opinion",
+      isLead: false,
+      roleMd: SECOND_OPINION_MD,
+      cli: "agy",
+      model: "gemini-4-argon-high",
+      fallback: null,
+      skills: ["pstack-thermo-review", "trailofbits/skills@differential-review"],
+      onDemand: true,
+      seats: 1,
+      color: "#58a6ff",
+    },
+    {
+      id: "verifier",
+      title: "Verifier",
+      isLead: false,
+      roleMd: VERIFIER_MD,
+      cli: "claude",
+      model: "claude-sonnet-5-5",
+      fallback: null,
+      skills: [],
+      onDemand: true,
+      seats: 1,
+      color: "#4fb3c4",
+    },
+  ],
+  flow: {
+    stages: [
+      { id: "spec", name: "Spec", roleIds: ["lead"], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
+      { id: "plan", name: "Plan", roleIds: ["lead"], gates: [{ id: "covered", kind: "analyze" }] },
+      { id: "build", name: "Build", roleIds: ["developer"], gates: [{ id: "tests", kind: "tests-ci" }] },
+      {
+        id: "review",
+        name: "Review",
+        roleIds: ["reviewer", "lead", "second-opinion", "verifier"],
+        gates: [
+          { id: "reviewed", kind: "reviewer" },
+          { id: "second", kind: "second-opinion", when: "high-stakes" },
+          { id: "evidence", kind: "evidence" },
+        ],
+      },
+      { id: "merge", name: "Merge", roleIds: ["lead"], gates: [{ id: "merged", kind: "pr-merged" }] },
     ],
   },
   starter: { boards: [{ id: "B1", title: "Backlog", status: "active", order: 0 }], tasks: [] },
@@ -129,4 +241,4 @@ export const BLANK_TEMPLATE: TeamTemplate = {
   memoryTypes: [],
 };
 
-export const BUILTIN_TEMPLATES: readonly TeamTemplate[] = [DEV_TEMPLATE, BLANK_TEMPLATE];
+export const BUILTIN_TEMPLATES: readonly TeamTemplate[] = [DEV_TEMPLATE, SECURITY_RED_TEMPLATE, SECURITY_PURPLE_TEMPLATE, SECURITY_BLUE_TEMPLATE, RESEARCH_TEMPLATE, MARKETING_TEMPLATE, SALES_TEMPLATE, BLANK_TEMPLATE];

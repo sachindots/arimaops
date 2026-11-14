@@ -1,4 +1,5 @@
 import { BRAND } from "../../data/brand";
+import { UsageTab } from "./UsageTab";
 import { clisFor, PROVIDER_SPECS } from "../../data/providers";
 import { useEffect, useState, type ReactNode } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
@@ -19,11 +20,13 @@ const LOCAL_PERMISSIONS: Partial<Record<AgentCli, string>> = {
   agy: "Antigravity runs commands without asking.",
 };
 
+const MODE_LABEL: Record<AgentConfig["mode"], string> = { sandbox: "Docker Sandbox", container: "Container", local: "Local mode" };
 
 export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: AgentTab }) {
   const snap = useOffice((s) => s.snap);
   const [tab, setTab] = useState<AgentTab>(initialTab ?? "terminal");
   const [pendingRestart, setPendingRestart] = useState(false);
+  const [editing, setEditing] = useState(false);
   const agent = snap?.config.team.find((a) => a.id === id);
   const status = snap?.agents.find((a) => a.agentId === id);
   if (!snap || !agent || !status) {
@@ -42,16 +45,34 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
   return (
     <>
       <DrawerHeader>
-        <Portrait color={agent.color} lead={agent.isLead} size={36} />
+        {/* Phones: the name and the controls get the full width. */}
+        <span className="max-[640px]:hidden">
+          <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={36} />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-[18px]">{agent.name}</b>
+            <b className="font-display text-[20px] font-semibold">{agent.name}</b>
             <RoleBadge role={agent.role} color={agent.color} />
             <StateChip state={status.state} session={status.session.state} />
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px]">
+          {!editing && (
+            <button
+              type="button"
+              className="mt-1 flex max-w-full cursor-pointer items-center gap-1.5 truncate text-left text-[12px] text-muted hover:text-ink"
+              onClick={() => setEditing(true)}
+              title="Change the CLI, model, where it runs and the account"
+            >
+              <span className="truncate">
+                {cliPickerLabel(agent.cli)} · <span className="font-term">{agent.model || "default model"}</span> · {MODE_LABEL[agent.mode]} · {agent.account || "usual sign-in"}
+              </span>
+              <span className="shrink-0 text-accent">Change</span>
+            </button>
+          )}
+          {editing && (
+          <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 text-[12px]">
+            <label className="flex min-w-0 flex-col gap-1 text-muted">CLI
             <select
-              className="input py-0.5 font-mono text-[12px]"
+              className="field h-8 w-full py-0 text-[12px]"
               value={agent.cli}
               aria-label={`${agent.name} CLI`}
               onChange={(e) => {
@@ -67,7 +88,8 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 </option>
               ))}
             </select>
-            <div className="min-w-[165px]">
+            </label>
+            <div className="flex min-w-0 flex-col gap-1 text-muted">Model
               <ModelSelect
                 cli={agent.cli}
                 account={agent.account}
@@ -80,8 +102,9 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 }}
               />
             </div>
+            <label className="flex min-w-0 flex-col gap-1 text-muted">Runs in
             <select
-              className="input py-0.5 font-mono text-[12px]"
+              className="field h-8 w-full py-0 text-[12px]"
               value={agent.mode}
               aria-label={`${agent.name} runtime mode`}
               onChange={(e) => {
@@ -93,8 +116,10 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               <option value="container">Container</option>
               <option value="local">Local mode</option>
             </select>
+            </label>
+            <label className="flex min-w-0 flex-col gap-1 text-muted">Account
             <input
-              className="input w-[96px] py-0.5 font-mono text-[12px]"
+              className="field h-8 w-full py-0 font-term text-[12px]"
               defaultValue={agent.account ?? ""}
               key={`${agent.id}-${agent.account ?? ""}`}
               placeholder="default"
@@ -108,6 +133,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 if (isRunning) setPendingRestart(true);
               }}
             />
+            </label>
             <datalist id={`accounts-${agent.id}`}>
               {(snap.accounts?.list ?? []).filter((a) => clisFor(a.provider).includes(agent.cli)).map((a) => (
                 <option key={a.id} value={a.id}>
@@ -115,6 +141,12 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
                 </option>
               ))}
             </datalist>
+            <button type="button" className="btn self-end justify-self-start px-3 text-[12px]" onClick={() => setEditing(false)}>
+              Done
+            </button>
+          </div>
+          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 empty:hidden">
             {pendingRestart && isRunning && (
               <button
                 type="button"
@@ -136,7 +168,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         <AccessCard request={access} agent={agent} />
       ) : (
         status.note && (
-          <div className={`border-b-[3px] border-ink px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
+          <div className={`border-b border-white/[0.08] px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
             {status.note}
             {status.state === "needs-input" && <span className="ml-2 text-muted">— answer in the terminal and press Enter</span>}
           </div>
@@ -144,7 +176,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
       )}
       <BlockedRequests agent={agent} />
       <PortBanner agent={agent} status={status} />
-      <div className="border-b-[3px] border-ink px-3 py-2">
+      <div className="border-b border-white/[0.08] px-3 py-2">
         <Tabs
           value={tab}
           onChange={setTab}
@@ -154,6 +186,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             { id: "task", label: "Task" },
             { id: "sandbox", label: "Sandbox" },
             { id: "messages", label: `Messages${unread ? ` · ${unread}` : ""}` },
+            { id: "usage", label: "Usage" },
           ]}
         />
       </div>
@@ -168,6 +201,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         {tab === "task" && <TaskTab snap={snap} agent={agent} taskId={status.currentTaskId} />}
         {tab === "sandbox" && <SandboxTab snap={snap} agent={agent} />}
         {tab === "messages" && <MessagesTab snap={snap} agent={agent} />}
+        {tab === "usage" && <UsageTab snap={snap} agent={agent} />}
       </div>
     </>
   );
@@ -184,7 +218,7 @@ function ShellTab({ agent, status }: { agent: AgentConfig; status: AgentStatus }
     return <div className="p-4 text-[14px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "local" ? "their folder" : agent.mode === "container" ? "their container" : "their sandbox"}.</div>;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream-2 px-3 py-1 text-[12px] text-muted">
+      <div className="flex items-center gap-2 border-b border-white/[0.08] bg-cream-2 px-3 py-1 text-[12px] text-muted">
         <span className="min-w-0 flex-1 truncate">
           {agent.mode === "sandbox" ? `A shell in ${agent.name}'s sandbox, beside the agent` : agent.mode === "container" ? `A shell in ${agent.name}'s container, beside the agent` : `Your shell in ${agent.name}'s folder`}
         </span>
@@ -221,7 +255,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
   };
   const shown = open ? approvals : approvals.slice(0, 3);
   return (
-    <div className="border-b-[3px] border-ink bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
+    <div className="border-b border-white/[0.08] bg-[rgba(192,77,255,0.14)] px-3 py-1.5 text-[13px]">
       <div className="flex items-center gap-2">
         <b className="flex-1 text-orange">
           Blocked by the sandbox · {approvals.length}
@@ -244,7 +278,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
       <ul className="mt-1">
         {shown.map((a) => (
           <li key={a.id} className="flex items-center gap-2 py-0.5">
-            <span className="min-w-0 flex-1 truncate font-term text-[16px]" title={`${a.title ?? a.host} — ${a.detail}`}>
+            <span className="min-w-0 flex-1 truncate font-term text-[12px]" title={`${a.title ?? a.host} — ${a.detail}`}>
               {a.title ?? a.host}
             </span>
             <button className="btn px-1.5 text-[11px]" disabled={busy} onClick={() => act(a.id, "allow")}>
@@ -268,9 +302,9 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
 /** The agent asked (request_access) to reach a domain its sandbox blocks. */
 function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentConfig }) {
   return (
-    <div className="border-b-[3px] border-ink bg-[rgba(255,23,68,0.16)] px-3 py-2">
+    <div className="border-b border-white/[0.08] bg-[rgba(255,23,68,0.16)] px-3 py-2">
       <div className="text-[14px] text-red">
-        <b>{agent.name}</b> wants to reach <b className="font-term text-[17px]">{request.domain}</b>
+        <b>{agent.name}</b> wants to reach <b className="font-term text-[13px]">{request.domain}</b>
       </div>
       <div className="mb-2 text-[13px] text-muted">“{request.reason}”</div>
       <div className="flex flex-wrap gap-2">
@@ -288,7 +322,7 @@ function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentCo
   );
 }
 
-const SESSION_COLOR = { running: "#00ff66", starting: "#00e5ff", stopped: "#6e7b94", failed: "#ff1744" } as const;
+const SESSION_COLOR = { running: "#3fb950", starting: "#818cf8", stopped: "#6b7280", failed: "#ff2a4b" } as const;
 
 /** Session state + Start/Stop + the agent's folder. */
 function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
@@ -296,11 +330,11 @@ function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const live = useOffice((st) => st.live);
   const [removing, setRemoving] = useState(false);
   return (
-    <div className="flex items-center gap-2 border-b-[3px] border-ink bg-cream px-3 py-1.5 text-[13px]">
+    <div className="flex items-center gap-2 border-b border-white/[0.08] bg-cream px-3 py-1.5 text-[13px]">
       <span className={`chip chip-dot ${s.state === "starting" ? "blink" : ""}`} style={{ ["--c" as string]: SESSION_COLOR[s.state] }}>
         {s.state === "running" ? "Session running" : s.state === "starting" ? "Starting" : s.state === "failed" ? "Failed" : "Stopped"}
       </span>
-      <span className="min-w-0 flex-1 truncate font-term text-[15px] text-muted" title={s.workspace ?? undefined}>
+      <span className="min-w-0 flex-1 truncate font-term text-[12px] text-muted" title={s.workspace ?? undefined}>
         {s.state === "starting" ? s.detail : (s.workspace ?? "")}
       </span>
       {s.workspace && live && (
@@ -333,15 +367,15 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const setup = useOffice((st) => st.snap?.setup);
   const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : agent.mode === "container" ? !setup?.containerReady : !setup?.localReady;
   return (
-    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6edf7]">
+    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6e8eb]">
       <div className="max-w-[380px]">
         {s.state === "starting" ? (
-          <p className="blink font-term text-[22px] text-green">{s.detail ?? "Starting…"}</p>
+          <p className="blink font-term text-[17px] text-green">{s.detail ?? "Starting…"}</p>
         ) : (
           <>
-            <p className="mb-2 font-term text-[22px]">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
-            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[16px] text-[#ff5c8a]">{s.detail}</pre>}
-            <p className="mb-4 text-[13px] text-[#6e7b94]">
+            <p className="mb-2 font-term text-[17px]">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
+            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[12px] text-[#db61a2]">{s.detail}</pre>}
+            <p className="mb-4 text-[13px] text-[#6b7280]">
               {agent.mode === "sandbox"
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
                 : agent.mode === "container"
@@ -390,7 +424,7 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
           return (
             <button key={b.id} className="panel mb-2 block w-full px-3 py-2 text-left" onClick={() => ui.openBoards(b.id)}>
               <b>{b.title}</b>
-              <div className="font-term text-[17px] text-muted">
+              <div className="font-term text-[13px] text-muted">
                 {count("todo")} to do · {count("in-progress")} in progress · {count("in-review")} in review · {count("done")} done
               </div>
             </button>
@@ -405,19 +439,19 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
       <SectionTitle>Current task</SectionTitle>
       {task ? (
         <div className="panel mb-4 px-3 py-2">
-          <div className="font-term text-[18px] text-muted">{task.id} · {snap.boards.find((b) => b.id === task.boardId)?.title}</div>
+          <div className="font-term text-[14px] text-muted">{task.id} · {snap.boards.find((b) => b.id === task.boardId)?.title}</div>
           <b className="text-[17px]">{task.title}</b>
           <div className="mt-1 text-[14px]">Status: {task.status}{task.note ? ` — ${task.note}` : ""}</div>
           {task.description && <p className="mt-1 whitespace-pre-wrap text-[14px]">{task.description}</p>}
           {!!task.files?.length && (
             <div className="mt-1 text-[13px]">
-              Files: {task.files.map((f) => <code key={f} className="mr-1 bg-cream-2 px-1 font-term text-[15px]">{f}</code>)}
+              Files: {task.files.map((f) => <code key={f} className="mr-1 bg-cream-2 px-1 font-term text-[12px]">{f}</code>)}
             </div>
           )}
           {task.doneWhen && <div className="mt-1 text-[13px]"><b>Done when:</b> {task.doneWhen}</div>}
           {task.deliverablePath && (
             <div className="mt-1 text-[13px]">
-              <b>Deliverable:</b> <code className="bg-cream-2 px-1 font-term text-[15px] text-green">{task.deliverablePath}</code>
+              <b>Deliverable:</b> <code className="bg-cream-2 px-1 font-term text-[12px] text-green">{task.deliverablePath}</code>
             </div>
           )}
           {task.needs.length > 0 && (
@@ -501,7 +535,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
           ),
         )}
         {row("Ports", <PortsRow agent={agent} running={snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running"} />)}
-        {row("HQ access", <span className="font-term text-[17px]">localhost / host.docker.internal :{snap.config.project.hqPort} (added by HQ)</span>)}
+        {row("HQ access", <span className="font-term text-[13px]">localhost / host.docker.internal :{snap.config.project.hqPort} (added by HQ)</span>)}
         {row(
           "Service keys",
           [...snap.sbx.globalKeys.map((k) => `${k} (all)`), ...(snap.sbx.agents[agent.id]?.keys ?? [])].map((k) => (
@@ -517,7 +551,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
         <>
           <SectionTitle>Environment</SectionTitle>
           <button className="panel mb-4 block w-full px-3 py-2 text-left" onClick={() => ui.openEnv(env.name)}>
-            <div className="font-term text-[17px]">{env.url}</div>
+            <div className="font-term text-[13px]">{env.url}</div>
             <div className="text-[14px] text-muted">
               {env.status} · deployed {ago(env.lastDeployAt, now)} ago
             </div>
@@ -536,7 +570,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#00ff66" } : id === "hq" ? { name: BRAND.name, color: "#E8B339" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#00f0ff" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;
@@ -554,20 +588,20 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
             const out = m.fromId === agent.id;
             const other = who(out ? m.toId : m.fromId);
             return (
-              <li key={m.id} className={`border-2 border-ink px-2.5 py-1.5 ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
+              <li key={m.id} className={`rounded-lg border border-white/10 px-2.5 py-1.5 ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
                 <div className="flex items-center gap-1.5 text-[13px] text-muted">
                   {other && <Dot color={other.color} size={8} />}
                   {out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
                   {!out && m.delivered && (
                     <span
                       className="font-mono text-[11px]"
-                      style={{ color: m.delivered === "queued" ? "#ff9f1c" : m.delivered === "dropped" ? "#6e7b94" : "#00ff66" }}
+                      style={{ color: m.delivered === "queued" ? "#ffb020" : m.delivered === "dropped" ? "#6b7280" : "#3fb950" }}
                       title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "dropped" ? "Not sent: the task was reassigned or finished while it waited" : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
                     >
                       {m.delivered === "queued" ? "◷ queued" : m.delivered === "dropped" ? "– not sent" : "✓ delivered"}
                     </span>
                   )}
-                  <span className="ml-auto font-term text-[15px]">{ago(m.at, now)}</span>
+                  <span className="ml-auto font-term text-[12px]">{ago(m.at, now)}</span>
                 </div>
                 <div className="text-[15px]">{m.text}</div>
               </li>
@@ -576,7 +610,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
         </ul>
       </div>
       <form
-        className="flex gap-2 border-t-[3px] border-ink bg-cream p-2"
+        className="flex gap-2 border-t border-white/[0.08] bg-cream p-2"
         onSubmit={(e) => {
           e.preventDefault();
           send();

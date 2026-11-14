@@ -30,10 +30,24 @@ export const RISKY_COMMANDS = new Set([
   "updateProjectTemplate",
   "resyncTemplate",
   "saveTemplate",
+  "importTemplate",
+  "promoteLessons",
+  "setLessonPromotion",
+  "removeLesson",
+  "proposeImprovements",
+  "addToSuite",
   "updateSandbox",
   "setSecret",
   "saveAccount",
   "removeAccount",
+  "saveMemory",
+  "restoreMemory",
+  "setMemoryExtraction",
+  "setLabMode",
+  "setSpendCaps",
+  "finishGithubApp",
+  "setTeamMode",
+  "decideMemories",
   "removeSecret",
   "setProxy",
   "openEnvFile",
@@ -50,7 +64,7 @@ export const RISKY_COMMANDS = new Set([
 
 /** Never written to the audit log with arguments. */
 const QUIET = new Set(["sendTerminalInput", "resizeTerminal"]);
-const REDACT_ARGS = new Set(["setSecret", "setProxy", "saveAccount"]);
+const REDACT_ARGS = new Set(["setSecret", "setProxy", "saveAccount", "saveMemory"]);
 
 const STEP_UP_MS = 24 * 60 * 60 * 1000;
 const DEVICE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -290,7 +304,9 @@ export function startPushNotifier(hub: Hub, topic: string, server = process.env.
   };
 
   hub.subscribe((e: OfficeEvent) => {
-    if (e.type === "action.updated" && e.item.status === "open") {
+    if (e.type === "memory.digest") {
+      push(`memory:${e.key}`, e.urgent ? "A memory to check now" : "Memories to check", e.urgent ?? `${e.count} new memories wait for your check.`, e.urgent ? "high" : "default");
+    } else if (e.type === "action.updated" && e.item.status === "open" && e.item.kind !== "memory") {
       push(`action:${e.item.id}`, `${name(e.item.fromId)} needs you`, e.item.title, e.item.waiting ? "high" : "default");
     } else if (e.type === "access.updated" && e.request.status === "pending") {
       push(`access:${e.request.id}`, `${name(e.request.agentId)} wants ${e.request.domain}`, e.request.reason || "Network access request", "high", `agent:${e.request.agentId}`);
