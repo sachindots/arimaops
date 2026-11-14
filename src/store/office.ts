@@ -278,6 +278,7 @@ export const officeActions = {
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),
   updateRole: source.updateRole.bind(source),
+  updateProjectTemplate: source.updateProjectTemplate.bind(source),
   removeAgent: (id: string, opts?: RemoveAgentOptions) => source.removeAgent(id, opts),
   inspectWorkspace: (id: string) => source.inspectWorkspace(id),
   updateSandbox: source.updateSandbox.bind(source),

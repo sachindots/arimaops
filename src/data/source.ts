@@ -1,4 +1,5 @@
 import type { TemplateFile } from "./templateFile";
+import type { TeamTemplate } from "./model";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
@@ -135,6 +136,8 @@ export interface OfficeDataSource {
   updateAgent(id: string, patch: AgentPatch): void;
   /** Changes a role of the project's template: every seat of it, at its next start. */
   updateRole(roleId: string, patch: RolePatch): void;
+  /** Replaces this project's copy of its template (roles, flow, rules); the library is untouched. */
+  updateProjectTemplate(template: TeamTemplate): void;
   /** Stops the agent and removes it from the team; optionally deletes its sandbox and HQ-made folder. Ignored for the lead. */
   removeAgent(id: string, opts?: RemoveAgentOptions): void;
   /** Asks what removing would delete; answered with a `workspace.info` event. */

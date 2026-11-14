@@ -21,6 +21,7 @@ import { EnvironmentDrawer } from "../drawers/EnvironmentDrawer";
 import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
+import { FlowDrawer } from "../drawers/FlowDrawer";
 
 export type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
 
@@ -68,6 +69,7 @@ export function CompactApp() {
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
     : drawer?.kind === "boards" ? <BoardsDrawer initialBoardId={drawer.boardId} />
     : drawer?.kind === "findings" ? <FindingsDrawer />
+    : drawer?.kind === "flow" ? <FlowDrawer />
     : null;
 
   // The command center is a full-screen page; an agent opened from it is a page over it (Back returns).
@@ -325,6 +327,7 @@ export function More() {
         {item(`Findings${open ? ` · ${open}` : ""}`, "What agents found on in-scope targets; triage and the report", () => ui.openFindings(), security)}
         {item("Command center", "Every agent of every project, needs-you first", () => ui.setView("command", false))}
         {item("Projects", "Switch, create, pause, archive or delete projects", () => ui.openCto())}
+        {item("Flow", "Stages, who works them and the gates between", () => ui.openFlow())}
         {item("Pull requests", "Reviews and what's ready to merge", () => ui.openPrs())}
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}
         {item("Setup checklist", "What's missing on the server", () => ui.openSetup())}

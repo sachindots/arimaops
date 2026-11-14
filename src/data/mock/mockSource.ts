@@ -285,6 +285,11 @@ export function createMockSource(): OfficeDataSource {
       world.configChanged();
     },
 
+    updateProjectTemplate(template) {
+      world.snap.config.template = structuredClone(template);
+      world.configChanged();
+    },
+
     inspectWorkspace(id) {
       const st = world.status(id);
       if (!st) return;

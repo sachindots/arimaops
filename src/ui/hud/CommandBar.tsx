@@ -25,6 +25,7 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
       { id: "boards", label: "Task Board", sub: `${snap.tasks.length} tasks`, tag: "VIEW", run: () => ui.openBoards() },
       { id: "inbox", label: "Approvals & Inbox", sub: attention > 0 ? `${attention} waiting` : "All clear", tag: "OPS", run: () => ui.openActions() },
       { id: "findings", label: "Security Findings", sub: `${findingsCount} recorded`, tag: "SEC", run: () => ui.openFindings() },
+      { id: "flow", label: "Flow", sub: "Stages and gates", tag: "FLOW", run: () => ui.openFlow() },
       { id: "prs", label: "Pull Requests", sub: `${snap.pullRequests.length} open`, tag: "GIT", run: () => ui.openPrs() },
       {
         id: "command",

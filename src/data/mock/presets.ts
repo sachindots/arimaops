@@ -1,4 +1,4 @@
-import type { Finding, Role, TeamTemplate } from "../model";
+import type { Finding, Role, Stage, TeamTemplate } from "../model";
 import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
 
 export interface Preset {
@@ -66,7 +66,23 @@ function demoConfig({ secure = false, ...cfg }: Omit<HqConfig, "template" | "rul
     if (!roles.some((r) => r.id === a.roleId))
       roles.push({ id: a.roleId!, title: a.role, isLead: a.isLead, roleMd: a.roleMd, cli: a.cli, model: a.model, fallback: null, skills: [], onDemand: false, seats: 0, color: a.color });
   for (const r of roles) r.seats = cfg.team.filter((a) => a.roleId === r.id).length;
-  const stages = [{ id: "build", name: "Build", roleIds: roles.map((r) => r.id), gates: [] }];
+  const lead = roles.find((r) => r.isLead)?.id ?? roles[0].id;
+  const workers = roles.filter((r) => !r.isLead).map((r) => r.id);
+  const crew = workers.length ? workers : [lead];
+  const stages: Stage[] = secure
+    ? [
+        { id: "scope", name: "Scope", roleIds: [lead], gates: [{ id: "scoped", kind: "scope-set" }] },
+        { id: "recon", name: "Recon", roleIds: crew, gates: [] },
+        { id: "build", name: "Exploit", roleIds: crew, gates: [{ id: "verified", kind: "reviewer" }, { id: "second", kind: "second-opinion", when: "high-stakes" }] },
+        { id: "review", name: "Report", roleIds: [lead], gates: [{ id: "report", kind: "findings-report" }] },
+      ]
+    : [
+        { id: "spec", name: "Spec", roleIds: [lead], gates: [{ id: "spec-ok", kind: "spec-approved" }] },
+        { id: "plan", name: "Plan", roleIds: [lead], gates: [{ id: "covered", kind: "analyze" }] },
+        { id: "build", name: "Build", roleIds: crew, gates: [{ id: "tests", kind: "tests-ci" }] },
+        { id: "review", name: "Review", roleIds: [...crew, lead], gates: [{ id: "reviewed", kind: "reviewer" }, { id: "evidence", kind: "evidence" }] },
+        { id: "merge", name: "Merge", roleIds: [lead], gates: [{ id: "merged", kind: "pr-merged" }] },
+      ];
   const rules = { findings: secure, plans: false, scopeRequired: secure, labMode: false, outbound: "none" as const, egress: [] };
   const template: TeamTemplate = { id: "demo", version: 1, name: "Demo team", description: "", roles, flow: { stages }, starter: { boards: [], tasks: [] }, rules, memoryTypes: [] };
   return { ...cfg, template, rules };

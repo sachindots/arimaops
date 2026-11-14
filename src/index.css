@@ -391,3 +391,24 @@
   }
 }
 
+
+/* Flow canvas: React Flow on the HUD palette. */
+.react-flow.dark {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: rgba(0, 240, 255, 0.55);
+  --xy-controls-button-background-color: rgba(8, 13, 24, 0.9);
+  --xy-controls-button-background-color-hover: rgba(0, 240, 255, 0.12);
+  --xy-controls-button-color: #e6eef8;
+  --xy-controls-button-border-color: rgba(255, 255, 255, 0.1);
+  --xy-node-background-color: transparent;
+  --xy-node-border: none;
+  --xy-node-boxshadow-selected: none;
+}
+.react-flow .react-flow__node-stage {
+  cursor: pointer;
+}
+.react-flow .react-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

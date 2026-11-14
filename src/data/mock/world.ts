@@ -12,6 +12,7 @@ import type {
   AgentStatus,
   Board,
   Environment,
+  HqConfig,
   OfficeSnapshot,
   PullRequest,
   Task,
@@ -87,6 +88,13 @@ export function mockSession(project: string, agentId: string): SessionInfo {
   return { state: "running", detail: null, workspace: `~/.arima/${slug(project)}/${agentId}`, sandbox: { cpus: 8, memoryGb: 8 } };
 }
 
+/** Demo tasks sit in a stage of the demo flow by their status, so the flow canvas has live counts. */
+function demoStage(config: HqConfig, status: Task["status"]): string | undefined {
+  const ids = config.template?.flow.stages.map((x) => x.id) ?? [];
+  const want = { todo: ids[1] ?? ids[0], "in-progress": "build", blocked: "build", "in-review": "review", done: ids.at(-1) }[status];
+  return want && ids.includes(want) ? want : ids[0];
+}
+
 export class World {
   snap: OfficeSnapshot;
   preset: Preset;
@@ -108,6 +116,7 @@ export class World {
   static initialSnapshot(preset: Preset): OfficeSnapshot {
     const config = structuredClone(preset.config);
     const tasks = structuredClone(preset.tasks);
+    for (const t of tasks) t.stageId ??= demoStage(config, t.status);
     const workers = config.team.filter((a) => !a.isLead);
     const pullRequests: PullRequest[] = tasks
       .filter((t) => t.prNumber !== null)
@@ -391,7 +400,9 @@ export class World {
 
   patchTask(id: string, patch: Partial<Task>) {
     const t = this.task(id);
-    if (t) this.putTask({ ...t, ...patch });
+    if (!t) return;
+    const stageId = patch.status && !patch.stageId ? demoStage(this.snap.config, patch.status) : undefined;
+    this.putTask({ ...t, ...patch, ...(stageId ? { stageId } : {}) });
   }
 
   putPr(pr: PullRequest) {

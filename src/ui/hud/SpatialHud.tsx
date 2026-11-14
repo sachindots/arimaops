@@ -11,6 +11,7 @@ import { BoardsDrawer } from "../drawers/BoardsDrawer";
 import { CtoDrawer } from "../drawers/CtoDrawer";
 import { EnvironmentDrawer } from "../drawers/EnvironmentDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
+import { FlowDrawer } from "../drawers/FlowDrawer";
 import { PrDrawer } from "../drawers/PrDrawer";
 import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { AgentOrbit } from "./AgentOrbit";
@@ -21,9 +22,10 @@ import { TopLeftBrand, TopRightTelemetry } from "./TelemetryCorners";
 import { projectMode } from "./theme";
 
 type Page = Tab | "usage";
-type RailId = Page | "prs" | "findings" | "grid";
+type RailId = Page | "flow" | "prs" | "findings" | "grid";
 
 const EXTRA: { id: RailId; label: string; icon: ReactNode }[] = [
+  { id: "flow", label: "Flow", icon: <path d="M3 6h5v5H3zM16 13h5v5h-5zM8 8.5h3a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1" /> },
   { id: "prs", label: "PRs", icon: <path d="M6 3v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 0v3a3 3 0 0 1-3 3H9" /> },
   { id: "findings", label: "Findings", icon: <path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6zM12 8v5M12 16h.01" /> },
   { id: "usage", label: "Usage", icon: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /> },
@@ -31,7 +33,7 @@ const EXTRA: { id: RailId; label: string; icon: ReactNode }[] = [
 ];
 
 // Board, Inbox, PRs and Findings are pages: the drawer state says which, so ⌘K and links land on them too.
-const PAGE_OF: Partial<Record<string, RailId>> = { boards: "board", actions: "inbox", prs: "prs", findings: "findings" };
+const PAGE_OF: Partial<Record<string, RailId>> = { boards: "board", actions: "inbox", prs: "prs", findings: "findings", flow: "flow" };
 
 /**
  * Desktop layout (1000 px and up): a top bar (project, ⌘K, telemetry), a slim icon rail, and the page.
@@ -60,6 +62,7 @@ export function SpatialHud() {
     if (id === "board") return ui.openBoards();
     if (id === "inbox") return ui.openActions();
     if (id === "prs") return ui.openPrs();
+    if (id === "flow") return ui.openFlow();
     if (id === "findings") return ui.openFindings();
     ui.closeDrawer();
     if (id === "grid") return ui.setView("command");
@@ -73,6 +76,7 @@ export function SpatialHud() {
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
     : drawer?.kind === "prs" ? <PrDrawer />
     : drawer?.kind === "findings" ? <FindingsDrawer />
+    : drawer?.kind === "flow" ? <FlowDrawer />
     : tab === "chat" ? (
       <div className="flex min-h-0 flex-1">
         <div className="flex w-[320px] shrink-0 flex-col border-r border-white/[0.08]">

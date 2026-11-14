@@ -145,6 +145,7 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
     addAgent: (input) => send("addAgent", input),
     updateAgent: (id, patch) => send("updateAgent", id, patch),
     updateRole: (roleId, patch) => send("updateRole", roleId, patch),
+    updateProjectTemplate: (template) => send("updateProjectTemplate", template),
     removeAgent: (id, opts) => send("removeAgent", id, opts),
     inspectWorkspace: (id) => send("inspectWorkspace", id),
     updateSandbox: (id, patch) => send("updateSandbox", id, patch),
