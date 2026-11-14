@@ -51,6 +51,7 @@ export function CompactApp() {
   const drawer = useUi((s) => s.drawer);
   const [tab, setTab] = useState<Tab>("home");
   const [thread, setThread] = useState<string | null>(null);
+  const live = useOffice((s) => s.live);
   if (!snap) return null;
   const current = tab;
   const attention = selectAttention(snap).total;
@@ -124,6 +125,11 @@ export function CompactApp() {
             <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
           </button>
           {isViewer && <span className="chip text-[11px]">Viewer</span>}
+          {!live && (
+            <span className="rounded border border-accent/40 bg-accent/10 px-1.5 text-[11px] font-medium text-accent" title="Sample projects and agents, running in your browser. Run npx arimaops in a git repo for your own team.">
+              Demo
+            </span>
+          )}
           {setupIssues > 0 && (
             <button className="btn px-2 text-[12px]" onClick={() => ui.openSetup()}>
               Setup · {setupIssues}

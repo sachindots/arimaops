@@ -152,7 +152,7 @@ function Row({ name, multi, r }: { name: string; multi: boolean; r: MetricsRepor
             sub={`${many(n.interventions.gates, "gate")} · ${many(n.interventions.answers, "answer")} · ${many(n.interventions.messages, "message")}`}
             now={n.interventions.total}
             before={b.interventions.total}
-            title="Gates you recorded, Action items you answered, and messages you sent agents"
+            title="Gates you recorded, Inbox items you answered, and messages you sent agents"
           />
         </div>
       )}

@@ -200,7 +200,7 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
       <p className="m-0 text-[13px] text-muted">
         Certified lessons, decisions and dead ends from this project, offered to its template (<b className="text-ink">{lessons.templateId}</b>) so new
         projects from it start with them in their briefs. Claude Haiku rewrites each without this project's names, hosts or paths; any that still
-        mention one are dropped, and you approve each of the rest in Action items.
+        mention one are dropped, and you approve each of the rest in the Inbox.
         {security && " Off by default here: a lesson from one engagement must never reach the next client's brief."}
       </p>
       <label className="flex items-center gap-2 text-[14px]">
@@ -213,7 +213,7 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
             {lessons.running ? "Rewriting…" : "Offer lessons now"}
           </button>
           {!extractionOn && <span className="text-[12px] text-muted">Needs extraction on (it uses the same Haiku account).</span>}
-          {lessons.pending > 0 && <span className="text-[12px] text-muted">{lessons.pending} waiting for you in Action items</span>}
+          {lessons.pending > 0 && <span className="text-[12px] text-muted">{lessons.pending} waiting for you in the Inbox</span>}
         </div>
       )}
       {lessons.last && <p className="m-0 text-[12px] text-muted" role="status">{lessons.last}</p>}
@@ -236,7 +236,7 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
       <SectionTitle>Template improvements</SectionTitle>
       <p className="m-0 text-[13px] text-muted">
         When a check or gate fails on 3 different tasks within 30 days, Claude Haiku drafts one change to the template (a role's model, a skill, a
-        gate or a line of instructions). Nightly at 04:00, or now. You approve each in Action items; a built-in template is saved as your own copy.
+        gate or a line of instructions). Nightly at 04:00, or now. You approve each in the Inbox; a built-in template is saved as your own copy.
         Same switch and masking as lessons.
       </p>
       {!isViewer && (
@@ -244,7 +244,7 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
           <button className="btn px-3 text-[12px]" disabled={!lessons.enabled || !extractionOn || lessons.improvements.running} onClick={() => officeActions.proposeImprovements()}>
             {lessons.improvements.running ? "Drafting…" : "Look for repeated failures now"}
           </button>
-          {lessons.improvements.pending > 0 && <span className="text-[12px] text-muted">{lessons.improvements.pending} waiting for you in Action items</span>}
+          {lessons.improvements.pending > 0 && <span className="text-[12px] text-muted">{lessons.improvements.pending} waiting for you in the Inbox</span>}
         </div>
       )}
       {lessons.improvements.last && <p className="m-0 text-[12px] text-muted" role="status">{lessons.improvements.last}</p>}

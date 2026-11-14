@@ -82,7 +82,7 @@ function SkillPacks() {
     <section className="panel p-3">
       <SectionTitle>Skill packs</SectionTitle>
       <p className="mb-2 text-[13px] text-muted">
-        Skills from other repos are pinned to one commit, checked against a hash and scanned before any agent gets them. A repo nobody pinned yet waits for your check in Action items.
+        Skills from other repos are pinned to one commit, checked against a hash and scanned before any agent gets them. A repo nobody pinned yet waits for your check in the Inbox.
       </p>
       <ul className="flex flex-col gap-1.5">
         {packs.map((p) => (

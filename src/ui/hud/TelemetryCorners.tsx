@@ -1,6 +1,6 @@
 import type { OfficeSnapshot } from "../../data/types";
 import { signOut, useAuth } from "../../store/auth";
-import { isViewer, officeActions, selectAttention } from "../../store/office";
+import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { fmtTokens, fmtUsd, Logo, useCountUp } from "../kit";
 import { useAgentUsage } from "../../store/usage";
@@ -18,6 +18,7 @@ export function TopLeftBrand({
   snap,
   mode,
 }: Pick<TelemetryProps, "snap" | "mode">) {
+  const live = useOffice((s) => s.live);
   return (
     <div className="pointer-events-auto flex shrink-0 items-center gap-2.5">
       <Logo size={24} />
@@ -42,6 +43,11 @@ export function TopLeftBrand({
           {isViewer && (
             <span className="rounded border border-white/15 bg-white/[0.06] px-1.5 py-0.2 text-[11px] text-muted">
               VIEWER
+            </span>
+          )}
+          {!live && (
+            <span className="rounded border border-accent/40 bg-accent/10 px-1.5 text-[11px] font-medium text-accent" title="Sample projects and agents, running in your browser. Run npx arimaops in a git repo for your own team.">
+              Demo
             </span>
           )}
         </div>
