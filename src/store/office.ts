@@ -152,8 +152,13 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, agents: snap.agents.filter((a) => a.agentId !== e.agentId) };
     case "board.updated":
       return { ...snap, boards: upsert(snap.boards, e.board, (b) => b.id === e.board.id) };
-    case "task.updated":
-      return { ...snap, tasks: upsert(snap.tasks, e.task, (t) => t.id === e.task.id) };
+    case "task.updated": {
+      // HQ stamps movedAt when it saves, after this event; stamp a status change here so the board's ages are right now.
+      const prev = snap.tasks.find((t) => t.id === e.task.id);
+      const moved = !prev || prev.status !== e.task.status;
+      const task = { ...e.task, movedAt: moved ? new Date().toISOString() : (prev.movedAt ?? e.task.movedAt) };
+      return { ...snap, tasks: upsert(snap.tasks, task, (t) => t.id === task.id) };
+    }
     case "task.removed":
       return { ...snap, tasks: snap.tasks.filter((t) => t.id !== e.taskId) };
     case "pr.updated":

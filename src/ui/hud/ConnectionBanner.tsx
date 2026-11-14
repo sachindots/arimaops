@@ -12,7 +12,7 @@ export function ConnectionBanner() {
       ? "HQ restarted with a new link. Open the URL printed in your terminal."
       : `Lost connection to HQ. Reconnecting…${persistent ? " Agents keep running in tmux." : ""}`;
   return (
-    <div role="status" className="fixed left-1/2 top-[68px] z-50 -translate-x-1/2 border border-ink bg-red px-3 py-1 text-[14px] font-semibold text-white">
+    <div role="status" className="fixed left-1/2 top-[68px] z-50 -translate-x-1/2 rounded-lg border border-white/10 bg-red px-3 py-1 text-[14px] font-semibold text-white">
       {text}
     </div>
   );

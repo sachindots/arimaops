@@ -1,4 +1,4 @@
-import type { Role, TeamTemplate } from "../model";
+import type { Finding, Role, TeamTemplate } from "../model";
 import type { AgentConfig, Board, HqConfig, SandboxSettings, Task } from "../types";
 
 export interface Preset {
@@ -13,6 +13,17 @@ export interface Preset {
   taskPool: string[];
   questions: string[];
   leadQuestions: string[];
+  /** Security demos: findings already reported when the session starts. */
+  findings?: Finding[];
+}
+
+function finding(id: string, reporterId: string, title: string, severity: Finding["severity"], asset: string, hoursAgo: number, extra: Partial<Finding> = {}): Finding {
+  const at = new Date(Date.now() - hoursAgo * 3_600_000).toISOString();
+  return {
+    id, projectId: "redcell-ops", taskId: null, reporterId, title, asset: { kind: "url", value: asset }, location: null, cvss: null, severity, ssvc: null,
+    cwe: [], attack: [], d3fend: [], wstg: null, description: "", impact: "", remediation: "", evidence: [], verified: false, verifiedBy: null,
+    status: "open", at, updatedAt: at, ...extra,
+  };
 }
 
 const sandbox = (extra: Partial<SandboxSettings> = {}): SandboxSettings => ({
@@ -134,7 +145,10 @@ const redCell: Preset = {
   id: "red-cell",
   label: "RedCell · 5 agents (Cybersec)",
   config: demoConfig({
-    project: { id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420 },
+    project: {
+      id: "redcell-ops", name: "RedCell Ops", repo: "arimaops/redcell-ops", path: "~/missions/redcell-ops", hqPort: 7420,
+      scope: { inScope: ["*.staging.example.com", "api.example.com", "10.20.0.0/16"], outOfScope: ["pay.example.com"], rules: "Weekdays 09:00–18:00 IST. No DoS, max 5 req/s. Contact: the owner." },
+    },
     secure: true,
     team: [
       agent("cipher", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
@@ -173,6 +187,18 @@ const redCell: Preset = {
     "Target Sigma output for Elastic or Splunk?",
   ],
   leadQuestions: ["Approve the Phase 3 hardening runbook?", "Sign off on the executive threat brief?"],
+  findings: [
+    finding("F-001", "vortex", "SSRF in webhook preview fetches internal metadata", "critical", "https://api.example.com/v1/webhooks/preview", 5, {
+      cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:N/SC:H/SI:L/SA:N", score: 9.3 }, cwe: ["CWE-918"], attack: ["T1190"], status: "confirmed", verified: true, verifiedBy: "cipher",
+      description: "The preview endpoint fetches any URL the caller gives, including 169.254.169.254.", impact: "Cloud credentials of the API role can be read.", remediation: "Allow-list outbound hosts; block link-local and private ranges.",
+      evidence: [{ kind: "request", content: "POST /v1/webhooks/preview\n{\"url\": \"http://169.254.169.254/latest/meta-data/iam/\"}" }],
+    }),
+    finding("F-002", "vortex", "JWT accepts alg=none on the legacy auth route", "high", "https://api.example.com/v0/session", 3, { cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", score: 8.7 }, cwe: ["CWE-347"] }),
+    finding("F-003", "nyx", "Webhook signatures compared with a non-constant-time check", "medium", "https://api.example.com/v1/webhooks", 26, { cwe: ["CWE-208"] }),
+    finding("F-004", "ghost", "Staging admin panel exposed without SSO", "medium", "https://admin.staging.example.com", 30, { status: "confirmed" }),
+    finding("F-005", "pulse", "Verbose stack traces on 500 responses", "low", "https://api.staging.example.com", 48),
+    finding("F-006", "ghost", "Server banner reveals nginx version", "info", "https://www.staging.example.com", 50, { status: "false-positive" }),
+  ],
 };
 
 // ---------------------------------------------------------------- Big team (7 agents)

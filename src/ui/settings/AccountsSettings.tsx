@@ -7,7 +7,7 @@ import { ago, Field, SectionTitle, useNow } from "../kit";
 const MASTER: Record<"env" | "keychain" | "file", [string, string]> = {
   env: ["Master key from ARIMA_MASTER_KEY", "#3fb950"],
   keychain: ["Master key in this computer's keychain", "#3fb950"],
-  file: ["Master key in a file beside the vault", "#d29922"],
+  file: ["Master key in a file beside the vault", "#ffb020"],
 };
 
 const EMPTY = { id: "", provider: "anthropic" as Provider, label: "", fields: {} as Record<string, string>, secret: "" };
@@ -57,12 +57,12 @@ export function AccountsSettings() {
         {list.length === 0 ? (
           <p className="text-[13px] text-muted">No accounts yet. Agents use your CLI subscriptions until you add one.</p>
         ) : (
-          <div className="border border-ink">
+          <div className="rounded-lg border border-white/10">
             {list.map((a) => {
               const users = team.filter((t) => t.account === a.id);
               return (
                 <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
-                  <b className="font-term text-[17px]">{a.id}</b>
+                  <b className="font-term text-[13px]">{a.id}</b>
                   <span className="text-[13px]">{PROVIDER_SPECS[a.provider].label}</span>
                   {a.label !== PROVIDER_SPECS[a.provider].label && <span className="text-[12px] text-muted">{a.label}</span>}
                   <span className="font-mono text-[12px] text-muted">{a.secret ? `••••${a.secret.last4} · ${ago(a.secret.updatedAt, now)}` : "no key"}</span>

@@ -33,6 +33,7 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
   if (!boards.length) return null;
   const used = taskUsage(db, projectId);
   const scored = scoresByTask(db, projectId);
+  const moved = movedAt(db, projectId);
   const tasks = (db.prepare("SELECT * FROM tasks WHERE project_id = ? ORDER BY rowid").all(projectId) as unknown as TaskRow[]).map(
     (r): Task => ({
       id: r.id,
@@ -56,9 +57,21 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       templateId: r.template_id ?? undefined,
       templateVersion: r.template_version ?? undefined,
       ...(scored.has(r.id) ? { scores: scored.get(r.id) } : {}),
+      ...(moved.has(r.id) ? { movedAt: moved.get(r.id) } : {}),
     }),
   );
   return { boards, tasks };
+}
+
+/** Per task, when it entered its current status: the start of the last run of same-status events. */
+export function movedAt(db: DatabaseSync, projectId: string): Map<string, string> {
+  const rows = db.prepare("SELECT task_id, at, status FROM task_events WHERE project_id = ? ORDER BY task_id, at, rowid").all(projectId) as { task_id: string; at: number; status: string }[];
+  const last = new Map<string, { status: string; at: number }>();
+  for (const r of rows) {
+    const prev = last.get(r.task_id);
+    if (!prev || prev.status !== r.status) last.set(r.task_id, { status: r.status, at: r.at });
+  }
+  return new Map([...last].map(([id, v]) => [id, new Date(v.at).toISOString()]));
 }
 
 /** Saves the whole plan in one transaction. Rows of removed tasks go, with their gate events. */
@@ -92,6 +105,7 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
       const stage = t.stageId ?? firstStage;
       const old = was.get(t.id);
       if (!old || old.status !== t.status || old.stage_id !== stage) event.run(projectId, t.id, now, t.status, stage, t.ownerId ?? null);
+      if (!old || old.status !== t.status) t.movedAt = new Date(now).toISOString(); // the live task too, for the next snapshot
     }
     db.prepare("DELETE FROM tasks WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.tasks.map((t) => t.id)));
     db.prepare("DELETE FROM boards WHERE project_id = ? AND id NOT IN (SELECT value FROM json_each(?))").run(projectId, keep(plan.boards.map((b) => b.id)));

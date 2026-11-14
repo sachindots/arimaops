@@ -16,7 +16,7 @@ export function DrawerHeader({ children }: { children: ReactNode }) {
   const opened = useUi((s) => s.drawer !== null); // a bottom-bar tab (board, inbox) has nothing to go back to
   const solo = useUi((s) => s.solo !== null); // a pop-out window: the panel is the whole window
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b border-ink px-3 py-2">
+    <div className="flex flex-wrap items-center gap-2.5 border-b border-white/[0.08] px-4 py-2.5">
       {compact && opened && (
         <button className="btn px-2.5" aria-label="Back" onClick={() => ui.closeDrawer()}>
           ‹

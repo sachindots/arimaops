@@ -6,48 +6,132 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, SectionTitle, useNow } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
-export const SEVERITY_COLOR: Record<Severity, string> = { critical: "#f85149", high: "#ff6d00", medium: "#d29922", low: "#818cf8", info: "#9da9c4" };
+export const SEVERITY_COLOR: Record<Severity, string> = { critical: "#ff2a4b", high: "#ff7a1a", medium: "#ffb020", low: "#818cf8", info: "#8b9bb4" };
+
+const closed = (f: Finding) => f.status === "fixed" || f.status === "accepted" || f.status === "false-positive";
 
 export function FindingsDrawer() {
   const snap = useOffice((s) => s.snap);
   const now = useNow(30_000);
   const [hideClosed, setHideClosed] = useState(true);
+  const [only, setOnly] = useState<Severity | null>(null);
   if (!snap) return null;
   const all = snap.findings ?? [];
-  const closed = (f: Finding) => f.status === "fixed" || f.status === "accepted" || f.status === "false-positive";
-  const list = [...all].filter((f) => !hideClosed || !closed(f)).sort((a, b) => SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity) || b.at.localeCompare(a.at));
-  const scope = snap.config.project.scope;
+  const open = all.filter((f) => !closed(f));
+  const list = all
+    .filter((f) => (!hideClosed || !closed(f)) && (!only || f.severity === only))
+    .sort((a, b) => SEVERITIES.indexOf(a.severity) - SEVERITIES.indexOf(b.severity) || b.at.localeCompare(a.at));
+  const locked = isViewer || !snap.config.template;
+  const name = (id: string) => snap.config.team.find((a) => a.id === id)?.name ?? id;
+
   return (
     <>
       <DrawerHeader>
-        <b className="text-[18px]">Findings</b>
-        <span className="flex flex-wrap gap-1">
-          {SEVERITIES.map((s) => {
-            const n = all.filter((f) => f.severity === s && !closed(f)).length;
-            return n ? (
-              <span key={s} className="chip text-[11px]" style={{ ["--c" as string]: SEVERITY_COLOR[s] }}>
-                {n} {s}
-              </span>
-            ) : null;
-          })}
+        <b className="font-display text-[19px] font-semibold">Findings</b>
+        <span className="text-[13px] text-muted">
+          {open.length} open of {all.length}
         </span>
       </DrawerHeader>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3">
-        <p className="mb-2 text-[12px] text-muted">
-          In scope: <span className="font-mono">{scope?.inScope.join(", ") || "not set (Settings → Project)"}</span>. Report: <span className="font-mono">deliverables/security-report.md</span>
-        </p>
-        {snap.config.template && <Exports projectId={snap.config.project.id} />}
-        <label className="mb-3 flex items-center gap-2 text-[13px]">
-          <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide fixed, accepted and false positives
-        </label>
-        {list.length === 0 && <p className="text-[14px] text-muted">{all.length ? "Nothing open." : "No findings yet. Agents add them with report_finding as they test in-scope targets."}</p>}
-        <ul className="flex flex-col gap-2">
-          {list.map((f) => (
-            <FindingRow key={f.id} f={f} now={now} locked={isViewer || !snap.config.template} reporter={snap.config.team.find((a) => a.id === f.reporterId)?.name ?? f.reporterId} />
-          ))}
-        </ul>
+      <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 min-[1100px]:flex-row min-[1100px]:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="grid grid-cols-5 gap-2" role="group" aria-label="Open findings by severity">
+            {SEVERITIES.map((sev) => {
+              const n = open.filter((f) => f.severity === sev).length;
+              const on = only === sev;
+              return (
+                <button
+                  key={sev}
+                  className={`hud-glass hud-scan flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 text-left transition-colors ${on ? "hud-corners bg-white/[0.06]" : "hover:border-white/25"}`}
+                  style={{ ["--corner" as string]: SEVERITY_COLOR[sev], borderColor: on ? SEVERITY_COLOR[sev] : undefined, boxShadow: `inset 0 3px 0 ${SEVERITY_COLOR[sev]}${n ? `, 0 0 18px ${SEVERITY_COLOR[sev]}22` : ""}` }}
+                  aria-pressed={on}
+                  onClick={() => setOnly(on ? null : sev)}
+                  title={on ? "Show every severity" : `Show only ${sev}`}
+                >
+                  <b className="font-display text-[28px] font-semibold leading-none" style={{ color: n ? SEVERITY_COLOR[sev] : undefined, textShadow: n ? `0 0 12px ${SEVERITY_COLOR[sev]}66` : undefined }}>
+                    {n}
+                  </b>
+                  <span className="text-[12px] capitalize text-muted">{sev}</span>
+                </button>
+              );
+            })}
+          </div>
+          <label className="flex items-center gap-2 text-[13px] text-muted">
+            <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide fixed, accepted and false positives
+          </label>
+          {list.length === 0 ? (
+            <p className="m-0 rounded-xl border border-white/[0.08] px-4 py-6 text-center text-[14px] text-muted">
+              {all.length ? "Nothing here with this filter." : "No findings yet. Agents add them with report_finding as they test in-scope targets."}
+            </p>
+          ) : (
+            <div className="hud-glass overflow-x-auto rounded-xl">
+              <table className="w-full border-collapse text-left text-[13px]">
+                <thead className="bg-navy/70 text-[12px] text-muted">
+                  <tr>
+                    <th className="w-px whitespace-nowrap px-3 py-2 font-medium">Severity</th>
+                    <th className="px-3 py-2 font-medium">Finding</th>
+                    <th className="w-px px-3 py-2 font-medium">Status</th>
+                    <th className="w-px px-3 py-2 font-medium">Verified</th>
+                    <th className="w-px px-3 py-2 font-medium">Agent</th>
+                    <th className="w-px px-3 py-2 text-right font-medium">Age</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((f) => (
+                    <FindingRow key={f.id} f={f} now={now} locked={locked} reporter={name(f.reporterId)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <ScopePanel snap={snap} />
       </div>
     </>
+  );
+}
+
+/** What may be tested, the rules, and the report: beside the table on wide screens, above it on narrow ones. */
+function ScopePanel({ snap }: { snap: NonNullable<ReturnType<typeof useOffice.getState>["snap"]> }) {
+  const scope = snap.config.project.scope;
+  const hosts = (label: string, list: string[] | undefined, tone: string) => (
+    <div className="flex flex-col gap-1">
+      <span className="text-[12px] text-muted">{label}</span>
+      {list?.length ? (
+        <ul className="m-0 flex list-none flex-wrap gap-1 p-0">
+          {list.map((h) => (
+            <li key={h} className={`rounded-md border px-1.5 font-term text-[12px] ${tone}`}>
+              {h}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <span className="text-[12px] text-muted">None</span>
+      )}
+    </div>
+  );
+  return (
+    <aside className="hud-glass hud-corners flex shrink-0 flex-col gap-3 rounded-xl p-3.5 min-[1100px]:w-[280px]" aria-label="Scope and report">
+      <b className="font-display text-[15px] font-semibold">Scope</b>
+      {scope ? (
+        <>
+          {hosts("In scope", scope.inScope, "border-green/30 text-green")}
+          {hosts("Out of scope", scope.outOfScope, "border-red/30 text-red")}
+          {scope.rules && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[12px] text-muted">Rules of engagement</span>
+              <p className="m-0 whitespace-pre-wrap text-[12px]">{scope.rules}</p>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="m-0 text-[12px] text-muted">Not set. Agents can't test anything until it is: Settings → Project.</p>
+      )}
+      <div className="flex flex-col gap-1.5 border-t border-white/[0.08] pt-3">
+        <b className="font-display text-[15px] font-semibold">Report</b>
+        <span className="font-term text-[12px] text-muted">deliverables/security-report.md</span>
+        {snap.config.template && <Exports projectId={snap.config.project.id} />}
+      </div>
+    </aside>
   );
 }
 
@@ -82,8 +166,8 @@ async function exportFindings(projectId: string, format: string) {
 
 function Exports({ projectId }: { projectId: string }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12px]">
-      <span className="text-muted">Export:</span>
+    <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+      <span className="text-muted">Export</span>
       {EXPORTS.map((e) => (
         <button key={e.format} className="btn px-2 py-0.5 text-[12px]" onClick={() => void exportFindings(projectId, e.format)}>
           {e.label}
@@ -96,102 +180,119 @@ function Exports({ projectId }: { projectId: string }) {
 function Ids({ label, list }: { label: string; list: string[] }) {
   return list.length ? (
     <span>
-      <b className="text-muted">{label}</b> <span className="font-mono">{list.join(", ")}</span>
+      <b className="text-muted">{label}</b> <span className="font-term">{list.join(", ")}</span>
     </span>
   ) : null;
 }
 
-/** `locked`: a viewer, or a project made before templates (read-only). */
+/** One table row; click it for the details, severity and evidence underneath. `locked`: a viewer, or a project made before templates. */
 function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; reporter: string; locked: boolean }) {
   const [open, setOpen] = useState(false);
   const where = f.location ? `${f.location.file}${f.location.startLine ? `:${f.location.startLine}` : ""}` : f.asset.value;
+  const color = SEVERITY_COLOR[f.severity];
   return (
-    <li className="border-2 border-ink bg-[#16181d] px-2.5 py-2" style={{ borderLeft: `5px solid ${SEVERITY_COLOR[f.severity]}` }}>
-      <button className="flex w-full flex-wrap items-center gap-2 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="font-mono text-[12px] text-muted">{f.id}</span>
-        <b className="min-w-0 flex-1 text-[14px]">{f.title}</b>
-        <span className="font-mono text-[11px]" style={{ color: SEVERITY_COLOR[f.severity] }}>
-          {f.severity}
-          {f.cvss ? ` ${f.cvss.score.toFixed(1)}` : ""}
-        </span>
-      </button>
-      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-        <span className="font-mono">{where}</span>· {reporter} · {ago(f.at, now)} ago
-        <label className="ml-auto flex items-center gap-1">
-          <input type="checkbox" checked={f.verified} disabled={locked} onChange={(e) => officeActions.updateFinding(f.id, { verified: e.target.checked })} />
-          verified
-        </label>
-        <select
-          className="field py-0 text-[12px]"
-          value={f.status}
-          disabled={locked}
-          aria-label={`${f.id} status`}
-          onChange={(e) => officeActions.updateFinding(f.id, { status: e.target.value as Finding["status"] })}
-        >
-          {FINDING_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          className="field py-0 text-[12px]"
-          value={f.severity}
-          disabled={locked || !!f.cvss}
-          title={f.cvss ? "Follows the CVSS score" : undefined}
-          aria-label={`${f.id} severity`}
-          onChange={(e) => officeActions.updateFinding(f.id, { severity: e.target.value as Severity })}
-        >
-          {SEVERITIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
+    <>
+      <tr className={`border-t border-white/[0.06] align-top ${closed(f) ? "opacity-60" : ""} ${open ? "bg-white/[0.03]" : "hover:bg-white/[0.02]"}`}>
+        <td className="px-3 py-2" style={{ boxShadow: `inset 3px 0 0 ${color}` }}>
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[12px] font-medium capitalize" style={{ color, borderColor: `${color}55` }}>
+            {f.severity}
+            {f.cvss && <span className="font-term">{f.cvss.score.toFixed(1)}</span>}
+          </span>
+        </td>
+        <td className="w-full max-w-0 px-3 py-2">
+          <button className="flex w-full min-w-0 flex-col text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <span className="flex min-w-0 items-baseline gap-2">
+              <span className="shrink-0 font-term text-[12px] text-muted">{f.id}</span>
+              <b className="truncate font-medium hover:underline">{f.title}</b>
+            </span>
+            <span className="truncate font-term text-[12px] text-muted">{where}</span>
+          </button>
+        </td>
+        <td className="px-3 py-2">
+          <select
+            className="field h-7 w-[124px] py-0 text-[12px]"
+            value={f.status}
+            disabled={locked}
+            aria-label={`${f.id} status`}
+            onChange={(e) => officeActions.updateFinding(f.id, { status: e.target.value as Finding["status"] })}
+          >
+            {FINDING_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="px-3 py-2">
+          <input type="checkbox" className="mt-1.5" checked={f.verified} disabled={locked} aria-label={`${f.id} verified`} onChange={(e) => officeActions.updateFinding(f.id, { verified: e.target.checked })} />
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-muted">{reporter}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-right font-term text-[12px] text-muted">{ago(f.at, now)}</td>
+      </tr>
       {open && (
-        <div className="mt-2 flex flex-col gap-2 text-[13px]">
-          {f.cvss && <p className="break-all font-mono text-[12px] text-muted">{f.cvss.vector}</p>}
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
-            <Ids label="CWE" list={f.cwe} />
-            <Ids label="ATT&CK" list={f.attack} />
-            <Ids label="D3FEND" list={f.d3fend} />
-            <Ids label="WSTG" list={f.wstg ? [f.wstg] : []} />
-            {f.ssvc && (
-              <span>
-                <b className="text-muted">SSVC</b> {f.ssvc.decision}
-              </span>
-            )}
-          </p>
-          <section>
-            <SectionTitle>Description</SectionTitle>
-            <p className="whitespace-pre-wrap">{f.description || "None"}</p>
-          </section>
-          {f.impact && (
-            <section>
-              <SectionTitle>Impact</SectionTitle>
-              <p className="whitespace-pre-wrap">{f.impact}</p>
-            </section>
-          )}
-          <section>
-            <SectionTitle>Evidence</SectionTitle>
-            {f.evidence.length ? (
-              f.evidence.map((e, i) => (
-                <div key={i} className="mb-1.5">
-                  <span className="text-[11px] italic text-muted">{e.kind}</span>
-                  <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap bg-[#0b0c0f] p-2 font-mono text-[12px]">{e.content}</pre>
-                </div>
-              ))
-            ) : (
-              <p className="text-muted">None</p>
-            )}
-          </section>
-          <section>
-            <SectionTitle>Remediation</SectionTitle>
-            <p className="whitespace-pre-wrap">{f.remediation || "None"}</p>
-          </section>
-        </div>
+        <tr className="bg-white/[0.03]">
+          <td colSpan={6} className="px-4 pb-4 pt-1">
+            <div className="flex flex-col gap-2 text-[13px]">
+              <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+                <label className="flex items-center gap-1.5">
+                  <span className="text-muted">Severity</span>
+                  <select
+                    className="field h-7 w-[110px] py-0 text-[12px]"
+                    value={f.severity}
+                    disabled={locked || !!f.cvss}
+                    title={f.cvss ? "Follows the CVSS score" : undefined}
+                    aria-label={`${f.id} severity`}
+                    onChange={(e) => officeActions.updateFinding(f.id, { severity: e.target.value as Severity })}
+                  >
+                    {SEVERITIES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Ids label="CWE" list={f.cwe} />
+                <Ids label="ATT&CK" list={f.attack} />
+                <Ids label="D3FEND" list={f.d3fend} />
+                <Ids label="WSTG" list={f.wstg ? [f.wstg] : []} />
+                {f.ssvc && (
+                  <span>
+                    <b className="text-muted">SSVC</b> {f.ssvc.decision}
+                  </span>
+                )}
+              </p>
+              {f.cvss && <p className="m-0 break-all font-term text-[12px] text-muted">{f.cvss.vector}</p>}
+              <section>
+                <SectionTitle>Description</SectionTitle>
+                <p className="whitespace-pre-wrap">{f.description || "None"}</p>
+              </section>
+              {f.impact && (
+                <section>
+                  <SectionTitle>Impact</SectionTitle>
+                  <p className="whitespace-pre-wrap">{f.impact}</p>
+                </section>
+              )}
+              <section>
+                <SectionTitle>Evidence</SectionTitle>
+                {f.evidence.length ? (
+                  f.evidence.map((e, i) => (
+                    <div key={i} className="mb-1.5">
+                      <span className="text-[12px] italic text-muted">{e.kind}</span>
+                      <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap rounded-lg bg-navy-2 p-2 font-term text-[12px]">{e.content}</pre>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted">None</p>
+                )}
+              </section>
+              <section>
+                <SectionTitle>Remediation</SectionTitle>
+                <p className="whitespace-pre-wrap">{f.remediation || "None"}</p>
+              </section>
+            </div>
+          </td>
+        </tr>
       )}
-    </li>
+    </>
   );
 }

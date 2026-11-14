@@ -24,7 +24,7 @@ function KeyEditor({ keys, onSet, onRemove, disabled }: { keys: string[]; onSet:
       <ul className="mb-2 flex flex-wrap gap-1.5">
         {keys.length === 0 && <li className="text-[13px] text-muted">None</li>}
         {keys.map((k) => (
-          <li key={k} className="chip font-term text-[15px]">
+          <li key={k} className="chip font-term text-[12px]">
             {k} <span className="text-muted">••••</span>
             <button className="ml-1 text-[12px]" aria-label={`Remove ${k} key`} onClick={() => void ask.confirm(`Remove the ${k} key from sbx?`, undefined, { ok: "Remove", danger: true }).then((ok) => ok && onRemove(k))}>
               ✕
@@ -101,11 +101,11 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         </p>
       )}
 
-      <h3 className="-mb-2 text-[18px] font-bold">This agent</h3>
+      <h3 className="-mb-2 font-display text-[18px] font-semibold">This agent</h3>
 
       <ResourcesSection agent={agent} status={status} team={snap.config.team} machine={snap.setup.machine} />
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <div className="flex items-center justify-between">
           <SectionTitle>Network for {agent.name}'s sandbox</SectionTitle>
           <button className="btn mb-2 px-2 text-[12px]" onClick={copyToAll} title="Copy these allowed and blocked domains to every agent">
@@ -114,7 +114,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         </div>
         <p className="mb-3 text-[13px] text-muted">
           On top of the machine's base policy ({sbx.basePolicy}). Blocked wins over allowed. Applied with{" "}
-          <code className="font-term text-[15px]">sbx policy allow/deny network --sandbox</code>.
+          <code className="font-term text-[12px]">sbx policy allow/deny network --sandbox</code>.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Allowed domains">
@@ -134,7 +134,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
               {state?.rules.length === 0 && <li className="text-[12px] text-muted">No sandbox-specific rules.</li>}
               {state?.rules.map((r) =>
                 r.resources.map((res) => (
-                  <li key={`${r.id}-${res}`} className="chip font-term text-[14px]" style={{ ["--c" as string]: r.decision === "allow" ? "#3fb950" : "#f85149" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
+                  <li key={`${r.id}-${res}`} className="chip font-term text-[14px]" style={{ ["--c" as string]: r.decision === "allow" ? "#3fb950" : "#ff2a4b" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
                     {r.decision === "allow" ? "✓" : "✗"} {res} <span className="text-[11px] text-muted">{SOURCE[r.source]}</span>
                   </li>
                 )),
@@ -144,11 +144,11 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         </div>
       </section>
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>Service keys for {agent.name} only</SectionTitle>
         <p className="mb-2 text-[13px] text-muted">
           The host proxy adds these to {agent.name}'s requests, so the key never enters the VM. HQ passes the value straight to{" "}
-          <code className="font-term text-[15px]">sbx secret set</code> and never stores it.
+          <code className="font-term text-[12px]">sbx secret set</code> and never stores it.
         </p>
         <KeyEditor
           keys={state?.keys ?? []}
@@ -158,14 +158,14 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         />
       </section>
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>App variables (env file)</SectionTitle>
         <p className="mb-2 text-[13px] text-muted">
-          For values your app needs to run and test (DATABASE_URL, STRIPE_KEY…). One <code className="font-term text-[15px]">KEY=value</code> per line. HQ never reads or commits this file. When the agent starts, the values become
+          For values your app needs to run and test (DATABASE_URL, STRIPE_KEY…). One <code className="font-term text-[12px]">KEY=value</code> per line. HQ never reads or commits this file. When the agent starts, the values become
           environment variables in its session and in its Shell tab — not a .env file in the project. Restart the agent after editing.
         </p>
         <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate border-2 border-ink bg-cream px-2 py-0.5 font-term text-[16px]" title={state?.envFile.path}>
+          <code className="min-w-0 flex-1 truncate rounded-lg border border-white/10 bg-cream px-2 py-0.5 font-term text-[12px]" title={state?.envFile.path}>
             {state?.envFile.path ?? "—"}
           </code>
           <button className="btn text-[13px]" onClick={() => officeActions.openEnvFile(agent.id)}>
@@ -175,10 +175,10 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         <p className="mt-2 text-[12px] font-semibold text-orange">⚠ Unlike service keys, these values do enter the VM. Use test or development credentials. Restart the agent after editing.</p>
       </section>
 
-      <h3 className="-mb-2 mt-2 text-[18px] font-bold">This machine — all sandboxes</h3>
+      <h3 className="-mb-2 mt-2 font-display text-[18px] font-semibold">This machine — all sandboxes</h3>
       <p className="-mt-3 text-[13px] text-muted">These are sbx's machine-wide settings. They affect every sandbox on this machine, including ones HQ didn't create.</p>
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>Base network policy</SectionTitle>
         <p className="text-[15px]">{BASE[sbx.basePolicy]}</p>
         <p className="mt-1 text-[12px] text-muted">
@@ -191,14 +191,14 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         </p>
       </section>
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>Upstream proxy</SectionTitle>
         <Field label="Proxy URL" hint="Optional. All sandbox traffic goes through this proxy. Leave empty for none.">
-          <CommitInput className="field font-term text-[17px]" value={sbx.proxy ?? ""} placeholder="http://proxy.internal:3128" onCommit={(v) => officeActions.setProxy(v.trim() || null)} />
+          <CommitInput className="field font-term text-[13px]" value={sbx.proxy ?? ""} placeholder="http://proxy.internal:3128" onCommit={(v) => officeActions.setProxy(v.trim() || null)} />
         </Field>
       </section>
 
-      <section className="border border-ink bg-white p-3">
+      <section className="panel p-3">
         <SectionTitle>Service keys for every sandbox</SectionTitle>
         <KeyEditor keys={sbx.globalKeys} onSet={(service, value) => officeActions.setSecret(null, service, value)} onRemove={(service) => officeActions.removeSecret(null, service)} />
       </section>

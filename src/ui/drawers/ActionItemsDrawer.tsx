@@ -25,7 +25,7 @@ export function ActionItemsDrawer() {
   return (
     <>
       <DrawerHeader>
-        <b className="text-[18px]">Action items</b>
+        <b className="font-display text-[19px] font-semibold">Inbox</b>
         <span className="text-[13px] text-muted">{a.total ? `${a.total} waiting on you` : "Nothing waiting on you"}</span>
       </DrawerHeader>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
@@ -60,7 +60,7 @@ export function ActionItemsDrawer() {
               ))}
               {a.readyPrs.map((p) =>
                 p.url ? (
-                  <li key={`pr-${p.number}`} className="flex items-center gap-2 border border-ink bg-white px-2.5 py-1.5">
+                  <li key={`pr-${p.number}`} className="hud-scan flex items-center gap-2 rounded-xl border border-green/30 bg-navy/70 px-3 py-2" style={{ boxShadow: "inset 3px 0 0 #3fb950" }}>
                     <span className="flex-1">
                       PR <b>#{p.number}</b> {p.title} passed review and is ready to merge
                     </span>
@@ -84,7 +84,7 @@ export function ActionItemsDrawer() {
             {showClosed && (
               <ul className="mt-2 flex flex-col gap-1 text-[13px] text-muted">
                 {closed.map((i) => (
-                  <li key={i.id} className="border-t-2 border-dashed border-cream-3 py-1">
+                  <li key={i.id} className="border-t border-white/[0.06] py-1.5">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
                     {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "proposal" ? (i.status === "done" ? "saved" : "rejected") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
@@ -101,7 +101,7 @@ export function ActionItemsDrawer() {
 
 function Row({ text, color, onOpen }: { text: string; color?: string; onOpen: () => void }) {
   return (
-    <li className="flex items-center gap-2 border border-ink bg-white px-2.5 py-1.5">
+    <li className="hud-scan flex items-center gap-2 rounded-xl border border-white/[0.08] bg-navy/70 px-3 py-2" style={{ boxShadow: "inset 3px 0 0 #ffb020" }}>
       {color && <Dot color={color} size={8} />}
       <span className="flex-1">{text}</span>
       <button className="btn px-2 text-[12px]" onClick={onOpen}>
@@ -116,18 +116,21 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
   const [expanded, setExpanded] = useState(false);
   const long = item.details.split("\n").length > 6 || item.details.length > 400;
   return (
-    <li className={`border border-ink bg-white px-3 py-2 ${item.waiting ? "outline outline-orange" : ""}`}>
+    <li
+      className={`hud-scan hud-corners rounded-xl border bg-navy/70 px-4 py-3 transition-colors ${item.waiting ? "border-violet-400/50" : "border-white/[0.08] hover:border-amber/40"}`}
+      style={{ ["--corner" as string]: item.waiting ? "#a371f7" : "#ffb020", boxShadow: `inset 3px 0 0 ${item.waiting ? "#a371f7" : "#ffb020"}` }}
+    >
       <div className="flex items-start gap-2">
-        <b className="flex-1 text-[15px]">{item.title}</b>
+        <b className="flex-1 text-[15px] font-semibold">{item.title}</b>
         {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>plan · needs approval</span>}
         {item.kind === "lesson" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>lesson · for the template</span>}
-        {item.kind === "proposal" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>template change</span>}
-        {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
+        {item.kind === "proposal" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>template change</span>}
+        {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
         {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
         {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
         {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
-        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#f85149" }}>spend</span>}
-        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#d29922" }}>lead approved · undoable</span>}
+        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff2a4b" }}>spend</span>}
+        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>lead approved · undoable</span>}
         {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
@@ -143,9 +146,9 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
         <span>· {ago(item.at, now)} ago</span>
       </div>
       {item.proposal && (
-        <pre className="scroll-thin my-1 overflow-x-auto whitespace-pre-wrap border-2 border-ink bg-[#0b0f17] px-2 py-1.5 font-mono text-[12px] leading-snug" aria-label="The change">
+        <pre className="scroll-thin my-1 overflow-x-auto whitespace-pre-wrap rounded-lg border border-white/[0.08] bg-navy-2 px-3 py-2 font-term text-[12px] leading-snug" aria-label="The change">
           {item.proposal.diff.map((l, n) => (
-            <div key={n} style={{ color: l.startsWith("+") ? "#3fb950" : l.startsWith("-") ? "#f85149" : undefined }}>
+            <div key={n} style={{ color: l.startsWith("+") ? "#3fb950" : l.startsWith("-") ? "#ff2a4b" : undefined }}>
               {l}
             </div>
           ))}
@@ -198,6 +201,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           className="field min-w-0 flex-1 text-[13px]"
           value={note}
           placeholder="Note for the agent (optional, no secrets)"
+          aria-label={`Note for the agent: ${item.title}`}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && officeActions.resolveActionItem(item.id, "done", note)}
         />
@@ -220,7 +224,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
   const list = item.memories ?? [];
   const decide = (decisions: Record<string, "certify" | "reject">) => officeActions.decideMemories(item.id, decisions);
   return (
-    <li className="border border-ink bg-white px-3 py-2">
+    <li className="panel px-3 py-2">
       <div className="flex flex-wrap items-start gap-2">
         <b className="flex-1 text-[15px]">{item.title}</b>
         {!isViewer && list.length > 1 && (

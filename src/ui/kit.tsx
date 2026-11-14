@@ -1,6 +1,6 @@
 // Small shared HUD pieces.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AgentState, ReviewState, SessionState, Tokens } from "../data/types";
 import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 
@@ -8,8 +8,8 @@ import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
 export function RoleBadge({ role, color, compact = false }: { role: string; color: string; compact?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center truncate border font-mono font-bold uppercase tracking-wider ${
-        compact ? "max-w-full px-1 py-0 text-[9px] leading-[14px]" : "max-w-[14ch] px-1.5 py-0.5 text-[10px] leading-tight"
+      className={`inline-flex items-center truncate rounded-md border font-medium ${
+        compact ? "max-w-full px-1 py-0 text-[11px] leading-[14px]" : "max-w-[18ch] px-1.5 py-0.5 text-[12px] leading-tight"
       }`}
       style={{ color, borderColor: `${color}66`, backgroundColor: `${color}18` }}
       title={role}
@@ -23,7 +23,7 @@ export function RoleBadge({ role, color, compact = false }: { role: string; colo
 export function StateChip({ state, session, blink = true }: { state: AgentState; session?: SessionState; blink?: boolean }) {
   if (session && session !== "running")
     return (
-      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#f85149" : "#6b7280" }}>
+      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ff2a4b" : "#6b7280" }}>
         {sessionLabel[session]}
       </span>
     );
@@ -62,10 +62,10 @@ export function Portrait({ color, lead, size = 40, name }: { color: string; lead
       style={{
         width: size,
         height: size,
-        fontSize: Math.round(size * 0.42),
-        background: `color-mix(in srgb, ${color} 22%, #16181d)`,
+        fontSize: Math.max(11, Math.round(size * 0.42)),
+        background: `color-mix(in srgb, ${color} 22%, #0a101d)`,
         color: `color-mix(in srgb, ${color} 70%, white)`,
-        boxShadow: lead ? `0 0 0 2px #0f1115, 0 0 0 3px ${color}` : `inset 0 0 0 1px color-mix(in srgb, ${color} 45%, transparent)`,
+        boxShadow: lead ? `0 0 0 2px #050914, 0 0 0 3px ${color}` : `inset 0 0 0 1px color-mix(in srgb, ${color} 45%, transparent)`,
       }}
       title={lead ? "Lead" : undefined}
       aria-hidden
@@ -80,7 +80,7 @@ export function Dot({ color, size = 10 }: { color: string; size?: number }) {
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h3 className="mb-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-muted">{children}</h3>;
+  return <h3 className="mb-2 text-[13px] font-semibold text-muted">{children}</h3>;
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -95,9 +95,17 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode }[]; value: T; onChange: (id: T) => void }) {
   return (
-    <div role="tablist" className="flex flex-wrap gap-2">
+    <div role="tablist" className="no-scrollbar inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border border-white/[0.08] bg-navy/60 p-1">
       {tabs.map((t) => (
-        <button key={t.id} role="tab" aria-selected={value === t.id} aria-pressed={value === t.id} className="btn text-[14px]" onClick={() => onChange(t.id)}>
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={value === t.id}
+          className={`shrink-0 cursor-pointer whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+            value === t.id ? "bg-accent/15 text-accent shadow-[inset_0_-2px_0_#00f0ff]" : "text-muted hover:bg-white/[0.05] hover:text-ink"
+          }`}
+          onClick={() => onChange(t.id)}
+        >
           {t.label}
         </button>
       ))}
@@ -130,8 +138,71 @@ const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ?
 export function TokensChip({ usage }: { usage: Tokens }) {
   const total = usage.input + usage.cached + usage.output;
   return (
-    <span className="chip text-[10px]" title={`${short(usage.input)} fresh input · ${short(usage.cached)} from cache · ${short(usage.output)} output`}>
+    <span className="chip text-[11px]" title={`${short(usage.input)} fresh input · ${short(usage.cached)} from cache · ${short(usage.output)} output`}>
       {short(total)} tok
     </span>
   );
 }
+
+/** Tokens as 1.2k / 34k / 3.4M. */
+export function fmtTokens(n: number): string {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(Math.round(n));
+}
+
+/** Estimated cost: $0.42, $12.30, $1.2k. */
+export function fmtUsd(n: number): string {
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(n >= 100 ? 0 : 2)}`;
+}
+
+/** Counts up (or down) to `value` over ~0.6 s, for live numbers. Jumps straight there when motion is reduced. */
+export function useCountUp(value: number): number {
+  const [shown, setShown] = useState(value);
+  const now = useRef(value); // what's on screen, to animate from
+  useEffect(() => {
+    const set = (v: number) => setShown((now.current = v));
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return set(value);
+    const from = now.current;
+    const start = performance.now();
+    let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - start) / 600);
+      set(from + (value - from) * (1 - (1 - k) ** 3));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return shown;
+}
+
+/** A small line-and-area chart of `data` (oldest first). */
+export function Sparkline({ data, color = "#00f0ff", width = 96, height = 24, label }: { data: number[]; color?: string; width?: number; height?: number; label?: string }) {
+  const id = useId();
+  const max = Math.max(1, ...data);
+  const step = data.length > 1 ? width / (data.length - 1) : width;
+  const pts = data.map((v, i) => [i * step, height - 2 - (v / max) * (height - 4)] as const);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? "Activity"} className="shrink-0 overflow-visible">
+      <defs>
+        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity="0.35" />
+          <stop offset="1" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {pts.length > 1 && <path d={`${line} L${width},${height} L0,${height} Z`} fill={`url(#${id})`} />}
+      {pts.length > 1 && <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 3px ${color})` }} />}
+    </svg>
+  );
+}
+
+/** A thin glowing bar: `value` of `max`. */
+export function Meter({ value, max, color = "#00f0ff", label }: { value: number; max: number; color?: string; label: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="hud-meter" role="meter" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={Math.round(max)} style={{ ["--c" as string]: color }}>
+      <i style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+

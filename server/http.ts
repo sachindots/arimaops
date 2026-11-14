@@ -30,6 +30,7 @@ import {
 import { run } from "./lib/exec";
 import { releasePortBlock } from "./ports";
 import { hqDb } from "./lib/db";
+import { agentUsage } from "./usageEvents";
 import { forgetProject, recordsDir, saveRecord } from "./forget";
 import { memoryStore } from "./memory";
 import { backupsRoot } from "./memoryBackup";
@@ -450,10 +451,13 @@ export function startHttp(o: Options) {
           const slug = String(body.name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
           const path = body.path?.trim() || (create && slug ? join(homedir(), "projects", slug) : "");
           if (!path) return send(res, 400, JSON.stringify({ error: create ? "name or path required" : "path required" }), "application/json");
-          const project = registerProjectPath(path, create);
-          if (project) setRegistryArchived(project.path, null); // adding an archived folder again restores it
-          if (project && !o.projects.has(project.id)) { await o.loadProject(project.path); refreshPush(); }
-          return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
+          const added = registerProjectPath(path, create);
+          setRegistryArchived(added.path, null); // adding an archived folder again restores it
+          // A new folder has no config yet, so no overview until it's loaded (it opens on the welcome screen).
+          if (!added.project || !o.projects.has(added.project.id)) { await o.loadProject(added.path); refreshPush(); }
+          const projects = listProjectsOverview();
+          const project = projects.find((p) => p.path === added.path) ?? null;
+          return send(res, 200, JSON.stringify({ project, projects }), "application/json");
         }
         const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
         // A deletion record, for the owner to hand to the client: /api/projects/deletion-records/<name>.html|.json
@@ -509,6 +513,14 @@ export function startHttp(o: Options) {
           const days = Math.max(1, Math.min(90, Math.round(Number(url.searchParams.get("days")) || 7)));
           const owner = rt.hub.snap.messages.filter((m) => m.fromId === "you").map((m) => Date.parse(m.at));
           return send(res, 200, JSON.stringify(metricsReport(hqDb(), rt.hub.snap.config.project.id, days, owner)), "application/json");
+        }
+        // Per-agent tokens and cost over the last `days`, with a 24-slice series for sparklines. Read-only.
+        if (parts.length === 4 && parts[3] === "usage" && req.method === "GET") {
+          const rt = o.projects.get(decodeURIComponent(parts[2]));
+          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
+          const days = Math.max(1, Math.min(90, Math.round(Number(url.searchParams.get("days")) || 1)));
+          const now = Date.now();
+          return send(res, 200, JSON.stringify({ days, agents: agentUsage(hqDb(), rt.hub.snap.config.project.id, now - days * 86_400_000, now) }), "application/json");
         }
         // The command center's tile previews: each running agent's last lines, secrets masked. Read-only.
         if (parts.length === 4 && parts[3] === "screens" && req.method === "GET") {

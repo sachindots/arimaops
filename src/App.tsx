@@ -13,6 +13,7 @@ import { SetupChecklist } from "./ui/setup/SetupChecklist";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
+import { SpatialHud } from "./ui/hud/SpatialHud";
 import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
@@ -71,7 +72,8 @@ function useSetupPrompt() {
         .map((c) => c.id)
         .sort()
         .join(",");
-      const key = prefKey(`setupSeen.${s.snap.config.project.id}`);
+      // Per machine, not per project: the checks are about this computer, so switching project doesn't reopen them.
+      const key = prefKey("setupSeen");
       let seen: string | null = null;
       try {
         seen = localStorage.getItem(key);
@@ -146,6 +148,17 @@ function useDeepLink() {
   }, [open]);
 }
 
+function useDesktopHud(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1000px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1000px)");
+    const onChange = () => setWide(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return wide;
+}
+
 export function App() {
   useEffect(() => connectOffice(), []);
   useEffect(() => void checkAuth(), []);
@@ -155,6 +168,7 @@ export function App() {
   useGithubAppReturn();
   useKeyboard();
   useSetupPrompt();
+  const desktopHud = useDesktopHud();
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
@@ -166,8 +180,7 @@ export function App() {
   useEffect(() => {
     if (solo) document.title = solo.kind === "agent" ? `${agentName ?? "Agent"} · ArimaOps` : "Command · ArimaOps";
   }, [solo, agentName]);
-  // The office layout needs about 1180 px (a landscape tablet); narrower, when chosen anyway, the page scrolls instead of squeezing.
-  useEffect(() => void (document.body.style.minWidth = compact || solo ? "" : "1180px"), [compact, solo]);
+  useEffect(() => void (document.body.style.minWidth = ""), []);
   // A real HQ that doesn't know this device: sign in first (not the demo data).
   if (auth === "signed-out") return <SignIn />;
 
@@ -188,7 +201,8 @@ export function App() {
                 <DrawerHost />
               </>
             )}
-            <OwnerPrompt />
+            {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
+            {!welcome && !setupOpen && <OwnerPrompt />}
             <DialogHost />
           </>
         )}
@@ -200,12 +214,17 @@ export function App() {
       <>
         <ConnectionBanner />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
-        {readOnly && <div role="status" className="panel fixed bottom-16 left-1/2 z-40 w-[min(92vw,640px)] -translate-x-1/2 px-3 py-1.5 text-center text-sm text-muted">{readOnlyNote}</div>}
+        {readOnly && (
+          <div role="status" className="pointer-events-none fixed bottom-[70px] left-1/2 z-10 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-navy/85 px-3 py-1 text-center text-[12px] text-muted backdrop-blur-md min-[1000px]:bottom-3.5">
+            {readOnlyNote}
+          </div>
+        )}
         {ready && (
           <>
-            <CompactApp />
+            {desktopHud ? <SpatialHud /> : <CompactApp />}
             <SettingsModal />
-            <OwnerPrompt />
+            {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
+            {!welcome && !setupOpen && <OwnerPrompt />}
             {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
             <DialogHost />
           </>

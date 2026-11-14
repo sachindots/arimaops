@@ -29,7 +29,7 @@ export function EnvironmentDrawer({ name }: { name: string }) {
         ) : (
           <>
             <div className="panel mb-4 px-3 py-2 text-[14px]">
-              <div className="font-term text-[19px]">{env.url}</div>
+              <div className="font-term text-[14px]">{env.url}</div>
               <div className="mt-1 text-muted">
                 {tool} · last deploy {ago(env.lastDeployAt, now)} ago
               </div>

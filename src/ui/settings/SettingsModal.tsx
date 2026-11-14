@@ -31,36 +31,39 @@ export function SettingsModal() {
 
   return (
     <div
-      className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-[rgba(36,26,46,0.55)] p-0 md:p-4"
+      className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-navy-2/75 p-0 backdrop-blur-sm md:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
       onMouseDown={(e) => e.target === e.currentTarget && ui.closeSettings()}
     >
       <motion.div
-        initial={reduce ? false : { y: -16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.2 }}
-        className="panel flex h-[100dvh] w-full flex-col md:h-[min(760px,calc(100dvh-2rem))] md:w-[min(1080px,100%)]"
+        initial={reduce ? false : { y: -12, opacity: 0, scale: 0.99 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className="hud-drawer hud-corners flex h-[100dvh] w-full flex-col overflow-hidden md:h-[min(760px,calc(100dvh-2rem))] md:w-[min(1080px,100%)] md:rounded-2xl"
       >
-        <div className="flex items-center gap-3 border-b border-ink px-4 py-2">
-          <h2 className="m-0 flex-1 text-[22px] font-bold">Settings</h2>
-          <span className="hidden text-[13px] text-muted sm:inline">Changes apply right away.</span>
+        <div className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-2.5">
+          <h2 className="m-0 flex-1 font-display text-[20px] font-semibold text-ink">Settings</h2>
+          <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
+            <i className="h-1.5 w-1.5 rounded-full bg-green shadow-[0_0_6px_#3fb950]" />
+            Saved as you go
+          </span>
           <button className="btn px-2.5" aria-label="Close settings" onClick={() => ui.closeSettings()}>
             ✕
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <nav className="scroll-thin flex shrink-0 gap-2 overflow-x-auto border-b border-ink bg-cream-2 p-2 md:w-[200px] md:flex-col md:border-b-0 md:border-r md:p-3" aria-label="Settings sections">
+          <nav className="scroll-thin flex shrink-0 gap-1.5 overflow-x-auto border-b border-white/[0.08] bg-navy/60 p-2 md:w-[200px] md:flex-col md:border-b-0 md:border-r md:p-2.5" aria-label="Settings sections">
             {TABS.map((t) => (
               <button
                 key={t.id}
-                className="btn block shrink-0 px-2.5 py-1 text-left"
+                className="btn block shrink-0 px-2.5 py-1.5 text-left"
                 aria-pressed={settings.tab === t.id}
                 onClick={() => ui.openSettings(t.id, settings.agentId)}
               >
-                <div className="text-[16px]">{t.label}</div>
-                <div className="hidden text-[11px] font-normal text-muted md:block">{t.hint}</div>
+                <div className="text-[13px] font-medium">{t.label}</div>
+                <div className="hidden text-[12px] font-normal text-muted md:block">{t.hint}</div>
               </button>
             ))}
           </nav>

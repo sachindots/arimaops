@@ -1,4 +1,3 @@
-import { DEFAULT_OFFICE_NAME, officeSign } from "../../data/names";
 import { BRAND } from "../../data/brand";
 import { useCallback, useEffect, useState } from "react";
 import { type ProjectOverview, type TaskStatus } from "../../data/types";
@@ -10,11 +9,11 @@ import { DrawerHeader } from "./Drawer";
 const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done", "blocked"];
 
 const STATUS_BADGE: Record<TaskStatus, { label: string; color: string }> = {
-  todo: { label: "TODO", color: "#9da9c4" },
+  todo: { label: "TODO", color: "#8b9bb4" },
   "in-progress": { label: "DOING", color: "#818cf8" },
   "in-review": { label: "REVIEW", color: "#a371f7" },
   done: { label: "DONE", color: "#3fb950" },
-  blocked: { label: "BLOCKED", color: "#f85149" },
+  blocked: { label: "BLOCKED", color: "#ff2a4b" },
 };
 
 function getBrowserToken(): string {
@@ -236,46 +235,46 @@ export function CtoDrawer() {
         {ctoAgent && <Portrait name={ctoAgent.name} color={ctoAgent.color} lead={ctoAgent.isLead} size={36} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-[18px]">Projects</b>
-            <span className="border border-red bg-[rgba(255,23,68,0.16)] px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase text-red">
-              {projects.length} {projects.length === 1 ? "PROJECT" : "PROJECTS"} · {totalDoneAll}/{totalTasksAll} DONE
+            <b className="text-[17px] font-semibold">Projects</b>
+            <span className="text-[13px] text-muted">
+              {projects.length} {projects.length === 1 ? "project" : "projects"} · {totalDoneAll}/{totalTasksAll} tasks done
             </span>
           </div>
-          <div className="truncate font-mono text-[12px] text-muted">
-            {ctoAgent ? `Commanded by ${ctoAgent.name} (${ctoAgent.role} · ${ctoAgent.cli}${ctoAgent.model ? `:${ctoAgent.model}` : ""})` : `Global ${BRAND.name} Project Registry`}
+          <div className="truncate text-[12px] text-muted">
+            {ctoAgent ? `Led by ${ctoAgent.name} (${ctoAgent.role} · ${ctoAgent.cli}${ctoAgent.model ? `:${ctoAgent.model}` : ""})` : `Global ${BRAND.name} Project Registry`}
           </div>
         </div>
       </DrawerHeader>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink bg-cream px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-2">
         <div className="flex flex-wrap items-center gap-2">
           {ctoAgent && (
             <>
               <button
                 type="button"
-                className="btn border-red px-2.5 py-1 text-[12px] text-red"
+                className="btn px-2.5 py-1 text-[12px]"
                 onClick={askCtoToAudit}
               >
-                {auditSent ? "✓ Directive Sent to CTO" : `⚡ Ask ${ctoAgent.name} (CTO) to Audit All Projects`}
+                {auditSent ? `✓ Sent to ${ctoAgent.name}` : `Ask ${ctoAgent.name} to review all projects`}
               </button>
               <button
                 type="button"
                 className="btn px-2 py-1 text-[12px]"
                 onClick={() => ui.openAgent(ctoAgent.id)}
               >
-                Open {ctoAgent.name} Terminal
+                Open {ctoAgent.name}'s terminal
               </button>
             </>
           )}
         </div>
         <button type="button" className="btn px-2 py-1 text-[12px]" onClick={() => void fetchProjects()} disabled={loading}>
-          {loading ? "Syncing…" : "↻ Refresh"}
+          {loading ? "Refreshing…" : "↻ Refresh"}
         </button>
       </div>
 
       <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
         {error && (
-          <div className="border-2 border-red bg-[rgba(255,23,68,0.16)] p-2 font-mono text-[12px] text-red">
+          <div role="alert" className="rounded-lg border border-red/40 bg-red/10 px-3 py-2 text-[13px] text-red">
             {error}
           </div>
         )}
@@ -291,11 +290,11 @@ export function CtoDrawer() {
               }}
             >
               <div className="min-w-[200px] flex-1">
-                <Field label="New project" hint="Makes ~/projects/<name> with a fresh git repo and a lead.">
+                <Field label="New project" hint="Makes ~/projects/<name>; you pick its team when you open it.">
                   <input className="field" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="my-app" autoComplete="off" />
                 </Field>
               </div>
-              <button type="submit" className="btn min-h-[44px] border-green px-3 text-green" disabled={!newName.trim()}>
+              <button type="submit" className="btn btn-primary min-h-[36px] px-3" disabled={!newName.trim()}>
                 Create project
               </button>
             </form>
@@ -304,32 +303,32 @@ export function CtoDrawer() {
             const isExpanded = expandedId === p.id;
             const pct = p.counts.total > 0 ? Math.round((p.counts.done / p.counts.total) * 100) : 0;
             return (
-              <div key={p.id} className="border border-ink bg-white">
+              <div key={p.id} className="overflow-hidden rounded-xl border border-white/[0.08] bg-navy/60">
                 <div
-                  className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-cream"
+                  className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-white/[0.02]"
                   onClick={() => setExpandedId(isExpanded ? null : p.id)}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <b className="text-[16px]">{p.name}</b>
                       {p.isCurrent ? (
-                        <span className="border border-green bg-[rgba(0,255,102,0.14)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-green">
-                          VIEWING
+                        <span className="chip text-[11px]" style={{ ["--c" as string]: "#00f0ff" }}>
+                          Viewing
                         </span>
                       ) : p.online ? (
-                        <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">{p.paused ? "PAUSED" : "RUNNING"}</span>
+                        <span className="chip text-[11px]" style={{ ["--c" as string]: p.paused ? "#8b9bb4" : "#3fb950" }}>{p.paused ? "Paused" : "Running"}</span>
                       ) : (
-                        <span className="border border-ink bg-cream-2 px-1.5 py-0.5 font-mono text-[10px] text-muted">
-                          NOT LOADED (.arima/arima.db)
+                        <span className="chip text-[11px]" style={{ ["--c" as string]: "#8b9bb4" }} title="Its data is in .arima/arima.db in the folder">
+                          Not loaded
                         </span>
                       )}
-                      <span className="border border-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                      <span className="text-[12px] text-muted">
                         {p.readOnly ? "Read-only (made before templates)" : p.templateName ?? "No team yet"}
                       </span>
                       {live && !p.isCurrent && p.online && (
                         <button
                           type="button"
-                          className="btn px-2 py-0.5 text-[11px]"
+                          className="btn px-2 py-0.5 text-[12px]"
                           onClick={(e) => {
                             e.stopPropagation();
                             openProject(p.id);
@@ -341,7 +340,7 @@ export function CtoDrawer() {
                       {live && !isViewer && p.online && (
                         <button
                           type="button"
-                          className="btn px-2 py-0.5 text-[11px]"
+                          className="btn px-2 py-0.5 text-[12px]"
                           title={p.paused ? "Resume GitHub and sandbox polling" : "Pause GitHub and sandbox polling (agents still report)"}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -354,7 +353,7 @@ export function CtoDrawer() {
                       {live && !isViewer && p.online && active.length > 1 && (
                         <button
                           type="button"
-                          className={`btn px-2 py-0.5 text-[11px] ${archiving === p.id ? "border-red text-red" : ""}`}
+                          className={`btn px-2 py-0.5 text-[12px] ${archiving === p.id ? "border-red text-red" : ""}`}
                           title="Stop its agents and move it to the archive. Nothing is deleted."
                           onClick={(e) => {
                             e.stopPropagation();
@@ -366,60 +365,55 @@ export function CtoDrawer() {
                           {archiving === p.id ? "Stop agents & archive" : "Archive"}
                         </button>
                       )}
-                      {p.officeName && officeSign(p.officeName) !== DEFAULT_OFFICE_NAME && (
-                        <span className="border border-red bg-[rgba(255,23,68,0.12)] px-1.5 py-0.5 font-mono text-[10px] text-red">
-                          {officeSign(p.officeName)}
-                        </span>
-                      )}
                     </div>
-                    <span className="font-mono text-[12px] text-muted">
+                    <span className="text-[12px] text-muted">
                       {p.counts.done}/{p.counts.total} done ({pct}%) {isExpanded ? "▾" : "▸"}
                     </span>
                   </div>
 
-                  <div className="truncate font-mono text-[11px] text-muted">{p.path}</div>
+                  <div className="truncate font-term text-[12px] text-muted">{p.path}</div>
 
                   {/* Progress bar */}
-                  <div className="h-2 w-full overflow-hidden border border-ink bg-[#080b12]">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
                     <div
-                      className="h-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "#f85149" }}
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "#00f0ff" }}
                     />
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                    <div className="flex flex-wrap gap-1.5 font-mono">
-                      <span className="text-muted">TODO: {p.counts.todo}</span>
-                      <span className="text-[#818cf8]">DOING: {p.counts.inProgress}</span>
-                      <span className="text-[#a371f7]">REVIEW: {p.counts.inReview}</span>
-                      <span className="text-green">DONE: {p.counts.done}</span>
-                      {p.counts.blocked > 0 && <span className="text-red">BLOCKED: {p.counts.blocked}</span>}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                    <div className="flex flex-wrap gap-2.5">
+                      <span className="text-muted">To do {p.counts.todo}</span>
+                      <span className="text-[#818cf8]">Doing {p.counts.inProgress}</span>
+                      <span className="text-[#a371f7]">Review {p.counts.inReview}</span>
+                      <span className="text-green">Done {p.counts.done}</span>
+                      {p.counts.blocked > 0 && <span className="text-red">Blocked {p.counts.blocked}</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
                       {p.team.slice(0, 6).map((m) => (
                         <span
                           key={m.id}
-                          className="inline-flex items-center gap-1 border border-ink bg-cream px-1.5 py-0.5 font-mono text-[10px]"
+                          className="inline-flex items-center gap-1 rounded-md border border-white/10 px-1.5 py-0.5 text-[12px]"
                           title={`${m.name} — ${m.role} (${m.cli}${m.model ? `:${m.model}` : ""})`}
                         >
                           <span>{m.name}</span>
                         </span>
                       ))}
-                      {p.team.length > 6 && <span className="font-mono text-[10px] text-muted">+{p.team.length - 6}</span>}
+                      {p.team.length > 6 && <span className="text-[12px] text-muted">+{p.team.length - 6}</span>}
                     </div>
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-ink bg-cream p-3">
+                  <div className="border-t border-white/[0.08] bg-white/[0.02] p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
+                      <span className="text-[13px] font-semibold text-muted">
                         Tasks in {p.name} ({p.tasks.length})
                       </span>
                       {p.isCurrent && (
                         <button
                           type="button"
-                          className="btn px-2 py-0.5 text-[11px]"
+                          className="btn px-2 py-0.5 text-[12px]"
                           onClick={() => ui.openBoards()}
                         >
                           Open Full Kanban Board
@@ -436,17 +430,17 @@ export function CtoDrawer() {
                           return (
                             <div
                               key={t.id}
-                              className="grid grid-cols-2 items-center gap-2 border-2 border-ink bg-white px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
+                              className="grid grid-cols-2 items-center gap-2 rounded-lg border border-white/[0.08] bg-navy/60 px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
                             >
-                              <span className="col-span-2 font-mono font-bold text-muted sm:col-span-1">{t.id}</span>
+                              <span className="col-span-2 font-term text-muted sm:col-span-1">{t.id}</span>
                               <div className="col-span-2 min-w-0 sm:col-span-1">
                                 <div className="truncate font-semibold" title={t.title}>
                                   {t.title}
                                 </div>
-                                {t.note && <div className="truncate font-mono text-[10px] text-muted">{t.note}</div>}
+                                {t.note && <div className="truncate text-[12px] text-muted">{t.note}</div>}
                               </div>
                               <select
-                                className="input min-w-0 py-0.5 font-mono text-[11px]"
+                                className="field min-w-0 py-0.5 text-[12px]"
                                 value={t.ownerId ?? ""}
                                 aria-label={`Owner for ${t.id}`}
                                 onChange={(e) =>
@@ -461,7 +455,7 @@ export function CtoDrawer() {
                                 ))}
                               </select>
                               <select
-                                className="input min-w-0 py-0.5 font-mono text-[11px] font-bold"
+                                className="field min-w-0 py-0.5 text-[12px]"
                                 style={{ color: st.color }}
                                 value={t.status}
                                 aria-label={`Status for ${t.id}`}
@@ -483,7 +477,7 @@ export function CtoDrawer() {
 
                     {/* Quick cross-project task creator */}
                     <form
-                      className="grid grid-cols-[1fr_150px_auto] items-end gap-2 border-t-2 border-dashed border-ink pt-2"
+                      className="grid grid-cols-[1fr_150px_auto] items-end gap-2 border-t border-white/[0.08] pt-3"
                       onSubmit={(e) => {
                         e.preventDefault();
                         void handleCreateTask(p.id);
@@ -499,7 +493,7 @@ export function CtoDrawer() {
                       </Field>
                       <Field label="Assign to">
                         <select
-                          className="field font-mono text-[11px]"
+                          className="field text-[12px]"
                           value={newTaskOwner[p.id] ?? ""}
                           onChange={(e) => setNewTaskOwner((prev) => ({ ...prev, [p.id]: e.target.value }))}
                         >
@@ -523,7 +517,7 @@ export function CtoDrawer() {
         </section>
 
         {record && (
-          <section className="flex flex-col gap-2 border border-green p-3">
+          <section className="flex flex-col gap-2 rounded-xl border border-green/40 p-3">
             <b className="text-[15px]">{record.project} is deleted</b>
             <p className="m-0 text-[13px] text-muted">
               The deletion record lists what was removed and what stays. Open it and save it as PDF to send your client; it's also kept under{" "}
@@ -547,10 +541,10 @@ export function CtoDrawer() {
           <section className="flex flex-col gap-2">
             <SectionTitle>Archive ({archived.length})</SectionTitle>
             {archived.map((p) => (
-              <div key={p.id} className="flex flex-col gap-2 border border-dashed border-ink p-3">
+              <div key={p.id} className="flex flex-col gap-2 rounded-xl border border-white/[0.08] p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <b className="text-[15px]">{p.name}</b>
-                  <span className="font-mono text-[11px] text-muted">
+                  <span className="text-[12px] text-muted">
                     {p.team.length} agents · {p.counts.done}/{p.counts.total} tasks done
                   </span>
                   <span className="flex-1" />
@@ -569,10 +563,10 @@ export function CtoDrawer() {
                     </>
                   )}
                 </div>
-                <div className="truncate font-mono text-[11px] text-muted">{p.path}</div>
+                <div className="truncate font-term text-[12px] text-muted">{p.path}</div>
                 {deleting?.id === p.id && (
                   <form
-                    className="flex flex-col gap-2 border-2 border-red p-2"
+                    className="flex flex-col gap-2 rounded-lg border border-red/50 p-2"
                     onSubmit={(e) => {
                       e.preventDefault();
                       void post(`${encodeURIComponent(p.id)}/delete`, { confirm: deleting.typed.trim() }).then((d) => {
@@ -589,7 +583,7 @@ export function CtoDrawer() {
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <input
-                        className="field min-w-[160px] flex-1 font-mono"
+                        className="field min-w-[160px] flex-1 font-term"
                         value={deleting.typed}
                         autoComplete="off"
                         autoCapitalize="off"
@@ -608,7 +602,7 @@ export function CtoDrawer() {
         )}
 
         {live && !isViewer && (
-          <section className="border border-dashed border-ink p-3">
+          <section className="rounded-xl border border-white/[0.08] p-3">
             <SectionTitle>Add an existing folder</SectionTitle>
             <form className="flex items-end gap-2" onSubmit={handleRegisterProject}>
               <div className="flex-1">
@@ -617,10 +611,10 @@ export function CtoDrawer() {
                   hint="Adds the folder to ~/.arima/projects.json and loads it into this server (a new folder gets a fresh .arima/arima.db)."
                 >
                   <input
-                    className="field font-mono text-[12px]"
+                    className="field font-term text-[13px]"
                     value={registerPath}
                     onChange={(e) => setRegisterPath(e.target.value)}
-                    placeholder="/home/sacd/.gemini/antigravity/scratch/another-project"
+                    placeholder="~/code/another-project"
                   />
                 </Field>
               </div>

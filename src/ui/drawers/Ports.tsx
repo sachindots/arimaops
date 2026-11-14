@@ -35,7 +35,7 @@ export function PortBanner({ agent, status }: { agent: AgentConfig; status: Agen
   if (!port) return null;
   const done = forwarded.some((p) => p.sandbox === port);
   return (
-    <div className={`flex items-center gap-2 border-b border-ink px-3 py-1.5 text-[13px] ${done ? "bg-[rgba(0,255,102,0.14)]" : "bg-[rgba(192,77,255,0.16)]"}`}>
+    <div className={`flex items-center gap-2 border-b border-white/[0.08] px-3 py-1.5 text-[13px] ${done ? "bg-[rgba(0,255,102,0.14)]" : "bg-[rgba(192,77,255,0.16)]"}`}>
       <span className="min-w-0 flex-1">
         {done ? (
           <>
@@ -92,7 +92,7 @@ export function PortsRow({ agent, running }: { agent: AgentConfig; running: bool
     <div className="flex flex-col gap-1.5">
       {forwarded.map((p) => (
         <div key={p.sandbox} className="flex items-center gap-2">
-          <a className="font-term text-[17px] underline" href={`http://localhost:${p.host}`} target="_blank" rel="noopener noreferrer">
+          <a className="font-term text-[13px] underline" href={`http://localhost:${p.host}`} target="_blank" rel="noopener noreferrer">
             localhost:{p.host}
           </a>
           {p.host !== p.sandbox && <span className="text-muted">→ sandbox :{p.sandbox}</span>}
@@ -128,7 +128,7 @@ export function PortsRow({ agent, running }: { agent: AgentConfig; running: bool
         }}
       >
         <input
-          className="w-[90px] border-2 border-ink bg-white px-1.5 py-0.5 font-term text-[16px]"
+          className="w-[90px] rounded-lg border border-white/10 bg-white px-1.5 py-0.5 font-term text-[12px]"
           inputMode="numeric"
           placeholder="3000"
           aria-label="Port to forward"

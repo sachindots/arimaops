@@ -53,7 +53,7 @@ export function StackSettings() {
           <section>
             <SectionTitle>What agents read</SectionTitle>
             <p className="mb-2 text-[13px] text-muted">Added to every agent's ROLE.md the next time it starts.</p>
-            <pre className="m-0 whitespace-pre-wrap border border-ink bg-navy-2 p-3 font-term text-[16px] leading-tight text-[#dfe6ff]">{stackRoleMd(stack)}</pre>
+            <pre className="m-0 whitespace-pre-wrap rounded-lg border border-white/10 bg-navy-2 p-3 font-term text-[12px] leading-tight text-[#dfe6ff]">{stackRoleMd(stack)}</pre>
           </section>
           <div>
             <button className="btn text-[13px]" onClick={() => officeActions.updateStack(null)}>
@@ -70,8 +70,8 @@ export function StackSettings() {
 const PACK_STATUS: Record<SkillPackView["status"], [string, string]> = {
   vetted: ["vetted", "#3fb950"],
   approved: ["approved by you", "#3fb950"],
-  pending: ["waiting for your check", "#d29922"],
-  rejected: ["rejected", "#f85149"],
+  pending: ["waiting for your check", "#ffb020"],
+  rejected: ["rejected", "#ff2a4b"],
 };
 
 /** Third-party skills come only from pinned packs (docs/templates.md section 2): one commit, a hash per skill, scanned. */
@@ -79,7 +79,7 @@ function SkillPacks() {
   const packs = useOffice((s) => s.snap?.skillPacks) ?? [];
   if (!packs.length) return null;
   return (
-    <section className="border border-ink bg-white p-3">
+    <section className="panel p-3">
       <SectionTitle>Skill packs</SectionTitle>
       <p className="mb-2 text-[13px] text-muted">
         Skills from other repos are pinned to one commit, checked against a hash and scanned before any agent gets them. A repo nobody pinned yet waits for your check in Action items.
@@ -126,7 +126,7 @@ function Frameworks({ stack, save }: { stack: StackConfig; save: (s: StackConfig
       {stack.frameworks.length > 0 && (
         <div className="flex flex-col gap-2">
           {stack.frameworks.map((f, i) => (
-            <div key={f.id} className="grid grid-cols-[150px_1fr_1fr] items-end gap-2 border border-ink bg-white px-3 py-2">
+            <div key={f.id} className="grid grid-cols-[150px_1fr_1fr] items-end gap-2 panel px-3 py-2">
               <b className="pb-2 text-[15px]">{f.id === "other" ? "Other" : stackTool(f.id)?.name}</b>
               {f.id === "other" ? (
                 <Field label="Name">
@@ -136,12 +136,12 @@ function Frameworks({ stack, save }: { stack: StackConfig; save: (s: StackConfig
                 <Skills id={f.id} />
               )}
               <Field label="Where (optional)">
-                <CommitInput className="field font-term text-[17px]" value={f.where ?? ""} placeholder={i === 0 ? "apps/web" : "apps/api"} onCommit={(v) => patch(i, { where: v.trim() || undefined })} />
+                <CommitInput className="field font-term text-[13px]" value={f.where ?? ""} placeholder={i === 0 ? "apps/web" : "apps/api"} onCommit={(v) => patch(i, { where: v.trim() || undefined })} />
               </Field>
               {f.id === "other" && (
                 <div className="col-span-3">
                   <Field label="Docs URL">
-                    <CommitInput className="field font-term text-[17px]" value={f.docsUrl ?? ""} placeholder="https://remix.run/docs" onCommit={(v) => patch(i, { docsUrl: v.trim() || undefined })} />
+                    <CommitInput className="field font-term text-[13px]" value={f.docsUrl ?? ""} placeholder="https://remix.run/docs" onCommit={(v) => patch(i, { docsUrl: v.trim() || undefined })} />
                   </Field>
                 </div>
               )}
@@ -162,7 +162,7 @@ function ToolRow({ category, label, hint, stack, save }: { category: StackCatego
     save({ ...stack, tools });
   };
   return (
-    <div className="grid grid-cols-[150px_220px_1fr] items-center gap-3 border border-ink bg-white px-3 py-2">
+    <div className="grid grid-cols-[150px_220px_1fr] items-center gap-3 panel px-3 py-2">
       <div>
         <b className="text-[15px]">{label}</b>
         <div className="text-[12px] text-muted">{hint}</div>
@@ -179,7 +179,7 @@ function ToolRow({ category, label, hint, stack, save }: { category: StackCatego
       {choice?.id === "other" ? (
         <div className="grid grid-cols-2 gap-2">
           <CommitInput className="field" value={choice.name ?? ""} placeholder="Tool name" onCommit={(v) => set({ ...choice, name: v.trim() || undefined })} />
-          <CommitInput className="field font-term text-[17px]" value={choice.docsUrl ?? ""} placeholder="Docs URL" onCommit={(v) => set({ ...choice, docsUrl: v.trim() || undefined })} />
+          <CommitInput className="field font-term text-[13px]" value={choice.docsUrl ?? ""} placeholder="Docs URL" onCommit={(v) => set({ ...choice, docsUrl: v.trim() || undefined })} />
         </div>
       ) : choice ? (
         <Skills id={choice.id} />
@@ -239,7 +239,7 @@ function Access({ stack, sandboxed }: { stack: StackConfig; sandboxed: string[] 
       <p className="mb-2 text-[13px] text-muted">
         Sandboxes block most docs sites and APIs. Allow these for every sandboxed agent, or leave them: an agent that needs a site asks you first (<i>request_access</i>).
       </p>
-      <div className="border border-ink bg-white">
+      <div className="panel">
         {domains.map((d) => {
           const done = allowedForAll(d.domain);
           return (
@@ -255,7 +255,7 @@ function Access({ stack, sandboxed }: { stack: StackConfig; sandboxed: string[] 
                   setPicked(next);
                 }}
               />
-              <span className="font-term text-[17px]">{d.domain}</span>
+              <span className="font-term text-[13px]">{d.domain}</span>
               <span className="text-[12px] text-muted">{d.for.join(", ")}</span>
               {done && <span className="ml-auto text-[12px] font-semibold" style={{ color: "#00a83a" }}>allowed</span>}
             </label>
@@ -285,7 +285,7 @@ function Keys({ stack }: { stack: StackConfig }) {
       </p>
       <div className="flex flex-wrap gap-1.5">
         {keys.map((k) => (
-          <span key={k.key} className="chip font-term text-[15px]" title={k.for}>
+          <span key={k.key} className="chip font-term text-[12px]" title={k.for}>
             {k.key}
           </span>
         ))}

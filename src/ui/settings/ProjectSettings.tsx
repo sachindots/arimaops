@@ -1,6 +1,5 @@
 import { BRAND } from "../../data/brand";
 import { useState } from "react";
-import { DEFAULT_OFFICE_NAME, OFFICE_NAME_MAX } from "../../data/names";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
@@ -20,18 +19,18 @@ function SpendCaps() {
   const dirty = d !== caps.dailyUsd || m !== caps.monthlyUsd;
   const bar = (used: number, cap: number) => {
     const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
-    const color = pct >= 100 ? "#f85149" : pct >= 80 ? "#d29922" : "#3fb950";
+    const color = pct >= 100 ? "#ff2a4b" : pct >= 80 ? "#ffb020" : "#3fb950";
     return (
-      <div className="mt-1 h-3 border-2 border-ink bg-cream-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+      <div className="mt-1 h-3 rounded-lg border border-white/10 bg-cream-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
       </div>
     );
   };
   return (
-    <section className="border border-ink bg-white p-3">
+    <section className="panel p-3">
       <SectionTitle>Spend caps</SectionTitle>
       {spend?.paused && (
-        <div className="mb-2 border border-ink bg-[#f85149] px-2 py-1 text-[13px] font-bold text-white" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#ff2a4b] px-2 py-1 text-[13px] font-bold text-white" role="status">
           Paused: the {spend.paused === "day" ? "daily" : "monthly"} cap is reached. Workers are stopped until {spend.paused === "day" ? "midnight" : "next month"}, or raise the cap.
         </div>
       )}
@@ -76,10 +75,10 @@ function ScopeEditor() {
   const lines = (v: string) => v.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
   const dirty = inScope !== (scope?.inScope ?? []).join("\n") || outOfScope !== (scope?.outOfScope ?? []).join("\n") || rules !== (scope?.rules ?? "");
   return (
-    <section className="border border-ink bg-white p-3">
+    <section className="panel p-3">
       <SectionTitle>Scope</SectionTitle>
       {rulesCfg?.labMode && (
-        <div className="mb-2 border border-ink bg-[#d29922] px-2 py-1 text-[13px] font-bold text-ink" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#ffb020] px-2 py-1 text-[13px] font-bold text-ink" role="status">
           Lab mode is on: agents start without a scope. Use it only for CTFs and practice ranges you're allowed to attack.
         </div>
       )}
@@ -126,7 +125,7 @@ export function ProjectSettings() {
   if (!project) return null;
   return (
     <div className="flex flex-col gap-5">
-      <section className="grid grid-cols-2 gap-3 border border-ink bg-white p-3">
+      <section className="grid grid-cols-2 gap-3 panel p-3">
         <div className="col-span-2">
           <SectionTitle>Project</SectionTitle>
         </div>
@@ -136,24 +135,15 @@ export function ProjectSettings() {
         <Field label="Team template" hint="Roles, flow and rules come from the template this project was made from. Edit roles in Settings → Team.">
           <div className="field text-muted">{snap?.config.template ? `${snap.config.template.name} (v${snap.config.template.version})` : "None: made before templates, read-only"}</div>
         </Field>
-        <Field label="Office name" hint={`The sign on the office wall. Up to ${OFFICE_NAME_MAX} characters; letters and numbers read best.`}>
-          <CommitInput
-            className="field"
-            maxLength={OFFICE_NAME_MAX}
-            value={project.officeName ?? ""}
-            placeholder={DEFAULT_OFFICE_NAME}
-            onCommit={(v) => officeActions.updateProject({ officeName: v.trim() })}
-          />
-        </Field>
         <Field label="GitHub repo" hint="owner/name. HQ only reads PRs, checks and comments.">
-          <CommitInput className="field font-term text-[17px]" value={project.repo} onCommit={(v) => v.trim() && officeActions.updateProject({ repo: v.trim() })} />
+          <CommitInput className="field font-term text-[13px]" value={project.repo} onCommit={(v) => v.trim() && officeActions.updateProject({ repo: v.trim() })} />
         </Field>
         <Field label="Local path">
-          <CommitInput className="field font-term text-[17px]" value={project.path} onCommit={(v) => v.trim() && officeActions.updateProject({ path: v.trim() })} />
+          <CommitInput className="field font-term text-[13px]" value={project.path} onCommit={(v) => v.trim() && officeActions.updateProject({ path: v.trim() })} />
         </Field>
         <Field label="HQ port" hint="Sandboxes reach HQ at host.docker.internal on this port.">
           <CommitInput
-            className="field font-term text-[17px]"
+            className="field font-term text-[13px]"
             value={String(project.hqPort)}
             onCommit={(v) => {
               const n = Number(v);
@@ -171,12 +161,12 @@ export function ProjectSettings() {
           {BRAND.name} keeps the plan in .arima/arima.db. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
         </p>
       </section>
-      <section className="border border-ink bg-white p-3 text-[13px]">
+      <section className="panel p-3 text-[13px]">
         <SectionTitle>Multi-Project &amp; Multi-Team Operations</SectionTitle>
         <p className="mt-1 text-muted">
           Every project gets its own isolated team config (<code>&lt;repo&gt;/.arima/arima.db</code>), agent workspaces (<code>~/.arima/{project.id}/&lt;agent&gt;</code>), and sandbox/tmux session names (<code>hq-{project.id}-&lt;agent&gt;</code>). You can run multiple teams across multiple projects simultaneously by assigning each a different port:
         </p>
-        <pre className="mt-2 overflow-x-auto border-[2px] border-ink bg-cream-2 p-2 font-term text-[15px] text-ink">
+        <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-cream-2 p-2 font-term text-[12px] text-ink">
           {`# Project 1 (port ${project.hqPort})\nnpx arimaops --repo ${project.path} --port ${project.hqPort}\n\n# Project 2 (port ${project.hqPort + 1}, runs concurrently in its own sandboxes/tmux)\nnpx arimaops --repo ~/missions/second-project --port ${project.hqPort + 1}`}
         </pre>
       </section>

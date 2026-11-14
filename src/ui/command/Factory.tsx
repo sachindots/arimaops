@@ -59,10 +59,10 @@ const costNum = (c: Cost | null) => (!c ? null : c.usd ?? c.tokens);
 function Delta({ now, before }: { now: number | null; before: number | null }) {
   if (now === null || before === null || before === 0) return null;
   const pct = Math.round(((now - before) / before) * 100);
-  if (!pct) return <span className="text-[11px] text-muted">= </span>;
+  if (!pct) return <span className="text-[12px] text-muted">= </span>;
   const better = pct < 0;
   return (
-    <span className="font-mono text-[11px]" style={{ color: better ? "#3fb950" : "#d29922" }} title={`Last ${DAYS} days against the ${DAYS} before`}>
+    <span className="font-mono text-[12px]" style={{ color: better ? "#3fb950" : "#ffb020" }} title={`Last ${DAYS} days against the ${DAYS} before`}>
       {better ? "▼" : "▲"}
       {Math.abs(pct)}%
     </span>
@@ -71,13 +71,13 @@ function Delta({ now, before }: { now: number | null; before: number | null }) {
 
 function Metric({ label, value, sub, now, before, title }: { label: string; value: string; sub?: string; now: number | null; before: number | null; title: string }) {
   return (
-    <div className="flex min-w-[120px] flex-1 flex-col gap-0.5 border-l-2 border-ink/20 pl-2.5" title={title}>
-      <span className="text-[11px] uppercase tracking-wide text-muted">{label}</span>
+    <div className="flex min-w-[125px] flex-1 flex-col gap-0.5 border-l border-accent/25 pl-3" title={title}>
+      <span className="text-[12px] font-semibold uppercase tracking-widest text-muted">{label}</span>
       <span className="flex items-baseline gap-1.5">
-        <b className="font-mono text-[17px] leading-none">{value}</b>
+        <b className="text-[15px] leading-none text-ink">{value}</b>
         <Delta now={now} before={before} />
       </span>
-      {sub && <span className="text-[11px] leading-tight text-muted">{sub}</span>}
+      {sub && <span className="text-[12px] leading-tight text-muted">{sub}</span>}
     </div>
   );
 }
@@ -85,10 +85,10 @@ function Metric({ label, value, sub, now, before, title }: { label: string; valu
 function Versions({ versions }: { versions: VersionMetrics[] }) {
   if (versions.length < 2) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5 text-[11px]" aria-label="Template versions">
-      <span className="text-muted">By template version:</span>
+    <div className="flex flex-wrap items-center gap-1.5 text-[12px]" aria-label="Template versions">
+      <span className="text-muted">Template versions:</span>
       {versions.map((v) => (
-        <span key={`${v.templateId}@${v.version}`} className="chip font-mono text-[11px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task, share of checks failed`}>
+        <span key={`${v.templateId}@${v.version}`} className="chip font-term text-[11px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task, share of checks failed`}>
           {v.templateId} v{v.version} · {v.finished} done · {cost(v.costPerTask)} · {v.cycleCreated === null ? "—" : hours(v.cycleCreated)} · {v.reworkPerTask === null ? "—" : v.reworkPerTask.toFixed(1)} rework{v.checkFailRate === null ? "" : ` · ${Math.round(v.checkFailRate * 100)}% checks failed`}
         </span>
       ))}
@@ -101,12 +101,12 @@ function Row({ name, multi, r }: { name: string; multi: boolean; r: MetricsRepor
   const b: FactoryMetrics = r.before;
   const nothing = n.finished === 0 && b.finished === 0 && n.interventions.total === 0 && n.stalls + n.replans === 0;
   return (
-    <div className="flex flex-col gap-1.5">
-      {multi && <b className="text-[13px]">{name}</b>}
+    <div className="flex flex-col gap-2">
+      {multi && <b className="text-[13px] text-ink">{name}</b>}
       {nothing ? (
         <p className="m-0 text-[12px] text-muted">No tasks finished in the last {DAYS * 2} days yet. Numbers start with the first task made from now on.</p>
       ) : (
-        <div className="flex flex-wrap gap-y-2">
+        <div className="flex flex-wrap gap-y-2.5">
           <Metric
             label="Cost / task"
             value={cost(n.costPerTask)}
@@ -162,8 +162,8 @@ function Row({ name, multi, r }: { name: string; multi: boolean; r: MetricsRepor
 }
 
 /** The factory card: hidden until a project answers; folds to one line, remembered per browser. */
-export function FactoryCard({ projects, live }: { projects: { id: string; name: string }[]; live: boolean }) {
-  const [open, setOpen] = useState(() => readPref("cmd.factory") !== "closed");
+export function FactoryCard({ projects, live, defaultOpen = true }: { projects: { id: string; name: string }[]; live: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(() => (readPref("cmd.factory") ?? (defaultOpen ? "open" : "closed")) === "open");
   const reports = useMetrics(
     projects.map((p) => p.id),
     live,
@@ -179,12 +179,12 @@ export function FactoryCard({ projects, live }: { projects: { id: string; name: 
     }
   };
   return (
-    <section className="panel flex flex-col gap-2 px-3 py-2" aria-label="Factory">
-      <button className="flex items-center gap-2 text-left" onClick={toggle} aria-expanded={open}>
-        <b className="text-[14px]">Factory</b>
-        <span className="text-[12px] text-muted">last {DAYS} days, against the {DAYS} before</span>
+    <section className={`hud-glass flex flex-col gap-2.5 rounded-2xl px-4 ${open ? "py-2.5" : "py-1.5"}`} aria-label="Factory">
+      <button className="flex cursor-pointer items-center gap-2 text-left" onClick={toggle} aria-expanded={open}>
+        <b className="text-[14px] font-semibold text-ink">Factory</b>
+        <span className="text-[12px] text-muted">last {DAYS} days vs prior {DAYS}</span>
         <span className="flex-1" />
-        <span className="text-[12px] text-muted">{open ? "▾" : "▸"}</span>
+        <span className="font-term text-[12px] text-muted">{open ? "▾" : "▸"}</span>
       </button>
       {open && shown.map((p) => <Row key={p.id} name={p.name} multi={shown.length > 1} r={reports[p.id]} />)}
     </section>

@@ -1,6 +1,6 @@
 # ArimaOps: notes for coding agents
 
-ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node server (`server/`) runs a team of AI agents per project, and a React UI (`src/`) shows the work: Home, Board, Inbox, Agents, Chat. The look is calm and serious (Inter, one indigo accent, flat panels); no pixel or game styling. Read `docs/architecture.md` before adding a module.
+ArimaOps (அரிமா, "lion") is a multi-agent orchestrator: one Node server (`server/`) runs a team of AI agents per project, and a React UI (`src/`) shows the work: Home, Board, Inbox, Agents, Chat. The look is an advanced but readable dark-glass HUD (corner-bracket panels, glowing meters, sparklines, live counters): Inter for text, Space Grotesk (`font-display`) for headings and big numbers only, JetBrains Mono for code and IDs; no text under 11px (12px for content), one cyan accent, status colours only for status, colours from the `@theme` tokens in `src/index.css`; no pixel or game styling, and no fictional or trademarked names in the UI. Desktop (1000 px and up) is `src/ui/hud/SpatialHud.tsx`; narrower is `src/ui/compact/CompactApp.tsx`. Read `docs/architecture.md` before adding a module.
 
 ## Rules from the owner (Sachin)
 

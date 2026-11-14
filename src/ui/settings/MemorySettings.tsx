@@ -5,8 +5,8 @@ import { Field, SectionTitle } from "../kit";
 
 const STATUS = {
   online: ["Connected", "#3fb950"],
-  offline: ["Can't reach Neo4j", "#d29922"],
-  unconfigured: ["Not set up", "#d29922"],
+  offline: ["Can't reach Neo4j", "#ffb020"],
+  unconfigured: ["Not set up", "#ffb020"],
 } as const;
 
 /** Where the team's memory (Neo4j) is. You run Neo4j; HQ only connects to it. */
@@ -123,7 +123,7 @@ export function MemorySettings() {
         {state.backups.length === 0 ? (
           <p className="m-0 text-[13px] text-muted">No backups yet.</p>
         ) : (
-          <div className="border border-ink">
+          <div className="rounded-lg border border-white/10">
             {state.backups.map((d) => (
               <div key={d} className="flex flex-wrap items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                 <b className="font-mono text-[14px]">{d}</b>
@@ -220,8 +220,8 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
       {lessons.approved.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {lessons.approved.map((l) => (
-            <li key={l.id} className="flex items-start gap-2 border-2 border-ink bg-white px-2 py-1.5 text-[13px]">
-              <span className="chip shrink-0 text-[10px]">{LESSON_LABEL[l.type] ?? l.type}</span>
+            <li key={l.id} className="flex items-start gap-2 rounded-lg border border-white/10 bg-white px-2 py-1.5 text-[13px]">
+              <span className="chip shrink-0 text-[11px]">{LESSON_LABEL[l.type] ?? l.type}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
               {!isViewer && (
                 <button className="btn shrink-0 px-2 text-[11px]" onClick={() => officeActions.removeLesson(l.id)} aria-label={`Remove lesson: ${l.text.slice(0, 40)}`}>

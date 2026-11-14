@@ -58,6 +58,13 @@ save();
 a.status = "done";
 save();
 check("each status change is recorded once, other edits aren't", events(a.id).map((e) => e.status).join() === "todo,in-progress,done", JSON.stringify(events(a.id)));
+{
+  const doneAt = (db.prepare("SELECT at FROM task_events WHERE project_id = ? AND task_id = ? AND status = 'done'").get(project, a.id) as { at: number }).at;
+  const stamped = a.movedAt;
+  (a as { title: string }).title = "Renamed again";
+  save();
+  check("movedAt is when the task entered its status, kept across other edits", loadPlanTables(db, project)!.tasks.find((t) => t.id === a.id)?.movedAt === new Date(doneAt).toISOString() && a.movedAt === stamped, `${a.movedAt} vs ${new Date(doneAt).toISOString()}`);
+}
 
 // Finishing a task hands it to the scorers, after its deliverables are copied in.
 {

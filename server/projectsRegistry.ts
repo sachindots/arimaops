@@ -13,7 +13,7 @@ import type { TeamTemplate } from "../src/data/model";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
-import { loadConfig, loadPlan, resolveSaved, saveConfig, savePlan } from "./store";
+import { loadConfig, loadPlan, resolveSaved, savePlan } from "./store";
 import { assertTaskMove } from "./planStore";
 
 export interface RegistryEntry {
@@ -117,7 +117,8 @@ export function removeFromRegistry(root: string) {
 }
 
 /** Manually registers an existing repo path on disk; initializes `.arima/config.json` and `.arima/plan.json` if not yet present. */
-export function registerProjectPath(rawPath: string, create = false): ProjectOverview | null {
+/** Registers a folder (made first when `create`); `path` is where it is, `project` its overview once it has a config. */
+export function registerProjectPath(rawPath: string, create = false): { path: string; project: ProjectOverview | null } {
   const cleanPath = resolve(rawPath.trim().replace(/^~(?=\/|$)/, homedir()));
   if (create) {
     if (existsSync(cleanPath) && readdirSync(cleanPath).length) throw new Error(`${cleanPath} already exists and isn't empty. Use "Add existing folder" for it.`);
@@ -140,13 +141,12 @@ export function registerProjectPath(rawPath: string, create = false): ProjectOve
       },
       7420,
     );
+    // Not saved: with no config on disk the project loads as new and opens on the welcome screen, where its
+    // template makes the team. Saving this blank one made it a read-only "made before templates" project.
     cfg = loaded.config;
-    saveConfig(cleanPath, cfg);
-    savePlan(cleanPath, loadPlan(cleanPath, cfg), cfg);
   }
   registerProjectInRegistry(cleanPath, cfg);
-  const all = listProjectsOverview();
-  return all.find((p) => resolve(p.path) === cleanPath) ?? null;
+  return { path: cleanPath, project: listProjectsOverview().find((p) => resolve(p.path) === cleanPath) ?? null };
 }
 
 function summarizeCounts(tasks: Task[]) {

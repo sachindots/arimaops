@@ -340,6 +340,8 @@ export interface Task {
   benchmark?: string;
   /** Screenshots of the running app for its PR, taken by the verifier (docs/factory.md section 7). */
   evidence?: TaskEvidence;
+  /** When it entered its current status (ISO), from the task's status events; missing on projects without them. */
+  movedAt?: string;
 }
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";

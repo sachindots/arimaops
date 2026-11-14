@@ -45,7 +45,7 @@ function TeamMode() {
   const pending = team.filter((a) => a.nextMode);
   const all = team.every((a) => (a.nextMode ?? a.mode) === mode);
   return (
-    <section className="border border-ink bg-white p-3">
+    <section className="panel p-3">
       <SectionTitle>Where the team runs</SectionTitle>
       <p className="mb-2 text-[13px] text-muted">
         {Object.entries(counts).map(([m, n]) => `${n} in ${MODE_LABEL[m as AgentMode]}`).join(" · ")}
@@ -76,7 +76,7 @@ export function TeamSettings() {
         <SectionTitle>Team · {team.length} agents · read-only</SectionTitle>
         <p className="text-[13px] text-muted">This project was made before team templates. You can watch, answer and stop its agents, but not change the team.</p>
         {team.map((a) => (
-          <div key={a.id} className="flex items-center gap-2 border border-ink bg-white p-2">
+          <div key={a.id} className="flex items-center gap-2 panel p-2">
             <Portrait name={a.name} color={a.color} lead={a.isLead} />
             <b>{a.name}</b>
             <RoleBadge role={a.role} color={a.color} compact />
@@ -135,7 +135,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
   const toggleSkill = (id: string) => set({ skills: role.skills.includes(id) ? role.skills.filter((s) => s !== id) : [...role.skills, id] });
 
   return (
-    <div className="border border-ink bg-white">
+    <div className="panel">
       <div className="grid grid-cols-[minmax(120px,1fr)_160px_170px_auto] items-end gap-2 p-2.5">
         <Field label={`Role · ${seats} ${seats === 1 ? "agent" : "agents"}${role.isLead ? " · lead" : ""}`}>
           <CommitInput className="field" value={role.title} onCommit={(v) => v.trim() && set({ title: v.trim() })} />
@@ -151,7 +151,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
         </button>
       </div>
       {expanded && (
-        <div className="flex flex-col gap-3 border-t border-ink bg-cream p-3">
+        <div className="flex flex-col gap-3 border-t border-white/[0.08] bg-cream p-3">
           {!role.isLead && (
             <label className="flex items-center gap-2 text-[13px]">
               <input type="checkbox" checked={role.onDemand} onChange={(e) => set({ onDemand: e.target.checked })} />
@@ -181,7 +181,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
             label="Role instructions"
             hint={`What every agent in this role does and how. ${BRAND.name} adds the agent's name, the team, workflow rules and tools when it starts.`}
           >
-            <CommitInput multiline className="field h-[160px] resize-y font-term text-[17px] leading-tight" value={role.roleMd} onCommit={(v) => set({ roleMd: v })} />
+            <CommitInput multiline className="field h-[160px] resize-y font-term text-[13px] leading-tight" value={role.roleMd} onCommit={(v) => set({ roleMd: v })} />
           </Field>
         </div>
       )}
@@ -192,7 +192,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
 function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentConfig; roles: Role[]; expanded: boolean; onToggle: () => void; onRemove: () => void }) {
   const set = (patch: Parameters<typeof officeActions.updateAgent>[1]) => officeActions.updateAgent(agent.id, patch);
   return (
-    <div className="border border-ink bg-white">
+    <div className="panel">
       <div className="grid grid-cols-[40px_minmax(100px,1fr)_minmax(130px,1fr)_120px_auto] items-end gap-2 p-2.5">
         <Portrait name={agent.name} color={agent.color} lead={agent.isLead} />
         <Field label="Name">
@@ -233,13 +233,13 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
         </div>
       )}
       {expanded && (
-        <div className="grid grid-cols-2 gap-3 border-t border-ink bg-cream p-3">
+        <div className="grid grid-cols-2 gap-3 border-t border-white/[0.08] bg-cream p-3">
           <Field label="Colour">
             <div className="flex flex-wrap gap-1.5 pt-1">
               {agentPalette.map((c) => (
                 <button
                   key={c}
-                  className="h-6 w-6 border border-ink"
+                  className="h-6 w-6 rounded-lg border border-white/10"
                   style={{ background: c, outline: c === agent.color ? "2px solid #3fb950" : undefined, outlineOffset: 1 }}
                   aria-label={`Colour ${c}`}
                   onClick={() => set({ color: c })}
@@ -249,7 +249,7 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
           </Field>
           <Field label="Folder" hint={`Leave empty and ${BRAND.name} keeps its own isolated workspace for this agent. Or enter an existing folder path.`}>
             <CommitInput
-              className="field font-term text-[17px]"
+              className="field font-term text-[13px]"
               value={agent.workspacePath ?? ""}
               placeholder={`HQ-managed: ~/.arima/…/${agent.id}`}
               onCommit={(v) => set({ workspacePath: v.trim() || null })}
@@ -270,7 +270,7 @@ function AddAgent({ roles, defaultMode }: { roles: Role[]; defaultMode: AgentMod
   if (!roles.length)
     return <p className="text-[13px] text-muted">This template has only the lead role. Add a worker role to the template to add agents.</p>;
   return (
-    <section className="border border-dashed border-ink p-3">
+    <section className="rounded-xl border border-dashed border-white/15 p-3">
       <SectionTitle>Add an agent</SectionTitle>
       <form
         className="grid grid-cols-[minmax(100px,1fr)_minmax(130px,1fr)_120px_auto] items-end gap-2"

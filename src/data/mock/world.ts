@@ -131,6 +131,7 @@ export class World {
         session: mockSession(config.project.name, a.id),
       })),
       boards: structuredClone(preset.boards),
+      findings: structuredClone(preset.findings ?? []),
       tasks,
       pullRequests,
       environments: [],

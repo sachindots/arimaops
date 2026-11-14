@@ -114,7 +114,7 @@ async function checkSbxLogin(sbxOk: boolean): Promise<Check> {
 async function checkTmux(brew: boolean): Promise<Check> {
   const base = { id: "tmux" as const, label: "tmux (keeps agents running if HQ closes)", neededFor: "all" as const };
   if (!usesTmux())
-    return { ...base, label: "Agent sessions", status: "ok", detail: "HQ runs agents itself on Windows (no tmux needed). They stop when HQ stops; sandboxes and folders are kept.", fix: null };
+    return { ...base, label: "Agent sessions", status: "ok", detail: "HQ runs agents in its own process (no tmux needed). They stop when HQ stops; sandboxes and folders are kept.", fix: null };
   const v = await run("tmux", ["-V"], { timeoutMs: 5000 });
   if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim(), fix: null };
   if (os === "win32") return { ...base, status: "unsupported", detail: "tmux needs WSL on Windows. Run HQ inside WSL.", fix: fix("wsl --install", false, "https://learn.microsoft.com/windows/wsl/install") };
