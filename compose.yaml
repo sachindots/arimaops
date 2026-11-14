@@ -23,7 +23,8 @@ services:
       - "${DOCKER_GID:?set DOCKER_GID}"
     environment:
       HOME: ${ARIMA_HOME_DIR:?set ARIMA_HOME_DIR}
-      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:?set ARIMA_MASTER_KEY}
+      # Empty: HQ uses the 0600 key file in ~/.arima (same as a native install). Servers should set it.
+      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:-}
       ARIMA_NEO4J_URL: bolt://127.0.0.1:${ARIMA_NEO4J_PORT:-7687}
       ARIMA_NEO4J_PASSWORD: ${ARIMA_NEO4J_PASSWORD:?set ARIMA_NEO4J_PASSWORD}
       ARIMA_NEO4J_BROWSER_URL: ${ARIMA_NEO4J_BROWSER_URL:-}
