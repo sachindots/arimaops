@@ -29,7 +29,7 @@ function project(repo: ReturnType<typeof repoOf>) {
   const hub = {
     slug: config.project.id,
     repo,
-    snap: { welcome: isNew, config, agents: [] as { agentId: string }[], boards: [], tasks: [] as unknown[], pullRequests: [] },
+    snap: { welcome: isNew, config, setup: { sandboxReady: true, checks: [] }, agents: [] as { agentId: string }[], boards: [], tasks: [] as unknown[], pullRequests: [] },
     cfg: (id: string) => hub.snap.config.team.find((a) => a.id === id),
     configChanged: () => saveConfig(repo.root, hub.snap.config),
     planChanged: () => {},
@@ -102,6 +102,16 @@ const repo = repoOf("askwell");
   saveConfig(old.root, hub.snap.config);
   const saved = readDoc<{ project: { type?: string }; team: { roleMd?: string }[] }>(join(repoDirOf(old.root), "config.json"))!;
   check("saving an old project keeps it as it was", saved.project.type === "security" && saved.team[0].roleMd === "x");
+}
+
+// Without Docker Sandboxes, a new team starts where it can run: Container when Docker answers, else Local.
+{
+  const r = repoOf("nosbx");
+  const { hub, commands } = project(r);
+  (hub.snap as { setup: { sandboxReady: boolean } }).setup.sandboxReady = false;
+  await commands.completeWelcome({ projectName: "Nosbx", templateId: "dev", reviewTool: "human", reviewEnabled: true });
+  const modes = new Set(hub.snap.config.team.map((a) => a.mode));
+  check("no sandboxes: the new team isn't put in Sandbox mode", modes.size === 1 && !modes.has("sandbox"), JSON.stringify([...modes]));
 }
 
 // The whole team to Container mode (3.8): stopped seats now, running ones at their next start; saved as seats.

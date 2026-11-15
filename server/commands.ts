@@ -2,7 +2,7 @@
 
 import { broadcastLibrary, exportTemplate, importTemplate } from "./templateIO";
 import { ownerPacks, packsState } from "./skillPacks";
-import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
+import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentConfig, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
 import type { AccountInput, MemoryInput, MemoryState } from "../src/data/types";
@@ -584,7 +584,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         const sign = input.officeName.trim().slice(0, OFFICE_NAME_MAX);
         if (sign) cfg.project.officeName = sign;
       }
-      cfg.team = seatsFor(template).map((s) => resolveSeat(template, s));
+      // Start where agents can actually run: Docker Sandboxes when ready, else Container when Docker answers, else Local.
+      const mode: AgentConfig["mode"] = hub.snap.setup?.sandboxReady
+        ? "sandbox"
+        : (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok
+          ? "container"
+          : "local";
+      cfg.team = seatsFor(template).map((s) => resolveSeat(template, { ...s, mode }));
       applyTemplate(cfg, template);
       const tools: ReviewTool[] = ["coderabbit", "greptile", "copilot", "human", "custom"];
       if (tools.includes(input.reviewTool as ReviewTool)) cfg.workflow.review.tool = input.reviewTool as ReviewTool;
