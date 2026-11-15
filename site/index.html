@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ArimaOps · AI agent teams you run from your phone</title>
+<meta name="description" content="ArimaOps runs a team of AI agents for every project on your machine: a lead that plans, workers that build in their own containers, reviewers that check each other, and gates that keep the work honest. Free and open source.">
+<meta property="og:title" content="ArimaOps">
+<meta property="og:description" content="Build an AI team for any job from a template, and run it from your phone. Free and open source, self-hosted.">
+<meta property="og:image" content="https://sachindots.github.io/arimaops/assets/shots/home.webp">
+<meta name="theme-color" content="#030712">
+<link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/mark.svg" alt=""> ArimaOps <small class="hide-sm">அரிமா</small></a>
+    <nav class="nav" aria-label="Site">
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#templates">Templates</a>
+      <a class="hide-sm" href="pipewell.html">Case study</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="band hero">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Free and open source · self-hosted</span>
+      <h1>Build an AI team for any job.<br><em>Run it from your phone.</em></h1>
+    </div>
+    <p class="lede">ArimaOps runs a team of AI agents for every project on your machine. A lead plans the work and hands out tasks, workers build in their own containers, a reviewer and a second model check each other, and gates decide when a task is really done. You watch it, steer it and approve what matters from any screen.</p>
+    <div class="btns">
+      <a class="btn primary" href="#start">Get started</a>
+      <a class="btn" href="https://github.com/sachindots/arimaops">View on GitHub</a>
+      <div class="cmd"><span id="cmd">npx arimaops@latest</span><button type="button" data-copy="cmd">Copy</button></div>
+    </div>
+    <div class="facts">
+      <span><b>8</b> team templates</span>
+      <span><b>11</b> kinds of gate</span>
+      <span>Agents on your CLI subscriptions or API keys</span>
+      <span>Everything runs on your machine</span>
+    </div>
+    <img class="shot hero-shot" src="assets/shots/home.webp" width="2400" height="1500" alt="ArimaOps Home: three agents in orbit around a live core, each card showing its task, tokens and cost today, with the flow's stages along the bottom.">
+  </div>
+</section>
+
+<section class="band" id="how">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">How it works</span>
+      <h2>A team with roles, a flow with gates</h2>
+    </div>
+    <p class="muted">Every project starts from a template: its roles, the stages a task moves through, the gates between them, a starter board and its tool rules. Change any of it per project.</p>
+    <div class="flowstrip" aria-label="The Dev template's flow">
+      <div class="st"><b>Spec</b><small>you approve the spec</small></div><span class="arr">›</span>
+      <div class="st"><b>Plan</b><small>tasks cover every item</small></div><span class="arr">›</span>
+      <div class="st"><b>Build</b><small>tests and green CI</small></div><span class="arr">›</span>
+      <div class="st"><b>Review</b><small>reviewer, second opinion, screenshots</small></div><span class="arr">›</span>
+      <div class="st"><b>Merge</b><small>you merge the PR</small></div>
+    </div>
+
+    <div class="feature">
+      <div class="copy">
+        <h3>Home is the team, live</h3>
+        <p class="muted">Each agent orbits a core that reacts to the work. Cards show what it's doing, the task and stage it's on, and the tokens and cost it spent today. The strip below shows how many tasks sit in each stage and who's working them.</p>
+        <ul>
+          <li><b>One lead, on-demand workers:</b> only the lead stays on; workers start per task.</li>
+          <li><b>Agents talk through HQ:</b> no agent can reach another's container.</li>
+          <li><b>Anything that needs you</b> lands in one Inbox.</li>
+        </ul>
+      </div>
+      <img class="shot" src="assets/shots/agent.webp" width="2400" height="1500" loading="lazy" alt="An agent's panel over Home: its live terminal, session, task and usage tabs.">
+    </div>
+
+    <div class="feature flip">
+      <div class="copy">
+        <h3>Command center for every agent at once</h3>
+        <p class="muted">Every agent of every project in one roster, needs-you first. Pick one to watch its terminal live, see its tokens and cost, and stop it or pop it out to another monitor. What's waiting on you and what just happened sit beside it.</p>
+      </div>
+      <img class="shot" src="assets/shots/command.webp" width="2400" height="1500" loading="lazy" alt="The Command center: an agent roster with token meters, a live terminal for the selected agent, and Needs you and Activity panels.">
+    </div>
+
+    <div class="feature">
+      <div class="copy">
+        <h3>The flow is yours to edit</h3>
+        <p class="muted">Stages, the roles that work them and the gates between them, on a canvas. Add a stage, require a reviewer from a given role, a second opinion from another maker's model, screenshots of the running app for UI changes, or your own approval. HQ checks the change before it saves.</p>
+      </div>
+      <img class="shot" src="assets/shots/flow.webp" width="2400" height="1500" loading="lazy" alt="The Flow canvas: five stages with their roles and gates, and an editor for the selected stage.">
+    </div>
+
+    <div class="feature flip">
+      <div class="copy">
+        <h3>Know what it costs</h3>
+        <p class="muted">Tokens and estimated cost per agent, per task and per day, from each CLI's own logs. Spend caps per project alert at 80% and pause the workers at 100%.</p>
+      </div>
+      <img class="shot" src="assets/shots/usage.webp" width="2400" height="1500" loading="lazy" alt="The Usage page: team tokens today, estimated cost, the busiest agent, and a per-agent leaderboard with sparklines.">
+    </div>
+
+    <div class="feature">
+      <div class="copy">
+        <h3>A board that moves on its own</h3>
+        <p class="muted">The lead plans tasks with the files each one touches and a clear done-when. Columns show how long their oldest task has waited, and you can group the board by agent.</p>
+      </div>
+      <img class="shot" src="assets/shots/board.webp" width="2400" height="1500" loading="lazy" alt="The Board: To do, Doing, Review and Done columns with task cards and their owners.">
+    </div>
+  </div>
+</section>
+
+<section class="band" id="templates">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Templates</span>
+      <h2>Teams for software, security, research and marketing</h2>
+    </div>
+    <div class="grid">
+      <article class="glass card corners"><span class="tag">Dev</span><h3>Ship pull requests</h3><p>Spec you approve, tasks that cover it, one branch and one PR each with tests and green CI, a reviewer, a second opinion on high-stakes work, screenshots for UI changes.</p></article>
+      <article class="glass card"><span class="tag red">Security · Red</span><h3>Engagements in scope</h3><p>Scope first, then recon, threat model, exploitation and a scored report checked by a second model. Out-of-scope targets are refused.</p></article>
+      <article class="glass card"><span class="tag violet">Security · Purple</span><h3>Attack, then defend</h3><p>Red's engagement plus a defender that maps each finding to ATT&amp;CK and D3FEND and writes the detection that catches it.</p></article>
+      <article class="glass card"><span class="tag blue">Security · Blue</span><h3>Incident response</h3><p>Detect and analyse, contain only with your approval, eradicate and recover, then lessons learned. A plan before every change.</p></article>
+      <article class="glass card"><span class="tag green">Research</span><h3>Every claim cited</h3><p>Sources logged first, claims that cite them, a fact-check by a different model and a report signed off by a third.</p></article>
+      <article class="glass card"><span class="tag amber">Marketing · Sales</span><h3>Drafts only, enforced</h3><p>Copy and outreach drafted against a brief and checked by an editor from another maker. Nothing is sent: you approve and send.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="phone-row">
+      <div class="head">
+        <span class="eyebrow">Any screen</span>
+        <h2>Steer it from your phone</h2>
+        <p class="muted">The same HUD on a phone or tablet, sized for touch. Approve a spec, answer an agent, read a terminal or stop a run from anywhere you can reach your HQ, with an authenticator code for anything risky.</p>
+        <div class="grid" style="margin-top:12px">
+          <div class="glass card"><h3>Safe by default</h3><p>Agents work in their own container or sandbox; outbound traffic goes through an allowlist. Keys are encrypted and reach only the agent that uses them.</p></div>
+          <div class="glass card"><h3>You stay in charge</h3><p>Owner, operator and viewer sign-ins. HQ never merges for you, never types your secrets, and never answers a CLI's trust prompt without you.</p></div>
+        </div>
+      </div>
+      <img class="shot" src="assets/shots/phone-home.webp" width="1170" height="2532" loading="lazy" alt="ArimaOps on a phone: the team in orbit and the flow's stages above the tab bar.">
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Case study</span>
+      <h2>One brief in, six reviewed pull requests out</h2>
+    </div>
+    <p class="muted">A Dev team built Pipewell, a small data pipeline on open weather data, from a one-page brief. The reviewer ran every branch and sent back three real bugs before anything merged; a verifier ran the finished pipeline from a fresh clone.</p>
+    <div class="stats">
+      <div class="glass stat"><b>6</b><span>pull requests merged</span></div>
+      <div class="glass stat"><b>47</b><span>tests, all passing</span></div>
+      <div class="glass stat"><b>3</b><span>bugs caught in review</span></div>
+      <div class="glass stat"><b>~$7.41</b><span>estimated model cost</span></div>
+    </div>
+    <div><a class="btn" href="pipewell.html">Read the case study →</a></div>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Get started</span>
+      <h2>Running in a few minutes</h2>
+    </div>
+    <div class="steps">
+      <div class="glass step"><span class="n">1 · Start HQ</span><p class="muted">From inside a git repo:</p><pre><code>npx arimaops@latest</code></pre><p class="muted">Or run HQ and its memory database with Docker Compose.</p></div>
+      <div class="glass step"><span class="n">2 · Pick a team</span><p class="muted">Name the project and choose a template. The setup checklist shows anything missing on your machine, with the exact command to fix it.</p></div>
+      <div class="glass step"><span class="n">3 · Brief the lead</span><p class="muted">Press Start team and tell the lead what to build. Approve the spec, then watch the board move.</p></div>
+    </div>
+    <div class="feature" style="align-items:start">
+      <div class="copy">
+        <h3>Try the demo first</h3>
+        <p class="muted">No HQ, no accounts: sample projects with agents working through their flows, in your browser.</p>
+<pre><code>git clone https://github.com/sachindots/arimaops
+cd arimaops
+pnpm install
+pnpm dev</code></pre>
+      </div>
+      <div class="copy">
+        <h3>What you need</h3>
+        <ul>
+          <li><b>Node.js 22+</b> and <b>git</b></li>
+          <li><b>tmux</b> on macOS and Linux, so agents outlive HQ</li>
+          <li><b>Docker</b> for Container mode (recommended), or Docker Sandboxes</li>
+          <li><b>An agent CLI</b> you're signed in to, or an API key</li>
+          <li><b>GitHub CLI</b> for pull requests and reviews</li>
+        </ul>
+        <p class="muted">Free and open source: the core is MIT and AGPL-3.0. <a href="https://github.com/sachindots/arimaops/blob/main/LICENSE">Licence</a> · <a href="https://github.com/sachindots/arimaops/blob/main/docs/getting-started.md">Getting started guide</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="band">
+  <div class="wrap">
+    <span>ArimaOps · அரிமா, "lion" · built by <a href="https://github.com/sachindots">Sachin S</a></span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/docs/how-it-works.md">How it works</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/SECURITY.md">Security</a>
+      <a href="pipewell.html">Case study</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
+  const el = document.getElementById(b.dataset.copy);
+  try { await navigator.clipboard.writeText(el.textContent.trim()); b.textContent = "Copied"; }
+  catch { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = "Selected"; }
+  setTimeout(() => (b.textContent = "Copy"), 1600);
+}));
+</script>
+</body>
+</html>
