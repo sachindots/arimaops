@@ -177,7 +177,7 @@ export function CommandView() {
 
       <FactoryCard projects={projects.filter((p) => !projectsOff.has(p.id))} live={live} defaultOpen={false} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]::grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(260px,300px)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(260px,300px)]">
         <Roster
           rows={shown}
           focus={focus?.key}
