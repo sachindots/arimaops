@@ -258,6 +258,8 @@ export interface AccessRequest {
   reason: string;
   at: string;
   status: "pending" | "allowed" | "denied";
+  /** HQ's proxy saw the agent try it (the agent didn't ask): it doesn't hold the agent, and a deny isn't sent to it. */
+  observed?: boolean;
 }
 
 export type AccessDecision = "agent" | "everyone" | "deny";

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { BRAND } from "../../data/brand";
 import type { ActionItem } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
@@ -48,7 +48,24 @@ export function ActionItemsDrawer() {
                 <Row key={`ask-${s.agentId}`} color={agent(s.agentId)?.color} text={`${agent(s.agentId)?.name ?? s.agentId} is asking you something in the terminal`} onOpen={() => ui.openAgent(s.agentId, "terminal")} />
               ))}
               {a.access.map((r) => (
-                <Row key={r.id} color={agent(r.agentId)?.color} text={`${agent(r.agentId)?.name ?? r.agentId} wants to reach ${r.domain}`} onOpen={() => ui.openAgent(r.agentId)} />
+                <Row
+                  key={r.id}
+                  color={agent(r.agentId)?.color}
+                  text={`${agent(r.agentId)?.name ?? r.agentId} ${r.observed ? "tried to reach" : "wants to reach"} ${r.domain}`}
+                  onOpen={() => ui.openAgent(r.agentId)}
+                  actions={
+                    isViewer ? undefined : (
+                      <>
+                        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveAccess(r.id, "agent")} title={`Allow ${r.domain} for ${agent(r.agentId)?.name ?? "this agent"}`}>
+                          Allow
+                        </button>
+                        <button className="btn px-2 text-[12px]" onClick={() => officeActions.resolveAccess(r.id, "deny")}>
+                          Deny
+                        </button>
+                      </>
+                    )
+                  }
+                />
               ))}
               {a.blocked.map((b) => (
                 <Row
@@ -99,11 +116,12 @@ export function ActionItemsDrawer() {
   );
 }
 
-function Row({ text, color, onOpen }: { text: string; color?: string; onOpen: () => void }) {
+function Row({ text, color, onOpen, actions }: { text: string; color?: string; onOpen: () => void; actions?: ReactNode }) {
   return (
     <li className="hud-scan flex items-center gap-2 rounded-xl border border-white/[0.08] bg-navy/70 px-3 py-2" style={{ boxShadow: "inset 3px 0 0 #ffb020" }}>
       {color && <Dot color={color} size={8} />}
       <span className="flex-1">{text}</span>
+      {actions}
       <button className="btn px-2 text-[12px]" onClick={onOpen}>
         Open
       </button>

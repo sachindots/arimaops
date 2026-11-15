@@ -67,6 +67,9 @@ export const buildVerifierCommand = () =>
   `docker build -t ${VERIFIER_IMAGE} --build-arg UID=$(id -u) --build-arg GID=$(id -g) -f "${join(repoRoot, "docker", "verifier.Dockerfile")}" "${join(repoRoot, "docker")}"`;
 
 /** Base allowlist: AI services, sign-in pages, GitHub and package registries (like sbx's "balanced"). Agents ask for anything else. */
+/** Hosts the agent CLIs call on their own (telemetry, crash reports, profile pictures): never needed for the work. */
+export const QUIET_BLOCK = ["*.datadoghq.com", "*.datadoghq.eu", "*.sentry.io", "*.statsig.com", "api.segment.io", "lh3.googleusercontent.com"];
+
 export const BASE_ALLOW = [
   "anthropic.com", "*.anthropic.com", "claude.ai", "*.claude.ai", "claude.com", "*.claude.com",
   "openai.com", "*.openai.com", "chatgpt.com", "*.chatgpt.com",
@@ -238,11 +241,13 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
       if (s.why.includes("explicitly")) return { ok: false, why: s.why };
     }
     if (hostAllowed([...BASE_ALLOW, ...(who.rt.hub.snap.config.rules?.egress ?? []), ...agent.sandbox.allow], host, port)) return { ok: true, why: "" };
+    // The CLIs' own telemetry and avatars: blocked without asking anyone.
+    if (hostAllowed(QUIET_BLOCK, host, port)) return { ok: false, why: "telemetry" };
     const key = `${who.rt.slug}/${agent.id}/${host}`;
     if (!asked.has(key)) {
       asked.add(key);
       try {
-        requestAccess(who.rt.hub, agent.id, host, "Blocked by the container proxy (the agent tried to reach it).");
+        requestAccess(who.rt.hub, agent.id, host, "Blocked by the container proxy (the agent tried to reach it).", true);
       } catch {
         /* not a domain (e.g. an IP): just blocked */
       }

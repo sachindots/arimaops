@@ -457,6 +457,17 @@ check("removing a task removes its gate evidence", gateEvents(db, "p", "T1").len
   check("…others aren't", ["linear", "nextjs", "context7", "arcjet", "postgres", "sentry"].every((n) => !outboundMcpProblem(n)) && !outboundMcpProblem("docs", "https://docs.example.com/mcp"));
   const accessHub = (outbound: string) => ({ snap: { config: { rules: { outbound } }, accessRequests: [] }, cfg: () => ({ id: "w", mode: "sandbox", sandbox: { allow: [], deny: [] } }), holdForAccess: () => {}, emit: () => {}, activity: () => {} });
   check("an agent asking for a mail host in a drafts-only project is told no, without asking the owner", /drafts only/.test(requestAccess(accessHub("drafts-only") as never, "w", "api.sendgrid.com", "send the campaign")));
+  {
+    // A host the proxy saw (the agent didn't ask) is recorded for the owner but doesn't hold the agent; an asked-for one does.
+    const held: string[] = [];
+    const states: string[] = [];
+    const h = { ...accessHub("none"), holdForAccess: (id: string) => held.push(id), setStatus: (_: string, s: { state: string }) => states.push(s.state) };
+    requestAccess(h as never, "w", "pypi.org", "Blocked by the container proxy", true);
+    const observed = (h.snap.accessRequests as { observed?: boolean }[])[0];
+    check("a proxy-observed block is kept for the owner without holding the agent or asking it", observed?.observed === true && held.length === 0 && states.length === 0, JSON.stringify({ held, states }));
+    requestAccess(h as never, "w", "docs.example.com", "need the docs");
+    check("…an agent's own request still holds it and marks it needs-input", held.length === 1 && states.includes("needs-input"));
+  }
 
   // In the planner: a draft reaches the owner only after the editor accepts it, and finishes once the owner approves.
   const team = [
