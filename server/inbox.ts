@@ -54,7 +54,7 @@ export class Inbox {
     this.load();
     // Safety net: retry anything queued for agents that have gone idle.
     this.timer = setInterval(() => {
-      for (const id of this.queues.keys()) void this.tryType(id);
+      for (const id of this.queues.keys()) this.attempt(id);
     }, 2000);
   }
 
@@ -109,7 +109,7 @@ export class Inbox {
     q.push(item);
     this.queues.set(agentId, q);
     this.save();
-    void this.tryType(agentId);
+    this.attempt(agentId);
   }
 
   /** When the agent's last hook arrived (0 if never). */
@@ -130,7 +130,7 @@ export class Inbox {
     }
     if (event === "SessionEnd") this.sessionUp.delete(agentId);
     if (event === "UserPromptSubmit") this.lastSubmit.set(agentId, Date.now());
-    if (event === "Stop" || event === "SessionStart" || event === "Notification") setTimeout(() => void this.tryType(agentId), QUIET_MS + 100);
+    if (event === "Stop" || event === "SessionStart" || event === "Notification") setTimeout(() => this.attempt(agentId), QUIET_MS + 100);
   }
 
   /** An already-running session was reattached: its prompt exists even though HQ missed SessionStart. */
@@ -194,6 +194,11 @@ export class Inbox {
     return JSON.stringify({ up: this.sessionUp.has(agentId), session: st?.session.state, state: st?.state, note: st?.note, typing: this.typing.has(agentId), quietMs: Date.now() - (this.lastHook.get(agentId) ?? 0) });
   }
 
+  /** A delivery attempt whose failure is logged: an error here must never stop HQ (and every agent with it). */
+  private attempt(agentId: string) {
+    this.tryType(agentId).catch((err) => log.warn(`inbox ${agentId}: delivery failed, will retry: ${err instanceof Error ? err.message : err}`));
+  }
+
   /** Types queued items into an idle agent. Safe to call any time. */
   async tryType(agentId: string) {
     this.dropStale(agentId);
@@ -204,6 +209,8 @@ export class Inbox {
       return;
     }
     if (this.keys.promptReady && !(await this.keys.promptReady(agentId))) return; // retried every 2 s
+    // While that check awaited, another attempt (the 2 s retry, a hook) may have typed and emptied the queue.
+    if (!q.length || this.typing.has(agentId)) return;
     if (q[0].kind === "reset") return this.typeReset(agentId, q.splice(0, 1)[0]);
     const nextReset = q.findIndex((i) => i.kind === "reset");
     const upTo = q.slice(0, nextReset === -1 ? q.length : nextReset);
@@ -245,7 +252,7 @@ export class Inbox {
     } finally {
       this.typing.delete(agentId);
     }
-    void this.tryType(agentId);
+    this.attempt(agentId);
   }
 
   private format(items: InboxItem[]): string {

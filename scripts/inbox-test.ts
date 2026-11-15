@@ -217,5 +217,29 @@ inbox4.stop();
   check("…the pause lifts: it starts", log.join() === "start d1", log.join());
 }
 
+// Two delivery attempts at once (the 2 s retry and a hook): the second resumes after the first emptied the queue.
+{
+  const hub = fakeHub();
+  hub.statusRef.session.state = "running";
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  let calls = 0;
+  const slowKeys = { ...keys, promptReady: async () => (++calls === 1 ? (await gate, true) : true) };
+  const inbox = new Inbox(hub as never, slowKeys);
+  inbox.sessionReattached("race");
+  (hub as { cfg: (id: string) => unknown }).cfg = (id: string) => ({ id });
+  (hub as { status: (id: string) => unknown }).status = () => hub.statusRef;
+  inbox.sessionReattached("dwight");
+  hub.snap.messages.unshift({ id: "r1", at: new Date().toISOString(), fromId: "you", toId: "dwight", text: "Race me", delivered: "queued" });
+  inbox.push("dwight", { fromId: "you", kind: "message", text: "Race me", msgId: "r1" });
+  const first = inbox.tryType("dwight"); // waits on the prompt check
+  await inbox.tryType("dwight"); // types and empties the queue
+  release();
+  let threw = false;
+  await first.catch(() => (threw = true));
+  check("a delivery attempt that finds the queue emptied meanwhile doesn't throw (it used to stop HQ)", !threw);
+  inbox.stop();
+}
+
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

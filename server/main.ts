@@ -41,6 +41,9 @@ function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : undefined;
 }
+// Agents run in HQ's terminals: a background promise that fails (a delivery retry, a poll) must not stop HQ and every agent with it.
+process.on("unhandledRejection", (err) => log.error(`unhandled: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`));
+
 const flag = (name: string) => process.argv.includes(`--${name}`);
 const args = (name: string) => process.argv.flatMap((a, i) => (a === `--${name}` && process.argv[i + 1] ? [process.argv[i + 1]] : []));
 
@@ -188,8 +191,10 @@ async function main() {
     if (lines.length === 2) lines.push(`    Install Tailscale (recommended) or pass --host 0.0.0.0 for LAN.`);
     lines.push(
       `  Risky commands from remote (terminal, approvals, secrets, settings) need a 6-digit code once a day per device.`,
-      `    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`,
-      `    (or type the key manually: ${guard.secretB32})`,
+      // Docker and service logs are kept on disk: the second factor is printed only to a terminal.
+      ...(process.stdout.isTTY
+        ? [`    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`, `    (or type the key manually: ${guard.secretB32})`]
+        : [`    Authenticator key: in ~/${BRAND.homeDir}/totp-secret (only you can read it). Add it once to Google Authenticator / Aegis / 1Password as a time-based key.`]),
       `  Audit log: ~/.arima/arima.db (log table, audit.log)`,
     );
     log.info(lines.join("\n") + "\n");
