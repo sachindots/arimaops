@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { modeOf } from "../../data/mode";
 import { selectAttention, selectTeam, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
@@ -49,6 +49,13 @@ export function SpatialHud() {
   const reduce = useReducedMotion();
   const [tab, setTab] = useState<Page>("home");
   const [thread, setThread] = useState<string | null>(null);
+
+  // Typing must never land in a panel that is closing: when the panel changes, the old one gives up focus.
+  const panelKey = drawer ? (drawer.kind === "agent" ? `agent:${drawer.id}` : drawer.kind) : null;
+  useEffect(() => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el.closest('[aria-label="Side panel"]')) el.blur();
+  }, [panelKey]);
 
   if (!snap) return null;
 
@@ -112,7 +119,7 @@ export function SpatialHud() {
           key={sideKey}
           initial={reduce ? false : { opacity: 0, x: 28 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={reduce ? undefined : { opacity: 0, x: 20 }}
+          exit={reduce ? { pointerEvents: "none" } : { opacity: 0, x: 20, pointerEvents: "none" }}
           transition={{ duration: 0.18, ease: "easeOut" }}
           className={`fixed bottom-4 right-4 ${grid ? "top-4" : "top-[64px]"} z-20 flex flex-col overflow-hidden rounded-2xl hud-drawer ${
             maximized ? (grid ? "left-4" : "left-[92px]") : "w-[min(calc(100vw-120px),760px)]"

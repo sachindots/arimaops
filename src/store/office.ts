@@ -99,6 +99,12 @@ const loggedIn = (() => {
     return false;
   }
 })();
+/** Setup checks still to do for this team: Sandbox or Local items don't count when no agent runs that way. */
+export function setupToDo(snap: OfficeSnapshot): number {
+  const modes = new Set<string>(snap.config.team.map((a) => a.mode));
+  return snap.setup.checks.filter((c) => c.status !== "ok" && c.status !== "unsupported" && (c.neededFor === "all" || c.neededFor === "github" || modes.has(c.neededFor))).length;
+}
+
 /** Viewer token (tablet/phone read-only link): the server rejects control commands; the UI hides them. */
 export const isViewer = (() => {
   try {

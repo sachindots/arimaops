@@ -67,21 +67,28 @@ function useSetupPrompt() {
     return useOffice.subscribe((s) => {
       if (shown || !s.live || !s.snap || s.snap.welcome) return;
       shown = true;
-      const missing = s.snap.setup.checks
-        .filter((c) => c.status !== "ok" && c.neededFor !== "github" && c.neededFor !== "local")
-        .map((c) => c.id)
-        .sort()
-        .join(",");
-      // Per machine, not per project: the checks are about this computer, so switching project doesn't reopen them.
-      const key = prefKey("setupSeen");
-      let seen: string | null = null;
-      try {
-        seen = localStorage.getItem(key);
-        localStorage.setItem(key, missing);
-      } catch {
-        /* private window: show it */
-      }
-      if (missing && missing !== seen) ui.openSetup();
+      // Right after HQ starts, some checks fail until it is listening and re-checks: decide a few seconds later.
+      window.setTimeout(() => {
+        const snap = useOffice.getState().snap;
+        if (!snap || snap.welcome) return;
+        // Only what this team needs: a Sandbox item doesn't pop up for a team that runs in containers.
+        const modes = new Set<string>(snap.config.team.map((a) => a.mode));
+        const missing = snap.setup.checks
+          .filter((c) => c.status !== "ok" && c.status !== "unsupported" && c.neededFor !== "local" && (c.neededFor === "all" || modes.has(c.neededFor)))
+          .map((c) => c.id)
+          .sort()
+          .join(",");
+        // Per machine, not per project: the checks are about this computer, so switching project doesn't reopen them.
+        const key = prefKey("setupSeen");
+        let seen: string | null = null;
+        try {
+          seen = localStorage.getItem(key);
+          localStorage.setItem(key, missing);
+        } catch {
+          /* private window: show it */
+        }
+        if (missing && missing !== seen) ui.openSetup();
+      }, 6000);
     });
   }, []);
 }

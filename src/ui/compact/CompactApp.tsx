@@ -3,7 +3,7 @@
 // office, shown full-screen with a Back button.
 import { useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID } from "../../data/types";
-import { isViewer, officeActions, selectAttention, selectTeam, useOffice } from "../../store/office";
+import { isViewer, officeActions, selectAttention, selectTeam, setupToDo, useOffice } from "../../store/office";
 import { modeOf, type Mode } from "../../data/mode";
 import { AgentOrbit } from "../hud/AgentOrbit";
 import { ParticleCore } from "../hud/ParticleCore";
@@ -55,7 +55,7 @@ export function CompactApp() {
   if (!snap) return null;
   const current = tab;
   const attention = selectAttention(snap).total;
-  const setupIssues = snap.setup.checks.filter((c) => c.status !== "ok").length;
+  const setupIssues = setupToDo(snap);
   const go = (id: Tab) => {
     ui.closeDrawer();
     setTab(id);

@@ -1,6 +1,6 @@
 import type { OfficeSnapshot } from "../../data/types";
 import { signOut, useAuth } from "../../store/auth";
-import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
+import { isViewer, officeActions, selectAttention, setupToDo, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { fmtTokens, fmtUsd, Logo, useCountUp } from "../kit";
 import { useAgentUsage } from "../../store/usage";
@@ -66,7 +66,7 @@ export function TopRightTelemetry({
   const usage = useAgentUsage(1);
   const totalTokens = useCountUp(usage.rows.reduce((sum, a) => sum + usage.total(a), 0));
   const cost = usage.rows.reduce((sum, a) => sum + a.costUsd, 0);
-  const setupIssues = snap.setup.checks.filter((c) => c.status !== "ok").length;
+  const setupIssues = setupToDo(snap);
   const stoppedAgents = snap.agents.filter((a) => a.session.state === "stopped" || a.session.state === "failed");
 
   return (

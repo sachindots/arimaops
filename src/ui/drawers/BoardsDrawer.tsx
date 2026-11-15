@@ -20,7 +20,13 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
   const snap = useOffice((s) => s.snap);
   const now = useNow(30_000);
   const boards = [...(snap?.boards ?? [])].sort((a, b) => a.order - b.order);
-  const [boardId, setBoardId] = useState(initialBoardId ?? boards.find((b) => b.status === "active")?.id ?? boards[0]?.id);
+  // Open where the work is: an active board with open tasks, then any active board, then the first.
+  const [boardId, setBoardId] = useState(
+    initialBoardId ??
+      boards.find((b) => b.status === "active" && (snap?.tasks ?? []).some((t) => t.boardId === b.id && t.status !== "done"))?.id ??
+      boards.find((b) => b.status === "active")?.id ??
+      boards[0]?.id,
+  );
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [byAgent, setByAgent] = useState(() => readPref("board.lanes") === "agent");
   if (!snap) return null;
