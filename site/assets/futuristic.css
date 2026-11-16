@@ -150,25 +150,65 @@ html[data-anim] .video-frame.red::before{ background:linear-gradient(120deg,#ff2
 .video-frame.red .expand{ color:#ff5b73; border-color:rgba(255,42,75,.4) }
 .video-frame.red .expand:hover{ background:rgba(255,42,75,.15) }
 
-/* ---------- SECURITY VIEW (body.sec): red accent on the same layout ---------- */
-body.sec .eyebrow::before{ background:#ff5b73; box-shadow:0 0 10px #ff5b73 }
-body.sec .hero h1 em{ background:linear-gradient(100deg,#ff5b73,#ff8a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
-body.sec .btn.primary{ background:linear-gradient(120deg,rgba(255,42,75,.16),rgba(255,138,61,.16)); border-color:rgba(255,91,115,.55) }
-body.sec .nav a::after{ background:linear-gradient(90deg,#ff8a3d,#ff5b73) }
+/* ---------- BREACH VIEW (body.sec): full red / cyber-hacker theme ---------- */
+body.sec{ --cyan:#ff4668; }
+/* Red aurora + brighter grid, with a scanning sweep line */
 body.sec::before{ background:
-  radial-gradient(60% 50% at 15% 0%, rgba(255,42,75,.12), transparent 60%),
-  radial-gradient(55% 45% at 90% 10%, rgba(255,138,61,.10), transparent 60%),
-  radial-gradient(50% 40% at 50% 110%, rgba(255,42,75,.06), transparent 60%); }
-body.sec::after{ background-image:linear-gradient(rgba(255,91,115,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,91,115,.05) 1px,transparent 1px) }
-body.sec #progress{ background:linear-gradient(90deg,#ff8a3d,#ff5b73) }
-body.sec #glow{ background:radial-gradient(circle,rgba(255,91,115,.07),transparent 65%) }
-html[data-anim] body.sec .flowstrip .st.pulse{ border-color:rgba(255,91,115,.6); background:rgba(255,42,75,.06); box-shadow:0 0 24px rgba(255,42,75,.12) }
-html[data-anim] body.sec .flowstrip .arr.pulse{ color:#ff5b73 }
-body.sec .card:hover{ border-color:rgba(255,91,115,.35) }
-body.sec .glass::after{ background:radial-gradient(240px 160px at var(--mx,50%) var(--my,0%),rgba(255,91,115,.10),transparent 70%) }
+  radial-gradient(60% 55% at 15% 0%, rgba(255,42,75,.16), transparent 60%),
+  radial-gradient(55% 45% at 90% 8%, rgba(255,110,60,.12), transparent 60%),
+  radial-gradient(70% 50% at 50% 120%, rgba(255,42,75,.10), transparent 62%); }
+body.sec::after{ opacity:.7;
+  background-image:linear-gradient(rgba(255,70,104,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,70,104,.07) 1px,transparent 1px);
+  mask-image:radial-gradient(circle at 50% 18%,#000 0%,transparent 72%) }
+/* CRT scanlines + a sweeping scan beam over the whole view */
+body.sec .hero::after{ content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(255,42,75,.045) 0 1px, transparent 1px 3px) }
+html[data-anim] body.sec .hero::before{ content:""; position:absolute; left:0; right:0; height:36%; z-index:0; pointer-events:none;
+  background:linear-gradient(180deg, transparent, rgba(255,42,75,.08), transparent); animation:scanbeam 7s linear infinite }
+@keyframes scanbeam{ from{ transform:translateY(-120%) } to{ transform:translateY(320%) } }
 
-/* Highlighted stat (red number) */
-.stat.red b{ background:linear-gradient(120deg,#ff5b73,#ff8a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
+/* Terminal eyebrows: mono, red, prefixed */
+body.sec .eyebrow{ font-family:var(--mono,monospace); font-size:12.5px; letter-spacing:.02em; color:#ff8a98 }
+body.sec .eyebrow::before{ content:"›_"; width:auto; height:auto; border-radius:0; background:none; box-shadow:none; color:#ff4668; font-weight:700; margin-right:2px }
+html[data-anim] body.sec .eyebrow::before{ animation:blink 1.4s step-end infinite }
+
+/* Headings + accents all red */
+body.sec h1, body.sec h2, body.sec h3{ letter-spacing:-.01em }
+body.sec .hero h1 em{ background:linear-gradient(100deg,#ff4668,#ff9a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+  text-shadow:0 0 36px rgba(255,42,75,.35) }
+body.sec .band:not(.hero) .head h2{ position:relative; padding-left:16px }
+body.sec .band:not(.hero) .head h2::before{ content:""; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:2px;
+  background:linear-gradient(180deg,#ff4668,#ff9a3d); box-shadow:0 0 14px rgba(255,42,75,.5) }
+
+/* Buttons, links, chrome */
+body.sec .btn.primary{ background:linear-gradient(120deg,rgba(255,42,75,.2),rgba(255,138,61,.18)); border-color:rgba(255,91,115,.6); box-shadow:0 0 26px rgba(255,42,75,.18) }
+body.sec .btn:hover{ border-color:rgba(255,91,115,.6) }
+body.sec .nav a::after{ background:linear-gradient(90deg,#ff9a3d,#ff4668) }
+body.sec #progress{ background:linear-gradient(90deg,#ff9a3d,#ff4668); box-shadow:0 0 12px rgba(255,42,75,.6) }
+body.sec #glow{ background:radial-gradient(circle,rgba(255,70,104,.09),transparent 65%) }
+body.sec .cmd .caret{ background:#ff4668 }
+body.sec code{ color:#ff9aa6 }
+
+/* Cards: red by default, stronger on hover */
+body.sec .card{ border-color:rgba(255,70,104,.22) }
+body.sec .card:hover{ border-color:rgba(255,91,115,.55); box-shadow:0 20px 50px rgba(0,0,0,.5), 0 0 40px rgba(255,42,75,.14) }
+body.sec .glass::after{ background:radial-gradient(240px 160px at var(--mx,50%) var(--my,0%),rgba(255,70,104,.14),transparent 70%) }
+body.sec .shot:hover{ border-color:rgba(255,91,115,.5); box-shadow:0 40px 100px rgba(0,0,0,.6), 0 0 80px rgba(255,42,75,.16) }
+body.sec .feature .shot::after{ content:"⤢ view"; color:#ff6b82; border-color:rgba(255,42,75,.4) }
+
+/* Flow strip: red rails, pulse glows red */
+body.sec .flowstrip .st{ border-color:rgba(255,70,104,.25) }
+body.sec .flowstrip .arr{ color:rgba(255,91,115,.6) }
+html[data-anim] body.sec .flowstrip .st.pulse{ border-color:rgba(255,91,115,.7); background:rgba(255,42,75,.08); box-shadow:0 0 24px rgba(255,42,75,.16) }
+html[data-anim] body.sec .flowstrip .arr.pulse{ color:#ff4668 }
+
+/* Stat strip: red frames + numbers */
+body.sec .stat{ border-color:rgba(255,70,104,.22) }
+body.sec .stat b{ background:linear-gradient(120deg,#ff5b73,#ff9a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
+
+@media (prefers-reduced-motion:reduce){
+  html[data-anim] body.sec .hero::before{ animation:none!important; display:none }
+}
 
 @media (max-width:760px){ .modeswitch{ margin-left:auto } .ms-btn{ padding:6px 11px } }
 
