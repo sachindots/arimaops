@@ -2,6 +2,8 @@
 
 ### Lead the pride.
 
+**Website: [sachindots.github.io/arimaops](https://sachindots.github.io/arimaops/)** · [Pipewell case study](https://sachindots.github.io/arimaops/pipewell.html)
+
 **Your AI company in one office: a team of AI agents builds your software and runs your security work, and you steer it from any screen.**
 
 [![ArimaOps in action: agents walk from the HQ hall to their project's wing and get to work](docs/media/arimaops-teaser.gif)](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4)
