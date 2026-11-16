@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ArimaOps for Security · a red team you run in scope</title>
+<meta name="description" content="Run an AI red team on your own machine: scope first, then recon, threat model, exploitation and a scored report checked by a second model. Out-of-scope targets are refused. Free and open source.">
+<meta property="og:title" content="ArimaOps for Security">
+<meta property="og:description" content="An AI red team, in scope, on your machine — demonstrated against OWASP Juice Shop. Free and open source, self-hosted.">
+<meta property="og:image" content="https://sachindots.github.io/arimaops/assets/video/demo-red-poster.jpg">
+<meta name="theme-color" content="#030712">
+<link rel="icon" href="assets/lion.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/futuristic.css">
+</head>
+<body class="sec" data-orbit="red">
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/lion.png" alt="" width="28" height="28"> ArimaOps</a>
+    <div class="modeswitch" role="tablist" aria-label="Choose a view">
+      <a class="ms-btn" role="tab" aria-selected="false" href="./">Platform</a>
+      <a class="ms-btn red active" role="tab" aria-selected="true" href="security.html">Security</a>
+    </div>
+    <nav class="nav" aria-label="Site">
+      <a class="hide-sm" href="#engagement">Engagement</a>
+      <a class="hide-sm" href="#findings">Findings</a>
+      <a class="hide-sm" href="#teams">Teams</a>
+      <a href="#start">Get started</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="band hero">
+  <canvas id="orbit" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Offensive security · in scope · self-hosted</span>
+      <h1>An AI red team.<br><em>In scope. On your machine.</em></h1>
+    </div>
+    <p class="lede">The same ArimaOps, pointed at a target you authorise. A lead sets the scope, workers run recon, threat-model, and exploit in their own containers, and a second model scores every finding before it reaches your report. Out-of-scope hosts are refused. Nothing destructive runs without your approval.</p>
+    <div class="btns">
+      <a class="btn primary" href="#start">Run an engagement</a>
+      <a class="btn" href="#findings">See the findings</a>
+      <div class="cmd"><span id="cmd">npx arimaops@latest</span><button type="button" data-copy="cmd">Copy</button></div>
+    </div>
+    <div class="facts">
+      <span>Scope-gated — <b>out-of-scope targets refused</b></span>
+      <span>Findings scored by a <b>second model</b></span>
+      <span>CVSS 4.0, CWE, ATT&amp;CK &amp; WSTG on every finding</span>
+      <span>Export to Markdown, SARIF, HackerOne &amp; Bugcrowd</span>
+    </div>
+    <p class="demo-cap">A <b>security red team</b> against OWASP Juice Shop — scope, recon, exploit, and a scored report, live on one screen.</p>
+    <div class="video-frame red">
+      <button type="button" class="expand" aria-label="Expand the demo video">⤢ fullscreen</button>
+      <video class="shot hero-shot" id="demo" width="1600" height="1000" autoplay muted loop playsinline controls preload="metadata" poster="assets/video/demo-red-poster.jpg" aria-label="A red-team engagement in ArimaOps against OWASP Juice Shop: the red team in orbit, the scored findings, the board, and the scope-gated flow.">
+        <source src="assets/video/demo-red.webm" type="video/webm">
+        <source src="assets/video/demo-red.mp4" type="video/mp4">
+      </video>
+    </div>
+    <script>if (matchMedia("(prefers-reduced-motion: reduce)").matches) { const v = document.getElementById("demo"); v.removeAttribute("autoplay"); v.pause(); }</script>
+  </div>
+</section>
+
+<section class="band" id="proof">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Proof · OWASP Juice Shop</span>
+      <h2>Three confirmed vulnerabilities, scored and written up</h2>
+    </div>
+    <p class="muted">A Security · Red team was pointed at a local OWASP Juice Shop. Working only inside scope, it found and documented three real bugs — each with repro steps, evidence, CVSS 4.0 and a CWE — and <b>declined</b> a state-changing login-bypass, drafting it for approval instead of running it.</p>
+    <div class="stats">
+      <div class="glass stat corners"><b>3</b><span>confirmed findings</span></div>
+      <div class="glass stat"><b>1</b><span>high severity</span></div>
+      <div class="glass stat red"><b>8.7</b><span>top CVSS 4.0 (SQLi)</span></div>
+      <div class="glass stat"><b>23</b><span>DB tables read, non-destructively</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="engagement">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">How an engagement runs</span>
+      <h2>Scope first, then a gated kill chain</h2>
+    </div>
+    <p class="muted">The Red template's flow. The scope gate comes before anything touches the target, and the report is signed off by a second model — not the agent that wrote it.</p>
+    <div class="flowstrip" aria-label="The Red template's flow">
+      <div class="st"><b>Scope</b><small>you set targets in bounds</small></div><span class="arr">›</span>
+      <div class="st"><b>Recon</b><small>map only what's in scope</small></div><span class="arr">›</span>
+      <div class="st"><b>Threat model</b><small>rank the attack surface</small></div><span class="arr">›</span>
+      <div class="st"><b>Exploit</b><small>confirm, never destroy</small></div><span class="arr">›</span>
+      <div class="st"><b>Report</b><small>scored by a second model</small></div>
+    </div>
+    <div class="feature">
+      <div class="copy">
+        <h3>Scope is a gate, not a note</h3>
+        <p class="muted">The engagement cannot start until you set what's in bounds. Requests to anything outside it are refused by HQ, not left to the agent's judgement. Destructive actions — anything that changes state on the target — stop for your approval.</p>
+        <ul>
+          <li><b>Out-of-scope targets refused</b> at the proxy, with an allowlist per agent.</li>
+          <li><b>State-changing exploits</b> are drafted for you, not executed.</li>
+          <li><b>Every finding</b> carries evidence, CVSS 4.0, CWE, ATT&amp;CK and WSTG.</li>
+        </ul>
+      </div>
+      <img class="shot" src="assets/shots/flow.webp" width="2400" height="1500" loading="lazy" alt="The Flow canvas: the Red template's stages with the scope gate before recon.">
+    </div>
+    <div class="feature flip">
+      <div class="copy">
+        <h3>Findings you can hand to a programme</h3>
+        <p class="muted">Each finding is first-class: severity, CVSS 4.0 vector, CWE, ATT&amp;CK technique, WSTG test, repro steps and remediation. Export the whole set to Markdown, JSON, SARIF, or a HackerOne or Bugcrowd submission in one call.</p>
+      </div>
+      <img class="shot" src="assets/shots/board.webp" width="2400" height="1500" loading="lazy" alt="The Board during an engagement: recon, exploit and report tasks moving across columns.">
+    </div>
+  </div>
+</section>
+
+<section class="band" id="findings">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">The Juice Shop findings</span>
+      <h2>What the red team found</h2>
+    </div>
+    <div class="grid">
+      <article class="glass card corners"><span class="tag red">High · CVSS 8.7</span><h3>SQL injection — full DB read</h3><p>The unauthenticated <code>q</code> parameter of <code>/rest/products/search</code> is concatenated into a SQLite query. A read-only <code>UNION SELECT</code> enumerated all 23 tables via <code>sqlite_master</code> — arbitrary read of any table. CWE-89 · T1190 · WSTG-INPV-05.</p></article>
+      <article class="glass card"><span class="tag amber">Medium · CVSS 6.3</span><h3>IDOR on baskets</h3><p><code>GET /rest/basket/{id}</code> checks the caller's JWT but not basket ownership. A zero-privilege account read another user's basket by changing the id — confirmed with two disposable accounts. CWE-639 · T1213.</p></article>
+      <article class="glass card"><span class="tag amber">Medium · CVSS 5.1</span><h3>DOM XSS via search</h3><p>The search query is rendered through Angular's <code>bypassSecurityTrustHtml</code>, defeating the sanitiser. A crafted <code>q</code> executes script in the victim's session. CWE-79 · reflected through the client.</p></article>
+    </div>
+    <p class="muted" style="margin-top:14px">A fourth, more severe login-bypass (<code>email=' OR 1=1--</code>) was identified but <b>not executed</b> — it creates a session, so it was drafted for owner approval. That restraint is the point.</p>
+  </div>
+</section>
+
+<section class="band" id="teams">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Security templates</span>
+      <h2>Red, Purple and Blue teams</h2>
+    </div>
+    <div class="grid">
+      <article class="glass card"><span class="tag red">Security · Red</span><h3>Engagements in scope</h3><p>Scope first, then recon, threat model, exploitation and a scored report checked by a second model. Out-of-scope targets are refused.</p></article>
+      <article class="glass card"><span class="tag violet">Security · Purple</span><h3>Attack, then defend</h3><p>Red's engagement plus a defender that maps each finding to ATT&amp;CK and D3FEND and writes the detection that catches it.</p></article>
+      <article class="glass card"><span class="tag blue">Security · Blue</span><h3>Incident response</h3><p>Detect and analyse, contain only with your approval, eradicate and recover, then lessons learned. A plan before every change.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">Get started</span>
+      <h2>Run your own engagement</h2>
+    </div>
+    <div class="steps">
+      <div class="glass step"><span class="n">1 · Start HQ</span><p class="muted">From inside a git repo:</p><pre><code>npx arimaops@latest</code></pre><p class="muted">Or run HQ with Docker Compose.</p></div>
+      <div class="glass step"><span class="n">2 · Pick Security · Red</span><p class="muted">Name the engagement and choose the Red template. Set the scope — the targets you're authorised to test.</p></div>
+      <div class="glass step"><span class="n">3 · Brief the lead</span><p class="muted">Give the rules of engagement. Approve the scope, then watch recon, exploit and the scored report move across the board.</p></div>
+    </div>
+    <p class="muted">Only test systems you own or are authorised to test. ArimaOps enforces scope; the law is still yours to follow. <a href="https://github.com/sachindots/arimaops/blob/main/SECURITY.md">Security policy</a> · <a href="https://github.com/sachindots/arimaops/blob/main/docs/getting-started.md">Getting started</a></p>
+  </div>
+</section>
+</main>
+
+<footer class="band">
+  <div class="wrap">
+    <span>ArimaOps — a pride of agents · built by <a href="https://github.com/sachindots">Sachin S</a></span>
+    <nav aria-label="Footer">
+      <a href="./">Platform</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/SECURITY.md">Security</a>
+      <a href="pipewell.html">Case study</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="assets/app.js" defer></script>
+
+</body>
+</html>
