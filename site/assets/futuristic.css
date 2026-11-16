@@ -132,3 +132,18 @@ html[data-anim] #lb.open img{ animation:zoomin .3s cubic-bezier(.2,.8,.2,1) }
   html[data-anim] .hero .head,html[data-anim] .hero .lede,html[data-anim] .hero .btns,html[data-anim] .hero .facts{ opacity:1!important; transform:none!important; animation:none!important }
   .shot,.card,.btn{ transition:none }
 }
+
+/* ---------- Demo toggle: Build team / Red team ---------- */
+.demo-toggle{ display:inline-flex; gap:4px; padding:4px; margin:8px 0 0; border:1px solid var(--line); border-radius:12px; background:rgba(8,13,24,.6); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px) }
+.dt-btn{ font:600 14px var(--body,sans-serif); color:var(--muted); background:transparent; border:0; padding:8px 16px; border-radius:9px; cursor:pointer; transition:color .25s, background .25s, box-shadow .25s; white-space:nowrap }
+.dt-btn:hover{ color:var(--ink) }
+.dt-btn.active{ color:var(--cyan); background:rgba(0,240,255,.12); box-shadow:0 0 20px rgba(0,240,255,.14) inset, 0 0 0 1px rgba(0,240,255,.4) }
+.dt-btn.red.active{ color:#ff5b73; background:rgba(255,42,75,.12); box-shadow:0 0 20px rgba(255,42,75,.14) inset, 0 0 0 1px rgba(255,42,75,.45) }
+.demo-cap{ margin:14px 0 2px; color:var(--muted); font-size:14.5px; max-width:none; transition:opacity .25s }
+.demo-cap b{ color:var(--ink); font-weight:500 }
+/* Red mode tints the hero video frame */
+.video-frame.red{ background:linear-gradient(120deg,rgba(255,42,75,.5),rgba(255,120,80,.35),transparent 60%) }
+html[data-anim] .video-frame.red::before{ background:linear-gradient(120deg,#ff2a4b,#ff8a3d,#ff2a4b); background-size:200% 100% }
+.video-frame.red .expand{ color:#ff5b73; border-color:rgba(255,42,75,.4) }
+.video-frame.red .expand:hover{ background:rgba(255,42,75,.15) }
+@media (max-width:520px){ .dt-btn{ padding:8px 12px; font-size:13px } }

@@ -20,6 +20,29 @@
     });
   });
 
+  /* ---------- Demo toggle: Build team / Red team (always) ---------- */
+  var DEMOS = {
+    build: { webm: "assets/video/demo.webm", mp4: "assets/video/demo.mp4", poster: "assets/video/demo-poster.jpg",
+      cap: "A <b>dev team</b> planning, building and shipping reviewed pull requests — live on one screen." },
+    red: { webm: "assets/video/demo-red.webm", mp4: "assets/video/demo-red.mp4", poster: "assets/video/demo-red-poster.jpg",
+      cap: "A <b>security red team</b> against OWASP Juice Shop — scope, recon, exploit, and a scored report." }
+  };
+  var dtBtns = $$(".dt-btn"), demoVid = $("#demo"), demoCap = $("#demoCap"), demoFrame = $(".video-frame");
+  if (dtBtns.length && demoVid) {
+    dtBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var d = DEMOS[btn.dataset.demo]; if (!d) return;
+        dtBtns.forEach(function (b) { b.classList.toggle("active", b === btn); b.setAttribute("aria-selected", b === btn ? "true" : "false"); });
+        if (demoFrame) demoFrame.classList.toggle("red", btn.dataset.demo === "red");
+        demoVid.querySelectorAll("source").forEach(function (s) { s.src = s.type.indexOf("webm") > -1 ? d.webm : d.mp4; });
+        demoVid.poster = d.poster;
+        if (demoCap) demoCap.innerHTML = d.cap;
+        demoVid.load();
+        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) demoVid.play().catch(function () {});
+      });
+    });
+  }
+
   /* ---------- Lightbox (always — this is the "click the image" fix) ---------- */
   var shots = $$(".shot").filter(function (el) { return el.tagName === "IMG"; });
   if (shots.length) {
