@@ -7,7 +7,7 @@
 <meta name="description" content="ArimaOps runs a team of AI agents for every project on your machine: a lead that plans, workers that build in their own containers, reviewers that check each other, and gates that keep the work honest. Free and open source.">
 <meta property="og:title" content="ArimaOps">
 <meta property="og:description" content="Build an AI team for any job from a template, and run it from your phone. Free and open source, self-hosted.">
-<meta property="og:image" content="https://sachindots.github.io/arimaops/assets/shots/home.webp">
+<meta property="og:image" content="https://arimaops.tech/assets/shots/home.webp">
 <meta name="theme-color" content="#030712">
 <link rel="icon" href="assets/lion.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +21,10 @@
 <header class="top">
   <div class="wrap">
     <a class="brand" href="./"><img src="assets/lion.png" alt="" width="28" height="28"> ArimaOps</a>
+    <div class="modeswitch" role="tablist" aria-label="Choose a view">
+      <a class="ms-btn active" role="tab" aria-selected="true" href="./">Platform</a>
+      <a class="ms-btn red" role="tab" aria-selected="false" href="security.html">Security</a>
+    </div>
     <nav class="nav" aria-label="Site">
       <a class="hide-sm" href="#how">How it works</a>
       <a class="hide-sm" href="#templates">Templates</a>
@@ -51,11 +55,7 @@
       <span>Agents on your CLI subscriptions or API keys</span>
       <span>Everything runs on your machine</span>
     </div>
-    <div class="demo-toggle" role="tablist" aria-label="Choose a team to preview">
-      <button class="dt-btn active" role="tab" aria-selected="true" data-demo="build">Build team</button>
-      <button class="dt-btn red" role="tab" aria-selected="false" data-demo="red">Security · Red team</button>
-    </div>
-    <p class="demo-cap" id="demoCap">A dev team planning, building and shipping reviewed pull requests — live on one screen.</p>
+    <p class="demo-cap">A <b>dev team</b> planning, building and shipping reviewed pull requests — live on one screen.</p>
     <div class="video-frame">
       <button type="button" class="expand" aria-label="Expand the demo video">⤢ fullscreen</button>
       <video class="shot hero-shot" id="demo" width="1280" height="800" autoplay muted loop playsinline controls preload="metadata" poster="assets/video/demo-poster.jpg" aria-label="A tour of an ArimaOps team at work: the agents in orbit, their live terminals, the board, the flow, and the same team on a phone.">

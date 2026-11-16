@@ -133,17 +133,48 @@ html[data-anim] #lb.open img{ animation:zoomin .3s cubic-bezier(.2,.8,.2,1) }
   .shot,.card,.btn{ transition:none }
 }
 
-/* ---------- Demo toggle: Build team / Red team ---------- */
-.demo-toggle{ display:inline-flex; gap:4px; padding:4px; margin:8px 0 0; border:1px solid var(--line); border-radius:12px; background:rgba(8,13,24,.6); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px) }
-.dt-btn{ font:600 14px var(--body,sans-serif); color:var(--muted); background:transparent; border:0; padding:8px 16px; border-radius:9px; cursor:pointer; transition:color .25s, background .25s, box-shadow .25s; white-space:nowrap }
-.dt-btn:hover{ color:var(--ink) }
-.dt-btn.active{ color:var(--cyan); background:rgba(0,240,255,.12); box-shadow:0 0 20px rgba(0,240,255,.14) inset, 0 0 0 1px rgba(0,240,255,.4) }
-.dt-btn.red.active{ color:#ff5b73; background:rgba(255,42,75,.12); box-shadow:0 0 20px rgba(255,42,75,.14) inset, 0 0 0 1px rgba(255,42,75,.45) }
-.demo-cap{ margin:14px 0 2px; color:var(--muted); font-size:14.5px; max-width:none; transition:opacity .25s }
+/* ---------- Header mode switch: Platform / Security ---------- */
+.modeswitch{ display:inline-flex; gap:3px; padding:3px; margin:0 auto 0 16px; border:1px solid var(--line); border-radius:11px; background:rgba(8,13,24,.6); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px) }
+.ms-btn{ font:600 13px var(--body,sans-serif); color:var(--muted); padding:6px 14px; border-radius:8px; text-decoration:none; transition:color .25s, background .25s, box-shadow .25s; white-space:nowrap }
+.ms-btn:hover{ color:var(--ink) }
+.ms-btn.active{ color:var(--cyan); background:rgba(0,240,255,.12); box-shadow:0 0 0 1px rgba(0,240,255,.4) }
+.ms-btn.red.active{ color:#ff5b73; background:rgba(255,42,75,.12); box-shadow:0 0 0 1px rgba(255,42,75,.45) }
+
+/* Caption under the hero video (both pages) */
+.demo-cap{ margin:14px 0 2px; color:var(--muted); font-size:14.5px; max-width:none }
 .demo-cap b{ color:var(--ink); font-weight:500 }
-/* Red mode tints the hero video frame */
+
+/* Red-tinted hero video frame (security page, static) */
 .video-frame.red{ background:linear-gradient(120deg,rgba(255,42,75,.5),rgba(255,120,80,.35),transparent 60%) }
 html[data-anim] .video-frame.red::before{ background:linear-gradient(120deg,#ff2a4b,#ff8a3d,#ff2a4b); background-size:200% 100% }
 .video-frame.red .expand{ color:#ff5b73; border-color:rgba(255,42,75,.4) }
 .video-frame.red .expand:hover{ background:rgba(255,42,75,.15) }
-@media (max-width:520px){ .dt-btn{ padding:8px 12px; font-size:13px } }
+
+/* ---------- SECURITY VIEW (body.sec): red accent on the same layout ---------- */
+body.sec .eyebrow::before{ background:#ff5b73; box-shadow:0 0 10px #ff5b73 }
+body.sec .hero h1 em{ background:linear-gradient(100deg,#ff5b73,#ff8a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
+body.sec .btn.primary{ background:linear-gradient(120deg,rgba(255,42,75,.16),rgba(255,138,61,.16)); border-color:rgba(255,91,115,.55) }
+body.sec .nav a::after{ background:linear-gradient(90deg,#ff8a3d,#ff5b73) }
+body.sec::before{ background:
+  radial-gradient(60% 50% at 15% 0%, rgba(255,42,75,.12), transparent 60%),
+  radial-gradient(55% 45% at 90% 10%, rgba(255,138,61,.10), transparent 60%),
+  radial-gradient(50% 40% at 50% 110%, rgba(255,42,75,.06), transparent 60%); }
+body.sec::after{ background-image:linear-gradient(rgba(255,91,115,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,91,115,.05) 1px,transparent 1px) }
+body.sec #progress{ background:linear-gradient(90deg,#ff8a3d,#ff5b73) }
+body.sec #glow{ background:radial-gradient(circle,rgba(255,91,115,.07),transparent 65%) }
+html[data-anim] body.sec .flowstrip .st.pulse{ border-color:rgba(255,91,115,.6); background:rgba(255,42,75,.06); box-shadow:0 0 24px rgba(255,42,75,.12) }
+html[data-anim] body.sec .flowstrip .arr.pulse{ color:#ff5b73 }
+body.sec .card:hover{ border-color:rgba(255,91,115,.35) }
+body.sec .glass::after{ background:radial-gradient(240px 160px at var(--mx,50%) var(--my,0%),rgba(255,91,115,.10),transparent 70%) }
+
+/* Highlighted stat (red number) */
+.stat.red b{ background:linear-gradient(120deg,#ff5b73,#ff8a3d); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent }
+
+@media (max-width:760px){ .modeswitch{ margin-left:auto } .ms-btn{ padding:6px 11px } }
+
+/* Header fits the switch on narrow screens: let it drop to its own row */
+@media (max-width:620px){
+  .top .wrap{ flex-wrap:wrap; row-gap:8px; column-gap:10px }
+  .brand{ margin-right:auto }
+  .modeswitch{ order:3; width:100%; margin:0; justify-content:center }
+}

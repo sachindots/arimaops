@@ -20,29 +20,6 @@
     });
   });
 
-  /* ---------- Demo toggle: Build team / Red team (always) ---------- */
-  var DEMOS = {
-    build: { webm: "assets/video/demo.webm", mp4: "assets/video/demo.mp4", poster: "assets/video/demo-poster.jpg",
-      cap: "A <b>dev team</b> planning, building and shipping reviewed pull requests — live on one screen." },
-    red: { webm: "assets/video/demo-red.webm", mp4: "assets/video/demo-red.mp4", poster: "assets/video/demo-red-poster.jpg",
-      cap: "A <b>security red team</b> against OWASP Juice Shop — scope, recon, exploit, and a scored report." }
-  };
-  var dtBtns = $$(".dt-btn"), demoVid = $("#demo"), demoCap = $("#demoCap"), demoFrame = $(".video-frame");
-  if (dtBtns.length && demoVid) {
-    dtBtns.forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var d = DEMOS[btn.dataset.demo]; if (!d) return;
-        dtBtns.forEach(function (b) { b.classList.toggle("active", b === btn); b.setAttribute("aria-selected", b === btn ? "true" : "false"); });
-        if (demoFrame) demoFrame.classList.toggle("red", btn.dataset.demo === "red");
-        demoVid.querySelectorAll("source").forEach(function (s) { s.src = s.type.indexOf("webm") > -1 ? d.webm : d.mp4; });
-        demoVid.poster = d.poster;
-        if (demoCap) demoCap.innerHTML = d.cap;
-        demoVid.load();
-        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) demoVid.play().catch(function () {});
-      });
-    });
-  }
-
   /* ---------- Lightbox (always — this is the "click the image" fix) ---------- */
   var shots = $$(".shot").filter(function (el) { return el.tagName === "IMG"; });
   if (shots.length) {
@@ -127,6 +104,9 @@
   var cv = $("#orbit");
   if (cv && cv.getContext) {
     var ctx = cv.getContext("2d"), W, H, DPR = Math.min(devicePixelRatio || 1, 2), parts = [], orbs = [], cx, cy, raf, t = 0;
+    var RED = document.body.dataset.orbit === "red";
+    var CORE = RED ? "255,91,115" : "0,240,255", DOT = RED ? "255,150,165" : "120,200,255";
+    var H1 = RED ? "#ff5b73" : "#00f0ff", H2 = RED ? "#ff9ca8" : "#6366f1";
     function size() {
       var r = cv.getBoundingClientRect(); W = r.width; H = r.height;
       cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -143,13 +123,13 @@
         if (p.x < 0 || p.x > W) p.vx *= -1; if (p.y < 0 || p.y > H) p.vy *= -1;
         var dx = p.x - cx, dy = p.y - cy, d = Math.hypot(dx, dy);
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.2832);
-        ctx.fillStyle = "rgba(120,200,255," + (d < 320 ? .5 : .18) + ")"; ctx.fill();
-        if (d < 230) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(cx, cy); ctx.strokeStyle = "rgba(0,240,255," + (0.16 * (1 - d / 230)) + ")"; ctx.lineWidth = .6; ctx.stroke(); }
+        ctx.fillStyle = "rgba(" + DOT + "," + (d < 320 ? .5 : .18) + ")"; ctx.fill();
+        if (d < 230) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(cx, cy); ctx.strokeStyle = "rgba(" + CORE + "," + (0.16 * (1 - d / 230)) + ")"; ctx.lineWidth = .6; ctx.stroke(); }
       }
       // glowing core
       var pulse = 1 + Math.sin(t * .03) * .08;
       var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 90 * pulse);
-      g.addColorStop(0, "rgba(0,240,255,.5)"); g.addColorStop(.3, "rgba(0,240,255,.14)"); g.addColorStop(1, "rgba(0,240,255,0)");
+      g.addColorStop(0, "rgba(" + CORE + ",.5)"); g.addColorStop(.3, "rgba(" + CORE + ",.14)"); g.addColorStop(1, "rgba(" + CORE + ",0)");
       ctx.beginPath(); ctx.arc(cx, cy, 90 * pulse, 0, 6.2832); ctx.fillStyle = g; ctx.fill();
       ctx.beginPath(); ctx.arc(cx, cy, 5.5 * pulse, 0, 6.2832); ctx.fillStyle = "rgba(220,250,255,.95)"; ctx.fill();
       // orbiting nodes + rings
@@ -158,7 +138,7 @@
         ctx.beginPath(); ctx.arc(cx, cy, b.rad, 0, 6.2832); ctx.strokeStyle = "rgba(120,140,255,.06)"; ctx.lineWidth = 1; ctx.stroke();
         var ox = cx + Math.cos(b.a) * b.rad, oy = cy + Math.sin(b.a) * b.rad * .7;
         ctx.beginPath(); ctx.arc(ox, oy, b.r + 1.6, 0, 6.2832);
-        ctx.fillStyle = b.hue ? "rgba(99,102,241,.9)" : "rgba(0,240,255,.9)"; ctx.shadowBlur = 12; ctx.shadowColor = b.hue ? "#6366f1" : "#00f0ff"; ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = b.hue ? "rgba(" + (RED ? "255,91,115" : "99,102,241") + ",.9)" : "rgba(" + CORE + ",.9)"; ctx.shadowBlur = 12; ctx.shadowColor = b.hue ? H2 : H1; ctx.fill(); ctx.shadowBlur = 0;
       }
       raf = requestAnimationFrame(draw);
     }
