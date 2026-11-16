@@ -8,7 +8,7 @@
 <meta property="og:title" content="Pipewell, built by an ArimaOps team">
 <meta property="og:image" content="https://sachindots.github.io/arimaops/assets/shots/flow.webp">
 <meta name="theme-color" content="#030712">
-<link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+<link rel="icon" href="assets/lion.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
@@ -49,7 +49,7 @@
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="./"><img src="assets/mark.svg" alt=""> ArimaOps</a>
+    <a class="brand" href="./"><img src="assets/lion.png" alt="" width="28" height="28"> ArimaOps</a>
     <nav class="nav" aria-label="Site">
       <a href="./">Product</a>
       <a href="./#start">Get started</a>
@@ -209,5 +209,49 @@ document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("clic
   setTimeout(() => (b.textContent = "Copy"), 1600);
 }));
 </script>
+<script>
+/* Revamp motion: on only when the viewer has no reduced-motion preference.
+   Reveal uses viewport position checks on scroll (no IntersectionObserver quirks).
+   No JS or reduced motion => page fully visible and static. */
+(function () {
+  try {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    document.documentElement.setAttribute("data-anim", "");
+    var sel = ".band:not(.hero) .head, .feature, .card, .stat, .st, .steps > *, .phone-row, .table-wrap, .grid > *, .shot:not(.hero-shot)";
+    var els = [].slice.call(document.querySelectorAll(sel));
+    els.forEach(function (el, i) { el.classList.add("reveal"); var d = i % 3; if (d) el.classList.add("d" + d); });
+    var stats = [].slice.call(document.querySelectorAll(".stat b"));
+    var pending = els.slice();
+    function reveal() {
+      var h = window.innerHeight || document.documentElement.clientHeight;
+      pending = pending.filter(function (el) {
+        if (el.getBoundingClientRect().top < h * 0.92) { el.classList.add("in"); return false; }
+        return true;
+      });
+      stats = stats.filter(function (el) {
+        if (el.getBoundingClientRect().top < h * 0.9) { count(el); return false; }
+        return true;
+      });
+      if (!pending.length && !stats.length) { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", reveal); }
+    }
+    var ticking = false;
+    function onScroll() { if (ticking) return; ticking = true; requestAnimationFrame(function () { ticking = false; reveal(); }); }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", reveal);
+    reveal();
+    function count(el) {
+      var m = el.textContent.trim().match(/^([^0-9]*)([0-9]+(?:\.[0-9]+)?)(.*)$/);
+      if (!m) return;
+      var pre = m[1], target = parseFloat(m[2]), suf = m[3], dec = (m[2].split(".")[1] || "").length, t0 = null;
+      requestAnimationFrame(function step(ts) {
+        if (!t0) t0 = ts; var p = Math.min(1, (ts - t0) / 1100), v = target * (1 - Math.pow(1 - p, 3));
+        el.textContent = pre + v.toFixed(dec) + suf;
+        if (p < 1) requestAnimationFrame(step); else el.textContent = pre + target.toFixed(dec) + suf;
+      });
+    }
+  } catch (e) { /* leave the page static and visible */ }
+})();
+</script>
+
 </body>
 </html>
