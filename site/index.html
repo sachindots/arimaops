@@ -49,7 +49,11 @@
       <span>Agents on your CLI subscriptions or API keys</span>
       <span>Everything runs on your machine</span>
     </div>
-    <img class="shot hero-shot" src="assets/shots/home.webp" width="2400" height="1500" alt="ArimaOps Home: three agents in orbit around a live core, each card showing its task, tokens and cost today, with the flow's stages along the bottom.">
+    <video class="shot hero-shot" id="demo" width="1280" height="800" autoplay muted loop playsinline controls preload="metadata" poster="assets/video/demo-poster.jpg" aria-label="A 45-second tour of ArimaOps: Home with three agents in orbit, an agent's live terminal, the board, the inbox, the flow, the command center, then the same team on a phone.">
+      <source src="assets/video/demo.webm" type="video/webm">
+      <source src="assets/video/demo.mp4" type="video/mp4">
+    </video>
+    <script>if (matchMedia("(prefers-reduced-motion: reduce)").matches) { const v = document.getElementById("demo"); v.removeAttribute("autoplay"); v.pause(); }</script>
   </div>
 </section>
 
