@@ -2,6 +2,8 @@
 
 ### Lead the pride.
 
+**Website: [sachindots.github.io/arimaops](https://sachindots.github.io/arimaops/)** · [Pipewell case study](https://sachindots.github.io/arimaops/pipewell.html)
+
 **Build an AI team for any job (dev, security, research or marketing) from a template, and run it from your phone.**
 
 [![ArimaOps in action: agents walk from the HQ hall to their project's wing and get to work](docs/media/arimaops-teaser.gif)](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4)
