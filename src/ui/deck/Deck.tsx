@@ -23,6 +23,7 @@ import { projectTheme } from "../theme/projectTheme";
 import { DeckHeader } from "./DeckHeader";
 import { DeckRail, type RailId } from "./DeckRail";
 import { DECK, homeSides } from "./frame";
+import { SettingsPage } from "../settings/SettingsModal";
 import { ActivityPanel, NeedsYouPanel } from "./HomePanels";
 import { GoalsPage } from "./GoalsPage";
 import { StageRibbon } from "./StageRibbon";
@@ -39,6 +40,7 @@ const PAGE_OF: Partial<Record<string, RailId>> = { boards: "board", actions: "in
 export function Deck() {
   const snap = useOffice((s) => s.snap);
   const view = useUi((s) => s.view);
+  const settings = useUi((s) => s.settings !== null);
   const drawer = useUi((s) => s.drawer);
   const maximized = useUi((s) => s.drawerMaximized);
   const reduce = useReducedMotion();
@@ -69,6 +71,7 @@ export function Deck() {
   const drawerPage = drawer ? PAGE_OF[drawer.kind] : undefined;
 
   const go = (id: RailId) => {
+    ui.closeSettings();
     if (id === "board") return ui.openBoards();
     if (id === "inbox") return ui.openActions();
     if (id === "prs") return ui.openPrs();
@@ -80,7 +83,8 @@ export function Deck() {
   };
 
   const main =
-    drawer?.kind === "boards" ? <BoardsDrawer key={`${drawer.stageId ?? "all"}:${drawer.taskId ?? ""}`} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} initialTaskId={drawer.taskId} />
+    settings ? <SettingsPage />
+    : drawer?.kind === "boards" ? <BoardsDrawer key={`${drawer.stageId ?? "all"}:${drawer.taskId ?? ""}`} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} initialTaskId={drawer.taskId} />
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
     : drawer?.kind === "prs" ? <PrDrawer />
     : drawer?.kind === "findings" ? <FindingsDrawer />
@@ -101,8 +105,9 @@ export function Deck() {
     : null;
   const sideKey = drawer ? (drawer.kind === "agent" ? `agent:${drawer.id}` : drawer.kind === "env" ? `env:${drawer.name}` : drawer.kind) : null;
   const current: RailId = drawerPage ?? page;
+  const mainKey = settings ? "settings" : current;
 
-  const grid = view === "command" && !drawerPage;
+  const grid = view === "command" && !drawerPage && !settings;
   const slideOver = (
     <AnimatePresence mode="wait">
       {side && sideKey && (
@@ -154,7 +159,7 @@ export function Deck() {
       <AnimatePresence mode="wait">
         {!home && (
           <motion.main
-            key={current}
+            key={mainKey}
             initial={reduce ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.15, ease: "easeOut" }}

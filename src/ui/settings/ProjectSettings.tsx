@@ -51,11 +51,11 @@ function SpendCaps() {
           {spend.unpriced > 0 && <p className="text-[12px] text-muted md:col-span-2">{spend.unpriced} usage events this month are on models without a price (GPT, Gemini) and count as $0.</p>}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Per day (USD)">
+      <div className="flex flex-col gap-4">
+        <Field label="Per day (USD)" hint="Workers stop for the rest of the day at this much.">
           <input className="field" inputMode="decimal" type="number" min="0.01" step="0.5" value={daily} onChange={(e) => setDaily(e.target.value)} />
         </Field>
-        <Field label="Per month (USD)">
+        <Field label="Per month (USD)" hint="Workers stop until next month at this much.">
           <input className="field" inputMode="decimal" type="number" min="0.01" step="5" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </Field>
       </div>
@@ -181,10 +181,8 @@ export function ProjectSettings() {
   if (!project) return null;
   return (
     <div className="flex flex-col gap-5">
-      <section className="grid grid-cols-2 gap-3 panel p-3">
-        <div className="col-span-2">
-          <SectionTitle>Project</SectionTitle>
-        </div>
+      <section className="panel flex flex-col gap-4 p-5">
+        <SectionTitle>Project</SectionTitle>
         <Field label="Name">
           <CommitInput className="field" value={project.name} onCommit={(v) => v.trim() && officeActions.updateProject({ name: v.trim() })} />
         </Field>

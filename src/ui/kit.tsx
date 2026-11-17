@@ -74,16 +74,24 @@ export function Dot({ color, size = 10 }: { color: string; size?: number }) {
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h3 className="mb-2 text-[13px] font-semibold text-muted">{children}</h3>;
+  return <h3 className="mb-2 text-[15px] font-semibold text-ink">{children}</h3>;
 }
 
+/**
+ * A setting: label and help on the left, the control on the right when the field itself is wide enough (a container
+ * query, so a field in a half-width column or a narrow dialog stays stacked).
+ */
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[13px] font-semibold">{label}</span>
-      {children}
-      {hint && <span className="text-[12px] text-muted">{hint}</span>}
-    </label>
+    <div className="@container">
+      <label className="grid gap-1.5 @[560px]:grid-cols-[minmax(180px,2fr)_minmax(0,3fr)] @[560px]:items-start @[560px]:gap-x-8">
+        <span className="flex flex-col gap-0.5 @[560px]:pt-1.5">
+          <span className="text-[13px] font-medium text-ink">{label}</span>
+          {hint && <span className="text-[12px] leading-5 text-muted">{hint}</span>}
+        </span>
+        <span className="min-w-0">{children}</span>
+      </label>
+    </div>
   );
 }
 

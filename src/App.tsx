@@ -231,7 +231,7 @@ export function App() {
         {ready && (
           <>
             {desktopHud ? <Deck /> : <CompactApp />}
-            <SettingsModal />
+            {!desktopHud && <SettingsModal />}
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
             {!welcome && !setupOpen && <OwnerPrompt />}
             {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
