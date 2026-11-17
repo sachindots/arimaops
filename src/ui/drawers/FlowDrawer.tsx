@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { APPROVAL_REASONS, GATE_KINDS, templateErrors, type Gate, type GateKind, type Role, type Stage, type TeamTemplate } from "../../data/model";
 import type { Task } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
+import { useUi } from "../../store/ui";
 import { Dot } from "../kit";
 import { DrawerHeader } from "./Drawer";
 import { gateText } from "./TaskSheet";
@@ -46,7 +47,7 @@ function StageNode({ data }: NodeProps<Node<StageData>>) {
         <b className="min-w-0 flex-1 truncate font-display text-[17px] font-semibold text-ink">{stage.name || stage.id}</b>
         {tasks.length > 0 && (
           <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-muted" title={`${tasks.length} open task${tasks.length === 1 ? "" : "s"} in this stage`}>
-            {busy > 0 && <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green align-middle shadow-[0_0_6px_#3fb950]" />}
+            {busy > 0 && <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green align-middle" />}
             {tasks.length}
           </span>
         )}
@@ -106,6 +107,7 @@ function usePhone() {
 export function FlowDrawer() {
   const saved = useOffice((s) => s.snap?.config.template ?? null);
   const tasks = useOffice((s) => s.snap?.tasks ?? []);
+  const scheme = useUi((s) => s.scheme);
   const phone = usePhone();
   const canEdit = !isViewer && !phone;
   const [draft, setDraft] = useState<TeamTemplate | null>(saved);
@@ -148,7 +150,7 @@ export function FlowDrawer() {
     // A row's last stage hands down to the next row's first.
     sourceHandle: (i + 1) % cols === 0 ? "down" : undefined,
     targetHandle: (i + 1) % cols === 0 ? "up" : undefined,
-    style: { stroke: "rgba(59,130,246,0.55)", strokeWidth: 1.5 },
+    style: { stroke: "var(--border-strong)", strokeWidth: 1.5 },
   }));
 
   if (!saved || !draft)
@@ -242,11 +244,11 @@ export function FlowDrawer() {
       <div className="flex min-h-0 flex-1 max-[900px]:flex-col">
         <div ref={box} className="relative min-h-[300px] min-w-0 flex-1 max-[640px]:min-h-[55vh]">
           <ReactFlow
-            key={cols}
+            key={`${cols}-${scheme}`}
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
-            colorMode="dark"
+            colorMode={scheme}
             fitView
             fitViewOptions={{ padding: 0.15, maxZoom: 1.15, minZoom: 0.8 }}
             minZoom={0.3}
@@ -257,12 +259,12 @@ export function FlowDrawer() {
             proOptions={{ hideAttribution: true }}
             aria-label="Flow stages"
           >
-            <Background gap={24} size={1} color="rgba(59,130,246,0.12)" />
+            <Background gap={28} size={1} color="var(--dot-grid)" />
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
         {cur && (
-          <aside className="scroll-thin flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-white/[0.08] p-4 max-[900px]:max-h-[45%] max-[900px]:w-full max-[900px]:border-l-0 max-[900px]:border-t" aria-label={`Stage ${cur.name}`}>
+          <aside className="scroll-thin flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] bg-[var(--surface-drawer)] p-4 max-[900px]:max-h-[45%] max-[900px]:w-full max-[900px]:border-l-0 max-[900px]:border-t" aria-label={`Stage ${cur.name}`}>
             <div className="flex items-center gap-2">
               <span className="font-display text-[13px] text-muted">Stage {curIndex + 1}</span>
               {canEdit && (
@@ -322,7 +324,7 @@ export function FlowDrawer() {
                 {cur.gates.map((g) => {
                   const set = (patch: Partial<Gate>) => patchStage(cur.id, (s) => ({ gates: s.gates.map((x) => (x.id === g.id ? ({ ...x, ...patch } as Gate) : x)) }));
                   return (
-                    <li key={g.id} className="rounded-xl border border-white/10 bg-navy/50 px-3 py-2">
+                    <li key={g.id} className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2">
                       <div className="flex items-center gap-2">
                         <b className="flex-1 text-[13px] font-semibold">{GATE_NAME[g.kind]}</b>
                         {canEdit && (

@@ -145,7 +145,7 @@ export function Goals({ headed = true }: { headed?: boolean } = {}) {
                   {g.done} of {g.total} tasks done · ${g.usd.toFixed(2)} spent
                 </div>
               </div>
-              <div className="h-1.5 w-20 overflow-hidden rounded bg-white/10" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+              <div className="h-1.5 w-20 overflow-hidden rounded bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
                 <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
               </div>
               <select className="field w-auto" value={g.status} aria-label={`${g.id} status`} onChange={(e) => officeActions.updateGoal(g.id, { status: e.target.value as "active" | "done" | "dropped" })}>

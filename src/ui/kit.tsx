@@ -96,14 +96,14 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode }[]; value: T; onChange: (id: T) => void }) {
   return (
-    <div role="tablist" className="no-scrollbar inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border border-white/[0.08] bg-navy/60 p-1">
+    <div role="tablist" className="no-scrollbar inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-1">
       {tabs.map((t) => (
         <button
           key={t.id}
           role="tab"
           aria-selected={value === t.id}
-          className={`shrink-0 cursor-pointer whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
-            value === t.id ? "bg-accent/15 text-accent shadow-[inset_0_-2px_0_var(--accent)]" : "text-muted hover:bg-white/[0.05] hover:text-ink"
+          className={`shrink-0 cursor-pointer whitespace-nowrap rounded-md px-3 py-1 text-[12px] font-semibold transition-colors ${
+            value === t.id ? "bg-cream text-ink shadow-2xs" : "text-muted hover:text-ink"
           }`}
           onClick={() => onChange(t.id)}
         >

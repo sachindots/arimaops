@@ -8,6 +8,7 @@ import { SCORERS, type TaskScore } from "../../data/scorers";
 import { benchmarkKind } from "../../data/suite";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, cliPickerLabel, type AgentCli, type Task, type TaskStatus } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
+import { Icon } from "../deck/Icon";
 import { ago, Dot, TokensChip, useNow } from "../kit";
 
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
@@ -71,7 +72,7 @@ function useHistory(projectId: string, taskId: string, stamp: string): History |
 
 function Section({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section className="border-t-2 border-white/[0.08] px-4 py-3">
+    <section className="border-t border-[var(--border-hairline)] px-4 py-3">
       <h3 className="m-0 mb-2 flex items-center gap-2 text-[13px] font-semibold text-muted">
         {title}
         <span className="flex-1" />
@@ -98,15 +99,15 @@ function Stepper({ task }: { task: Task }) {
               <span
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-bold"
                 style={{
-                  borderColor: state === "next" ? "#334155" : state === "done" ? "#3fb950" : "#818cf8",
-                  background: state === "done" ? "#3fb950" : "transparent",
-                  color: state === "done" ? "#040710" : state === "now" ? "#818cf8" : "#8b9bb4",
+                  borderColor: state === "next" ? "var(--border-strong)" : state === "done" ? "#10b981" : "var(--accent)",
+                  background: state === "done" ? "#10b981" : "transparent",
+                  color: state === "done" ? "#ffffff" : state === "now" ? "var(--accent)" : "var(--muted)",
                 }}
               >
                 {state === "done" ? "✓" : i + 1}
               </span>
               <span className={`ml-1.5 truncate text-[12px] ${state === "now" ? "font-semibold text-ink" : "text-muted"}`}>{s.name}</span>
-              {i < flow.stages.length - 1 && <span className="mx-1.5 h-[2px] min-w-[8px] flex-1" style={{ background: i < at ? "#3fb950" : "#334155" }} />}
+              {i < flow.stages.length - 1 && <span className="mx-1.5 h-[2px] min-w-[8px] flex-1" style={{ background: i < at ? "#10b981" : "var(--border-strong)" }} />}
             </li>
           );
         })}
@@ -163,7 +164,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
           const url = evidenceUrl(projectId, task.id, ev.sha, s.file);
           const video = /\.(webm|mp4)$/.test(s.file);
           return (
-            <a key={s.file} href={url} target="_blank" rel="noreferrer" className="group block rounded-lg border border-white/10 bg-black" title={`${s.label}: open full size`}>
+            <a key={s.file} href={url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-cream-2" title={`${s.label}: open full size`}>
               {video ? <video src={url} className="aspect-[4/3] w-full object-cover object-top" muted controls /> : <img src={url} alt={s.label} loading="lazy" className="aspect-[4/3] w-full object-cover object-top transition-opacity group-hover:opacity-90" />}
               <span className="block truncate px-1.5 py-1 text-[11px] text-muted">{s.label}</span>
             </a>
@@ -291,9 +292,9 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={`${task.id} ${task.title}`}>
-      <button className="absolute inset-0 cursor-default bg-black/55" aria-label="Close" onClick={onClose} tabIndex={-1} />
-      <div ref={panel} tabIndex={-1} className="relative flex h-full w-full max-w-[600px] flex-col border-l border-white/[0.08] bg-[#121419] shadow-[-8px_0_24px_rgba(0,0,0,0.5)] outline-none">
-        <header className="flex items-start gap-3 border-b border-white/[0.08] px-4 py-3">
+      <button className="absolute inset-0 cursor-default bg-black/45" aria-label="Close" onClick={onClose} tabIndex={-1} />
+      <div ref={panel} tabIndex={-1} className="hud-drawer relative flex h-full w-full max-w-[600px] flex-col border-l border-[var(--border-hairline)] outline-none">
+        <header className="flex items-start gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 font-mono text-[12px] text-muted">
               <span>{task.id}</span>
@@ -309,8 +310,13 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {task.highStakes && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ff2a4b" }}>high-stakes</span>}
             </div>
           </div>
-          <button className="btn min-h-[40px] w-10 shrink-0 px-0 text-[16px]" onClick={onClose} aria-label="Close the task">
-            ✕
+          <button
+            type="button"
+            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            onClick={onClose}
+            aria-label="Close the task"
+          >
+            <Icon name="close" size={18} />
           </button>
         </header>
 
@@ -341,7 +347,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {(task.files?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {task.files!.map((f) => (
-                    <code key={f} className="rounded-lg border border-white/10/70 bg-black/30 px-1.5 py-0.5 text-[11px]">{f}</code>
+                    <code key={f} className="rounded-md border border-[var(--border-hairline)] bg-cream-2 px-1.5 py-0.5 text-[11px] text-ink">{f}</code>
                   ))}
                 </div>
               )}
@@ -378,7 +384,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {task.benchmark ? (
                 <p className="m-0 text-[12px] text-muted">
                   In the suite. Replay it on other models from a terminal (paid, asks first):
-                  <code className="mt-1 block break-all bg-black/40 px-2 py-1 text-[11px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
+                  <code className="mt-1 block break-all rounded-md border border-[var(--border-hairline)] bg-cream-2 px-2 py-1 text-[11px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
                 </p>
               ) : isViewer ? null : (
                 <button className="btn min-h-[40px] px-3 text-[12px]" onClick={() => officeActions.addToSuite(task.id)} title="Save this task (brief, base commit, template, checks) to ~/.arima-bench/suite so it can be replayed on other models. Free.">

@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { ui, useUi, type SettingsTab } from "../../store/ui";
+import { Icon } from "../deck/Icon";
 import { AccountsSettings } from "./AccountsSettings";
 import { MemorySettings } from "./MemorySettings";
 import { UsersSettings } from "./UsersSettings";
@@ -32,7 +33,7 @@ export function SettingsModal() {
 
   return (
     <div
-      className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-navy-2/75 p-0 backdrop-blur-sm md:p-4"
+      className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-0 backdrop-blur-xs md:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
@@ -42,20 +43,25 @@ export function SettingsModal() {
         initial={reduce ? false : { y: -12, opacity: 0, scale: 0.99 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
-        className="hud-drawer hud-corners flex h-[100dvh] w-full flex-col overflow-hidden md:h-[min(760px,calc(100dvh-2rem))] md:w-[min(1080px,100%)] md:rounded-2xl"
+        className="hud-drawer flex h-[100dvh] w-full flex-col overflow-hidden border md:h-[min(760px,calc(100dvh-2rem))] md:w-[min(1080px,100%)] md:rounded-xl"
       >
-        <div className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-2.5">
-          <h2 className="m-0 flex-1 font-display text-[20px] font-semibold text-ink">Settings</h2>
+        <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
+          <h2 className="m-0 flex-1 font-display text-[17px] font-bold tracking-tight text-ink">Settings</h2>
           <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
-            <i className="h-1.5 w-1.5 rounded-full bg-green shadow-[0_0_6px_#3fb950]" />
+            <i className="h-1.5 w-1.5 rounded-full bg-green" />
             Saved as you go
           </span>
-          <button className="btn px-2.5" aria-label="Close settings" onClick={() => ui.closeSettings()}>
-            ✕
+          <button
+            type="button"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            aria-label="Close settings"
+            onClick={() => ui.closeSettings()}
+          >
+            <Icon name="close" size={18} />
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <nav className="scroll-thin flex shrink-0 gap-1.5 overflow-x-auto border-b border-white/[0.08] bg-navy/60 p-2 md:w-[200px] md:flex-col md:border-b-0 md:border-r md:p-2.5" aria-label="Settings sections">
+          <nav className="scroll-thin flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border-hairline)] bg-cream-2/40 p-2 md:w-[200px] md:flex-col md:border-b-0 md:border-r md:p-2.5" aria-label="Settings sections">
             {TABS.map((t) => (
               <button
                 key={t.id}

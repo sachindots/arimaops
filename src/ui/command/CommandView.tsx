@@ -369,11 +369,11 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
         )}
       </p>
 
-      <div className="relative min-h-0 flex-1 bg-navy-2/80">
+      <div className="relative min-h-0 flex-1 bg-cream-2/50">
         {running && r.current ? (
           <TerminalView key={r.agent.id} agentId={r.agent.id} autoFocus={false} />
         ) : running && text ? (
-          <pre ref={pre} className="scroll-thin m-0 h-full overflow-auto whitespace-pre px-4 py-3 font-term text-[12px] leading-[1.45] text-ink" onDoubleClick={open} aria-label={`${r.agent.name}'s screen`}>
+          <pre ref={pre} className="scroll-thin m-0 h-full overflow-auto whitespace-pre bg-[#0b1220] px-4 py-3 font-term text-[12px] leading-[1.45] text-[#f8fafc]" onDoubleClick={open} aria-label={`${r.agent.name}'s screen`}>
             {text}
           </pre>
         ) : (
@@ -462,7 +462,7 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
           <ol className="m-0 flex list-none flex-col gap-2 border-l border-accent/20 p-0 pl-3">
             {snap.activity.slice(0, 30).map((e) => (
               <li key={e.id} className="relative text-[12px]">
-                <i className="absolute -left-[16.5px] top-1.5 h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+                <i className="absolute -left-[16.5px] top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
                 <button className="text-left hover:underline disabled:no-underline" disabled={!e.agentId} onClick={() => e.agentId && onFocus(e.agentId)}>
                   <b className="font-medium text-ink">{name(e.agentId)}</b> <span className="text-muted">{e.text}</span>
                 </button>

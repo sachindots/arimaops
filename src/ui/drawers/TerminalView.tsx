@@ -163,15 +163,15 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
   }, [agentId, autoFocus]);
 
   const linkBar = link && (
-    <div className="flex shrink-0 items-center gap-2 border-b-2 border-white/[0.08] bg-navy px-2 py-1">
-      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted" title={link}>
+    <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-hairline)] bg-cream-2 px-3 py-1.5 text-ink">
+      <span className="min-w-0 flex-1 truncate font-term text-[12px] text-muted" title={link}>
         {link}
       </span>
-      <button className="btn shrink-0 border-green px-3 py-1 text-[13px] text-green" onClick={() => openLink(link)}>
+      <button className="btn shrink-0 border-green px-3 py-1 text-[12px] text-green" onClick={() => openLink(link)}>
         Open link ↗
       </button>
       <button
-        className="btn shrink-0 px-3 py-1 text-[13px]"
+        className="btn shrink-0 px-3 py-1 text-[12px]"
         onClick={() =>
           void navigator.clipboard?.writeText(link).then(() => {
             setCopied(true);
@@ -185,16 +185,16 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
   );
   if (!touch())
     return (
-      <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
+      <div className="flex h-full min-h-0 w-full flex-col bg-[#0b1220]">
         {linkBar}
         <div ref={host} className="min-h-0 w-full flex-1" onPointerDown={touch_} onKeyDownCapture={touch_} />
       </div>
     );
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-navy-2">
+    <div className="flex h-full min-h-0 w-full flex-col bg-[#0b1220]">
       {linkBar}
       <div ref={host} className="min-h-0 w-full flex-1" onPointerDown={touch_} onKeyDownCapture={touch_} />
-      <div className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-t-2 border-white/[0.08] p-1" aria-label="Terminal keys">
+      <div className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-t border-white/10 bg-[#0b1220] p-1" aria-label="Terminal keys">
         {KEYS.map(([label, seq]) => (
           <button
             key={label}

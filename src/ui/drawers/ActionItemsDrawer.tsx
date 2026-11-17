@@ -78,7 +78,7 @@ export function ActionItemsDrawer() {
               ))}
               {a.readyPrs.map((p) =>
                 p.url ? (
-                  <li key={`pr-${p.number}`} className="hud-scan flex items-center gap-2 rounded-xl border border-green/30 bg-navy/70 px-3 py-2" style={{ boxShadow: "inset 3px 0 0 #3fb950" }}>
+                  <li key={`pr-${p.number}`} className="flex items-center gap-2 rounded-lg border border-green/35 bg-[var(--surface-card)] px-3 py-2 shadow-[var(--card-shadow)]" style={{ boxShadow: "inset 3px 0 0 #3fb950" }}>
                     <span className="flex-1">
                       PR <b>#{p.number}</b> {p.title} passed review and is ready to merge
                     </span>
@@ -102,7 +102,7 @@ export function ActionItemsDrawer() {
             {showClosed && (
               <ul className="mt-2 flex flex-col gap-1 text-[13px] text-muted">
                 {closed.map((i) => (
-                  <li key={i.id} className="border-t border-white/[0.06] py-1.5">
+                  <li key={i.id} className="border-t border-[var(--border-hairline)] py-1.5">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
                     {i.kind === "send" ? (i.status === "done" ? "sent" : "not sent") : i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
@@ -119,7 +119,7 @@ export function ActionItemsDrawer() {
 
 function Row({ text, color, onOpen, actions }: { text: string; color?: string; onOpen: () => void; actions?: ReactNode }) {
   return (
-    <li className="hud-scan flex items-center gap-2 rounded-xl border border-white/[0.08] bg-navy/70 px-3 py-2" style={{ boxShadow: "inset 3px 0 0 #ffb020" }}>
+    <li className="flex items-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2 shadow-[var(--card-shadow)]" style={{ boxShadow: "inset 3px 0 0 #ffb020" }}>
       {color && <Dot color={color} size={8} />}
       <span className="flex-1">{text}</span>
       {actions}
@@ -136,8 +136,8 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
   const long = item.details.split("\n").length > 6 || item.details.length > 400;
   return (
     <li
-      className={`hud-scan hud-corners rounded-xl border bg-navy/70 px-4 py-3 transition-colors ${item.waiting ? "border-violet-400/50" : "border-white/[0.08] hover:border-amber/40"}`}
-      style={{ ["--corner" as string]: item.waiting ? "#a371f7" : "#ffb020", boxShadow: `inset 3px 0 0 ${item.waiting ? "#a371f7" : "#ffb020"}` }}
+      className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-4 py-3 shadow-[var(--card-shadow)] transition-colors hover:border-[var(--border-strong)]"
+      style={{ boxShadow: `inset 3px 0 0 ${item.waiting ? "#8b5cf6" : "#f59e0b"}` }}
     >
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px] font-semibold">{item.title}</b>
@@ -239,7 +239,7 @@ function SendProposal({ item, send }: { item: ActionItem; send: NonNullable<Acti
       <div className="text-[12px] text-muted">
         HQ calls <span className="font-term text-ink">{send.tool}</span> on {send.connection} with exactly this, once, when you click Send:
       </div>
-      <pre className="scroll-thin max-h-[240px] overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-2 font-term text-[12px]">{JSON.stringify(send.args, null, 2)}</pre>
+      <pre className="scroll-thin max-h-[240px] overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-2 font-term text-[12px] text-ink">{JSON.stringify(send.args, null, 2)}</pre>
       {send.error && (
         <p className="text-[13px] text-red" role="alert">
           {send.error}

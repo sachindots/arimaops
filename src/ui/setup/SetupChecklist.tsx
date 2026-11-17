@@ -39,7 +39,7 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               {c.fix.command && (
                 <>
-                  <code className="max-w-full truncate rounded-lg border border-white/10 bg-navy-2 px-2 py-0.5 font-term text-[13px] text-[#e6e8eb]">{c.fix.command}</code>
+                  <code className="max-w-full truncate rounded-lg border border-[var(--border-hairline)] bg-cream-2 px-2 py-0.5 font-term text-[12px] text-ink">{c.fix.command}</code>
                   <button
                     className="btn px-2 text-[12px]"
                     onClick={() => {
@@ -79,11 +79,11 @@ export function SetupChecklist() {
   if (!setup) return null;
 
   return (
-    <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-navy-2/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Setup checklist">
-      <div className="hud-drawer hud-corners flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col rounded-2xl">
-        <div className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-3">
-          <h2 className="m-0 flex-1 font-display text-[22px] font-semibold">Get {BRAND.name} ready</h2>
-          <button className="btn text-[14px]" onClick={() => officeActions.recheckSetup()}>
+    <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="Setup checklist">
+      <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col overflow-hidden rounded-xl border">
+        <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
+          <h2 className="m-0 flex-1 font-display text-[18px] font-bold tracking-tight text-ink">Get {BRAND.name} ready</h2>
+          <button className="btn text-[13px]" onClick={() => officeActions.recheckSetup()}>
             Check again
           </button>
         </div>
@@ -116,8 +116,8 @@ export function SetupChecklist() {
             ))}
           </ul>
           {runningId && (
-            <div ref={termBox} className={big ? "fixed inset-0 z-[55] flex flex-col bg-navy-2" : "mb-2 mt-1 scroll-mt-2 rounded-lg border border-white/10"}>
-              <div className="flex items-center gap-2 bg-navy px-2 py-1 text-[13px] text-cream">
+            <div ref={termBox} className={big ? "fixed inset-0 z-[55] flex flex-col bg-cream" : "mb-2 mt-1 scroll-mt-2 overflow-hidden rounded-lg border border-[var(--border-hairline)]"}>
+              <div className="flex items-center gap-2 border-b border-[var(--border-hairline)] bg-cream-2 px-3 py-1.5 text-[13px] text-ink">
                 <span className="min-w-0 flex-1 truncate">{setup.checks.find((c) => c.id === runningId)?.label ?? "Running"} · type here if it asks for input</span>
                 <button className="btn px-2 py-1 text-[12px]" onClick={() => setBig(!big)}>
                   {big ? "Exit full screen" : "Full screen"}

@@ -16,9 +16,9 @@ const RANGES = [
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="hud-glass hud-corners hud-scan flex min-w-[150px] flex-1 flex-col gap-1 rounded-2xl px-4 py-3">
+    <div className="hud-glass flex min-w-[150px] flex-1 flex-col gap-1 rounded-lg px-4 py-3">
       <span className="text-[12px] text-muted">{label}</span>
-      <span className={`font-display text-[28px] font-semibold leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</span>
+      <span className={`font-display text-[22px] font-bold leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</span>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export function UsagePage() {
   return (
     <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="m-0 font-display text-[22px] font-semibold">Usage</h1>
+        <h1 className="m-0 font-display text-[18px] font-bold tracking-tight text-ink">Usage</h1>
         <span className="text-[13px] text-muted">{snap.config.project.name} · tokens and estimated cost per agent</span>
         <span className="flex-1" />
         <div className="flex gap-1.5" role="group" aria-label="Range">
@@ -57,8 +57,8 @@ export function UsagePage() {
       </div>
 
       {(snap.spend?.roles?.length ?? 0) > 0 && (
-        <section className="hud-glass flex flex-col gap-2 rounded-2xl px-4 py-3" aria-label="Role budgets today">
-          <h2 className="m-0 text-[14px] font-semibold">
+        <section className="hud-glass flex flex-col gap-2 rounded-lg px-4 py-3" aria-label="Role budgets today">
+          <h2 className="m-0 text-[13px] font-semibold text-ink">
             Role budgets today <span className="font-normal text-muted">· API-key accounts; over budget, that role stops until midnight</span>
           </h2>
           {snap.spend!.roles!.map((r) => (
@@ -74,8 +74,8 @@ export function UsagePage() {
         </section>
       )}
 
-      <section className="hud-glass overflow-hidden rounded-2xl" aria-label="Leaderboard">
-        <div className="grid grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-white/[0.08] px-4 py-2 text-[12px] text-muted max-[900px]:hidden">
+      <section className="hud-glass overflow-hidden rounded-lg" aria-label="Leaderboard">
+        <div className="grid grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-2 text-[12px] font-medium text-muted max-[900px]:hidden">
           <span>#</span>
           <span>Agent</span>
           <span>Over {range.label.toLowerCase()}</span>
@@ -90,7 +90,7 @@ export function UsagePage() {
           return (
             <button
               key={r.agentId}
-              className="hud-scan grid w-full grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-white/[0.05] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.03] max-[900px]:grid-cols-[28px_1fr_auto]"
+              className="grid w-full cursor-pointer grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-[var(--border-hairline)] px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-cream-2/60 max-[900px]:grid-cols-[28px_1fr_auto]"
               onClick={() => a && ui.openAgent(a.id, "usage")}
               title={`${fmtTokens(r.input)} fresh input · ${fmtTokens(r.cached)} from cache · ${fmtTokens(r.output)} output`}
             >

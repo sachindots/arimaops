@@ -367,15 +367,15 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
   const setup = useOffice((st) => st.snap?.setup);
   const blocked = agent.mode === "sandbox" ? !setup?.sandboxReady : agent.mode === "container" ? !setup?.containerReady : !setup?.localReady;
   return (
-    <div className="grid h-full place-items-center bg-navy-2 p-6 text-center text-[#e6e8eb]">
+    <div className="grid h-full place-items-center bg-cream-2/70 p-6 text-center text-ink">
       <div className="max-w-[380px]">
         {s.state === "starting" ? (
-          <p className="blink font-term text-[17px] text-green">{s.detail ?? "Starting…"}</p>
+          <p className="blink font-term text-[16px] font-semibold text-green">{s.detail ?? "Starting…"}</p>
         ) : (
           <>
-            <p className="mb-2 font-term text-[17px]">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
-            {s.detail && <pre className="mb-3 whitespace-pre-wrap border-2 border-red px-2 py-1 text-left font-term text-[12px] text-[#db61a2]">{s.detail}</pre>}
-            <p className="mb-4 text-[13px] text-[#6b7280]">
+            <p className="mb-2 font-term text-[16px] font-semibold text-ink">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
+            {s.detail && <pre className="mb-3 whitespace-pre-wrap rounded-lg border border-red/40 bg-red/10 px-2.5 py-2 text-left font-term text-[12px] text-red">{s.detail}</pre>}
+            <p className="mb-4 text-[13px] text-muted">
               {agent.mode === "sandbox"
                 ? `Start runs ${CLI_LABEL[agent.cli]} in a Docker Sandbox on this agent's own copy of the repo.`
                 : agent.mode === "container"

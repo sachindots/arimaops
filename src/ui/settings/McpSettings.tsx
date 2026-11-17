@@ -107,8 +107,8 @@ export function McpSettings() {
           </div>
         )}
         {signingIn && (
-          <div className="mt-2 rounded-lg border border-white/10">
-            <div className="flex items-center justify-between bg-navy px-2 py-1 text-[13px] text-cream">
+          <div className="mt-2 overflow-hidden rounded-lg border border-[var(--border-hairline)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-cream-2 px-3 py-1.5 text-[13px] text-ink">
               <span>Signing in to {signingIn} · your browser opens; answer here if it asks</span>
               <button className="text-[12px] underline" onClick={() => setSigningIn(null)}>
                 Hide

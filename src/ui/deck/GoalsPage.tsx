@@ -13,7 +13,7 @@ export function GoalsPage() {
   return (
     <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-5">
       <header>
-        <h1 className="m-0 font-display text-[20px] font-semibold">Goals</h1>
+        <h1 className="m-0 font-display text-[18px] font-bold tracking-tight text-ink">Goals</h1>
         <p className="m-0 mt-1 text-[13px] text-muted">The lead plans against these: every task should move one. Spend counts priced models only.</p>
       </header>
       {isViewer ? <GoalList /> : <Goals headed={false} />}

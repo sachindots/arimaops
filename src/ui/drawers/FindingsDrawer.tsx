@@ -59,13 +59,13 @@ export function FindingsDrawer() {
             <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide fixed, accepted and false positives
           </label>
           {list.length === 0 ? (
-            <p className="m-0 rounded-xl border border-white/[0.08] px-4 py-6 text-center text-[14px] text-muted">
+            <p className="m-0 rounded-lg border border-[var(--border-hairline)] px-4 py-6 text-center text-[14px] text-muted">
               {all.length ? "Nothing here with this filter." : "No findings yet. Agents add them with report_finding as they test in-scope targets."}
             </p>
           ) : (
-            <div className="hud-glass overflow-x-auto rounded-xl">
+            <div className="hud-glass overflow-x-auto rounded-lg">
               <table className="w-full border-collapse text-left text-[13px]">
-                <thead className="bg-navy/70 text-[12px] text-muted">
+                <thead className="border-b border-[var(--border-hairline)] bg-cream-2/70 text-[12px] text-muted">
                   <tr>
                     <th className="w-px whitespace-nowrap px-3 py-2 font-medium">Severity</th>
                     <th className="px-3 py-2 font-medium">Finding</th>
@@ -192,7 +192,7 @@ function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; rep
   const color = SEVERITY_COLOR[f.severity];
   return (
     <>
-      <tr className={`border-t border-white/[0.06] align-top ${closed(f) ? "opacity-60" : ""} ${open ? "bg-white/[0.03]" : "hover:bg-white/[0.02]"}`}>
+      <tr className={`border-t border-[var(--border-hairline)] align-top ${closed(f) ? "opacity-60" : ""} ${open ? "bg-cream-2/70" : "hover:bg-cream-2/50"}`}>
         <td className="px-3 py-2" style={{ boxShadow: `inset 3px 0 0 ${color}` }}>
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[12px] font-medium capitalize" style={{ color, borderColor: `${color}55` }}>
             {f.severity}
@@ -230,7 +230,7 @@ function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; rep
         <td className="whitespace-nowrap px-3 py-2 text-right font-term text-[12px] text-muted">{ago(f.at, now)}</td>
       </tr>
       {open && (
-        <tr className="bg-white/[0.03]">
+        <tr className="bg-cream-2/50">
           <td colSpan={6} className="px-4 pb-4 pt-1">
             <div className="flex flex-col gap-2 text-[13px]">
               <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
@@ -278,7 +278,7 @@ function FindingRow({ f, now, reporter, locked }: { f: Finding; now: number; rep
                   f.evidence.map((e, i) => (
                     <div key={i} className="mb-1.5">
                       <span className="text-[12px] italic text-muted">{e.kind}</span>
-                      <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap rounded-lg bg-navy-2 p-2 font-term text-[12px]">{e.content}</pre>
+                      <pre className="scroll-thin max-h-[300px] overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-2 font-term text-[12px] text-ink">{e.content}</pre>
                     </div>
                   ))
                 ) : (

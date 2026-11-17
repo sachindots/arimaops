@@ -53,7 +53,7 @@ export function StackSettings() {
           <section>
             <SectionTitle>What agents read</SectionTitle>
             <p className="mb-2 text-[13px] text-muted">Added to every agent's ROLE.md the next time it starts.</p>
-            <pre className="m-0 whitespace-pre-wrap rounded-lg border border-white/10 bg-navy-2 p-3 font-term text-[12px] leading-tight text-[#dfe6ff]">{stackRoleMd(stack)}</pre>
+            <pre className="m-0 whitespace-pre-wrap rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-3 font-term text-[12px] leading-tight text-ink">{stackRoleMd(stack)}</pre>
           </section>
           <div>
             <button className="btn text-[13px]" onClick={() => officeActions.updateStack(null)}>

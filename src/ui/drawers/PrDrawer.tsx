@@ -18,8 +18,8 @@ export function PrDrawer() {
     const edge = pr.merged ? "#3fb950" : pr.conflict ? "#ff2a4b" : pr.review === "changes-requested" ? "#ffb020" : pr.review === "passed" ? "#3fb950" : pr.review === "reviewing" ? "#a371f7" : "#8b9bb4";
     return (
       <li
-        className={`hud-scan grid grid-cols-[60px_1fr_auto] items-center gap-3 rounded-xl border bg-navy/70 px-3 py-2.5 transition-colors ${pr.merged ? "border-white/[0.06]" : "hud-corners border-white/[0.1] hover:border-white/25"}`}
-        style={{ ["--corner" as string]: edge, boxShadow: `inset 3px 0 0 ${edge}` }}
+        className="grid grid-cols-[60px_1fr_auto] items-center gap-3 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2.5 shadow-[var(--card-shadow)] transition-colors hover:border-[var(--border-strong)]"
+        style={{ boxShadow: `inset 3px 0 0 ${edge}` }}
       >
         <span className="font-display text-[20px] font-semibold leading-none" style={{ color: pr.merged ? undefined : edge }}>
           #{pr.number}

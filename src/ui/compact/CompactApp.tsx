@@ -85,7 +85,7 @@ export function CompactApp() {
     return (
       <button
         key={n.id}
-        className={`relative flex items-center gap-3 rounded-md transition-colors flex-col justify-center gap-0.5 py-1 text-[11px] ${on ? "bg-accent/12 text-accent" : "text-muted hover:bg-white/[0.04] hover:text-ink"}`}
+        className={`relative flex items-center gap-3 rounded-md transition-colors flex-col justify-center gap-0.5 py-1 text-[11px] ${on ? "bg-cream-2 font-semibold text-ink" : "text-muted hover:bg-cream-2/60 hover:text-ink"}`}
         aria-current={on ? "page" : undefined}
         onClick={() => go(n.id)}
       >
@@ -121,7 +121,7 @@ export function CompactApp() {
   return (
     <div className="fixed inset-0 flex bg-grass text-ink" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-white/[0.08] bg-navy-2 px-4">
+        <header className="flex h-[52px] shrink-0 items-center gap-2.5 border-b border-[var(--border-hairline)] bg-[var(--surface-glass)] px-4">
           <Logo size={24} />
           <button className="min-h-[40px] min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
             <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
@@ -139,7 +139,7 @@ export function CompactApp() {
           )}
         </header>
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">{main}</main>
-        <nav className="grid h-[60px] shrink-0 grid-cols-6 gap-1 border-t border-white/[0.08] bg-navy-2 px-1" aria-label="Sections">
+        <nav className="grid h-[60px] shrink-0 grid-cols-6 gap-1 border-t border-[var(--border-hairline)] bg-[var(--surface-glass)] px-1" aria-label="Sections">
           {NAV.map(navButton)}
         </nav>
       </div>
@@ -159,18 +159,18 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
       {lead && (
         <li>
           <button
-            className={`hud-scan flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected === TEAM_THREAD ? "hud-corners border-accent/50 bg-accent/[0.08]" : "border-white/[0.06] hover:border-white/20 hover:bg-white/[0.03]"}`}
+            className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${selected === TEAM_THREAD ? "border-accent bg-cream-2" : "border-[var(--border-hairline)] bg-[var(--surface-card)] hover:border-[var(--border-strong)] hover:bg-cream-2/60"}`}
             aria-current={selected === TEAM_THREAD ? "true" : undefined}
             onClick={() => onOpen(TEAM_THREAD)}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent/10 text-[13px] font-semibold text-accent" aria-hidden="true">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-hairline)] bg-cream-2 text-[13px] font-bold text-ink" aria-hidden="true">
               {team.length}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <b className="font-display text-[15px] font-semibold">Team</b>
+                <b className="font-display text-[14px] font-bold text-ink">Team</b>
                 <span className="truncate text-[12px] text-muted">everyone · ask once, {lead.name} gathers</span>
-                {lastAny && <span className="ml-auto shrink-0 font-term text-[14px] text-muted">{ago(lastAny.at, now)}</span>}
+                {lastAny && <span className="ml-auto shrink-0 font-term text-[12px] text-muted">{ago(lastAny.at, now)}</span>}
               </div>
               <div className="truncate text-[13px] text-muted">{lastAny ? `${lastAny.fromId === HUMAN_ID ? "You" : (snap.config.team.find((x) => x.id === lastAny.fromId)?.name ?? "HQ")}: ${lastAny.text}` : "No messages yet"}</div>
             </div>
@@ -184,16 +184,16 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
         const st = snap.agents.find((s) => s.agentId === a.id);
         return (
           <li key={a.id}>
-            <button className={`hud-scan flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected === a.id ? "hud-corners border-accent/50 bg-accent/[0.08]" : "border-white/[0.06] hover:border-white/20 hover:bg-white/[0.03]"}`} aria-current={selected === a.id ? "true" : undefined} onClick={() => onOpen(a.id)}>
-              <Portrait name={a.name} color={a.color} lead={a.isLead} size={36} />
+            <button className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${selected === a.id ? "border-accent bg-cream-2" : "border-[var(--border-hairline)] bg-[var(--surface-card)] hover:border-[var(--border-strong)] hover:bg-cream-2/60"}`} aria-current={selected === a.id ? "true" : undefined} onClick={() => onOpen(a.id)}>
+              <Portrait name={a.name} color={a.color} lead={a.isLead} size={34} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <b className="font-display text-[15px] font-semibold">{a.name}</b>
+                  <b className="font-display text-[14px] font-bold text-ink">{a.name}</b>
                   <span className="truncate text-[12px] text-muted">
                     {a.isLead && !/lead/i.test(a.role) ? "Lead · " : ""}
                     {a.role}
                   </span>
-                  {last && <span className="ml-auto shrink-0 font-term text-[14px] text-muted">{ago(last.at, now)}</span>}
+                  {last && <span className="ml-auto shrink-0 font-term text-[12px] text-muted">{ago(last.at, now)}</span>}
                 </div>
                 <div className="flex items-center gap-2 text-[13px] text-muted">
                   {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
@@ -334,7 +334,7 @@ export function AgentList() {
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4">
         <header className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 font-display text-[22px] font-semibold">Agents</h1>
+          <h1 className="m-0 font-display text-[18px] font-bold tracking-tight text-ink">Agents</h1>
           <span className="text-[13px] text-muted">
             {snap.config.team.length} in {snap.config.project.name}
           </span>
@@ -356,15 +356,15 @@ export function AgentList() {
             const tokens = use ? usage.total(use) : 0;
             const task = st?.currentTaskId ? snap.tasks.find((t) => t.id === st.currentTaskId) : undefined;
             return (
-              <li key={a.id} className="hud-glass hud-corners hud-scan flex flex-col gap-3 rounded-2xl p-3.5" style={{ ["--corner" as string]: color }}>
-                <button className="flex min-w-0 items-center gap-3 text-left" onClick={() => ui.openAgent(a.id)} title={`Open ${a.name}`}>
+              <li key={a.id} className="flex flex-col gap-3 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] p-4 shadow-[var(--card-shadow)] transition-shadow hover:border-[var(--border-strong)] hover:shadow-[var(--card-shadow-hover)]">
+                <button className="flex min-w-0 cursor-pointer items-center gap-3 text-left" onClick={() => ui.openAgent(a.id)} title={`Open ${a.name}`}>
                   <span className="relative shrink-0">
-                    <Portrait name={a.name} color={a.color} lead={a.isLead} size={42} />
-                    <i className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-navy ${mode === "working" || mode === "needs-input" ? "animate-pulse" : ""}`} style={{ background: color }} />
+                    <Portrait name={a.name} color={a.color} lead={a.isLead} size={38} />
+                    <i className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[var(--cream)] ${mode === "working" || mode === "needs-input" ? "animate-pulse" : ""}`} style={{ background: color }} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <b className="truncate font-display text-[17px] font-semibold">{a.name}</b>
+                      <b className="truncate font-display text-[15px] font-bold text-ink">{a.name}</b>
                       {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
                     </span>
                     <span className="block truncate text-[12px] text-muted">
@@ -384,14 +384,14 @@ export function AgentList() {
                   {limited && <span className="text-amber"> · limit until {limited}</span>}
                 </p>
                 <div className="flex items-end gap-2">
-                  <span className="font-display text-[20px] font-semibold leading-none">{fmtTokens(tokens)}</span>
+                  <span className="font-display text-[18px] font-bold leading-none text-ink">{fmtTokens(tokens)}</span>
                   <span className="text-[11px] text-muted">today</span>
                   <span className="text-[12px] text-muted">· {fmtUsd(use?.costUsd ?? 0)}</span>
                   <span className="flex-1" />
                   <Sparkline data={use?.series ?? []} color={color} width={80} height={22} label={`${a.name} today`} />
                 </div>
                 <Meter value={tokens} max={usage.max} color={color} label={`${a.name}'s share of the busiest agent's tokens`} />
-                <div className="flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] pt-2.5">
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border-hairline)] pt-2.5">
                   <button className="btn px-2.5 text-[12px]" onClick={() => ui.openAgent(a.id, "terminal")}>
                     Terminal
                   </button>
@@ -435,8 +435,8 @@ export function More() {
   const item = (label: string, sub: string, onClick: () => void, show = true): ReactNode =>
     show && (
       <li key={label}>
-        <button className="hud-glass hud-corners hud-scan flex h-full w-full flex-col gap-1 rounded-2xl px-4 py-3.5 text-left transition-colors hover:border-accent/40" onClick={onClick}>
-          <b className="font-display text-[16px] font-semibold">{label}</b>
+        <button className="flex h-full w-full cursor-pointer flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-4 py-3.5 text-left shadow-[var(--card-shadow)] transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--card-shadow-hover)]" onClick={onClick}>
+          <b className="font-display text-[15px] font-bold text-ink">{label}</b>
           <span className="text-[12px] text-muted">{sub}</span>
         </button>
       </li>

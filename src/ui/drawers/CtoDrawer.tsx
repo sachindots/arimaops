@@ -307,9 +307,9 @@ export function CtoDrawer() {
             const isExpanded = expandedId === p.id;
             const pct = p.counts.total > 0 ? Math.round((p.counts.done / p.counts.total) * 100) : 0;
             return (
-              <div key={p.id} className="overflow-hidden rounded-xl border border-white/[0.08] bg-navy/60">
+              <div key={p.id} className="overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)]">
                 <div
-                  className="flex cursor-pointer flex-col gap-2 p-3 hover:bg-white/[0.02]"
+                  className="flex cursor-pointer flex-col gap-2 p-3 transition-colors hover:bg-cream-2/60"
                   onClick={() => setExpandedId(isExpanded ? null : p.id)}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -378,7 +378,7 @@ export function CtoDrawer() {
                   <div className="truncate font-term text-[12px] text-muted">{p.path}</div>
 
                   {/* Progress bar */}
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-cream-3">
                     <div
                       className="h-full rounded-full transition-all"
                       style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "var(--accent)" }}
@@ -411,7 +411,7 @@ export function CtoDrawer() {
                 </div>
 
                 {isExpanded && (
-                  <div className="border-t border-white/[0.08] bg-white/[0.02] p-3">
+                  <div className="border-t border-[var(--border-hairline)] bg-cream-2/40 p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-[13px] font-semibold text-muted">
                         Tasks in {p.name} ({p.tasks.length})
@@ -436,7 +436,7 @@ export function CtoDrawer() {
                           return (
                             <div
                               key={t.id}
-                              className="grid grid-cols-2 items-center gap-2 rounded-lg border border-white/[0.08] bg-navy/60 px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
+                              className="grid grid-cols-2 items-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
                             >
                               <span className="col-span-2 font-term text-muted sm:col-span-1">{t.id}</span>
                               <div className="col-span-2 min-w-0 sm:col-span-1">
@@ -665,7 +665,7 @@ function CompanyStrip({ projects }: { projects: ProjectOverview[] }) {
                 <b>{g.title}</b> <span className="text-muted">· {g.project}</span>
               </div>
               <div className="mt-1 flex items-center gap-2 text-muted">
-                <div className="h-1 flex-1 overflow-hidden rounded bg-white/10" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+                <div className="h-1 flex-1 overflow-hidden rounded bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
                   <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
                 </div>
                 <span>

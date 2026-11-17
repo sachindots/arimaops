@@ -57,7 +57,7 @@ export function hudFrame(w: number, h: number, compact = false, strip = false) {
   const top = DECK.header;
   const width = w - left;
   const height = h - top - (strip ? DECK.footer : 0);
-  return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.19 };
+  return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.175 };
 }
 
 function useBoxSize(ref: RefObject<HTMLElement | null>) {
@@ -100,7 +100,7 @@ export function AgentOrbit({
   const kind = compact && w < 640 ? "node" : team.length > 6 ? "pill" : "card";
   const half = HALF[kind];
   const rx = Math.min(f.width * 0.34, f.width / 2 - half.x - 16);
-  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.34, f.height / 2 - half.y - 16);
+  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.36, f.height / 2 - half.y - 16);
   const outerTrack = Math.round(Math.min(rx, ry) * 1.92);
   const innerTrack = Math.round(outerTrack * 0.68);
   const slots = team.map((m, i) => {
@@ -133,7 +133,7 @@ export function AgentOrbit({
       {w > 0 && (
         <div
           className="pointer-events-none absolute -translate-x-1/2 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3.5 py-1 text-[12px] text-muted shadow-2xs"
-          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.r * 1.26 }}
+          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.r * 1.06 }}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${redTeamProject ? "bg-red-500 animate-pulse" : "bg-cyan-500"}`} />
           <span className="font-bold text-ink">{projectName}</span>

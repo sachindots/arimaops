@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { DRAWER_DEFAULT, ui, useUi } from "../../store/ui";
+import { Icon } from "../deck/Icon";
 import { AgentDrawer } from "./AgentDrawer";
 import { BoardsDrawer } from "./BoardsDrawer";
 import { CtoDrawer } from "./CtoDrawer";
@@ -11,23 +12,42 @@ import { TerminalDrawer } from "./TerminalDrawer";
 import { FindingsDrawer } from "./FindingsDrawer";
 import { FlowDrawer } from "./FlowDrawer";
 
+const SLIDE_OVER_KINDS = new Set(["agent", "env", "terminal", "cto"]);
+
+function useDesktop(): boolean {
+  const [wide, setWide] = useState(() => (typeof window !== "undefined" ? window.matchMedia("(min-width: 1000px)").matches : true));
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1000px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
 export function DrawerHeader({ children }: { children: ReactNode }) {
-  // Compact layout: drawers are full-screen pages, so no resize/maximize; close goes back.
-  const compact = useUi((s) => s.compact);
-  const opened = useUi((s) => s.drawer !== null); // a bottom-bar tab (board, inbox) has nothing to go back to
-  const solo = useUi((s) => s.solo !== null); // a pop-out window: the panel is the whole window
+  const desktop = useDesktop();
+  const drawer = useUi((s) => s.drawer);
+  const opened = drawer !== null;
+  const solo = useUi((s) => s.solo !== null);
+  const showControls = desktop && !solo && !!drawer && SLIDE_OVER_KINDS.has(drawer.kind);
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b border-white/[0.08] px-4 py-2.5">
-      {compact && opened && (
+    <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
+      {!desktop && opened && (
         <button className="btn px-2.5" aria-label="Back" onClick={() => ui.closeDrawer()}>
           ‹
         </button>
       )}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{children}</div>
-      {!compact && !solo && <MaximizeButton />}
-      {!compact && !solo && (
-        <button className="btn px-2.5" aria-label="Close" onClick={() => ui.closeDrawer()}>
-          ✕
+      {showControls && <MaximizeButton />}
+      {showControls && (
+        <button
+          type="button"
+          className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+          aria-label="Close"
+          onClick={() => ui.closeDrawer()}
+        >
+          <Icon name="close" size={18} />
         </button>
       )}
     </div>
@@ -38,17 +58,15 @@ function MaximizeButton() {
   const max = useUi((s) => s.drawerMaximized);
   const label = max ? "Restore size" : "Maximize";
   return (
-    <button className="btn grid h-[30px] w-[34px] place-items-center px-0" aria-label={label} title={label} aria-pressed={max} onClick={() => ui.toggleDrawerMaximized()}>
-      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2">
-        {max ? (
-          <>
-            <rect x="1" y="4" width="9" height="9" />
-            <path d="M4 4V1h9v9h-3" />
-          </>
-        ) : (
-          <rect x="1" y="1" width="12" height="12" />
-        )}
-      </svg>
+    <button
+      type="button"
+      className={`grid h-8 w-8 cursor-pointer place-items-center rounded-md transition-colors ${max ? "bg-cream-2 text-ink" : "text-muted hover:bg-cream-2 hover:text-ink"}`}
+      aria-label={label}
+      title={label}
+      aria-pressed={max}
+      onClick={() => ui.toggleDrawerMaximized()}
+    >
+      <Icon name={max ? "close_fullscreen" : "open_in_full"} size={17} />
     </button>
   );
 }

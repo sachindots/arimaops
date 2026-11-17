@@ -61,7 +61,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
           {boards.length} in {snap.config.project.name}
         </span>
       </DrawerHeader>
-      <div className="flex flex-wrap gap-1.5 border-b border-white/[0.08] px-4 py-2">
+      <div className="flex flex-wrap gap-1.5 border-b border-[var(--border-hairline)] px-4 py-2">
         {boards.map((b) => (
           <button key={b.id} className="btn px-2.5 text-[13px]" aria-pressed={b.id === boardId} onClick={() => setBoardId(b.id)}>
             {b.status === "active" && <span className="mr-1.5 text-accent">●</span>}
@@ -70,7 +70,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
         ))}
       </div>
       {board && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] bg-navy/60 px-4 py-1.5 text-[13px]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-1.5 text-[13px]">
           <span className="text-muted">Status</span>
           <select
             className="field h-7 w-[116px] py-0 text-[13px]"
@@ -105,7 +105,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
           </button>
         </div>
       )}
-      <div className="scroll-thin flex min-h-0 flex-1 snap-x flex-col gap-3 overflow-auto bg-navy-2/75 p-4 max-[560px]:snap-mandatory">
+      <div className="scroll-thin flex min-h-0 flex-1 snap-x flex-col gap-3 overflow-auto bg-[var(--color-grass)] p-4 max-[560px]:snap-mandatory">
         <div className="grid gap-3" style={{ gridTemplateColumns: template }}>
           {cols.map((c) => {
             const list = tasks.filter((t) => t.status === c.id);
@@ -166,10 +166,10 @@ function TaskCard({ task, onOpen }: { task: Task; onOpen: () => void }) {
   const done = task.status === "done";
   return (
     <button
-      className={`hud-scan group w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-all duration-150 hover:-translate-y-0.5 focus-visible:border-accent ${
+      className={`group w-full cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-all duration-150 focus-visible:border-accent ${
         done
-          ? "border-white/[0.06] bg-navy/50 hover:border-white/20"
-          : "border-white/[0.08] bg-navy/80 hover:border-accent/45 hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+          ? "border-[var(--border-hairline)] bg-[var(--surface-card)] opacity-80 hover:border-[var(--border-strong)]"
+          : "border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)] hover:border-[var(--border-strong)] hover:shadow-[var(--card-shadow-hover)]"
       }`}
       style={{ boxShadow: `inset 3px 0 0 ${COLUMNS.find((c) => c.id === task.status)?.color ?? "#6b7280"}` }}
       onClick={onOpen}

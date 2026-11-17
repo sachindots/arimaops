@@ -36,24 +36,24 @@ export function WelcomeModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-navy-2/75 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
-      <div className="hud-drawer hud-corners flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col rounded-2xl">
-        <div className="border-b border-white/[0.08] px-4 py-3">
-          <h2 className="m-0 font-display text-[24px] font-semibold">
+    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
+      <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
+        <div className="border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
+          <h2 className="m-0 font-display text-[19px] font-bold tracking-tight text-ink">
             Welcome to <span className="text-accent">{BRAND.name}</span>
           </h2>
-          <p className="m-0 text-[14px] text-muted">
+          <p className="m-0 mt-0.5 text-[13px] text-muted">
             Pick a team for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>. You can change its roles, models and agents later in Settings → Team.
           </p>
         </div>
 
-        <div className="scroll-thin flex min-h-0 flex-col gap-4 overflow-y-auto px-4 py-3">
+        <div className="scroll-thin flex min-h-0 flex-col gap-4 overflow-y-auto px-5 py-4">
           <Field label="Project name">
             <input className="field w-full" value={projectName} maxLength={80} onChange={(e) => setProjectName(e.target.value)} />
           </Field>
 
           <section>
-            <h3 className="mb-1.5 font-display text-[16px] font-semibold">Team template</h3>
+            <h3 className="mb-1.5 font-display text-[14px] font-bold text-ink">Team template</h3>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Team template">
               {library.map(({ template: t, builtin, problems }) => (
                 <button
@@ -61,7 +61,7 @@ export function WelcomeModal() {
                   type="button"
                   role="radio"
                   aria-checked={t.id === template.id}
-                  className={`flex flex-col items-start gap-1.5 rounded-xl border p-2.5 text-left transition-colors ${t.id === template.id ? "border-accent bg-accent/10" : "border-white/10 bg-navy/60 hover:border-white/25"}`}
+                  className={`flex cursor-pointer flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-colors ${t.id === template.id ? "border-accent bg-cream-2" : "border-[var(--border-hairline)] bg-[var(--surface-card)] hover:border-[var(--border-strong)]"}`}
                   onClick={() => setTemplateId(t.id)}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
