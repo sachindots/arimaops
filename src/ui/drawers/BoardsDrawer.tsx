@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { CLI_LABEL, type BoardStatus, type Task, type TaskStatus } from "../../data/types";
+import { type BoardStatus, type Task, type TaskStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { readPref, writePref } from "../../lib/prefs";
-import { ago, Dot, Meter, TokensChip, useNow } from "../kit";
+import { ago, Dot, Meter, Portrait, TokensChip, useNow } from "../kit";
+import { Icon } from "../deck/Icon";
 import { DrawerHeader, PageTitle } from "./Drawer";
 import { TaskSheet } from "./TaskSheet";
 
@@ -29,14 +30,25 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
       boards[0]?.id,
   );
   const [stageId, setStageId] = useState<string | null>(initialStageId ?? null);
+  const [agentId, setAgentId] = useState<string | null>(null); // "" = unassigned
+  const [goalId, setGoalId] = useState<string | null>(null);
   const [openTask, setOpenTask] = useState<string | null>(initialTaskId ?? null);
   const [byAgent, setByAgent] = useState(() => readPref("board.lanes") === "agent");
   if (!snap) return null;
   const board = boards.find((b) => b.id === boardId);
-  const stageName = stageId ? snap.config.template?.flow.stages.find((s) => s.id === stageId)?.name ?? stageId : null;
-  const tasks = snap.tasks.filter((t) => t.boardId === boardId && (!stageId || t.stageId === stageId));
+  const stages = snap.config.template?.flow.stages ?? [];
+  const goals = (snap.goals ?? []).filter((g) => g.status !== "dropped");
+  const onBoard = snap.tasks.filter((t) => t.boardId === boardId);
+  const tasks = onBoard.filter(
+    (t) =>
+      (!stageId || t.stageId === stageId) &&
+      (agentId === null || (agentId === "" ? !t.ownerId : t.ownerId === agentId)) &&
+      (!goalId || t.goalId === goalId),
+  );
+  const filtered = stageId !== null || agentId !== null || goalId !== null;
   const cols = COLUMNS.filter((c) => c.id !== "blocked" || tasks.some((t) => t.status === "blocked"));
-  const template = cols.map((c) => (tasks.some((t) => t.status === c.id) ? "minmax(min(230px, 86%), 1fr)" : "minmax(96px, 0.35fr)")).join(" ");
+  const template = cols.map((c) => (tasks.some((t) => t.status === c.id) ? "minmax(min(240px, 86%), 1fr)" : "minmax(110px, 0.4fr)")).join(" ");
+  const done = onBoard.filter((t) => t.status === "done").length;
   const toggleLanes = () => {
     setByAgent(!byAgent);
     try {
@@ -53,94 +65,131 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
         { id: "", name: "Unassigned", tasks: tasks.filter((t) => !t.ownerId || !snap.config.team.some((a) => a.id === t.ownerId)) },
       ].filter((l) => l.tasks.length)
     : [{ id: "all", name: "", tasks }];
+  const select = "h-8 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 text-[13px] text-ink";
 
   return (
     <>
       <DrawerHeader>
-        <PageTitle title="Boards" context={<>{boards.length} in {snap.config.project.name}</>} />
+        <PageTitle title="Board" context={board ? <>{board.title} · {done}/{onBoard.length} done</> : <>{boards.length} boards</>} />
+        {board && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="hidden w-[120px] items-center lg:flex" title="Tasks done on this board">
+              <Meter value={done} max={Math.max(1, onBoard.length)} color="var(--accent)" label="Board progress" />
+            </span>
+            <select
+              className={select}
+              value={board.status}
+              aria-label="Board status (agents only pick tasks from active boards)"
+              title="Agents only pick tasks from active boards"
+              onChange={(e) => officeActions.updateBoard(board.id, { status: e.target.value as BoardStatus })}
+            >
+              {(Object.keys(STATUS_LABEL) as BoardStatus[]).map((st) => (
+                <option key={st} value={st}>
+                  {STATUS_LABEL[st]}
+                </option>
+              ))}
+            </select>
+            <button className="btn text-[13px]" aria-pressed={byAgent} onClick={toggleLanes} title="One row per agent">
+              <Icon name="view_agenda" size={16} /> Group by agent
+            </button>
+          </span>
+        )}
       </DrawerHeader>
-      <div className="flex flex-wrap gap-1.5 border-b border-[var(--border-hairline)] px-4 py-2">
+
+      <nav className="scroll-thin flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--border-hairline)] px-4" aria-label="Boards">
         {boards.map((b) => (
-          <button key={b.id} className="btn px-2.5 text-[13px]" aria-pressed={b.id === boardId} onClick={() => setBoardId(b.id)}>
-            {b.status === "active" && <span className="mr-1.5 text-accent">●</span>}
+          <button
+            key={b.id}
+            type="button"
+            aria-current={b.id === boardId ? "page" : undefined}
+            onClick={() => setBoardId(b.id)}
+            className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-2 text-[13px] transition-colors ${b.id === boardId ? "border-[var(--accent)] font-medium text-ink" : "border-transparent text-muted hover:text-ink"}`}
+          >
+            {b.status === "active" && <span className="h-1.5 w-1.5 rounded-full bg-accent" title="Active" />}
             {b.title}
           </button>
         ))}
-      </div>
-      {board && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-1.5 text-[13px]">
-          <span className="text-muted">Status</span>
-          <select
-            className="field h-7 w-[116px] py-0 text-[13px]"
-            value={board.status}
-            onChange={(e) => officeActions.updateBoard(board.id, { status: e.target.value as BoardStatus })}
-          >
-            {(Object.keys(STATUS_LABEL) as BoardStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+      </nav>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-hairline)] px-4 py-2">
+        <Icon name="filter_list" size={16} className="text-muted" />
+        <select className={select} value={agentId ?? "*"} aria-label="Filter by agent" onChange={(e) => setAgentId(e.target.value === "*" ? null : e.target.value)}>
+          <option value="*">Every agent</option>
+          {snap.config.team.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+          <option value="">Unassigned</option>
+        </select>
+        {goals.length > 0 && (
+          <select className={select} value={goalId ?? ""} aria-label="Filter by goal" onChange={(e) => setGoalId(e.target.value || null)}>
+            <option value="">Every goal</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.id} · {g.title}
               </option>
             ))}
           </select>
-          <span className="text-[12px] text-muted">Agents only pick tasks from active boards.</span>
-          {stageName && (
-            <button type="button" className="btn px-2 text-[12px]" aria-pressed="true" onClick={() => setStageId(null)} title="Show every stage">
-              Stage: {stageName} ×
-            </button>
-          )}
-          <span className="flex-1" />
-          {tasks.length > 0 && (
-            <span className="flex w-[180px] items-center gap-2" title="Tasks done on this board">
-              <span className="shrink-0 font-display text-[13px] text-ink">
-                {tasks.filter((t) => t.status === "done").length}/{tasks.length}
-              </span>
-              <span className="min-w-0 flex-1">
-                <Meter value={tasks.filter((t) => t.status === "done").length} max={tasks.length} color="#3fb950" label="Board progress" />
-              </span>
-            </span>
-          )}
-          <button className="btn px-2.5 text-[12px]" aria-pressed={byAgent} onClick={toggleLanes} title="One row per agent">
-            Group by agent
+        )}
+        {stages.length > 0 && (
+          <select className={select} value={stageId ?? ""} aria-label="Filter by stage" onChange={(e) => setStageId(e.target.value || null)}>
+            <option value="">Every stage</option>
+            {stages.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name}
+              </option>
+            ))}
+          </select>
+        )}
+        {filtered && (
+          <button type="button" className="text-[13px] text-accent hover:underline" onClick={() => (setAgentId(null), setGoalId(null), setStageId(null))}>
+            Clear
           </button>
-        </div>
-      )}
-      <div className="scroll-thin flex min-h-0 flex-1 snap-x flex-col gap-3 overflow-auto bg-[var(--color-grass)] p-4 max-[560px]:snap-mandatory">
+        )}
+        <span className="ml-auto text-[12px] text-muted">
+          {filtered ? `${tasks.length} of ${onBoard.length} tasks` : `${onBoard.length} tasks`}
+        </span>
+      </div>
+
+      <div className="scroll-thin flex min-h-0 flex-1 snap-x flex-col gap-3 overflow-auto p-4 max-[560px]:snap-mandatory">
         <div className="grid gap-3" style={{ gridTemplateColumns: template }}>
           {cols.map((c) => {
             const list = tasks.filter((t) => t.status === c.id);
             // How long the oldest card has sat in this column (done doesn't wait on anyone).
             const oldest = c.id === "done" ? undefined : list.map((t) => t.movedAt).filter((x): x is string => !!x).sort()[0];
             return (
-              <h4 key={c.id} className="m-0 flex min-w-0 snap-start items-center gap-2 border-b-2 pb-1.5 font-display text-[13px] font-semibold text-ink" style={{ borderColor: c.color }}>
-                <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />
+              <h2 key={c.id} className="m-0 flex min-w-0 snap-start items-center gap-2 px-1 text-[13px] font-semibold text-ink">
+                <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden="true" />
                 <span className="truncate">{c.label}</span>
-                <span className="text-[13px] font-normal text-muted">{list.length}</span>
+                <span className="font-normal text-muted">{list.length}</span>
                 <span className="flex-1" />
                 {oldest && (
                   <span className="truncate text-[12px] font-normal text-muted" title="How long the oldest card here has been in this column">
                     oldest {ago(oldest, now)}
                   </span>
                 )}
-              </h4>
+              </h2>
             );
           })}
         </div>
         {lanes.map((l) => (
           <section key={l.id} className="flex flex-col gap-2" aria-label={l.name || "Tasks"}>
             {byAgent && (
-              <h5 className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+              <h3 className="m-0 flex items-center gap-1.5 px-1 pt-1 text-[13px] font-semibold text-muted">
                 {l.color && <Dot color={l.color} size={8} />}
-                {l.name} <span className="font-term font-normal">{l.tasks.length}</span>
-              </h5>
+                {l.name} <span className="font-normal">{l.tasks.length}</span>
+              </h3>
             )}
             <div className="grid items-start gap-3" style={{ gridTemplateColumns: template }}>
               {cols.map((c) => {
                 const list = l.tasks.filter((t) => t.status === c.id);
                 if (c.id === "done") list.reverse();
                 return (
-                  <div key={c.id} className="flex min-w-0 flex-col gap-2">
-                    {!list.length && !byAgent && <p className="m-0 py-2 text-center text-[12px] text-muted/70">Nothing here</p>}
+                  <div key={c.id} className="flex min-h-[48px] min-w-0 flex-col gap-1.5 rounded-xl bg-cream-2/60 p-1.5">
+                    {!list.length && !byAgent && <p className="m-0 py-3 text-center text-[12px] text-muted">Nothing here</p>}
                     {list.map((t) => (
-                      <TaskCard key={t.id} task={t} onOpen={() => setOpenTask(t.id)} />
+                      <TaskCard key={t.id} task={t} now={now} onOpen={() => setOpenTask(t.id)} />
                     ))}
                   </div>
                 );
@@ -148,57 +197,62 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
             </div>
           </section>
         ))}
-        {tasks.length === 0 && <p className="m-0 p-6 text-center text-muted">No tasks on this board yet. The lead adds tasks when a board is active.</p>}
+        {onBoard.length === 0 && <p className="m-0 p-6 text-center text-[13px] text-muted">No tasks on this board yet. The lead adds tasks when a board is active.</p>}
+        {onBoard.length > 0 && tasks.length === 0 && <p className="m-0 p-6 text-center text-[13px] text-muted">No task matches these filters.</p>}
       </div>
       {openTask && <TaskSheet taskId={openTask} onClose={() => setOpenTask(null)} />}
     </>
   );
 }
 
-/** A task on the board: who, what, and badges for what's inside. Tap it for the task sheet. */
-function TaskCard({ task, onOpen }: { task: Task; onOpen: () => void }) {
+/** A task on the board: id, title, owner, goal, how long it has sat here, and badges. Click for the task sheet. */
+function TaskCard({ task, now, onOpen }: { task: Task; now: number; onOpen: () => void }) {
   const snap = useOffice((s) => s.snap);
   const owner = snap?.config.team.find((a) => a.id === task.ownerId);
+  const goal = task.goalId ? snap?.goals?.find((g) => g.id === task.goalId) : undefined;
   const blockedBy = task.needs.filter((n) => snap?.tasks.find((t) => t.id === n)?.status !== "done");
   const failed = task.scores?.filter((x) => !x.pass).length ?? 0;
   const done = task.status === "done";
   return (
     <button
-      className={`group w-full cursor-pointer rounded-lg border px-3 py-2.5 text-left transition-all duration-150 focus-visible:border-accent ${
-        done
-          ? "border-[var(--border-hairline)] bg-[var(--surface-card)] opacity-80 hover:border-[var(--border-strong)]"
-          : "border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)] hover:border-[var(--border-strong)] hover:shadow-[var(--card-shadow-hover)]"
-      }`}
-      style={{ boxShadow: `inset 3px 0 0 ${COLUMNS.find((c) => c.id === task.status)?.color ?? "#6b7280"}` }}
+      className="group w-full cursor-pointer rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)] focus-visible:border-[var(--accent)]"
       onClick={onOpen}
       aria-label={`${task.id} ${task.title}: open`}
     >
-      <div className="flex items-center gap-1.5 font-term text-[12px] text-muted">
-        <span>{task.id}</span>
-        {task.prNumber && <span>#{task.prNumber}</span>}
+      <div className="flex items-center gap-1.5 text-[12px] text-muted">
+        <span className="font-medium">{task.id}</span>
+        {task.prNumber && <span>· #{task.prNumber}</span>}
         <span className="flex-1" />
-        {task.usage && <TokensChip usage={task.usage} />}
-      </div>
-      <div className={`mt-1 text-[13px] font-medium leading-snug ${done ? "text-muted" : "text-ink"}`}>{task.title}</div>
-      {task.status === "blocked" && task.note && <div className="mt-0.5 line-clamp-2 text-[12px] text-red">{task.note}</div>}
-      {blockedBy.length > 0 && task.status === "todo" && <div className="mt-0.5 text-[12px] text-red">Waits on {blockedBy.join(", ")}</div>}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
         {owner ? (
-          <span className="flex items-center gap-1 text-[12px]">
-            <Dot color={owner.color} size={8} /> {owner.name}
+          <span title={owner.name}>
+            <Portrait name={owner.name} color={owner.color} lead={owner.isLead} size={20} />
           </span>
         ) : (
-          <span className="text-[12px] text-muted">Unassigned</span>
+          <span className="grid h-5 w-5 place-items-center rounded-md border border-dashed border-[var(--border-strong)]" title="Unassigned">
+            <Icon name="person" size={12} />
+          </span>
         )}
+      </div>
+      <div className={`mt-1 text-[13px] font-medium leading-snug ${done ? "text-muted line-through decoration-muted/40" : "text-ink"}`}>{task.title}</div>
+      {task.status === "blocked" && task.note && <div className="mt-1 line-clamp-2 text-[12px] text-red">{task.note}</div>}
+      {blockedBy.length > 0 && task.status === "todo" && <div className="mt-1 text-[12px] text-amber">Waits on {blockedBy.join(", ")}</div>}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px] text-muted">
+        {goal && (
+          <span className="flex max-w-[60%] items-center gap-1" title={`Goal ${goal.id}: ${goal.title}`}>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+            <span className="truncate">{goal.title}</span>
+          </span>
+        )}
+        {task.movedAt && !done && <span title="In this column for">{ago(task.movedAt, now)}</span>}
         <span className="flex-1" />
         {task.scores && task.scores.length > 0 && (
           <span className={failed ? "text-amber" : "text-green"} title={failed ? `${failed} check${failed === 1 ? "" : "s"} failed` : "Checks passed"}>
-            {failed ? `◇ ${failed} failed` : `✓ ${task.scores.length}`}
+            {failed ? `${failed} failed` : `✓ ${task.scores.length}`}
           </span>
         )}
-        {task.evidence && <span className="text-[#4fb3c4]" title={`${task.evidence.shots.length} screenshots at ${task.evidence.sha.slice(0, 7)}`}>▣ {task.evidence.shots.length}</span>}
-        {task.benchmark && <span className="text-[#9085e9]" title="In the benchmark suite">◆</span>}
-        {task.cli && <span className="text-muted" title="Runs on">{CLI_LABEL[task.cli]}</span>}
+        {task.evidence && <span title={`${task.evidence.shots.length} screenshots at ${task.evidence.sha.slice(0, 7)}`}>▣ {task.evidence.shots.length}</span>}
+        {task.benchmark && <span title="In the benchmark suite">◆</span>}
+        {task.usage && <TokensChip usage={task.usage} />}
       </div>
     </button>
   );
