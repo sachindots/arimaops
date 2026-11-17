@@ -9,7 +9,7 @@ import type { Task } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { useUi } from "../../store/ui";
 import { Dot } from "../kit";
-import { DrawerHeader } from "./Drawer";
+import { DrawerHeader, PageTitle } from "./Drawer";
 import { gateText } from "./TaskSheet";
 
 const GATE_NAME: Record<GateKind, string> = {
@@ -44,9 +44,9 @@ function StageNode({ data }: NodeProps<Node<StageData>>) {
       <Handle id="up" type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
       <div className="flex items-center gap-2">
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/15 font-display text-[12px] font-semibold text-accent">{index + 1}</span>
-        <b className="min-w-0 flex-1 truncate font-display text-[17px] font-semibold text-ink">{stage.name || stage.id}</b>
+        <b className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold text-ink">{stage.name || stage.id}</b>
         {tasks.length > 0 && (
-          <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-muted" title={`${tasks.length} open task${tasks.length === 1 ? "" : "s"} in this stage`}>
+          <span className="rounded-full border border-white/10 px-2 py-0.5 text-[12px] text-muted" title={`${tasks.length} open task${tasks.length === 1 ? "" : "s"} in this stage`}>
             {busy > 0 && <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green align-middle" />}
             {tasks.length}
           </span>
@@ -54,7 +54,7 @@ function StageNode({ data }: NodeProps<Node<StageData>>) {
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {roles.map((r) => (
-          <span key={r.id} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]" style={{ color: r.color, borderColor: `${r.color}55`, background: `${r.color}14` }}>
+          <span key={r.id} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[12px]" style={{ color: r.color, borderColor: `${r.color}55`, background: `${r.color}14` }}>
             {r.title}
           </span>
         ))}
@@ -157,9 +157,9 @@ export function FlowDrawer() {
     return (
       <>
         <DrawerHeader>
-          <b className="font-display text-[19px] font-semibold">Flow</b>
+          <PageTitle title="Flow" />
         </DrawerHeader>
-        <p className="p-4 text-[14px] text-muted">This project was made before templates, so it has no flow. New projects get one from their team template.</p>
+        <p className="p-4 text-[13px] text-muted">This project was made before templates, so it has no flow. New projects get one from their team template.</p>
       </>
     );
 
@@ -211,10 +211,7 @@ export function FlowDrawer() {
   return (
     <>
       <DrawerHeader>
-        <b className="font-display text-[19px] font-semibold">Flow</b>
-        <span className="truncate text-[14px] text-muted">
-          {saved.name} v{saved.version} · {stages.length} stage{stages.length === 1 ? "" : "s"} · {placed} open task{placed === 1 ? "" : "s"}
-        </span>
+        <PageTitle title="Flow" context={<>{saved.name} v{saved.version} · {stages.length} stage{stages.length === 1 ? "" : "s"} · {placed} open task{placed === 1 ? "" : "s"}</>} />
         {canEdit && (
           <span className="ml-auto flex items-center gap-2">
             <button className="btn px-3 text-[13px]" onClick={addStage}>

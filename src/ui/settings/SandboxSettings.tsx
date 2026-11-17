@@ -86,7 +86,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-2">
         {snap.config.team.map((a) => (
-          <button key={a.id} className="btn flex items-center gap-1.5 text-[14px]" aria-pressed={a.id === agent.id} onClick={() => setAgentId(a.id)}>
+          <button key={a.id} className="btn flex items-center gap-1.5 text-[13px]" aria-pressed={a.id === agent.id} onClick={() => setAgentId(a.id)}>
             <Dot color={a.color} size={8} /> {a.name}
           </button>
         ))}
@@ -96,12 +96,12 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
       </div>
 
       {agent.mode === "local" && (
-        <p className="border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
+        <p className="border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[13px]">
           {agent.name} runs in Local mode, so sandbox settings don't apply until it's switched to Sandbox or Container. The env file still applies.
         </p>
       )}
 
-      <h3 className="-mb-2 font-display text-[18px] font-semibold">This agent</h3>
+      <h3 className="-mb-2 font-display text-[20px] font-semibold">This agent</h3>
 
       <ResourcesSection agent={agent} status={status} team={snap.config.team} machine={snap.setup.machine} />
 
@@ -134,8 +134,8 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
               {state?.rules.length === 0 && <li className="text-[12px] text-muted">No sandbox-specific rules.</li>}
               {state?.rules.map((r) =>
                 r.resources.map((res) => (
-                  <li key={`${r.id}-${res}`} className="chip font-term text-[14px]" style={{ ["--c" as string]: r.decision === "allow" ? "#3fb950" : "#ff2a4b" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
-                    {r.decision === "allow" ? "✓" : "✗"} {res} <span className="text-[11px] text-muted">{SOURCE[r.source]}</span>
+                  <li key={`${r.id}-${res}`} className="chip font-term text-[13px]" style={{ ["--c" as string]: r.decision === "allow" ? "#3fb950" : "#ff2a4b" }} title={`${r.decision} · added by ${SOURCE[r.source]}`}>
+                    {r.decision === "allow" ? "✓" : "✗"} {res} <span className="text-[12px] text-muted">{SOURCE[r.source]}</span>
                   </li>
                 )),
               )}
@@ -175,16 +175,16 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         <p className="mt-2 text-[12px] font-semibold text-orange">⚠ Unlike service keys, these values do enter the VM. Use test or development credentials. Restart the agent after editing.</p>
       </section>
 
-      <h3 className="-mb-2 mt-2 font-display text-[18px] font-semibold">This machine — all sandboxes</h3>
+      <h3 className="-mb-2 mt-2 font-display text-[20px] font-semibold">This machine — all sandboxes</h3>
       <p className="-mt-3 text-[13px] text-muted">These are sbx's machine-wide settings. They affect every sandbox on this machine, including ones HQ didn't create.</p>
 
       <section className="panel p-3">
         <SectionTitle>Base network policy</SectionTitle>
         <p className="text-[15px]">{BASE[sbx.basePolicy]}</p>
         <p className="mt-1 text-[12px] text-muted">
-          Set once with <code className="font-term text-[14px]">sbx policy init</code>. Changing it means <code className="font-term text-[14px]">sbx policy reset</code>, which deletes every rule on this
-          machine, so HQ doesn't do it. HQ always allows <code className="font-term text-[14px]">localhost:{port}</code> and{" "}
-          <code className="font-term text-[14px]">host.docker.internal:{port}</code> so agents can reach it.{" "}
+          Set once with <code className="font-term text-[13px]">sbx policy init</code>. Changing it means <code className="font-term text-[13px]">sbx policy reset</code>, which deletes every rule on this
+          machine, so HQ doesn't do it. HQ always allows <code className="font-term text-[13px]">localhost:{port}</code> and{" "}
+          <code className="font-term text-[13px]">host.docker.internal:{port}</code> so agents can reach it.{" "}
           <a className="underline" href="https://docs.docker.com/ai/sandboxes/security/" target="_blank" rel="noreferrer">
             Docs ↗
           </a>

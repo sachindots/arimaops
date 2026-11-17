@@ -46,7 +46,7 @@ export function SettingsModal() {
         className="hud-drawer flex h-[100dvh] w-full flex-col overflow-hidden border md:h-[min(760px,calc(100dvh-2rem))] md:w-[min(1080px,100%)] md:rounded-xl"
       >
         <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
-          <h2 className="m-0 flex-1 font-display text-[17px] font-bold tracking-tight text-ink">Settings</h2>
+          <h2 className="m-0 flex-1 font-display text-[15px] font-semibold tracking-tight text-ink">Settings</h2>
           <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
             <i className="h-1.5 w-1.5 rounded-full bg-green" />
             Saved as you go

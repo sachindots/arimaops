@@ -86,14 +86,14 @@ export function CompactApp() {
     return (
       <button
         key={n.id}
-        className={`relative flex items-center gap-3 rounded-md transition-colors flex-col justify-center gap-0.5 py-1 text-[11px] ${on ? "bg-cream-2 font-semibold text-ink" : "text-muted hover:bg-cream-2/60 hover:text-ink"}`}
+        className={`relative flex items-center gap-3 rounded-md transition-colors flex-col justify-center gap-0.5 py-1 text-[12px] ${on ? "bg-cream-2 font-semibold text-ink" : "text-muted hover:bg-cream-2/60 hover:text-ink"}`}
         aria-current={on ? "page" : undefined}
         onClick={() => go(n.id)}
       >
         <NavIcon>{n.icon}</NavIcon>
         <span>{label}</span>
         {n.id === "inbox" && attention > 0 && (
-          <span className={`rounded-full bg-[#ffb020] px-1.5 font-term text-[11px] font-semibold text-navy absolute right-[calc(50%-22px)] top-0`}>{attention}</span>
+          <span className={`rounded-full bg-[#ffb020] px-1.5 font-term text-[12px] font-semibold text-navy absolute right-[calc(50%-22px)] top-0`}>{attention}</span>
         )}
       </button>
     );
@@ -127,9 +127,9 @@ export function CompactApp() {
           <button className="min-h-[40px] min-w-0 flex-1 truncate text-left text-[15px]" onClick={() => ui.openCto()} title="Switch project">
             <span className="font-semibold">{snap.config.project.name}</span> <span className="text-muted">▾</span>
           </button>
-          {isViewer && <span className="chip text-[11px]">Viewer</span>}
+          {isViewer && <span className="chip text-[12px]">Viewer</span>}
           {!live && (
-            <span className="rounded border border-accent/40 bg-accent/10 px-1.5 text-[11px] font-medium text-accent" title="Sample projects and agents, running in your browser. Run npx arimaops in a git repo for your own team.">
+            <span className="rounded border border-accent/40 bg-accent/10 px-1.5 text-[12px] font-medium text-accent" title="Sample projects and agents, running in your browser. Run npx arimaops in a git repo for your own team.">
               Demo
             </span>
           )}
@@ -164,12 +164,12 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
             aria-current={selected === TEAM_THREAD ? "true" : undefined}
             onClick={() => onOpen(TEAM_THREAD)}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-hairline)] bg-cream-2 text-[13px] font-bold text-ink" aria-hidden="true">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border-hairline)] bg-cream-2 text-[13px] font-semibold text-ink" aria-hidden="true">
               {team.length}
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <b className="font-display text-[14px] font-bold text-ink">Team</b>
+                <b className="font-display text-[13px] font-semibold text-ink">Team</b>
                 <span className="truncate text-[12px] text-muted">everyone · ask once, {lead.name} gathers</span>
                 {lastAny && <span className="ml-auto shrink-0 font-term text-[12px] text-muted">{ago(lastAny.at, now)}</span>}
               </div>
@@ -189,7 +189,7 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
               <Portrait name={a.name} color={a.color} lead={a.isLead} size={34} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <b className="font-display text-[14px] font-bold text-ink">{a.name}</b>
+                  <b className="font-display text-[13px] font-semibold text-ink">{a.name}</b>
                   <span className="truncate text-[12px] text-muted">
                     {a.isLead && !/lead/i.test(a.role) ? "Lead · " : ""}
                     {a.role}
@@ -199,7 +199,7 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
                 <div className="flex items-center gap-2 text-[13px] text-muted">
                   {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
                   <span className="truncate">{last ? `${last.fromId === HUMAN_ID ? "You: " : ""}${last.text}` : "No messages yet"}</span>
-                  {queued > 0 && <span className="shrink-0 font-mono text-[11px] text-orange">◷ {queued}</span>}
+                  {queued > 0 && <span className="shrink-0 font-mono text-[12px] text-orange">◷ {queued}</span>}
                 </div>
               </div>
             </button>
@@ -245,7 +245,7 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
             ‹
           </button>
         )}
-        <b className="font-display text-[17px] font-semibold">Team</b>
+        <b className="font-display text-[15px] font-semibold">Team</b>
         <span className="text-[13px] text-muted">{snap.config.team.length} agents · every message, agent to agent too</span>
       </div>
       <ul className="scroll-thin m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto p-4" aria-live="polite">
@@ -265,7 +265,7 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
                 {m.taskId && <span className="font-term text-[12px] text-muted">{m.taskId}</span>}
                 <span className="ml-auto font-term">{ago(m.at, now)}</span>
               </div>
-              <MessageText body={view.body} className="mt-0.5 text-[14px] leading-6" />
+              <MessageText body={view.body} className="mt-0.5 text-[13px] leading-6" />
             </li>
           );
         })}
@@ -284,7 +284,7 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
           </button>
         </form>
       )}
-      <p className="bg-cream px-2 pb-1.5 text-[11px] text-muted">
+      <p className="bg-cream px-2 pb-1.5 text-[12px] text-muted">
         {to.length
           ? `Goes straight to ${to.map((id) => snap.config.team.find((a) => a.id === id)?.name).join(", ")}.`
           : lead
@@ -309,7 +309,7 @@ function AgentThread({ agentId, onBack }: { agentId: string; onBack?: () => void
           </button>
         )}
         <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={28} />
-        <b className="font-display text-[17px] font-semibold">{agent.name}</b>
+        <b className="font-display text-[15px] font-semibold">{agent.name}</b>
         {st && <StateChip state={st.state} session={st.session.state} />}
         <button className="btn ml-auto px-2 text-[13px]" onClick={() => ui.openAgent(agentId, "terminal")}>
           Terminal
@@ -332,7 +332,7 @@ export function AgentList() {
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4">
         <header className="flex flex-wrap items-center gap-3">
-          <h1 className="m-0 font-display text-[18px] font-bold tracking-tight text-ink">Agents</h1>
+          <h1 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">Agents</h1>
           <span className="text-[13px] text-muted">
             {snap.config.team.length} in {snap.config.project.name}
           </span>
@@ -362,7 +362,7 @@ export function AgentList() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <b className="truncate font-display text-[15px] font-bold text-ink">{a.name}</b>
+                      <b className="truncate font-display text-[15px] font-semibold text-ink">{a.name}</b>
                       {st && <StateChip state={st.state} session={st.session.state} blink={false} />}
                     </span>
                     <span className="block truncate text-[12px] text-muted">
@@ -382,8 +382,8 @@ export function AgentList() {
                   {limited && <span className="text-amber"> · limit until {limited}</span>}
                 </p>
                 <div className="flex items-end gap-2">
-                  <span className="font-display text-[18px] font-bold leading-none text-ink">{fmtTokens(tokens)}</span>
-                  <span className="text-[11px] text-muted">today</span>
+                  <span className="font-display text-[20px] font-semibold leading-none text-ink">{fmtTokens(tokens)}</span>
+                  <span className="text-[12px] text-muted">today</span>
                   <span className="text-[12px] text-muted">· {fmtUsd(use?.costUsd ?? 0)}</span>
                   <span className="flex-1" />
                   <Sparkline data={use?.series ?? []} color={color} width={80} height={22} label={`${a.name} today`} />
@@ -434,7 +434,7 @@ export function More() {
     show && (
       <li key={label}>
         <button className="flex h-full w-full cursor-pointer flex-col gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-4 py-3.5 text-left shadow-[var(--card-shadow)] transition-all hover:border-[var(--border-strong)] hover:shadow-[var(--card-shadow-hover)]" onClick={onClick}>
-          <b className="font-display text-[15px] font-bold text-ink">{label}</b>
+          <b className="font-display text-[15px] font-semibold text-ink">{label}</b>
           <span className="text-[12px] text-muted">{sub}</span>
         </button>
       </li>

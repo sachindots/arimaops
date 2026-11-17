@@ -3,7 +3,7 @@ import { CLI_LABEL, type BoardStatus, type Task, type TaskStatus } from "../../d
 import { officeActions, useOffice } from "../../store/office";
 import { readPref, writePref } from "../../lib/prefs";
 import { ago, Dot, Meter, TokensChip, useNow } from "../kit";
-import { DrawerHeader } from "./Drawer";
+import { DrawerHeader, PageTitle } from "./Drawer";
 import { TaskSheet } from "./TaskSheet";
 
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
@@ -56,10 +56,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
   return (
     <>
       <DrawerHeader>
-        <b className="font-display text-[19px] font-semibold text-ink">Boards</b>
-        <span className="text-[13px] text-muted">
-          {boards.length} in {snap.config.project.name}
-        </span>
+        <PageTitle title="Boards" context={<>{boards.length} in {snap.config.project.name}</>} />
       </DrawerHeader>
       <div className="flex flex-wrap gap-1.5 border-b border-[var(--border-hairline)] px-4 py-2">
         {boards.map((b) => (
@@ -112,7 +109,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
             // How long the oldest card has sat in this column (done doesn't wait on anyone).
             const oldest = c.id === "done" ? undefined : list.map((t) => t.movedAt).filter((x): x is string => !!x).sort()[0];
             return (
-              <h4 key={c.id} className="m-0 flex min-w-0 snap-start items-center gap-2 border-b-2 pb-1.5 font-display text-[14px] font-semibold text-ink" style={{ borderColor: c.color }}>
+              <h4 key={c.id} className="m-0 flex min-w-0 snap-start items-center gap-2 border-b-2 pb-1.5 font-display text-[13px] font-semibold text-ink" style={{ borderColor: c.color }}>
                 <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />
                 <span className="truncate">{c.label}</span>
                 <span className="text-[13px] font-normal text-muted">{list.length}</span>

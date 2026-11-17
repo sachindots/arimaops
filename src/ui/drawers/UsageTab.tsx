@@ -45,20 +45,20 @@ export function UsageTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentCo
         <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
           <div>
             <div className="text-[12px] text-muted">Tokens · {range.label.toLowerCase()}</div>
-            <div className="font-display text-[34px] font-semibold leading-none text-ink">{fmtTokens(shown)}</div>
+            <div className="font-display text-[28px] font-semibold leading-none text-ink">{fmtTokens(shown)}</div>
           </div>
           <div>
             <div className="text-[12px] text-muted">Estimated cost</div>
-            <div className="font-display text-[22px] font-semibold leading-none text-ink">{fmtUsd(mine?.costUsd ?? 0)}</div>
+            <div className="font-display text-[20px] font-semibold leading-none text-ink">{fmtUsd(mine?.costUsd ?? 0)}</div>
           </div>
           <div>
             <div className="text-[12px] text-muted">Share of the team</div>
-            <div className="font-display text-[22px] font-semibold leading-none text-accent">{team ? Math.round((tokens / team) * 100) : 0}%</div>
+            <div className="font-display text-[20px] font-semibold leading-none text-accent">{team ? Math.round((tokens / team) * 100) : 0}%</div>
           </div>
         </div>
         <div className="mt-4">
           <Sparkline data={mine?.series ?? []} width={560} height={64} label={`${agent.name}'s tokens over ${range.label.toLowerCase()}`} />
-          <div className="mt-1 flex justify-between text-[11px] text-muted">
+          <div className="mt-1 flex justify-between text-[12px] text-muted">
             <span>{days === 1 ? "24 h ago" : `${days} days ago`}</span>
             <span>now</span>
           </div>

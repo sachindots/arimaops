@@ -31,7 +31,7 @@ function SpendCaps() {
     <section className="panel p-3">
       <SectionTitle>Spend caps</SectionTitle>
       {spend?.paused && (
-        <div className="mb-2 rounded-lg border border-white/10 bg-[#ff2a4b] px-2 py-1 text-[13px] font-bold text-white" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#ff2a4b] px-2 py-1 text-[13px] font-semibold text-white" role="status">
           Paused: the {spend.paused === "day" ? "daily" : "monthly"} cap is reached. Workers are stopped until {spend.paused === "day" ? "midnight" : "next month"}, or raise the cap.
         </div>
       )}
@@ -59,7 +59,7 @@ function SpendCaps() {
           <input className="field" inputMode="decimal" type="number" min="0.01" step="5" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </Field>
       </div>
-      {!valid && <p className="text-[12px] font-bold">Both caps are above $0, and the daily one is at most the monthly one.</p>}
+      {!valid && <p className="text-[12px] font-semibold">Both caps are above $0, and the daily one is at most the monthly one.</p>}
       <button className="btn mt-2 min-h-[44px]" disabled={!dirty || !valid} onClick={() => officeActions.setSpendCaps({ dailyUsd: d, monthlyUsd: m })}>
         Save caps
       </button>
@@ -79,12 +79,12 @@ function ScopeEditor() {
     <section className="panel p-3">
       <SectionTitle>Scope</SectionTitle>
       {rulesCfg?.labMode && (
-        <div className="mb-2 rounded-lg border border-white/10 bg-[#ffb020] px-2 py-1 text-[13px] font-bold text-ink" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#ffb020] px-2 py-1 text-[13px] font-semibold text-ink" role="status">
           Lab mode is on: agents start without a scope. Use it only for CTFs and practice ranges you're allowed to attack.
         </div>
       )}
       {rulesCfg?.scopeRequired && !rulesCfg.labMode && !scope?.inScope.length && (
-        <p className="mb-2 text-[13px] font-bold">No agent but the lead starts until something is in scope.</p>
+        <p className="mb-2 text-[13px] font-semibold">No agent but the lead starts until something is in scope.</p>
       )}
       <p className="mb-2 text-[13px] text-muted">
         Agents may only touch in-scope targets; out of scope always wins. One per line: <code>example.com</code>, <code>*.example.com</code>, <code>10.0.0.0/24</code>,{" "}

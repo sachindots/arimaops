@@ -51,7 +51,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
 
       {custom && (
         <div className="mt-3 grid grid-cols-2 gap-4">
-          <label className="flex flex-col gap-1 text-[14px]">
+          <label className="flex flex-col gap-1 text-[13px]">
             <span className="flex justify-between font-semibold">
               CPUs <span className="font-term text-[13px]">{draft.cpus} of {machine.cpus}</span>
             </span>
@@ -61,7 +61,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
               onPointerUp={() => save(draft)} onKeyUp={() => save(draft)}
             />
           </label>
-          <label className="flex flex-col gap-1 text-[14px]">
+          <label className="flex flex-col gap-1 text-[13px]">
             <span className="flex justify-between font-semibold">
               Memory <span className="font-term text-[13px]">{fmtGb(draft.memoryGb)} of {fmtGb(maxMem)} max</span>
             </span>

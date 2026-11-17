@@ -5,7 +5,7 @@ import { isViewer, officeActions, selectAttention, useOffice } from "../../store
 import { ui } from "../../store/ui";
 import { useAuth } from "../../store/auth";
 import { ago, Dot, SectionTitle, useNow } from "../kit";
-import { DrawerHeader } from "./Drawer";
+import { DrawerHeader, PageTitle } from "./Drawer";
 
 /** Everything waiting on the user: agents' action items first, then the other things that need them. */
 export function ActionItemsDrawer() {
@@ -26,8 +26,7 @@ export function ActionItemsDrawer() {
   return (
     <>
       <DrawerHeader>
-        <b className="font-display text-[19px] font-semibold">Inbox</b>
-        <span className="text-[13px] text-muted">{a.total ? `${a.total} waiting on you` : "Nothing waiting on you"}</span>
+        <PageTitle title="Inbox" context={<>{a.total ? `${a.total} waiting on you` : "Nothing waiting on you"}</>} />
       </DrawerHeader>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
         <SectionTitle>From agents</SectionTitle>
@@ -44,7 +43,7 @@ export function ActionItemsDrawer() {
         {others > 0 && (
           <>
             <SectionTitle>Also waiting on you</SectionTitle>
-            <ul className="mb-4 flex flex-col gap-1.5 text-[14px]">
+            <ul className="mb-4 flex flex-col gap-1.5 text-[13px]">
               {a.asking.map((s) => (
                 <Row key={`ask-${s.agentId}`} color={agent(s.agentId)?.color} text={`${agent(s.agentId)?.name ?? s.agentId} is asking you something in the terminal`} onOpen={() => ui.openAgent(s.agentId, "terminal")} />
               ))}
@@ -141,16 +140,16 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
     >
       <div className="flex items-start gap-2">
         <b className="flex-1 text-[15px] font-semibold">{item.title}</b>
-        {item.kind === "plan" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>plan · needs approval</span>}
-        {item.kind === "lesson" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>lesson · for the template</span>}
-        {item.kind === "gate" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
-        {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
-        {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
-        {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
-        {item.kind === "send" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>send · {item.send?.connection}</span>}
-        {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff2a4b" }}>spend</span>}
-        {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>lead approved · undoable</span>}
-        {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
+        {item.kind === "plan" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>plan · needs approval</span>}
+        {item.kind === "lesson" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>lesson · for the template</span>}
+        {item.kind === "gate" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
+        {item.kind === "spec" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
+        {item.kind === "skills" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
+        {item.kind === "overflow" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
+        {item.kind === "send" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>send · {item.send?.connection}</span>}
+        {item.kind === "spend" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ff2a4b" }}>spend</span>}
+        {item.kind === "approval" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>lead approved · undoable</span>}
+        {item.waiting && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
         {from && <Dot color={from.color} size={8} />}
@@ -288,7 +287,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
         {list.map((m) => (
           <li key={m.id} className="flex flex-col gap-1 border-t-2 border-dashed border-cream-3 py-2 first:border-t-0">
             <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-              <span className="chip chip-dot text-[11px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#a371f7" }}>
+              <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#a371f7" }}>
                 {m.type}
               </span>
               <span className="font-mono text-muted">{m.id}</span>
@@ -298,7 +297,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
                 </span>
               ))}
             </div>
-            <p className="m-0 text-[14px]">{m.text}</p>
+            <p className="m-0 text-[13px]">{m.text}</p>
             {m.conflict && (
               <p className="m-0 border-l border-orange pl-2 text-[12px]">
                 May contradict certified {m.conflict.id}: “{m.conflict.text}”

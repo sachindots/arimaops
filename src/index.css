@@ -208,7 +208,7 @@ pre:not(.xterm *) {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     padding: 1px 7px;
     border-radius: 6px;
@@ -246,7 +246,7 @@ pre:not(.xterm *) {
   }
   .kbd {
     font-family: var(--font-term);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--border-hairline);
     border-radius: 5px;

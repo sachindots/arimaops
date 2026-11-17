@@ -2,7 +2,7 @@ import type { PullRequest } from "../../data/types";
 import { reviewToolLabel, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { ago, Dot, ReviewChip, SectionTitle, useNow } from "../kit";
-import { DrawerHeader } from "./Drawer";
+import { DrawerHeader, PageTitle } from "./Drawer";
 
 export function PrDrawer() {
   const snap = useOffice((s) => s.snap);
@@ -59,10 +59,7 @@ export function PrDrawer() {
   return (
     <>
       <DrawerHeader>
-        <b className="font-display text-[19px] font-semibold">Pull requests</b>
-        <span className="truncate text-[14px] text-muted">
-          Review: {wf.review.enabled ? reviewToolLabel[wf.review.tool] : "off"} · Merge: {wf.merge.by === "lead" ? "the lead" : "you"}
-        </span>
+        <PageTitle title="Pull requests" context={<>Review: {wf.review.enabled ? reviewToolLabel[wf.review.tool] : "off"} · Merge: {wf.merge.by === "lead" ? "the lead" : "you"}</>} />
       </DrawerHeader>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
         <SectionTitle>Open · {open.length}</SectionTitle>

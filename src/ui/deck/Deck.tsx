@@ -153,7 +153,7 @@ export function Deck() {
               key={g.id}
               type="button"
               onClick={() => go("goals")}
-              className="deck-pill pointer-events-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px]"
+              className="deck-pill pointer-events-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px]"
               title={`${g.title}: ${g.done} of ${g.total} tasks done · $${g.usd.toFixed(2)} spent`}
             >
               <span className="font-term text-muted">{g.id}</span>
@@ -186,9 +186,9 @@ export function Deck() {
         {!home && (
           <motion.main
             key={current}
-            initial={reduce ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className="fixed bottom-0 right-0 z-10 flex min-w-0 bg-[var(--color-grass)]"
             style={{ top: DECK.header, left: DECK.rail }}
           >

@@ -18,7 +18,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div className="hud-glass flex min-w-[150px] flex-1 flex-col gap-1 rounded-lg px-4 py-3">
       <span className="text-[12px] text-muted">{label}</span>
-      <span className={`font-display text-[22px] font-bold leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</span>
+      <span className={`font-display text-[20px] font-semibold leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</span>
     </div>
   );
 }
@@ -37,7 +37,7 @@ export function UsagePage() {
   return (
     <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="m-0 font-display text-[18px] font-bold tracking-tight text-ink">Usage</h1>
+        <h1 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">Usage</h1>
         <span className="text-[13px] text-muted">{snap.config.project.name} · tokens and estimated cost per agent</span>
         <span className="flex-1" />
         <div className="flex gap-1.5" role="group" aria-label="Range">
@@ -94,11 +94,11 @@ export function UsagePage() {
               onClick={() => a && ui.openAgent(a.id, "usage")}
               title={`${fmtTokens(r.input)} fresh input · ${fmtTokens(r.cached)} from cache · ${fmtTokens(r.output)} output`}
             >
-              <span className={`font-display text-[16px] font-semibold ${i === 0 ? "text-accent" : "text-muted"}`}>{i + 1}</span>
+              <span className={`font-display text-[15px] font-semibold ${i === 0 ? "text-accent" : "text-muted"}`}>{i + 1}</span>
               <span className="flex min-w-0 items-center gap-2.5">
                 {a && <Portrait name={a.name} color={a.color} lead={a.isLead} size={28} />}
                 <span className="min-w-0">
-                  <b className="block truncate text-[14px] font-semibold">{a?.name ?? r.agentId}</b>
+                  <b className="block truncate text-[13px] font-semibold">{a?.name ?? r.agentId}</b>
                   <span className="block truncate text-[12px] text-muted">
                     {a ? `${a.role} · ${CLI_LABEL[a.cli] ?? a.cli}${a.model ? ` · ${a.model}` : ""}` : "Removed agent"}
                   </span>
@@ -110,7 +110,7 @@ export function UsagePage() {
               <span className="text-right font-display text-[15px] font-semibold">{fmtTokens(n)}</span>
               <span className="text-right font-display text-[13px] text-muted max-[900px]:hidden">{fmtUsd(r.costUsd)}</span>
               <span className="flex flex-col gap-1 max-[900px]:hidden">
-                <span className="text-[11px] text-muted">{team ? Math.round((n / team) * 100) : 0}%</span>
+                <span className="text-[12px] text-muted">{team ? Math.round((n / team) * 100) : 0}%</span>
                 <Meter value={n} max={usage.max} color={a?.color ?? "#3b82f6"} label={`${a?.name ?? r.agentId}'s share`} />
               </span>
             </button>

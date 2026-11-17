@@ -239,7 +239,7 @@ export function CtoDrawer() {
         {ctoAgent && <Portrait name={ctoAgent.name} color={ctoAgent.color} lead={ctoAgent.isLead} size={36} />}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-[17px] font-semibold">Projects</b>
+            <b className="text-[15px] font-semibold">Projects</b>
             <span className="text-[13px] text-muted">
               {projects.length} {projects.length === 1 ? "project" : "projects"} · {totalDoneAll}/{totalTasksAll} tasks done
             </span>
@@ -328,15 +328,15 @@ export function CtoDrawer() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <b className="text-[16px]">{p.name}</b>
+                      <b className="text-[15px]">{p.name}</b>
                       {p.isCurrent ? (
-                        <span className="chip text-[11px]" style={{ ["--c" as string]: "var(--accent)" }}>
+                        <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--accent)" }}>
                           Viewing
                         </span>
                       ) : p.online ? (
-                        <span className="chip text-[11px]" style={{ ["--c" as string]: p.paused ? "#8b9bb4" : "#3fb950" }}>{p.paused ? "Paused" : "Running"}</span>
+                        <span className="chip text-[12px]" style={{ ["--c" as string]: p.paused ? "#8b9bb4" : "#3fb950" }}>{p.paused ? "Paused" : "Running"}</span>
                       ) : (
-                        <span className="chip text-[11px]" style={{ ["--c" as string]: "#8b9bb4" }} title="Its data is in .arima/arima.db in the folder">
+                        <span className="chip text-[12px]" style={{ ["--c" as string]: "#8b9bb4" }} title="Its data is in .arima/arima.db in the folder">
                           Not loaded
                         </span>
                       )}

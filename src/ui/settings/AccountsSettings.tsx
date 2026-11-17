@@ -33,7 +33,7 @@ export function AccountsSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 text-[14px] text-muted">
+      <p className="m-0 text-[13px] text-muted">
         Give agents an API key or cloud account instead of (or besides) your CLI subscriptions. Keys are encrypted on the server, sent only to the agent
         that uses them when it starts, and hidden as ••••1a2b if anything prints them. Pick an account for an agent in its panel.
       </p>

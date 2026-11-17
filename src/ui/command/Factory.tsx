@@ -88,7 +88,7 @@ function Versions({ versions }: { versions: VersionMetrics[] }) {
     <div className="flex flex-wrap items-center gap-1.5 text-[12px]" aria-label="Template versions">
       <span className="text-muted">Template versions:</span>
       {versions.map((v) => (
-        <span key={`${v.templateId}@${v.version}`} className="chip font-term text-[11px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task, share of checks failed`}>
+        <span key={`${v.templateId}@${v.version}`} className="chip font-term text-[12px]" title={`${v.finished} finished; cost per task, median cycle time, failed gates per task, share of checks failed`}>
           {v.templateId} v{v.version} · {v.finished} done · {cost(v.costPerTask)} · {v.cycleCreated === null ? "—" : hours(v.cycleCreated)} · {v.reworkPerTask === null ? "—" : v.reworkPerTask.toFixed(1)} rework{v.checkFailRate === null ? "" : ` · ${Math.round(v.checkFailRate * 100)}% checks failed`}
         </span>
       ))}
@@ -181,7 +181,7 @@ export function FactoryCard({ projects, live, defaultOpen = true }: { projects: 
   return (
     <section className={`hud-glass flex flex-col gap-2.5 rounded-2xl px-4 ${open ? "py-2.5" : "py-1.5"}`} aria-label="Factory">
       <button className="flex cursor-pointer items-center gap-2 text-left" onClick={toggle} aria-expanded={open}>
-        <b className="text-[14px] font-semibold text-ink">Factory</b>
+        <b className="text-[13px] font-semibold text-ink">Factory</b>
         <span className="text-[12px] text-muted">last {DAYS} days vs prior {DAYS}</span>
         <span className="flex-1" />
         <span className="font-term text-[12px] text-muted">{open ? "▾" : "▸"}</span>

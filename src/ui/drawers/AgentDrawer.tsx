@@ -151,7 +151,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
             {pendingRestart && isRunning && (
               <button
                 type="button"
-                className="btn border-green px-2 py-0.5 text-[11px] text-green"
+                className="btn border-green px-2 py-0.5 text-[12px] text-green"
                 onClick={() => {
                   setPendingRestart(false);
                   officeActions.stopAgent(agent.id);
@@ -169,7 +169,7 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
         <AccessCard request={access} agent={agent} />
       ) : (
         status.note && (
-          <div className={`border-b border-white/[0.08] px-3 py-1.5 text-[14px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
+          <div className={`border-b border-white/[0.08] px-3 py-1.5 text-[13px] ${status.state === "needs-input" ? "bg-[rgba(255,23,68,0.16)] text-red" : "bg-cream-2"}`}>
             {status.note}
             {status.state === "needs-input" && <span className="ml-2 text-muted">— answer in the terminal and press Enter</span>}
           </div>
@@ -216,7 +216,7 @@ function ShellTab({ agent, status }: { agent: AgentConfig; status: AgentStatus }
     if (running) officeActions.openShell(agent.id);
   }, [agent.id, running, n]);
   if (!running)
-    return <div className="p-4 text-[14px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "local" ? "their folder" : agent.mode === "container" ? "their container" : "their sandbox"}.</div>;
+    return <div className="p-4 text-[13px] text-muted">Start {agent.name} first. The shell opens inside {agent.mode === "local" ? "their folder" : agent.mode === "container" ? "their container" : "their sandbox"}.</div>;
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-white/[0.08] bg-cream-2 px-3 py-1 text-[12px] text-muted">
@@ -282,10 +282,10 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
             <span className="min-w-0 flex-1 truncate font-term text-[12px]" title={`${a.title ?? a.host} — ${a.detail}`}>
               {a.title ?? a.host}
             </span>
-            <button className="btn px-1.5 text-[11px]" disabled={busy} onClick={() => act(a.id, "allow")}>
+            <button className="btn px-1.5 text-[12px]" disabled={busy} onClick={() => act(a.id, "allow")}>
               Allow
             </button>
-            <button className="btn px-1.5 text-[11px]" disabled={busy} onClick={() => act(a.id, "dismiss")}>
+            <button className="btn px-1.5 text-[12px]" disabled={busy} onClick={() => act(a.id, "dismiss")}>
               Dismiss
             </button>
           </li>
@@ -304,7 +304,7 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
 function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentConfig }) {
   return (
     <div className="border-b border-white/[0.08] bg-[rgba(255,23,68,0.16)] px-3 py-2">
-      <div className="text-[14px] text-red">
+      <div className="text-[13px] text-red">
         <b>{agent.name}</b> wants to reach <b className="font-term text-[13px]">{request.domain}</b>
       </div>
       <div className="mb-2 text-[13px] text-muted">“{request.reason}”</div>
@@ -371,10 +371,10 @@ function NotRunning({ agent, status }: { agent: AgentConfig; status: AgentStatus
     <div className="grid h-full place-items-center bg-cream-2/70 p-6 text-center text-ink">
       <div className="max-w-[380px]">
         {s.state === "starting" ? (
-          <p className="blink font-term text-[16px] font-semibold text-green">{s.detail ?? "Starting…"}</p>
+          <p className="blink font-term text-[15px] font-semibold text-green">{s.detail ?? "Starting…"}</p>
         ) : (
           <>
-            <p className="mb-2 font-term text-[16px] font-semibold text-ink">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
+            <p className="mb-2 font-term text-[15px] font-semibold text-ink">{s.state === "failed" ? `${agent.name} could not start` : `${agent.name} isn't running`}</p>
             {s.detail && <pre className="mb-3 whitespace-pre-wrap rounded-lg border border-red/40 bg-red/10 px-2.5 py-2 text-left font-term text-[12px] text-red">{s.detail}</pre>}
             <p className="mb-4 text-[13px] text-muted">
               {agent.mode === "sandbox"
@@ -440,10 +440,10 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
       <SectionTitle>Current task</SectionTitle>
       {task ? (
         <div className="panel mb-4 px-3 py-2">
-          <div className="font-term text-[14px] text-muted">{task.id} · {snap.boards.find((b) => b.id === task.boardId)?.title}</div>
-          <b className="text-[17px]">{task.title}</b>
-          <div className="mt-1 text-[14px]">Status: {task.status}{task.note ? ` — ${task.note}` : ""}</div>
-          {task.description && <p className="mt-1 whitespace-pre-wrap text-[14px]">{task.description}</p>}
+          <div className="font-term text-[13px] text-muted">{task.id} · {snap.boards.find((b) => b.id === task.boardId)?.title}</div>
+          <b className="text-[15px]">{task.title}</b>
+          <div className="mt-1 text-[13px]">Status: {task.status}{task.note ? ` — ${task.note}` : ""}</div>
+          {task.description && <p className="mt-1 whitespace-pre-wrap text-[13px]">{task.description}</p>}
           {!!task.files?.length && (
             <div className="mt-1 text-[13px]">
               Files: {task.files.map((f) => <code key={f} className="mr-1 bg-cream-2 px-1 font-term text-[12px]">{f}</code>)}
@@ -456,12 +456,12 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
             </div>
           )}
           {task.needs.length > 0 && (
-            <div className="text-[14px]">
+            <div className="text-[13px]">
               Needs: {task.needs.map((n) => `${n} (${snap.tasks.find((t) => t.id === n)?.status ?? "?"})`).join(", ")}
             </div>
           )}
           {pr && (
-            <div className="mt-2 flex items-center gap-2 text-[14px]">
+            <div className="mt-2 flex items-center gap-2 text-[13px]">
               <button className="font-semibold underline" onClick={() => ui.openPrs()}>
                 PR #{pr.number}
               </button>
@@ -498,7 +498,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
   const sb = agent.sandbox;
   const actual = snap.agents.find((a) => a.agentId === agent.id)?.session.sandbox;
   const row = (k: string, v: ReactNode) => (
-    <div className="grid grid-cols-[140px_1fr] gap-2 border-t border-dashed border-cream-3 py-1.5 text-[14px] first:border-t-0">
+    <div className="grid grid-cols-[140px_1fr] gap-2 border-t border-dashed border-cream-3 py-1.5 text-[13px] first:border-t-0">
       <span className="text-muted">{k}</span>
       <span className="min-w-0 break-words">{v}</span>
     </div>
@@ -524,7 +524,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
             <span className="text-muted">Sandbox mode only</span>
           ) : (agent.mcp ?? []).length ? (
             (agent.mcp ?? []).map((n) => (
-              <span key={n} className="chip mb-1 mr-1 font-term text-[14px]" title={(snap.mcp?.attached[agent.id] ?? []).includes(n) ? "Attached" : "Attaches on next start"}>
+              <span key={n} className="chip mb-1 mr-1 font-term text-[13px]" title={(snap.mcp?.attached[agent.id] ?? []).includes(n) ? "Attached" : "Attaches on next start"}>
                 {n}
                 {(snap.mcp?.attached[agent.id] ?? []).includes(n) ? "" : " · next start"}
               </span>
@@ -540,7 +540,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
         {row(
           "Service keys",
           [...snap.sbx.globalKeys.map((k) => `${k} (all)`), ...(snap.sbx.agents[agent.id]?.keys ?? [])].map((k) => (
-            <span key={k} className="chip mb-1 mr-1 font-term text-[14px]">
+            <span key={k} className="chip mb-1 mr-1 font-term text-[13px]">
               {k}
             </span>
           )),
@@ -553,7 +553,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
           <SectionTitle>Environment</SectionTitle>
           <button className="panel mb-4 block w-full px-3 py-2 text-left" onClick={() => ui.openEnv(env.name)}>
             <div className="font-term text-[13px]">{env.url}</div>
-            <div className="text-[14px] text-muted">
+            <div className="text-[13px] text-muted">
               {env.status} · deployed {ago(env.lastDeployAt, now)} ago
             </div>
           </button>
@@ -607,7 +607,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
                   )}
                   <span className="ml-auto font-term text-[12px]">{ago(m.at, now)}</span>
                 </div>
-                <MessageText body={view.body} className="mt-0.5 text-[14px] leading-6" />
+                <MessageText body={view.body} className="mt-0.5 text-[13px] leading-6" />
               </li>
             );
           })}
@@ -625,7 +625,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
           Send
         </button>
       </form>
-      <p className="bg-cream px-2 pb-1.5 text-[11px] text-muted">
+      <p className="bg-cream px-2 pb-1.5 text-[12px] text-muted">
         {running ? "Delivered now if idle, otherwise when the current turn ends." : `${agent.name} isn't running; it's delivered after Start.`}
       </p>
     </div>

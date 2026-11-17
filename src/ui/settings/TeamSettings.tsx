@@ -59,7 +59,7 @@ function TeamMode() {
         </button>
       </div>
       <p className="mt-2 text-[12px] text-muted">Stopped agents switch now. Running ones keep going and switch at their next start, so no task is cut off.</p>
-      {mode === "container" && !containerReady && <p className="mt-1 text-[12px] font-bold">Container mode isn't ready on this machine yet: see the setup checklist (Docker, the agent image, the proxy firewall rule).</p>}
+      {mode === "container" && !containerReady && <p className="mt-1 text-[12px] font-semibold">Container mode isn't ready on this machine yet: see the setup checklist (Docker, the agent image, the proxy firewall rule).</p>}
     </section>
   );
 }
@@ -204,7 +204,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
               {[...(customSkills ?? []).map((id) => ({ id, description: "Your own skill (~/.arima/skills or .arima/skills)" })), ...BUILTIN_SKILLS].map((sk) => {
                 const on = role.skills.includes(sk.id);
                 return (
-                  <button key={sk.id} type="button" className="btn px-1.5 py-0.5 font-term text-[14px]" aria-pressed={on} title={sk.description} onClick={() => toggleSkill(sk.id)}>
+                  <button key={sk.id} type="button" className="btn px-1.5 py-0.5 font-term text-[13px]" aria-pressed={on} title={sk.description} onClick={() => toggleSkill(sk.id)}>
                     {on ? "✓ " : "+ "}
                     {sk.id}
                   </button>

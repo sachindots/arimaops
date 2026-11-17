@@ -198,7 +198,7 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
         {KEYS.map(([label, seq]) => (
           <button
             key={label}
-            className="btn min-w-[44px] shrink-0 px-2 py-1.5 font-mono text-[14px]"
+            className="btn min-w-[44px] shrink-0 px-2 py-1.5 font-mono text-[13px]"
             aria-pressed={label === "Ctrl" ? ctrlOn : undefined}
             // Keep the terminal (and the on-screen keyboard) focused.
             onPointerDown={(e) => e.preventDefault()}

@@ -33,7 +33,7 @@ export function RemoveAgentDialog({ agent, onClose }: { agent: AgentConfig; onCl
         <h3 className="mb-1 font-display text-[20px] font-semibold">Remove {agent.name} from the team?</h3>
         <p className="mb-3 text-[13px] text-muted">Their session stops, and their unfinished tasks go back to the board.</p>
 
-        {loading && <p className="blink mb-3 font-term text-[14px]">Checking {agent.name}'s folder…</p>}
+        {loading && <p className="blink mb-3 font-term text-[13px]">Checking {agent.name}'s folder…</p>}
 
         {info && (
           <div className="mb-3 flex flex-col gap-2.5">

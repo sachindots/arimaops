@@ -18,7 +18,7 @@ export function McpSettings() {
   const [signingIn, setSigningIn] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", url: "", apiKey: "", command: "", args: "", local: false });
-  if (!mcp) return <p className="text-[14px] text-muted">Loading MCP servers…</p>;
+  if (!mcp) return <p className="text-[13px] text-muted">Loading MCP servers…</p>;
 
   const servers = mcp.servers;
   const sandboxed = team.filter((a) => a.mode === "sandbox");
@@ -42,7 +42,7 @@ export function McpSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 text-[14px] text-muted">
+      <p className="m-0 text-[13px] text-muted">
         MCP servers come from Docker Sandboxes' registry. Each one runs through sbx's gateway, so its sign-in or key never enters a sandbox. Tick a server
         for an agent and it's attached right away if the agent is running; agents don't need a restart.
       </p>
@@ -127,7 +127,7 @@ export function McpSettings() {
           {sandboxed.length === 0 ? (
             <p className="text-[13px] text-muted">MCP servers attach to sandboxes. All agents are in Local mode.</p>
           ) : (
-            <table className="w-full panel text-[14px]">
+            <table className="w-full panel text-[13px]">
               <thead>
                 <tr className="bg-cream-2 text-left">
                   <th className="px-3 py-1.5">Server</th>
@@ -148,7 +148,7 @@ export function McpSettings() {
                       return (
                         <td key={a.id} className="px-3 py-1.5 text-center">
                           <input type="checkbox" checked={on} aria-label={`${s.name} for ${a.name}`} onChange={(e) => toggle(a.id, s.name, e.target.checked)} />
-                          {on && !attached && <div className="text-[11px] text-muted">on next start</div>}
+                          {on && !attached && <div className="text-[12px] text-muted">on next start</div>}
                         </td>
                       );
                     })}

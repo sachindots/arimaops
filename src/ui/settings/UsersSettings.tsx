@@ -51,7 +51,7 @@ export function UsersSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 flex flex-wrap items-center gap-2 text-[14px] text-muted">
+      <p className="m-0 flex flex-wrap items-center gap-2 text-[13px] text-muted">
         {user ? (
           <>
             Signed in as <b className="text-ink">{user.name}</b> ({role}).
@@ -76,13 +76,13 @@ export function UsersSettings() {
         }}>
           <SectionTitle>Change your password</SectionTitle>
           <p className="m-0 text-[13px] text-muted">Use your current password to set a new one. Other devices will be signed out.</p>
-          <label className="flex flex-col gap-1 text-[14px]">Current password
+          <label className="flex flex-col gap-1 text-[13px]">Current password
             <input className="field" type="password" autoComplete="current-password" required value={passwords.current} onChange={(e) => setPasswords({ ...passwords, current: e.target.value })} />
           </label>
-          <label className="flex flex-col gap-1 text-[14px]">New password
+          <label className="flex flex-col gap-1 text-[13px]">New password
             <input className="field" type="password" autoComplete="new-password" minLength={10} maxLength={200} required value={passwords.next} onChange={(e) => setPasswords({ ...passwords, next: e.target.value })} />
           </label>
-          <label className="flex flex-col gap-1 text-[14px]">Confirm new password
+          <label className="flex flex-col gap-1 text-[13px]">Confirm new password
             <input className="field" type="password" autoComplete="new-password" minLength={10} maxLength={200} required value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} />
           </label>
           <button className="btn self-start border-green text-green" type="submit" disabled={changingPassword}>

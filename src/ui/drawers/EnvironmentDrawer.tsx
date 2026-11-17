@@ -16,7 +16,7 @@ export function EnvironmentDrawer({ name }: { name: string }) {
   return (
     <>
       <DrawerHeader>
-        <b className="text-[18px]">Environment: {name}</b>
+        <b className="text-[20px]">Environment: {name}</b>
         {env && (
           <span className={`chip chip-dot ${env.status === "deploying" ? "blink" : ""}`} style={{ ["--c" as string]: STATUS_COLOR[env.status] }}>
             {env.status}
@@ -28,8 +28,8 @@ export function EnvironmentDrawer({ name }: { name: string }) {
           <p className="text-muted">This environment no longer exists.</p>
         ) : (
           <>
-            <div className="panel mb-4 px-3 py-2 text-[14px]">
-              <div className="font-term text-[14px]">{env.url}</div>
+            <div className="panel mb-4 px-3 py-2 text-[13px]">
+              <div className="font-term text-[13px]">{env.url}</div>
               <div className="mt-1 text-muted">
                 {tool} · last deploy {ago(env.lastDeployAt, now)} ago
               </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { FINDING_STATUSES, SEVERITIES, type Finding, type Severity } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, SectionTitle, useNow } from "../kit";
-import { DrawerHeader } from "./Drawer";
+import { DrawerHeader, PageTitle } from "./Drawer";
 
 export const SEVERITY_COLOR: Record<Severity, string> = { critical: "#ff2a4b", high: "#ff7a1a", medium: "#ffb020", low: "#818cf8", info: "#8b9bb4" };
 
@@ -27,10 +27,7 @@ export function FindingsDrawer() {
   return (
     <>
       <DrawerHeader>
-        <b className="font-display text-[19px] font-semibold">Findings</b>
-        <span className="text-[13px] text-muted">
-          {open.length} open of {all.length}
-        </span>
+        <PageTitle title="Findings" context={<>{open.length} open of {all.length}</>} />
       </DrawerHeader>
       <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 min-[1100px]:flex-row min-[1100px]:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -59,7 +56,7 @@ export function FindingsDrawer() {
             <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide fixed, accepted and false positives
           </label>
           {list.length === 0 ? (
-            <p className="m-0 rounded-lg border border-[var(--border-hairline)] px-4 py-6 text-center text-[14px] text-muted">
+            <p className="m-0 rounded-lg border border-[var(--border-hairline)] px-4 py-6 text-center text-[13px] text-muted">
               {all.length ? "Nothing here with this filter." : "No findings yet. Agents add them with report_finding as they test in-scope targets."}
             </p>
           ) : (

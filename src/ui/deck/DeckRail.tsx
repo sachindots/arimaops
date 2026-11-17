@@ -106,7 +106,7 @@ function UserMenu() {
     <div ref={box} className="relative">
       <button
         type="button"
-        className="deck-avatar relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold"
+        className="deck-avatar relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[12px] font-semibold"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${name}: menu`}

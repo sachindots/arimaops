@@ -25,6 +25,16 @@ function useDesktop(): boolean {
   return wide;
 }
 
+/** Every page's heading: title, then one line of context. Actions go after it in the DrawerHeader. */
+export function PageTitle({ title, context }: { title: string; context?: ReactNode }) {
+  return (
+    <>
+      <h1 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">{title}</h1>
+      {context !== undefined && <span className="min-w-0 truncate text-[13px] text-muted">{context}</span>}
+    </>
+  );
+}
+
 export function DrawerHeader({ children }: { children: ReactNode }) {
   const desktop = useDesktop();
   const drawer = useUi((s) => s.drawer);
@@ -129,9 +139,9 @@ export function DrawerHost() {
         onMouseDown={(e) => e.target === e.currentTarget && ui.closeDrawer()}
       >
         <motion.div
-          initial={reduce ? false : { y: -16, opacity: 0 }}
+          initial={reduce ? false : { y: -8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
           className="panel flex h-[90vh] w-[90vw] flex-col"
         >
           <BoardsDrawer initialBoardId={drawer.boardId} />

@@ -24,7 +24,7 @@ const STATE: Record<Mode, { dot: string; label: string; badge: string }> = {
   "needs-input": {
     dot: "bg-amber-500 animate-pulse",
     label: "Needs Attention",
-    badge: "border-amber-400/60 bg-amber-500/15 font-bold text-amber-900 [[data-scheme=dark]_&]:text-amber-300",
+    badge: "border-amber-400/60 bg-amber-500/15 font-semibold text-amber-900 [[data-scheme=dark]_&]:text-amber-300",
   },
   alert: {
     dot: "bg-red-500 animate-pulse",
@@ -136,7 +136,7 @@ export function AgentOrbit({
           style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.r * 1.06 }}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${redTeamProject ? "bg-red-500 animate-pulse" : "bg-cyan-500"}`} />
-          <span className="font-bold text-ink">{projectName}</span>
+          <span className="font-semibold text-ink">{projectName}</span>
           <span className="text-muted/40">·</span>
           <span>{compact ? caption : statusText}</span>
         </div>
@@ -198,20 +198,20 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
         >
           <Portrait name={config.name} color={config.color} lead={!!config.isLead} size={24} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12px] font-bold leading-tight text-ink">{config.name}</span>
-            <span className="block truncate text-[11px] text-muted">
+            <span className="block truncate text-[12px] font-semibold leading-tight text-ink">{config.name}</span>
+            <span className="block truncate text-[12px] text-muted">
               {config.role} · {CLI_LABEL[config.cli] ?? config.cli}
             </span>
           </span>
         </button>
-        <span className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] ${st.badge}`}>
+        <span className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[12px] ${st.badge}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
           <span>{st.label}</span>
         </span>
       </div>
 
       {/* Task / note description */}
-      <p className="m-0 mb-2.5 truncate text-[11px] text-muted" title={line}>
+      <p className="m-0 mb-2.5 truncate text-[12px] text-muted" title={line}>
         {line}
       </p>
 
@@ -221,7 +221,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
           <button
             type="button"
             onClick={() => ui.openActions()}
-            className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded bg-amber-500 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-amber-600"
+            className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded bg-amber-500 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600"
           >
             <Icon name="check" size={14} />
             <span>Authorize</span>
@@ -229,26 +229,26 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
           <button
             type="button"
             onClick={() => ui.openAgent(config.id)}
-            className="cursor-pointer rounded border border-[var(--border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="cursor-pointer rounded border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:bg-cream-2 hover:text-ink"
           >
             Details
           </button>
         </div>
       ) : (
-        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] pt-1.5 text-[11px] text-muted">
+        <div className="flex items-center justify-between border-t border-[var(--border-hairline)] pt-1.5 text-[12px] text-muted">
           <span>{fmtTokens(shown)} tok</span>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => ui.openAgent(config.id, "messages")}
-              className="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+              className="cursor-pointer rounded px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             >
               Chat
             </button>
             <button
               type="button"
               onClick={() => ui.openAgent(config.id, "terminal")}
-              className="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+              className="cursor-pointer rounded px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             >
               Terminal
             </button>
@@ -256,7 +256,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
               <button
                 type="button"
                 onClick={() => (running ? officeActions.stopAgent(config.id) : officeActions.startAgent(config.id))}
-                className={`cursor-pointer rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${running ? "text-red hover:bg-red/10" : "text-accent hover:bg-cream-2"}`}
+                className={`cursor-pointer rounded px-1.5 py-0.5 text-[12px] font-medium transition-colors ${running ? "text-red hover:bg-red/10" : "text-accent hover:bg-cream-2"}`}
               >
                 {running ? "Stop" : status.session.state === "starting" ? "…" : "Start"}
               </button>
@@ -282,8 +282,8 @@ function SmallCard({ m, selected, use }: { m: Member; selected: boolean; use?: A
     >
       <Portrait name={config.name} color={config.color} lead={!!config.isLead} size={22} />
       <span className="min-w-0 flex-1">
-        <b className="block truncate text-[12px] font-bold text-ink">{config.name}</b>
-        <span className="block truncate text-[11px] text-muted">
+        <b className="block truncate text-[12px] font-semibold text-ink">{config.name}</b>
+        <span className="block truncate text-[12px] text-muted">
           {st.label}
           {use && <span> · {fmtTokens(use.input + use.cached + use.output)}</span>}
         </span>
@@ -304,9 +304,9 @@ function NodeCard({ m, selected, use }: { m: Member; selected: boolean; use?: Ag
       title={`${config.name} · ${config.role} · ${st.label}`}
     >
       <Portrait name={config.name} color={config.color} lead={false} size={32} />
-      <b className="max-w-full truncate text-[12px] font-bold leading-tight text-ink">{config.name}</b>
-      <span className="text-[11px] leading-tight text-muted">{st.label}</span>
-      {use && <span className="font-display text-[11px] leading-tight text-muted">{fmtTokens(use.input + use.cached + use.output)} tok</span>}
+      <b className="max-w-full truncate text-[12px] font-semibold leading-tight text-ink">{config.name}</b>
+      <span className="text-[12px] leading-tight text-muted">{st.label}</span>
+      {use && <span className="font-display text-[12px] leading-tight text-muted">{fmtTokens(use.input + use.cached + use.output)} tok</span>}
     </button>
   );
 }

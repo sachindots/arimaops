@@ -59,7 +59,7 @@ export function StageRibbon({ snap, theme }: { snap: OfficeSnapshot; theme: Them
         })}
       </nav>
 
-      <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted" role="status">
+      <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted" role="status">
         <span className={`h-1.5 w-1.5 rounded-full ${!live || connection === "open" ? "bg-green" : "bg-amber"}`} aria-hidden="true" />
         <span>{state}</span>
       </div>

@@ -35,7 +35,7 @@ export function DeckHeader({ snap, theme, workingCount }: { snap: OfficeSnapshot
         <div className="flex items-center gap-2.5">
           <Logo size={32} />
           <div className="flex items-center gap-2">
-            <span className="hidden text-[14px] font-extrabold tracking-tight text-ink sm:inline">ArimaOps</span>
+            <span className="hidden text-[13px] font-semibold tracking-tight text-ink sm:inline">ArimaOps</span>
             <span className="hidden text-muted/40 sm:inline" aria-hidden="true">
               /
             </span>
@@ -87,7 +87,7 @@ export function DeckHeader({ snap, theme, workingCount }: { snap: OfficeSnapshot
           <button
             type="button"
             onClick={() => ui.openActions()}
-            className="deck-need flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition-colors"
+            className="deck-need flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
             title="Open the Operator Inbox"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-amber animate-pulse" />

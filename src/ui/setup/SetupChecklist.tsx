@@ -26,15 +26,15 @@ function CheckRow({ c, running, onRun }: { c: SetupCheck; running: boolean; onRu
   return (
     <li className="border-t-2 border-dashed border-cream-3 py-2.5 first:border-t-0">
       <div className="flex items-start gap-2.5">
-        <span className="w-4 shrink-0 text-center font-display text-[18px] font-semibold leading-6" style={{ color }} aria-label={c.status}>
+        <span className="w-4 shrink-0 text-center font-display text-[20px] font-semibold leading-6" style={{ color }} aria-label={c.status}>
           {icon}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <b className="text-[16px]">{c.label}</b>
+            <b className="text-[15px]">{c.label}</b>
             <span className="text-[12px] text-muted">{NEEDED[c.neededFor]}</span>
           </div>
-          <div className="text-[14px] text-muted">{c.detail}</div>
+          <div className="text-[13px] text-muted">{c.detail}</div>
           {c.fix && c.status !== "ok" && (
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               {c.fix.command && (
@@ -82,13 +82,13 @@ export function SetupChecklist() {
     <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="Setup checklist">
       <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col overflow-hidden rounded-xl border">
         <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
-          <h2 className="m-0 flex-1 font-display text-[18px] font-bold tracking-tight text-ink">Get {BRAND.name} ready</h2>
+          <h2 className="m-0 flex-1 font-display text-[20px] font-semibold tracking-tight text-ink">Get {BRAND.name} ready</h2>
           <button className="btn text-[13px]" onClick={() => officeActions.recheckSetup()}>
             Check again
           </button>
         </div>
         <div className="scroll-thin min-h-0 overflow-y-auto px-4 py-2">
-          <div className="mb-2 flex flex-wrap gap-2 text-[14px]">
+          <div className="mb-2 flex flex-wrap gap-2 text-[13px]">
             <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#3fb950" : "#ff2a4b" }}>
               Sandboxes {setup.sandboxReady ? "ready" : "not ready"}
             </span>
@@ -132,7 +132,7 @@ export function SetupChecklist() {
             </div>
           )}
           {!setup.sandboxReady && setup.localReady && (
-            <p className="mb-2 border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[14px]">
+            <p className="mb-2 border border-orange bg-[rgba(192,77,255,0.14)] px-3 py-2 text-[13px]">
               Sandboxes aren't available here, but Local mode is. Set agents to <b>Local</b> in Settings → Team. They run plain Claude Code in their own folder, with permission prompts on.
             </p>
           )}

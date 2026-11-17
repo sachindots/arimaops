@@ -97,7 +97,7 @@ function Stepper({ task }: { task: Task }) {
           return (
             <li key={s.id} className="flex min-w-0 flex-1 items-center" aria-current={state === "now" ? "step" : undefined}>
               <span
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-bold"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[12px] font-semibold"
                 style={{
                   borderColor: state === "next" ? "var(--border-strong)" : state === "done" ? "#10b981" : "var(--accent)",
                   background: state === "done" ? "#10b981" : "transparent",
@@ -139,7 +139,7 @@ function Checks({ scores }: { scores: TaskScore[] }) {
           <span className="min-w-0">
             <b className="font-semibold">{SCORERS[x.scorer]?.label ?? x.scorer}</b>
             <span className="text-muted"> · {x.reason}</span>
-            {x.costUsd ? <span className="ml-1 font-mono text-[11px] text-muted">${x.costUsd.toFixed(3)}</span> : null}
+            {x.costUsd ? <span className="ml-1 font-mono text-[12px] text-muted">${x.costUsd.toFixed(3)}</span> : null}
           </span>
         </li>
       ))}
@@ -166,7 +166,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
           return (
             <a key={s.file} href={url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-cream-2" title={`${s.label}: open full size`}>
               {video ? <video src={url} className="aspect-[4/3] w-full object-cover object-top" muted controls /> : <img src={url} alt={s.label} loading="lazy" className="aspect-[4/3] w-full object-cover object-top transition-opacity group-hover:opacity-90" />}
-              <span className="block truncate px-1.5 py-1 text-[11px] text-muted">{s.label}</span>
+              <span className="block truncate px-1.5 py-1 text-[12px] text-muted">{s.label}</span>
             </a>
           );
         })}
@@ -195,7 +195,7 @@ function Timeline({ history, name }: { history: History; name: (id: string | nul
         <li key={i} className="flex items-baseline gap-2">
           <span className="inline-block h-2 w-2 shrink-0 translate-y-[-1px] rounded-full" style={{ background: r.dot }} />
           <span className="min-w-0 flex-1">{r.text}</span>
-          <span className="shrink-0 font-mono text-[11px] text-muted" title={new Date(r.at).toLocaleString()}>
+          <span className="shrink-0 font-mono text-[12px] text-muted" title={new Date(r.at).toLocaleString()}>
             {ago(new Date(r.at).toISOString(), now)}
           </span>
         </li>
@@ -301,13 +301,13 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {task.prNumber && (pr?.url ? <a className="underline" href={pr.url} target="_blank" rel="noreferrer">PR #{task.prNumber}</a> : <span>PR #{task.prNumber}</span>)}
               {task.templateVersion && template && <span title="The template version it ran under">{template.id} v{task.templateVersion}</span>}
             </div>
-            <h2 className="m-0 mt-1 font-display text-[21px] font-semibold leading-snug">{task.title}</h2>
+            <h2 className="m-0 mt-1 font-display text-[20px] font-semibold leading-snug">{task.title}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="chip text-[11px]" style={{ ["--c" as string]: st.color }}>{st.label}</span>
-              {failed > 0 && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
-              {task.evidence && <span className="chip text-[11px]" style={{ ["--c" as string]: "#4fb3c4" }}>evidence</span>}
-              {task.benchmark && <span className="chip text-[11px]" style={{ ["--c" as string]: "#9085e9" }}>in suite</span>}
-              {task.highStakes && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ff2a4b" }}>high-stakes</span>}
+              <span className="chip text-[12px]" style={{ ["--c" as string]: st.color }}>{st.label}</span>
+              {failed > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
+              {task.evidence && <span className="chip text-[12px]" style={{ ["--c" as string]: "#4fb3c4" }}>evidence</span>}
+              {task.benchmark && <span className="chip text-[12px]" style={{ ["--c" as string]: "#9085e9" }}>in suite</span>}
+              {task.highStakes && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ff2a4b" }}>high-stakes</span>}
             </div>
           </div>
           <button
@@ -347,7 +347,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {(task.files?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {task.files!.map((f) => (
-                    <code key={f} className="rounded-md border border-[var(--border-hairline)] bg-cream-2 px-1.5 py-0.5 text-[11px] text-ink">{f}</code>
+                    <code key={f} className="rounded-md border border-[var(--border-hairline)] bg-cream-2 px-1.5 py-0.5 text-[12px] text-ink">{f}</code>
                   ))}
                 </div>
               )}
@@ -384,7 +384,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {task.benchmark ? (
                 <p className="m-0 text-[12px] text-muted">
                   In the suite. Replay it on other models from a terminal (paid, asks first):
-                  <code className="mt-1 block break-all rounded-md border border-[var(--border-hairline)] bg-cream-2 px-2 py-1 text-[11px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
+                  <code className="mt-1 block break-all rounded-md border border-[var(--border-hairline)] bg-cream-2 px-2 py-1 text-[12px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
                 </p>
               ) : isViewer ? null : (
                 <button className="btn min-h-[40px] px-3 text-[12px]" onClick={() => officeActions.addToSuite(task.id)} title="Save this task (brief, base commit, template, checks) to ~/.arima-bench/suite so it can be replayed on other models. Free.">

@@ -40,7 +40,7 @@ export function TerminalDrawer() {
     <>
       <DrawerHeader>
         <div className="min-w-0">
-          <b className="text-[18px]">Terminal</b>
+          <b className="text-[20px]">Terminal</b>
           <div className="truncate text-[13px] text-muted">Your own shell on this machine, not in a sandbox.</div>
         </div>
       </DrawerHeader>

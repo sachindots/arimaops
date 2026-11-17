@@ -10,7 +10,7 @@ export function RoleBadge({ role, color, compact = false }: { role: string; colo
   return (
     <span
       className={`inline-flex items-center truncate rounded-md border font-medium ${
-        compact ? "max-w-full px-1 py-0 text-[11px] leading-[14px]" : "max-w-[18ch] px-1.5 py-0.5 text-[12px] leading-tight"
+        compact ? "max-w-full px-1 py-0 text-[12px] leading-[14px]" : "max-w-[18ch] px-1.5 py-0.5 text-[12px] leading-tight"
       }`}
       style={{ color, borderColor: `${color}66`, backgroundColor: `${color}18` }}
       title={role}
@@ -55,11 +55,11 @@ export function Logo({ size = 32 }: { size?: number }) {
 export function Portrait({ color, lead, size = 32, name }: { color: string; lead: boolean; size?: number; name?: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-md font-bold text-white"
+      className="inline-flex shrink-0 items-center justify-center rounded-md font-semibold text-white"
       style={{
         width: size,
         height: size,
-        fontSize: Math.max(10, Math.round(size * 0.42)),
+        fontSize: [12, 13, 15, 20, 28].reduce((a, b) => (Math.abs(b - size * 0.42) < Math.abs(a - size * 0.42) ? b : a)), // nearest size on the type scale
         background: lead ? "#0f172a" : color,
       }}
       title={lead ? "Lead" : undefined}
@@ -81,7 +81,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[14px] font-semibold">{label}</span>
+      <span className="text-[13px] font-semibold">{label}</span>
       {children}
       {hint && <span className="text-[12px] text-muted">{hint}</span>}
     </label>
@@ -133,7 +133,7 @@ const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ?
 export function TokensChip({ usage }: { usage: Tokens }) {
   const total = usage.input + usage.cached + usage.output;
   return (
-    <span className="chip text-[11px]" title={`${short(usage.input)} fresh input · ${short(usage.cached)} from cache · ${short(usage.output)} output`}>
+    <span className="chip text-[12px]" title={`${short(usage.input)} fresh input · ${short(usage.cached)} from cache · ${short(usage.output)} output`}>
       {short(total)} tok
     </span>
   );

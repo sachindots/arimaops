@@ -30,7 +30,7 @@ export function StackSettings() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 text-[14px] text-muted">
+      <p className="m-0 text-[13px] text-muted">
         Optional. Tell the agents what this project is built with: they'll get it in their ROLE.md, the tools' agent skills, and access to their docs once you allow it.
         Skip it and agents work as before.
       </p>
@@ -89,10 +89,10 @@ function SkillPacks() {
           <li key={p.source} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t-2 border-dashed border-cream-3 pt-1.5 text-[13px]">
             <b className="font-mono">{p.source}</b>
             <span className="font-mono text-muted">@{p.commit.slice(0, 7)}</span>
-            <span className="chip text-[11px]" style={{ ["--c" as string]: PACK_STATUS[p.status][1] }}>
+            <span className="chip text-[12px]" style={{ ["--c" as string]: PACK_STATUS[p.status][1] }}>
               {PACK_STATUS[p.status][0]}
             </span>
-            {p.use === "scoped-offensive" && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ff4d6d" }}>offensive · scoped projects only</span>}
+            {p.use === "scoped-offensive" && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ff4d6d" }}>offensive · scoped projects only</span>}
             <span className="w-full text-[12px] text-muted">
               {p.use === "github-action" ? "A GitHub Action, offered as a workflow file" : `${p.skills} skill${p.skills === 1 ? "" : "s"}`} · licence {p.licence ?? "none stated"}
               {p.credit ? ` · credit ${p.credit}` : ""}
@@ -198,7 +198,7 @@ function Skills({ id }: { id: string }) {
     <div className="flex flex-wrap items-center gap-1.5 pb-1 text-[12px]">
       {t.skills.length ? (
         t.skills.map((s) => (
-          <span key={s.source} className="chip font-term text-[14px]" title={s.skills.join(", ")}>
+          <span key={s.source} className="chip font-term text-[13px]" title={s.skills.join(", ")}>
             {s.skills.length} skill{s.skills.length === 1 ? "" : "s"} · {s.source}
           </span>
         ))
@@ -206,7 +206,7 @@ function Skills({ id }: { id: string }) {
         <span className="text-muted">No agent skills listed</span>
       )}
       {t.mcp && (
-        <span className="chip font-term text-[14px]" title={t.mcp}>
+        <span className="chip font-term text-[13px]" title={t.mcp}>
           MCP
         </span>
       )}

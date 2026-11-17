@@ -37,7 +37,7 @@ export function OwnerPrompt() {
       <div className="panel flex w-full max-w-[440px] flex-col gap-3 p-5">
         {made ? (
           <>
-            <b className="text-[18px]">You're the owner, {made.name}</b>
+            <b className="text-[20px]">You're the owner, {made.name}</b>
             <AuthenticatorLink url={made.otpauth} who={made.name} />
             <p className="m-0 text-[13px] text-muted">Add people in Settings → Users. Other devices now sign in with a name and password.</p>
             <button className="btn border-green text-green" onClick={() => (setMade(null), void checkAuth())}>
@@ -46,7 +46,7 @@ export function OwnerPrompt() {
           </>
         ) : (
           <>
-            <b className="text-[18px]">Make this {BRAND.name} yours</b>
+            <b className="text-[20px]">Make this {BRAND.name} yours</b>
             <p className="m-0 text-[13px] text-muted">
               Create the owner sign-in. Then teammates get their own sign-ins and roles, every action is logged with who did it, and the start-up link stops
               working from other devices.

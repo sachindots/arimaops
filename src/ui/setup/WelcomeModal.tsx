@@ -39,7 +39,7 @@ export function WelcomeModal() {
     <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
       <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
         <div className="border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
-          <h2 className="m-0 font-display text-[19px] font-bold tracking-tight text-ink">
+          <h2 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">
             Welcome to <span className="text-accent">{BRAND.name}</span>
           </h2>
           <p className="m-0 mt-0.5 text-[13px] text-muted">
@@ -53,7 +53,7 @@ export function WelcomeModal() {
           </Field>
 
           <section>
-            <h3 className="mb-1.5 font-display text-[14px] font-bold text-ink">Team template</h3>
+            <h3 className="mb-1.5 font-display text-[13px] font-semibold text-ink">Team template</h3>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Team template">
               {library.map(({ template: t, builtin, problems }) => (
                 <button
@@ -65,9 +65,9 @@ export function WelcomeModal() {
                   onClick={() => setTemplateId(t.id)}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
-                    <b className="text-[14px]">{t.name}</b>
-                    {!builtin && <span className="chip text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>yours · v{t.version}</span>}
-                    {problems.length > 0 && <span className="chip text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>waits for you</span>}
+                    <b className="text-[13px]">{t.name}</b>
+                    {!builtin && <span className="chip text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>yours · v{t.version}</span>}
+                    {problems.length > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>waits for you</span>}
                   </span>
                   <span className="text-[12px] leading-snug text-muted">{t.description}</span>
                   <span className="flex flex-wrap gap-1">
@@ -101,9 +101,9 @@ export function WelcomeModal() {
 
           {usesPrs && (
             <section>
-              <h3 className="mb-1 font-display text-[16px] font-semibold">Code review</h3>
+              <h3 className="mb-1 font-display text-[15px] font-semibold">Code review</h3>
               <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-[14px]">
+                <label className="flex items-center gap-2 text-[13px]">
                   <input type="checkbox" checked={reviewEnabled} onChange={(e) => setReviewEnabled(e.target.checked)} />
                   Review PRs before merge
                 </label>
@@ -137,7 +137,7 @@ function WelcomeStack({ stack, setStack }: { stack: StackConfig; setStack: (s: S
   return (
     <section>
       <div className="flex items-center gap-3">
-        <h3 className="m-0 font-display text-[16px] font-semibold">Stack</h3>
+        <h3 className="m-0 font-display text-[15px] font-semibold">Stack</h3>
         <span className="text-[13px] text-muted">Optional. Agents get the tools' skills and docs access.</span>
         <button className="btn ml-auto px-2 text-[12px]" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "Hide" : "Choose"}

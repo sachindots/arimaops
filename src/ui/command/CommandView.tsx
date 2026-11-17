@@ -129,7 +129,7 @@ export function CommandView() {
           </button>
         )}
         {solo && <b className="font-display text-[15px] text-accent">{BRAND.name}</b>}
-        <h1 className="m-0 font-display text-[18px] font-semibold text-ink">Command center</h1>
+        <h1 className="m-0 font-display text-[20px] font-semibold text-ink">Command center</h1>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Show">
           {(Object.keys(FILTER_LABEL) as Filter[]).map((f) => (
             <button key={f} className="btn min-h-[32px] px-2.5 text-[12px]" aria-pressed={filter === f} onClick={() => setFilter(f)}>
@@ -149,7 +149,7 @@ export function CommandView() {
         />
         <span className="flex-1" />
         <span className="text-[12px] text-muted" title="Tokens used today by the agents shown">
-          Today <b className="font-display text-[14px] font-semibold text-ink">{fmtTokens(teamToday)}</b> tokens
+          Today <b className="font-display text-[13px] font-semibold text-ink">{fmtTokens(teamToday)}</b> tokens
         </span>
         {!solo && !compact && (
           <button className="btn min-h-[32px] px-2.5 text-[12px]" onClick={() => ui.popOutCommand(current)} title="Open the command center in its own window (another monitor)">
@@ -204,7 +204,7 @@ export function CommandView() {
             onHide={() => toggleHidden(focus.key)}
           />
         ) : (
-          <section className="hud-glass grid place-items-center rounded-2xl p-8 text-[14px] text-muted">Pick an agent on the left.</section>
+          <section className="hud-glass grid place-items-center rounded-2xl p-8 text-[13px] text-muted">Pick an agent on the left.</section>
         )}
         <SidePanels onFocus={(id) => setFocusKey(`${current}/${id}`)} />
       </div>
@@ -239,7 +239,7 @@ function Roster({
 }) {
   return (
     <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-y-auto rounded-2xl p-2 max-[1099px]:max-h-[45vh]" aria-label="Agents">
-      <h2 className="m-0 px-2 pb-2 pt-1 font-display text-[14px] font-semibold text-muted">
+      <h2 className="m-0 px-2 pb-2 pt-1 font-display text-[13px] font-semibold text-muted">
         Agents <span className="text-[12px]">{rows.length}</span>
       </h2>
       {rows.length === 0 && <p className="m-0 px-2 py-6 text-center text-[13px] text-muted">{empty}</p>}
@@ -266,7 +266,7 @@ function Roster({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                       <b className="truncate text-[13px] font-semibold text-ink">{r.agent.name}</b>
-                      {multi && <span className="truncate text-[11px] text-muted">· {r.projectName}</span>}
+                      {multi && <span className="truncate text-[12px] text-muted">· {r.projectName}</span>}
                     </span>
                     <span className="block truncate text-[12px]">
                       <span style={{ color }}>{MODE_LABEL[r.mode]}</span>
@@ -281,7 +281,7 @@ function Roster({
                     <Meter value={n} max={maxTokens} color={color} label={`${r.agent.name}'s tokens today`} />
                   </span>
                   {u && <Sparkline data={u.series} color={color} width={48} height={14} label={`${r.agent.name} today`} />}
-                  {r.status && <span className="w-[30px] shrink-0 text-right text-[11px] text-muted">{ago(r.status.stateSince, now)}</span>}
+                  {r.status && <span className="w-[30px] shrink-0 text-right text-[12px] text-muted">{ago(r.status.stateSince, now)}</span>}
                 </span>
               </button>
             </li>
@@ -328,8 +328,8 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="m-0 font-display text-[20px] font-semibold text-ink">{r.agent.name}</h2>
             {r.status && <StateChip state={r.status.state} session={r.status.session.state} blink={false} />}
-            {multi && <span className="chip text-[11px]">{r.projectName}</span>}
-            {agentMode(r.agent) === "redteam" && <span className="rounded border border-red/40 px-1.5 text-[11px] text-red">Red team</span>}
+            {multi && <span className="chip text-[12px]">{r.projectName}</span>}
+            {agentMode(r.agent) === "redteam" && <span className="rounded border border-red/40 px-1.5 text-[12px] text-red">Red team</span>}
           </div>
           <div className="truncate text-[12px] text-muted">
             {r.agent.role} · {CLI_LABEL[r.agent.cli] ?? r.agent.cli}
@@ -339,13 +339,13 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
         </div>
         <div className="flex items-end gap-4">
           <div className="text-right">
-            <div className="text-[11px] text-muted">Tokens today</div>
-            <div className="font-display text-[22px] font-semibold leading-none text-ink">{fmtTokens(shownTokens)}</div>
+            <div className="text-[12px] text-muted">Tokens today</div>
+            <div className="font-display text-[20px] font-semibold leading-none text-ink">{fmtTokens(shownTokens)}</div>
           </div>
           {use && (
             <div className="text-right">
-              <div className="text-[11px] text-muted">Cost</div>
-              <div className="font-display text-[16px] font-semibold leading-none text-muted">{fmtUsd(use.costUsd)}</div>
+              <div className="text-[12px] text-muted">Cost</div>
+              <div className="font-display text-[15px] font-semibold leading-none text-muted">{fmtUsd(use.costUsd)}</div>
             </div>
           )}
           {use && <Sparkline data={use.series} color={color} width={90} height={32} label={`${r.agent.name}'s tokens today`} />}
@@ -379,7 +379,7 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
         ) : (
           <div className="grid h-full place-items-center p-6 text-center">
             <div className="flex flex-col items-center gap-3">
-              <span className="font-display text-[16px] text-muted">{running ? "No output yet" : r.mode === "starting" ? "Starting…" : `${r.agent.name} isn't running`}</span>
+              <span className="font-display text-[15px] text-muted">{running ? "No output yet" : r.mode === "starting" ? "Starting…" : `${r.agent.name} isn't running`}</span>
               {!running && r.current && !isViewer && r.mode !== "starting" && (
                 <button className="btn btn-primary px-3" onClick={() => officeActions.startAgent(r.agent.id)}>
                   Start {r.agent.name}
@@ -429,9 +429,9 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
   return (
     <div className="flex min-h-0 flex-col gap-3 max-[1099px]:hidden">
       <section className="hud-glass scroll-thin flex max-h-[45%] min-h-0 flex-col overflow-y-auto rounded-2xl p-3" aria-label="Needs you">
-        <h2 className="m-0 mb-2 flex items-center gap-2 font-display text-[14px] font-semibold text-muted">
+        <h2 className="m-0 mb-2 flex items-center gap-2 font-display text-[13px] font-semibold text-muted">
           Needs you
-          {att.total > 0 && <span className="rounded-full bg-amber px-1.5 font-term text-[11px] font-semibold text-navy">{att.total}</span>}
+          {att.total > 0 && <span className="rounded-full bg-amber px-1.5 font-term text-[12px] font-semibold text-navy">{att.total}</span>}
           <span className="flex-1" />
           <button className="text-[12px] font-normal text-accent hover:underline" onClick={() => ui.openActions()}>
             Open inbox
@@ -445,7 +445,7 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
               <li key={i.id}>
                 <button className="flex w-full flex-col rounded-lg border border-amber/25 bg-amber/[0.05] px-2.5 py-1.5 text-left hover:bg-amber/[0.1]" onClick={() => ui.openActions()}>
                   <span className="line-clamp-2 text-[12px] text-ink">{i.title}</span>
-                  <span className="text-[11px] text-muted">
+                  <span className="text-[12px] text-muted">
                     {name(i.fromId)} · {ago(i.at, now)}
                   </span>
                 </button>
@@ -455,7 +455,7 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
         )}
       </section>
       <section className="hud-glass scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl p-3" aria-label="Activity">
-        <h2 className="m-0 mb-2 font-display text-[14px] font-semibold text-muted">Activity</h2>
+        <h2 className="m-0 mb-2 font-display text-[13px] font-semibold text-muted">Activity</h2>
         {snap.activity.length === 0 ? (
           <p className="m-0 text-[13px] text-muted">Nothing yet.</p>
         ) : (
@@ -466,7 +466,7 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
                 <button className="text-left hover:underline disabled:no-underline" disabled={!e.agentId} onClick={() => e.agentId && onFocus(e.agentId)}>
                   <b className="font-medium text-ink">{name(e.agentId)}</b> <span className="text-muted">{e.text}</span>
                 </button>
-                <span className="block text-[11px] text-muted">{ago(e.at, now)}</span>
+                <span className="block text-[12px] text-muted">{ago(e.at, now)}</span>
               </li>
             ))}
           </ol>

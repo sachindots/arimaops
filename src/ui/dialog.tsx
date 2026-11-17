@@ -61,11 +61,11 @@ export function DialogHost() {
             submit();
           }}
         >
-          <b className="text-[18px]">{a.title}</b>
-          {a.message && <p className="m-0 whitespace-pre-line text-[14px] text-muted">{a.message}</p>}
+          <b className="text-[20px]">{a.title}</b>
+          {a.message && <p className="m-0 whitespace-pre-line text-[13px] text-muted">{a.message}</p>}
           {a.field && (
             <input
-              className={`field ${isCode ? "text-center font-mono text-[26px] tracking-[0.4em]" : ""}`}
+              className={`field ${isCode ? "text-center font-mono text-[28px] tracking-[0.4em]" : ""}`}
               autoFocus
               type={a.field === "password" ? "password" : "text"}
               inputMode={isCode ? "numeric" : undefined}

@@ -128,7 +128,7 @@ export function WorkflowSettings() {
     <div className="flex flex-col gap-6">
       <section className="panel p-3">
         <SectionTitle>How tasks finish</SectionTitle>
-        <p className="text-[14px] font-semibold">{isDeliverables ? "Deliverables (any task, no PRs)" : "GitHub pull requests"}</p>
+        <p className="text-[13px] font-semibold">{isDeliverables ? "Deliverables (any task, no PRs)" : "GitHub pull requests"}</p>
         <p className="mt-1 text-[13px] text-muted">Set by the project's team template: its flow decides how a task is finished.</p>
         <p className="mt-2 text-[13px] text-muted">
           {isDeliverables
@@ -141,7 +141,7 @@ export function WorkflowSettings() {
         <SectionTitle>Pipeline</SectionTitle>
         {isDeliverables ? (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-[14px]">
+            <div className="flex flex-wrap items-center gap-2 text-[13px]">
               {stage("Plan", true, "lead creates tasks")}
               <span>→</span>
               {stage("Execute", true, "operator writes deliverable")}
@@ -156,7 +156,7 @@ export function WorkflowSettings() {
           </>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-[14px]">
+            <div className="flex flex-wrap items-center gap-2 text-[13px]">
               {stage("Build", true, "agent in its sandbox")}
               <span>→</span>
               {stage("Review", wf.review.enabled, reviewToolLabel[wf.review.tool])}
@@ -214,7 +214,7 @@ export function WorkflowSettings() {
             <SectionTitle>Merge</SectionTitle>
             <div className="flex gap-2" role="radiogroup" aria-label="Who merges">
               {(["human", "lead"] as const).map((by) => (
-                <button key={by} className="btn text-[14px]" role="radio" aria-checked={wf.merge.by === by} aria-pressed={wf.merge.by === by} onClick={() => officeActions.updateWorkflow({ merge: { by } })}>
+                <button key={by} className="btn text-[13px]" role="radio" aria-checked={wf.merge.by === by} aria-pressed={wf.merge.by === by} onClick={() => officeActions.updateWorkflow({ merge: { by } })}>
                   {by === "human" ? "You merge" : "The lead merges"}
                 </button>
               ))}

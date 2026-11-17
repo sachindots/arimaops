@@ -26,7 +26,7 @@ export function SignIn() {
           <div className="flex items-center gap-3">
             <Logo size={48} />
             <div>
-              <b className="block text-[17px] font-bold tracking-tight text-ink">{BRAND.name}</b>
+              <b className="block text-[15px] font-semibold tracking-tight text-ink">{BRAND.name}</b>
               <span className="text-[12px] font-medium text-muted">HQ access</span>
             </div>
           </div>

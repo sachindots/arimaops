@@ -8,11 +8,11 @@ export function MemorySettings() {
   const state = useOffice((s) => s.snap?.memory);
   const keys = (useOffice((s) => s.snap?.accounts?.list) ?? []).filter((a) => a.provider === "anthropic");
   const [name, setName] = useState("");
-  if (!state) return <p className="m-0 text-[14px] text-muted">Memory settings aren't available from this server.</p>;
+  if (!state) return <p className="m-0 text-[13px] text-muted">Memory settings aren't available from this server.</p>;
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 text-[14px] text-muted">
+      <p className="m-0 text-[13px] text-muted">
         The team's memory (decisions, lessons, dead ends and the lead's ledgers) lives in HQ's own database, next to the plan. Nothing to set up.
       </p>
 
@@ -22,7 +22,7 @@ export function MemorySettings() {
           When a task finishes, Claude Haiku reads its summary and proposes decisions, lessons and dead ends to remember. Each run uses a little of the
           chosen account (shown in usage as a helper run). Off until you turn it on; tasks finished meanwhile are read when you do.
         </p>
-        <label className="flex items-center gap-2 text-[14px]">
+        <label className="flex items-center gap-2 text-[13px]">
           <input
             type="checkbox"
             checked={state.extraction.enabled}
@@ -121,7 +121,7 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
         mention one are dropped, and you approve each of the rest in the Inbox.
         {security && " Off by default here: a lesson from one engagement must never reach the next client's brief."}
       </p>
-      <label className="flex items-center gap-2 text-[14px]">
+      <label className="flex items-center gap-2 text-[13px]">
         <input type="checkbox" checked={lessons.enabled} disabled={isViewer} onChange={(e) => officeActions.setLessonPromotion(e.target.checked)} />
         Allow this project's lessons into its template
       </label>
@@ -139,10 +139,10 @@ function LessonsSection({ extractionOn }: { extractionOn: boolean }) {
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {lessons.approved.map((l) => (
             <li key={l.id} className="flex items-start gap-2 rounded-lg border border-white/10 bg-white px-2 py-1.5 text-[13px]">
-              <span className="chip shrink-0 text-[11px]">{LESSON_LABEL[l.type] ?? l.type}</span>
+              <span className="chip shrink-0 text-[12px]">{LESSON_LABEL[l.type] ?? l.type}</span>
               <span className="min-w-0 flex-1">{l.text}</span>
               {!isViewer && (
-                <button className="btn shrink-0 px-2 text-[11px]" onClick={() => officeActions.removeLesson(l.id)} aria-label={`Remove lesson: ${l.text.slice(0, 40)}`}>
+                <button className="btn shrink-0 px-2 text-[12px]" onClick={() => officeActions.removeLesson(l.id)} aria-label={`Remove lesson: ${l.text.slice(0, 40)}`}>
                   Remove
                 </button>
               )}

@@ -57,7 +57,7 @@ export function ModelSelect({
         />
         <button
           type="button"
-          className="btn px-2 py-1 text-[11px]"
+          className="btn px-2 py-1 text-[12px]"
           title="Back to preset models"
           onClick={() => {
             setCustomMode(false);

@@ -32,7 +32,7 @@ export function StageStrip({ snap, compact = false }: { snap: OfficeSnapshot; co
                 aria-label={`${s.name}: ${here.length} open task${here.length === 1 ? "" : "s"}${who.length ? `, ${who.map((a) => a.name).join(", ")} working` : ""}`}
               >
                 <span className={`text-[12px] font-medium ${here.length ? "text-ink" : "text-muted"}`}>{s.name}</span>
-                <span className={`font-display text-[14px] font-semibold leading-none ${busy.length ? "text-accent" : here.length ? "text-ink" : "text-muted/60"}`}>{here.length}</span>
+                <span className={`font-display text-[13px] font-semibold leading-none ${busy.length ? "text-accent" : here.length ? "text-ink" : "text-muted/60"}`}>{here.length}</span>
                 {who.length > 0 && (
                   <span className="flex -space-x-1.5">
                     {who.map((a) => (
