@@ -518,7 +518,7 @@ export class Sessions {
             this.onSessionReattached(agent.id);
           }
           if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
-          if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name, !agent.workspacePath);
+          if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name);
           await this.reconcileFromScreen(agent.id, agent.cli, name);
           if (this.limitTick % 5 === 0) await this.watchLimits(agent.id, name);
         } else if (st.session.state === "running") {
@@ -583,17 +583,13 @@ export class Sessions {
 
   /**
    * Antigravity (`agy`) asks to trust a newly cloned folder on first run and does not emit SessionStart.
-   * For HQ-managed clones (`~/.arima/<slug>/<id>`), auto-confirm the folder trust prompt so agents start hands-free.
+   * The owner answers the folder trust prompt themself, even for HQ-managed clones; we only flag it.
    */
-  private async watchAgyScreen(agentId: string, name: string, managedWorkspace: boolean) {
+  private async watchAgyScreen(agentId: string, name: string) {
     const st = this.hub.status(agentId);
     if (!st) return;
     const screen = await this.backend.screenText(name, 18);
     if (/Do you trust the contents of this project\?/i.test(screen) && /Yes, I trust this folder/i.test(screen)) {
-      if (managedWorkspace) {
-        await this.backend.enter(name);
-        return;
-      }
       const TRUST_NOTE = "Asking: approve Antigravity's workspace trust prompt in the terminal";
       if (st.note !== TRUST_NOTE) {
         this.hub.setStatus(agentId, { state: "needs-input", note: TRUST_NOTE });

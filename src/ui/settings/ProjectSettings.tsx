@@ -163,6 +163,8 @@ export function ProjectSettings() {
       </section>
       <section className="panel p-3 text-[13px]">
         <SectionTitle>Multi-Project &amp; Multi-Team Operations</SectionTitle>
+        <Toggle checked={!!project.crossProject} onChange={(v) => officeActions.updateProject({ crossProject: v })} label="Let the lead see and change other projects' tasks" />
+        <p className="mt-1 text-muted">Off by default. With it on, this project's lead can list the other projects on this machine and create or update their tasks. Only the owner can change it; agents pick it up on their next session.</p>
         <p className="mt-1 text-muted">
           Every project gets its own isolated team config (<code>&lt;repo&gt;/.arima/arima.db</code>), agent workspaces (<code>~/.arima/{project.id}/&lt;agent&gt;</code>), and sandbox/tmux session names (<code>hq-{project.id}-&lt;agent&gt;</code>). You can run multiple teams across multiple projects simultaneously by assigning each a different port:
         </p>

@@ -153,6 +153,8 @@ export interface ProjectConfig {
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
+  /** The lead may list other projects on this machine and create or update their tasks. Off unless the owner turns it on. */
+  crossProject?: boolean;
   officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;

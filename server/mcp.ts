@@ -520,11 +520,17 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     }),
   );
 
-  // ---------------------------------------------------------------- Multi-Project CTO Overwatch Tools
+  // ---------------------------------------------------------------- Cross-project tools (owner opt-in)
+  if (hub.snap.config.project.crossProject) registerCrossProjectTools(server, hub, me, leadOnly);
+
+  return server;
+}
+
+function registerCrossProjectTools(server: McpServer, hub: Hub, me: string, leadOnly: () => void) {
   server.registerTool(
     "list_projects",
     {
-      description: "Multi-Project CTO Overwatch: Lists all registered .hq projects on this machine with their path, online status, operator roster, and task counts.",
+      description: "Lists the ArimaOps projects on this machine with their path, online status, operator roster, and task counts.",
     },
     guard(() =>
       ok(
@@ -547,7 +553,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "get_project_status",
     {
-      description: "Multi-Project CTO Overwatch: Returns the full boards, tasks, and operator roster for any registered .hq project by projectId or name.",
+      description: "Returns the boards, tasks and team of another ArimaOps project on this machine, by projectId or name.",
       inputSchema: { projectId: z.string().describe("Project id or name from list_projects (e.g. 'booktabs', 'exposecheck')") },
     },
     guard(({ projectId }: { projectId: string }) => {
@@ -563,7 +569,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "create_project_task",
     {
-      description: "CTO / Lead only. Creates a task on any registered .hq project's board (live if loaded in HQ, or saved directly to that project's .arima/plan.json).",
+      description: "CTO / Lead only. Creates a task on another ArimaOps project's board (live if loaded in HQ, or saved directly to that project's .arima/plan.json).",
       inputSchema: {
         projectId: z.string().describe("Project id or name from list_projects"),
         title: z.string(),
@@ -584,7 +590,7 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "update_project_task",
     {
-      description: "CTO / Lead only. Updates a task's status, owner, title, description, or note on any registered .hq project.",
+      description: "CTO / Lead only. Updates a task's status, owner, title, description, or note on another ArimaOps project.",
       inputSchema: {
         projectId: z.string().describe("Project id or name from list_projects"),
         taskId: z.string().describe("Task id, e.g. B1-T01"),
@@ -601,8 +607,6 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       return ok(updateCrossProjectTask(projectId, taskId, patch, me));
     }),
   );
-
-  return server;
 }
 
 /** Handles one MCP HTTP request for an already-authenticated agent. */

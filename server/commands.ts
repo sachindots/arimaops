@@ -46,6 +46,7 @@ import type { TeamTemplate } from "../src/data/model";
 import { hqDb } from "./lib/db";
 import { addToSuite, buildTaskBenchmark } from "./suite";
 import { isReadOnly, READ_ONLY_COMMANDS } from "./legacy";
+import type { Handlers } from "./commandPolicy";
 import { applyTemplate, changeMode, copyToProject, defaultSandbox, forgetProjectTemplate, freeColor, resolveSeat, resyncProject, saveTemplate, seatOf, seatsFor, TemplateError, updateProjectTemplate } from "./templates";
 import { STACK_CATEGORIES, stackSkills, stackTool, type StackChoice, type StackConfig } from "../src/data/stack";
 import { resolveAccess } from "./access";
@@ -125,7 +126,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       afterTemplate(updateProjectTemplate(hqDb(), hub.slug, t), note);
     });
 
-  const commands: Record<string, (...args: unknown[]) => unknown> = {
+  // One handler per entry in server/commandPolicy.ts, which checks role, step-up and arguments first.
+  const commands: Handlers = {
     sendTerminalInput: (id, data) => sessions.input(str(id, 80), str(data, 100_000)),
     openShell: (id) => sessions.openShell(str(id, 80)),
     closeShell: (id) => sessions.closeShell(str(id, 80)),
@@ -262,7 +264,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
 
     /** Replaces this project's template copy (roles, flow, rules). The library is untouched. */
-    updateProjectTemplate: (raw) => setTemplate(raw as TeamTemplate, "Project template updated. Restart agents to give them the change."),
+    updateProjectTemplate: (raw) => setTemplate(raw as unknown as TeamTemplate, "Project template updated. Restart agents to give them the change."),
 
     /** Takes the library's current version of this project's template, on purpose. */
     resyncTemplate: () =>
@@ -323,7 +325,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     /** Saves a template to this machine's library (built-in ones are saved under a new id). */
     saveTemplate: (raw) =>
       guardTemplate(() => {
-        const t = saveTemplate(hqDb(), raw as TeamTemplate, "you");
+        const t = saveTemplate(hqDb(), raw as unknown as TeamTemplate, "you");
         hub.activity("config", null, `Saved template ${t.name} (v${t.version}) to the library.`);
       }),
 
@@ -451,7 +453,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     // Accounts are machine-wide: every open project hears about a change.
     saveAccount: (raw) => {
       try {
-        const rec = accounts().save((raw ?? {}) as AccountInput);
+        const rec = accounts().save(raw as unknown as AccountInput);
         redactor().refresh();
         broadcastAccounts();
         hub.activity("config", null, `Saved the ${rec.id} account (${PROVIDER_SPECS[rec.provider].label}). Agents using it pick up a new key on their next start.`);
@@ -461,7 +463,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     },
     saveMemory: (raw) => {
       try {
-        void saveMemorySettings(raw as MemoryInput);
+        void saveMemorySettings(raw as unknown as MemoryInput);
         redactor().refresh(); // the Neo4j password is masked in terminal output like any vault secret
         broadcastMemory();
         hub.activity("config", null, "Saved the memory settings. HQ is connecting to Neo4j.");
@@ -664,6 +666,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
+      if (typeof p.crossProject === "boolean") project.crossProject = p.crossProject;
       hub.configChanged();
       if (exportOn) {
         hub.planChanged();
@@ -687,12 +690,13 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
   };
 
   // A project made before templates is read-only: only commands that watch, answer or stop what already runs.
-  for (const [name, fn] of Object.entries(commands)) {
+  const out: Record<string, (...args: unknown[]) => unknown> = { ...(commands as Record<string, (...args: unknown[]) => unknown>) };
+  for (const [name, fn] of Object.entries(out)) {
     if (READ_ONLY_COMMANDS.has(name) || name === "completeWelcome") continue;
-    commands[name] = (...args) => {
+    out[name] = (...args) => {
       if (!isReadOnly(hub.snap.config) || hub.snap.welcome) return fn(...args);
       hub.activity("config", null, "This project was made before templates and is read-only. You can watch, answer and stop its agents.");
     };
   }
-  return commands;
+  return out;
 }

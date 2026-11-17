@@ -281,7 +281,7 @@ async function checkEgressLock(imageOk: boolean): Promise<Check> {
   return {
     ...base,
     status: "warning",
-    detail: "Containers can skip the proxy and reach any site. Add this firewall rule once (and make it persist, e.g. with iptables-persistent).",
+    detail: "Containers could skip the proxy and reach any site, so Container mode stays off until you add this firewall rule (make it persist, e.g. with iptables-persistent).",
     fix: fix(EGRESS_LOCK_CMD, false, null),
   };
 }
@@ -420,7 +420,7 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
     if (team.some((a) => a.roleId === "verifier")) checks.push(await checkVerifierImage(imageOk));
     const scopeFw = project ? await checkScopeFirewall(project, team) : null;
     if (scopeFw) checks.push(scopeFw);
-    containerReady = docker.status === "ok" && imageOk && lock.status !== "missing" && reach.status === "ok" && tmux.status === "ok";
+    containerReady = docker.status === "ok" && imageOk && lock.status === "ok" && reach.status === "ok" && tmux.status === "ok";
   }
 
   const ok = (c: SetupCheck) => c.status === "ok";

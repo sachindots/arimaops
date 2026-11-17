@@ -41,12 +41,11 @@ One Node process (the **HQ server**) runs every project on a machine. Each proje
 |---|---|
 | Data in | `data/ws/wsSource.ts` (live), `data/mock/*` (demo), `store/office.ts` (one project), `store/building.ts` (other projects, read-only) |
 | Shared types | `data/types.ts` (the contract between server and UI; change it on both sides) |
-| Desktop | `ui/hud/*` (top bar, team, activity), `ui/drawers/*`, `ui/settings/*` |
-| Phone / tablet | `ui/compact/CompactApp.tsx` (tabs; the office is a tab or sits beside the page) |
-| Office | `office/iso/*`: layout and building (pure), behaviour and events (pure), art, robots, effects and the Pixi scene. `office/engine/*` holds the camera, pen, font and paths |
+| Desktop | `ui/hud/SpatialHud.tsx` and `ui/hud/*` (top bar, team, activity), `ui/drawers/*`, `ui/settings/*` |
+| Phone / tablet | `ui/compact/CompactApp.tsx` (tabs) |
 
 **Rules that keep it clear:**
-- Pure logic (layout, behaviour, events, limits, ports, scope) has no Pixi, no I/O, and its own test script under `scripts/`.
+- Pure logic (limits, ports, scope) has no I/O, and its own test script under `scripts/`.
 - The server is the source of truth. The UI never decides anything that matters, and the server re-checks every command.
 - Machine-wide concerns live in their own module (`accounts.ts`, `ports.ts`), never inside one project.
 

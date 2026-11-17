@@ -16,52 +16,6 @@ import { log } from "./lib/log";
 import { appendLine, readDoc, writeDoc } from "./lib/docs";
 import { projectHome } from "./paths";
 
-/** Commands that can run code on the host, leak secrets, widen the sandbox or approve agent requests. */
-export const RISKY_COMMANDS = new Set([
-  "openShell",
-  "openHostShell",
-  "sendTerminalInput",
-  "runSetupFix",
-  "recreateSandbox",
-  "removeAgent",
-  "updateAgent",
-  "updateRole",
-  "recordGate",
-  "updateProjectTemplate",
-  "resyncTemplate",
-  "saveTemplate",
-  "importTemplate",
-  "promoteLessons",
-  "setLessonPromotion",
-  "removeLesson",
-  "proposeImprovements",
-  "addToSuite",
-  "updateSandbox",
-  "setSecret",
-  "saveAccount",
-  "removeAccount",
-  "saveMemory",
-  "restoreMemory",
-  "setMemoryExtraction",
-  "setLabMode",
-  "setSpendCaps",
-  "finishGithubApp",
-  "setTeamMode",
-  "decideMemories",
-  "removeSecret",
-  "setProxy",
-  "openEnvFile",
-  "addMcp",
-  "removeMcp",
-  "authMcp",
-  "answerApproval",
-  "resolveAccess",
-  "resolveActionItem",
-  "updateWorkflow",
-  "updateProject",
-  "forwardPort",
-]);
-
 /** Never written to the audit log with arguments. */
 const QUIET = new Set(["sendTerminalInput", "resizeTerminal"]);
 const REDACT_ARGS = new Set(["setSecret", "setProxy", "saveAccount", "saveMemory"]);
@@ -137,8 +91,8 @@ export class RemoteGuard {
   private auditFile: string;
   private devicesFile: string;
   private devices: Record<string, Device> = {};
-  private badCodes = 0;
-  private lockedUntil = 0;
+  /** Wrong codes per secret ("server" or a person's own), so one person's typos can't lock out everyone else. */
+  private badCodes = new Map<string, { n: number; lockedUntil: number }>();
 
   /** `adoptFrom`: a project whose older per-project totp-secret becomes the server's, so an authenticator entry you already added keeps working. */
   constructor(home = join(homedir(), BRAND.homeDir), adoptFrom?: string) {
@@ -228,14 +182,15 @@ export class RemoteGuard {
   /** Accepts the current code ±1 step (clock drift); each step is usable once. `secretB32`: a person's own secret (default: the server's). */
   verify(code: string, secretB32?: string): boolean {
     // Brute-force guard: 5 wrong codes lock step-up for 5 minutes (a 6-digit code is otherwise guessable).
-    if (Date.now() < this.lockedUntil) return false;
-    const ok = this.check(code, secretB32 ? base32Decode(secretB32) : this.secret, secretB32 ?? "server");
-    if (ok) this.badCodes = 0;
-    else if (++this.badCodes >= MAX_BAD_CODES) {
-      this.badCodes = 0;
-      this.lockedUntil = Date.now() + LOCKOUT_MS;
+    const who = secretB32 ?? "server";
+    const bad = this.badCodes.get(who) ?? { n: 0, lockedUntil: 0 };
+    if (Date.now() < bad.lockedUntil) return false;
+    const ok = this.check(code, secretB32 ? base32Decode(secretB32) : this.secret, who);
+    if (ok) this.badCodes.delete(who);
+    else if (++bad.n >= MAX_BAD_CODES) {
+      this.badCodes.set(who, { n: 0, lockedUntil: Date.now() + LOCKOUT_MS });
       log.warn("step-up locked for 5 minutes after repeated wrong codes");
-    }
+    } else this.badCodes.set(who, bad);
     return ok;
   }
 

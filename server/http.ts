@@ -37,7 +37,8 @@ import { backupsRoot } from "./memoryBackup";
 import { EXPORT_FORMATS, RENDER, type ExportFormat } from "./reports";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
-import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
+import { canOperate, type RemoteGuard, type Role } from "./remote";
+import { authorize } from "./commandPolicy";
 import { Throttle, Users } from "./users";
 import { homedir } from "node:os";
 import { BRAND } from "../src/data/brand";
@@ -69,10 +70,11 @@ function cookie(req: IncomingMessage, name: string): string {
   return "";
 }
 
+// The app page: only its own scripts, and it talks only to this server. Inline styles stay (the body's, React's).
+const APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** Commands a viewer token may send. Everything else needs the operator token. */
-const VIEWER_COMMANDS = new Set(["sendMessage", "recheckSetup", "refreshSbx", "refreshMcp"]);
 
 function readBody(req: IncomingMessage, limit = 256 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -125,7 +127,6 @@ interface Who {
 }
 
 /** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "saveMemory", "restoreMemory", "setMemoryExtraction", "setProxy", "setLabMode", "setSpendCaps", "finishGithubApp", "importTemplate", "promoteLessons", "setLessonPromotion", "removeLesson", "proposeImprovements", "addToSuite"]);
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
@@ -193,7 +194,9 @@ export function startHttp(o: Options) {
   };
 
   const json = (res: ServerResponse, code: number, body: unknown) => send(res, code, JSON.stringify(body), "application/json");
-  const clientIp = (req: IncomingMessage) => String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+  // X-Forwarded-For counts only from a proxy on this machine (tailscale serve, a tunnel); anyone else could forge it.
+  const clientIp = (req: IncomingMessage) =>
+    (LOOPBACK.has(req.socket.remoteAddress ?? "") && String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim()) || req.socket.remoteAddress || "?";
   const setCookie = (req: IncomingMessage, res: ServerResponse, id: string, maxAge: number) => {
     const https = req.headers["x-forwarded-proto"] === "https" || (req.headers.origin ?? "").startsWith("https://");
     res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? "; Secure" : ""}`);
@@ -445,6 +448,8 @@ export function startHttp(o: Options) {
           return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
         }
         if (req.method === "POST" && (url.pathname === "/api/projects/register" || url.pathname === "/api/projects/create")) {
+          // A new project runs agents in that folder: the owner's call, like a seat's folder.
+          if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can add a project" }), "application/json");
           const create = url.pathname.endsWith("/create");
           const body = JSON.parse((await readBody(req)) || "{}") as { path?: string; name?: string };
           // New project by name: a fresh folder under ~/projects.
@@ -624,7 +629,7 @@ export function startHttp(o: Options) {
       // Text assets gzipped (a phone on Wi-Fi loads ~4× less); hashed assets cached, the page itself never.
       const gzip = /text|javascript|json|svg|manifest/.test(type) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
       const cache = file.includes(`${sep}assets${sep}`) ? "public, max-age=31536000, immutable" : "no-cache";
-      res.writeHead(200, { "Content-Type": type, "Cache-Control": cache, Vary: "Accept-Encoding", ...(gzip ? { "Content-Encoding": "gzip" } : {}) });
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": cache, Vary: "Accept-Encoding", ...(gzip ? { "Content-Encoding": "gzip" } : {}), ...(type.startsWith("text/html") ? { "Content-Security-Policy": APP_CSP } : {}) });
       if (req.method === "HEAD") return void res.end();
       const stream = createReadStream(file);
       return void (gzip ? stream.pipe(createGzip()).pipe(res) : stream.pipe(res));
@@ -703,20 +708,20 @@ export function startHttp(o: Options) {
           args = pArgs;
         }
 
-        const fn = cmd ? rt.commands[cmd] : undefined;
-        if (!fn) return log.warn("unknown command", cmd);
-        if (OWNER_COMMANDS.has(cmd) && role !== "owner") {
+        const verdict = authorize(cmd, args, { role, remote, elevated: Date.now() <= Math.max(elevatedUntil, deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0) }, {
+          agentMode: (id) => rt.hub.cfg(id)?.mode,
+        });
+        const fn = verdict.ok ? rt.commands[verdict.name] : undefined;
+        if (!verdict.ok || !fn) {
+          if (verdict.ok || verdict.why === "unknown") return log.warn("unknown command", cmd);
+          if (verdict.why === "step-up") {
+            audit("step-up-required");
+            return sendEvent({ type: "remote.stepup", status: "required", cmd, args });
+          }
           audit("blocked");
-          return log.warn("owner-only command blocked:", cmd);
+          return log.warn(`${verdict.why === "role" ? "not allowed for a " + role : "bad arguments"}:`, cmd);
         }
-        if (role === "viewer" && !VIEWER_COMMANDS.has(cmd)) {
-          audit("blocked");
-          return log.warn("viewer blocked:", cmd);
-        }
-        if (remote && RISKY_COMMANDS.has(cmd) && Date.now() > Math.max(elevatedUntil, deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0)) {
-          audit("step-up-required");
-          return sendEvent({ type: "remote.stepup", status: "required", cmd, args });
-        }
+        args = verdict.args;
         try {
           await fn(...args);
           audit("ok");

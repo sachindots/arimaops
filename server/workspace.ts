@@ -1,10 +1,11 @@
 // Agent folders: an HQ-managed clone per agent, or a folder the user chose.
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { closeSync, constants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { BRAND } from "../src/data/brand";
 import type { AgentConfig } from "../src/data/types";
 import { run } from "./lib/exec";
+import { agentPath } from "./lib/agentFs";
 import { log } from "./lib/log";
 import { managedWorkspace, projectHome } from "./paths";
 import type { RepoInfo } from "./repo";
@@ -47,26 +48,46 @@ function collectFilesRecursive(root: string, relDir: string, out: string[]) {
   }
 }
 
-function copyRelFile(srcRoot: string, dstRoot: string, rel: string): boolean {
-  const srcFull = resolve(srcRoot, rel);
-  const dstFull = resolve(dstRoot, rel);
-  if (!srcFull.startsWith(resolve(srcRoot) + sep) || !dstFull.startsWith(resolve(dstRoot) + sep)) return false;
-  if (!existsSync(srcFull)) return false;
+/**
+ * Copies one file between folders an agent may control. Never follows a symlink: a symlinked folder on
+ * either side is refused, a symlinked source is skipped, and a symlink at the destination is replaced.
+ */
+function copyInside(srcRoot: string, dstRoot: string, rel: string): boolean {
   try {
-    const st = lstatSync(srcFull);
-    if (!st.isFile() || st.isSymbolicLink()) return false;
-    mkdirSync(dirname(dstFull), { recursive: true });
-    copyFileSync(srcFull, dstFull);
+    const src = agentPath(srcRoot, rel);
+    const st = lstatSync(src);
+    if (!st.isFile()) return false;
+    const data = readOpen(src);
+    const dst = agentPath(dstRoot, rel);
+    mkdirSync(dirname(dst), { recursive: true });
+    agentPath(dstRoot, rel); // re-check after creating folders
+    if (lstatSync(dst, { throwIfNoEntry: false })?.isSymbolicLink()) rmSync(dst);
+    const fd = openSync(dst, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), st.mode & 0o777);
+    try {
+      writeFileSync(fd, data);
+    } finally {
+      closeSync(fd);
+    }
     return true;
   } catch {
     return false;
   }
 }
 
+/** Reads a file without following a symlink swapped in after the check. */
+function readOpen(path: string): Buffer {
+  const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /**
  * In Deliverables mode, each agent runs in an isolated clone (`~/.arima/<slug>/<agentId>`).
- * When an agent completes or submits a task for review, sync its created/modified project files
- * back to `repoRoot` and into all other active agent workspaces so downstream tasks see them immediately.
+ * When an agent completes or submits a task for review, sync the task's files and its changed
+ * files under deliverables/ back to `repoRoot` and into all other active agent workspaces so downstream tasks see them immediately.
  */
 export async function syncDeliverablesFromAgent(
   agent: AgentConfig,
@@ -93,6 +114,8 @@ export async function syncDeliverablesFromAgent(
       if (rawLine.length < 4) continue;
       const rawPath = rawLine.slice(3).trim();
       const rel = (rawPath.includes(" -> ") ? rawPath.split(" -> ").pop()! : rawPath).replace(/^"+|"+$/g, "");
+      // Beyond the task's own files, only deliverables/ goes out: other edits in the clone stay in the clone.
+      if (rel !== "deliverables" && !rel.startsWith("deliverables/")) continue;
       const files: string[] = [];
       collectFilesRecursive(srcDir, rel, files);
       for (const f of files) candidates.add(f);
@@ -107,9 +130,9 @@ export async function syncDeliverablesFromAgent(
 
   for (const rel of candidates) {
     if (!isSyncableRelPath(rel, hintSet)) continue;
-    if (copyRelFile(srcDir, repoRoot, rel)) {
+    if (copyInside(srcDir, repoRoot, rel)) {
       synced.push(rel);
-      for (const otherDir of otherDirs) copyRelFile(srcDir, otherDir, rel);
+      for (const otherDir of otherDirs) copyInside(srcDir, otherDir, rel);
     }
   }
   if (synced.length) log.info(`deliverables sync (${agent.id} -> repo & team): ${synced.join(", ")}`);
@@ -128,7 +151,7 @@ export function syncRepoToWorkspace(agent: AgentConfig, projectSlug: string, rep
   const synced: string[] = [];
   for (const rel of allFiles) {
     if (!isSyncableRelPath(rel, hintSet)) continue;
-    if (copyRelFile(repoRoot, dstDir, rel)) synced.push(rel);
+    if (copyInside(repoRoot, dstDir, rel)) synced.push(rel);
   }
   return synced;
 }

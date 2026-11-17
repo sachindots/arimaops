@@ -186,6 +186,8 @@ for (let i = 0; i < 5; i++) g2.verify("000000");
 const b32b = readFileSync(join(process.env.HOME, "g2", "totp-secret"), "utf8").trim();
 check("each server home gets its own totp secret", b32b !== b32);
 check("after 5 wrong codes even the right one is refused", g2.verify(code(undefined, keyFrom(b32b))) === false);
+const own = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"; // a person's own authenticator
+check("one secret locked out doesn't lock out another person's", g2.verify(code(undefined, keyFrom(own)), own) === true);
 const g3 = new RemoteGuard(join(process.env.HOME, "g3"));
 const k3 = keyFrom(readFileSync(join(process.env.HOME, "g3", "totp-secret"), "utf8").trim());
 for (let i = 0; i < 4; i++) g3.verify("000000");
@@ -196,7 +198,7 @@ const beta = connect(`?token=${OP}&project=beta`, { Origin: LOCAL });
 await beta.opened;
 await beta.settle();
 check("?project= picks the project's snapshot", (beta.events[0] as unknown as { snapshot: { config: { project: { id: string } } } })?.snapshot?.config.project.id === "beta");
-beta.send("sendMessage");
+beta.send("sendMessage", "lead", "hi");
 await beta.settle();
 check("commands go to that project", ran.includes("sendMessage:beta"));
 const stale = connect(`?token=${OP}&project=gone`, { Origin: LOCAL });
