@@ -185,7 +185,6 @@ export interface LessonsState {
   /** The last promotion run's outcome, in words. */
   last: string | null;
   /** Template changes drafted from repeated failures (docs/factory.md section 5). */
-  improvements: { running: boolean; pending: number; last: string | null };
 }
 
 /** The machine's GitHub App (docs/agent-engine.md section 6); null app = none created yet. */
@@ -600,9 +599,7 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "proposal";
-  /** kind proposal: a template change drafted from a repeated failure, as before/after lines (Approve = saved as a new version). */
-  proposal?: { id: string; templateId: string; pattern: string; diff: string[] };
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson";
   /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */
   lesson?: { id: string; templateId: string; type: string };
   /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */

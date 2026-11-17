@@ -55,6 +55,8 @@ A template lists checks run on each finished task. Two kinds:
 
 ## 5. Improvement proposals (4.9)
 
+> **Removed 2026-11-17:** a small team doesn't produce enough repeated failures for this to help, so the owner dropped it (`docs/design/revamp.md`). The scores and gate events it read still exist; templates are edited by hand. The `template_proposals` table stays in the schema history, unused.
+
 - A nightly job, per template: failed scores and failed gates grouped by scorer or gate. When one fails **3 times within 30 days** (decision 2), Haiku drafts one change to the template: a role's model, a skill added, a gate added or tightened, a role instruction. The draft is checked by `templateErrors` and shown as a diff.
 - Same masking as lesson promotion (`docs/templates.md` section 8): no project's hosts, names or paths in the text; off for security engagements unless the owner switched promotion on.
 - An Action item of kind `proposal`: Approve saves the template with its version bumped (built-ins: saved as the owner's copy, `dev` → `dev-yours`); Reject keeps the pattern from being proposed again for 30 days. Projects pick the change up only on re-sync, as today.

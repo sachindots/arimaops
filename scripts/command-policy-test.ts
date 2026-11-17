@@ -20,7 +20,7 @@ check(
   JSON.stringify(byRole("viewer")),
 );
 const OWNER = [
-  "addMcp", "addToSuite", "finishGithubApp", "importTemplate", "openHostShell", "openShell", "promoteLessons", "proposeImprovements",
+  "addMcp", "addToSuite", "finishGithubApp", "importTemplate", "openHostShell", "openShell", "promoteLessons",
   "removeAccount", "removeLesson", "runSetupFix", "saveAccount", "setLabMode", "setLessonPromotion",
   "setMemoryExtraction", "setProxy", "setSpendCaps",
 ].sort();

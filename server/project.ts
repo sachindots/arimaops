@@ -160,7 +160,6 @@ export async function startProject(path: string, port: number, paused: boolean):
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
   const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id), promptReady: (id) => sessions.promptReady(id) });
-  sessions.onSessionDown = (id) => inbox.sessionDown(id);
   sessions.onSessionReattached = (id) => inbox.sessionReattached(id);
   sessions.lastHookAt = (id) => inbox.lastHookAt(id);
   const sbx = new Sbx(hub);
@@ -171,10 +170,10 @@ export async function startProject(path: string, port: number, paused: boolean):
     void mcp.attachAll(id);
     void sbx.refreshPorts(id);
   };
-  sessions.onSessionDown = ((down) => (id: string) => {
-    down(id);
+  sessions.onSessionDown = (id) => {
+    inbox.sessionDown(id);
     void sbx.refreshPorts(id);
-  })(sessions.onSessionDown);
+  };
   sessions.onSandboxRemoved = (id) => {
     mcp.forget(id);
     void sbx.refreshPorts(id);
@@ -257,7 +256,6 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.actions = new ActionItems(hub, planner);
   planner.lessons = new LessonPromotion(hub, () => planner.actions);
   planner.actions.onLessonDecided = (id, approve) => planner.lessons?.decide(id, approve);
-  planner.actions.onProposalDecided = (id, approve) => planner.lessons?.decideProposal(id, approve);
   planner.actions.onMove = (m) => overflow.move(m);
   const broadcastPacks = () => {
     const skillPacks = packsState();

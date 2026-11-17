@@ -90,7 +90,6 @@ export const COMMANDS = {
   promoteLessons: entry({ role: "owner", stepUp: true, args: z.tuple([]) }),
   setLessonPromotion: entry({ role: "owner", stepUp: true, args: z.tuple([flag]) }),
   removeLesson: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
-  proposeImprovements: entry({ role: "owner", stepUp: true, args: z.tuple([]) }),
   completeWelcome: entry({ role: "operator", args: z.tuple([obj]) }),
 
   // Sandboxes, keys and tools

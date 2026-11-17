@@ -1,5 +1,5 @@
 // Global multi-project registry for ArimaOps and CTO Overwatch.
-// Tracks all .hq projects in ~/.arima/projects.json (added explicitly: created, opened with --repo, or registered),
+// Tracks all projects in ~/.arima/projects.json (added explicitly: created, opened with --repo, or registered),
 // knows which are loaded in this server, and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
 // inspect and update tasks across every project from a single command center.
 

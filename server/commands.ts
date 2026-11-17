@@ -269,7 +269,6 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     promoteLessons: () => void planner.lessons?.run(),
     setLessonPromotion: (on) => planner.lessons?.setEnabled(on === true),
     removeLesson: (id) => planner.lessons?.decide(str(id, 40), false),
-    proposeImprovements: () => void planner.lessons?.improve(),
     /** A finished Dev or Research task joins the benchmark suite (free, local): `pnpm bench task:<id>` replays it. */
     addToSuite: (taskId) => {
       const task = planner.task(str(taskId, 40));

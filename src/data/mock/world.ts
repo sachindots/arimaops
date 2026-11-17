@@ -264,7 +264,6 @@ export class World {
         ],
         pending: 0,
         running: false,
-        improvements: { running: false, pending: 0, last: null },
         last: null,
       },
       skillPacks: [

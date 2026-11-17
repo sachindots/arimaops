@@ -1,4 +1,4 @@
-// Per-CLI differences: which files .hq writes into the agent's folder and how
+// Per-CLI differences: which files HQ writes into the agent's folder and how
 // the agent is launched in both Local mode and Docker Sandbox mode.
 // Everything else (hooks → state, Team MCP, message delivery) is shared.
 

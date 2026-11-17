@@ -312,7 +312,6 @@ export const officeActions = {
   promoteLessons: () => source.promoteLessons(),
   setLessonPromotion: (on: boolean) => source.setLessonPromotion(on),
   removeLesson: (id: string) => source.removeLesson(id),
-  proposeImprovements: () => source.proposeImprovements(),
   addToSuite: (taskId: string) => source.addToSuite(taskId),
   importTemplate: (text: string) => {
     useOffice.setState({ templateImport: null });

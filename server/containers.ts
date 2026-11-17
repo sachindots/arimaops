@@ -289,7 +289,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     const port = Number(p || 443);
     const d = host ? await decide(req, host, port) : { ok: false, why: "bad request" };
     if (!d.ok) {
-      client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\n.hq proxy: ${d.why}. Ask with request_access.\n`);
+      client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\n${BRAND.name} proxy: ${d.why}. Ask with request_access.\n`);
       return;
     }
     const upstream = connect(port, host, () => {

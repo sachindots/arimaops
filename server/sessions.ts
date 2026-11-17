@@ -29,6 +29,7 @@ import { loadEnvFile } from "./backends/tmux";
 import { sandboxList } from "./lib/json";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
+import { canType, readScreen } from "./screen";
 import { agentTokenFor, projectHome, sessionName } from "./paths";
 import { POLICY_NOT_INITIALIZED, policyVerdict, runSetupChecks } from "./setup";
 import { ensureWorkspace, workspaceFor } from "./workspace";
@@ -47,16 +48,6 @@ const SHELL_ENV = { ...TERM_ENV, FORCE_HYPERLINK: "1" };
  */
 const SANDBOX_BROWSER = "/usr/local/bin/xdg-open";
 
-// What the agents' screens show across supported CLIs.
-const BUSY = /esc to interrupt|esc to cancel/i; // the footer while a turn runs
-// A question or permission prompt.
-// "Enter to confirm": Claude Code's folder-trust prompt (Local mode, first start in a folder).
-const DIALOG = /Enter to select|Enter to confirm|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
-// Folder-trust questions of every CLI (Claude Code, Codex, Antigravity, Gemini).
-const TRUST = /Do you trust (the contents of )?this (folder|directory|project)|Is this a project you created or one you trust|trust this folder/i;
-const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything|Type your message|Ask Gemini|Ask Antigravity|ctrl\+p commands/i; // the input prompt is up
-// The CLI has no login, so every message fails until you sign in (Claude Code prints this on its banner and on errors).
-const NO_LOGIN = /Not logged in · Run \/login|Login expired|Please run \/login|Invalid API key/i;
 const LOGIN_NOTE = "Not signed in: open its terminal and run /login";
 const SCREEN_QUIET_MS = 4000; // only second-guess hooks after this much silence
 const STALE_WORKING_MS = 15_000; // "working" with an idle screen this long = a missed Stop
@@ -440,7 +431,7 @@ export class Sessions {
   /** True when nothing on the agent's screen is waiting for an answer (no dialog, no trust prompt, not mid-turn). */
   async promptReady(agentId: string): Promise<boolean> {
     const screen = await this.backend.screenText(this.name(agentId), 14);
-    return !!screen && !DIALOG.test(screen) && !TRUST.test(screen) && !BUSY.test(screen);
+    return canType(screen);
   }
 
   async pressEnter(agentId: string): Promise<boolean> {
@@ -568,7 +559,8 @@ export class Sessions {
       }
       return;
     }
-    if (/Ask Codex to do anything/i.test(screen) && !DIALOG.test(screen) && !BUSY.test(screen)) {
+    const seen = readScreen(screen);
+    if (/Ask Codex to do anything/i.test(screen) && !seen.dialog && !seen.busy) {
       this.onSessionReattached(agentId); // its prompt is ready for typed messages
       if (
         st.state === "needs-input" ||
@@ -597,7 +589,7 @@ export class Sessions {
       }
       return;
     }
-    if (/\? for shortcuts/i.test(screen) && !BUSY.test(screen)) {
+    if (/\? for shortcuts/i.test(screen) && !readScreen(screen).busy) {
       this.onSessionReattached(agentId);
       if (st.note === "Sandbox running" || st.note === "Running locally" || st.note === "Reattached" || st.note?.includes("Antigravity's workspace"))
         this.hub.setStatus(agentId, { state: "idle", note: "Ready" });
@@ -617,20 +609,19 @@ export class Sessions {
     if (quietMs < SCREEN_QUIET_MS) return;
     const screen = await this.backend.screenText(name, 10);
     if (!screen) return;
-    const busy = BUSY.test(screen);
-    const dialog = DIALOG.test(screen);
+    const { busy, dialog, ready, noLogin } = readScreen(screen);
     const set = (state: "idle" | "working" | "needs-input", note: string) => {
       if (process.env.HQ_DEBUG) log.info(`screen ${agentId}: ${st.state} → ${state} (${note})`);
       this.hub.setStatus(agentId, { state, note });
     };
 
-    if (NO_LOGIN.test(screen)) return st.note === LOGIN_NOTE ? undefined : set("needs-input", LOGIN_NOTE);
+    if (noLogin) return st.note === LOGIN_NOTE ? undefined : set("needs-input", LOGIN_NOTE);
     if (st.state === "needs-input") {
       if (dialog || st.note?.includes("Codex's folder")) return; // still waiting (Codex trust is watched separately)
       this.idleScreens.delete(agentId);
       if (busy) return set("working", "Continuing after your answer");
       // Idle only on a positive sign: the normal input footer is back.
-      if (PROMPT_READY.test(screen)) set("idle", "Waiting for you");
+      if (ready) set("idle", "Waiting for you");
       return;
     }
     if (dialog) return set("needs-input", "Asking: answer the question in the terminal");
@@ -648,7 +639,7 @@ export class Sessions {
     }
     this.idleScreens.delete(agentId);
     // An idle agent's prompt is on screen, so typed messages will land (e.g. HQ missed SessionStart).
-    if (st.state === "idle" && !busy && PROMPT_READY.test(screen)) this.onSessionReattached(agentId);
+    if (st.state === "idle" && !busy && ready) this.onSessionReattached(agentId);
   }
 
   // ------------------------------------------------------------ setup helper
