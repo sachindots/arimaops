@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import type { AgentConfig, AgentStatus, MachineInfo } from "../../data/types";
 import { officeActions } from "../../store/office";
 import { SectionTitle } from "../kit";
-import { effective, fmtGb, maxMemory, sbxDefault, sizeMismatch, teamBudget } from "../resources";
+import { effective, fmtGb, maxMemory, defaultSize, sizeMismatch, teamBudget } from "../resources";
 import { ask } from "../dialog";
 
 /** CPU + memory for one agent's sandbox, plus the whole team's budget. */
 export function ResourcesSection({ agent, status, team, machine }: { agent: AgentConfig; status: AgentStatus | undefined; team: AgentConfig[]; machine: MachineInfo }) {
   const r = agent.sandbox.resources;
   const custom = r.cpus !== null || r.memoryGb !== null;
-  const def = sbxDefault(machine);
+  const def = defaultSize(machine);
   const eff = effective(r, machine);
   const maxMem = maxMemory(machine);
   // Sliders keep a local draft and save on release, so dragging doesn't spam the server.
@@ -32,9 +32,9 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
           aria-pressed={!custom}
           onClick={() => officeActions.updateSandbox(agent.id, { resources: { cpus: null, memoryGb: null } })}
         >
-          <div>sbx default</div>
+          <div>Default</div>
           <div className="text-[12px] font-normal text-muted">
-            All {def.cpus} CPUs · {fmtGb(def.memoryGb)} (half your memory)
+            {def.cpus} CPUs · {fmtGb(def.memoryGb)}: enough for the CLI and a build
           </div>
         </button>
         <button
@@ -76,7 +76,7 @@ export function ResourcesSection({ agent, status, team, machine }: { agent: Agen
 
       <div className={`mt-3 border-2 px-2.5 py-1.5 text-[13px] ${budget.overMemory ? "border-orange bg-[rgba(192,77,255,0.14)]" : "border-cream-3 bg-cream"}`}>
         <b>Team:</b> {budget.count} sandbox{budget.count === 1 ? "" : "es"} · {budget.cpus} CPUs · {fmtGb(budget.memoryGb)} of your {fmtGb(machine.memoryGb)} memory
-        {budget.overMemory && <div className="text-orange">That's more memory than this machine has. Give agents less with Custom, or run fewer at once.</div>}
+        {budget.overMemory && <div className="text-orange">More than fits at once (3 GB stays free for the system). HQ starts agents only while they fit and queues the rest; give agents less with Custom to run more at once.</div>}
       </div>
 
       {agent.mode === "sandbox" && session?.sandbox && (

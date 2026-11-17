@@ -1,14 +1,14 @@
 // Sandbox sizing maths shared by settings and the agent drawer.
 
-import type { AgentConfig, MachineInfo, SandboxResources, SessionInfo } from "../data/types";
+import { SANDBOX_DEFAULT, type AgentConfig, type MachineInfo, type SandboxResources, type SessionInfo } from "../data/types";
 
-/** sbx defaults: all host CPUs; 50% of RAM clamped to 0.5–32 GB. */
-export function sbxDefault(m: MachineInfo) {
-  return { cpus: m.cpus, memoryGb: Math.min(32, Math.max(0.5, m.memoryGb / 2)) };
+/** HQ's default size for a new sandbox (the server applies the same). */
+export function defaultSize(m: MachineInfo) {
+  return { cpus: Math.min(SANDBOX_DEFAULT.cpus, m.cpus || SANDBOX_DEFAULT.cpus), memoryGb: SANDBOX_DEFAULT.memoryGb };
 }
 
 export function effective(r: SandboxResources, m: MachineInfo) {
-  const d = sbxDefault(m);
+  const d = defaultSize(m);
   return { cpus: r.cpus ?? d.cpus, memoryGb: r.memoryGb ?? d.memoryGb };
 }
 
@@ -24,7 +24,8 @@ export function teamBudget(team: AgentConfig[], m: MachineInfo) {
     },
     { cpus: 0, memoryGb: 0 },
   );
-  return { ...sum, count: sandboxed.length, overMemory: sum.memoryGb > m.memoryGb };
+  // HQ keeps 3 GB for the system and queues starts that wouldn't fit (server/accounts.ts fitsInRam).
+  return { ...sum, count: sandboxed.length, overMemory: sum.memoryGb > m.memoryGb - 3 };
 }
 
 /** True when the existing sandbox was created with a different size than the setting asks for. */

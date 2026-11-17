@@ -2,7 +2,7 @@
 import { lstatSync, mkdirSync, mkdtempSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { accountEnv, cleanAccount, markLimited, maxAgents, mirrorHome, onAccountLimit, runningAgents, shareLimit } from "../server/accounts";
+import { accountEnv, cleanAccount, fitsInRam, markLimited, maxAgents, mirrorHome, onAccountLimit, runningAgents, shareLimit } from "../server/accounts";
 import { allocate, BLOCK, PORT_BASE } from "../server/ports";
 import { shellCommand } from "../server/backends/tmux";
 import { authVolume, loginCommand } from "../server/containers";
@@ -42,9 +42,28 @@ marks.length = 0;
 shareLimit("claude", until, { project: "alpha", agentId: "ghost", name: "Ghost", account: "default" });
 check("an unloaded project stops listening", marks.length === 0);
 
-check("agent cap: 16 GB allows 28", maxAgents(16 * 2 ** 30, undefined) === 28, String(maxAgents(16 * 2 ** 30, undefined)));
-check("agent cap: 4 GB allows 4, tiny machines still 2", maxAgents(4 * 2 ** 30, undefined) === 4 && maxAgents(2 ** 30, undefined) === 2);
-check("agent cap: ARIMA_MAX_AGENTS wins", maxAgents(4 * 2 ** 30, "12") === 12 && maxAgents(4 * 2 ** 30, "nope") === 4);
+check("agent cap: 16 GB allows 26 CLI processes", maxAgents(16 * 2 ** 30, undefined) === 26, String(maxAgents(16 * 2 ** 30, undefined)));
+check("agent cap: 4 GB and tiny machines still 2", maxAgents(4 * 2 ** 30, undefined) === 2 && maxAgents(2 ** 30, undefined) === 2);
+check("agent cap: ARIMA_MAX_AGENTS wins", maxAgents(4 * 2 ** 30, "12") === 12 && maxAgents(4 * 2 ** 30, "nope") === 2);
+
+// RAM budget: sandboxes count their own size (sbx's half-RAM default made them 11 GB each on a 22 GB laptop).
+{
+  const GB = 2 ** 30;
+  const seat = (id: string, mode: string, memoryGb: number | null) => ({ id, mode, sandbox: { resources: { cpus: null, memoryGb } } });
+  const hubOf = (agents: [ReturnType<typeof seat>, number | null][]) => ({
+    snap: {
+      config: { team: agents.map(([a]) => a) },
+      agents: agents.map(([a, actual]) => ({ agentId: a.id, session: { state: "running", sandbox: actual === null ? null : { cpus: 2, memoryGb: actual } } })),
+    },
+  });
+  const sb = seat("new", "sandbox", null);
+  check("default 2 GB sandboxes: 9 fit in 22 GB", fitsInRam([hubOf(Array.from({ length: 8 }, (_, i) => [seat(`s${i}`, "sandbox", null), null]))] as never, sb as never, 22 * GB, undefined)
+    && !fitsInRam([hubOf(Array.from({ length: 9 }, (_, i) => [seat(`s${i}`, "sandbox", null), null]))] as never, sb as never, 22 * GB, undefined));
+  check("an old half-RAM sandbox counts at its real size", !fitsInRam([hubOf([[seat("old", "sandbox", null), 11], [seat("old2", "sandbox", null), 11]])] as never, sb as never, 22 * GB, undefined));
+  check("Local agents count as a CLI process", fitsInRam([hubOf(Array.from({ length: 30 }, (_, i) => [seat(`l${i}`, "local", null), null]))] as never, seat("n", "local", null) as never, 22 * GB, undefined));
+  check("a big sandbox the owner chose counts its size", !fitsInRam([hubOf([])] as never, seat("big", "sandbox", 20) as never, 22 * GB, undefined));
+  check("ARIMA_MAX_AGENTS counts agents instead", fitsInRam([hubOf([[seat("old", "sandbox", null), 11], [seat("old2", "sandbox", null), 11]])] as never, sb as never, 22 * GB, "3"));
+}
 check("running agents counted across projects (stopped excluded)", runningAgents([a, b] as never) === 6);
 
 // Accounts: names, folders, container volumes.

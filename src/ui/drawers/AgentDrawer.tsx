@@ -2,7 +2,7 @@ import { BRAND } from "../../data/brand";
 import { UsageTab } from "./UsageTab";
 import { clisFor, PROVIDER_SPECS } from "../../data/providers";
 import { useEffect, useState, type ReactNode } from "react";
-import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
+import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, SANDBOX_DEFAULT, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { RemoveAgentDialog } from "../settings/RemoveAgentDialog";
 import { ui, type AgentTab } from "../../store/ui";
@@ -510,7 +510,7 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
         {row(
           "Resources",
           <>
-            {sb.resources.cpus || sb.resources.memoryGb ? `${sb.resources.cpus ?? "all"} CPUs · ${sb.resources.memoryGb ?? "default"} GB` : "sbx default"}
+            {sb.resources.cpus || sb.resources.memoryGb ? `${sb.resources.cpus ?? SANDBOX_DEFAULT.cpus} CPUs · ${sb.resources.memoryGb ?? SANDBOX_DEFAULT.memoryGb} GB` : `Default (${SANDBOX_DEFAULT.cpus} CPUs · ${SANDBOX_DEFAULT.memoryGb} GB)`}
             {actual && <span className="text-muted"> (now {actual.cpus} CPUs · {actual.memoryGb} GB)</span>}
           </>,
         )}

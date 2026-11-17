@@ -7,7 +7,7 @@ import { lstatSync, mkdirSync, readdirSync, symlinkSync } from "node:fs";
 import { homedir, totalmem } from "node:os";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
-import type { AgentCli, AgentConfig } from "../src/data/types";
+import { SANDBOX_DEFAULT, type AgentCli, type AgentConfig } from "../src/data/types";
 import type { Hub } from "./hub";
 
 export interface LimitFrom {
@@ -97,7 +97,7 @@ export function markLimited(hub: Hub, cli: AgentCli, until: Date, from: LimitFro
 
 /** Rough memory one agent's CLI process takes (Claude Code and agy are Node apps; Codex is lighter). */
 const AGENT_MB = 500;
-const RESERVED_MB = 2048; // the OS, HQ itself, your editor and browser
+const RESERVED_MB = 3072; // the OS, HQ itself, your editor and browser
 
 /** Agents that may run at once on this machine: ARIMA_MAX_AGENTS, else what the RAM allows. */
 export function maxAgents(totalBytes = totalmem(), env = process.env.ARIMA_MAX_AGENTS): number {
@@ -106,7 +106,34 @@ export function maxAgents(totalBytes = totalmem(), env = process.env.ARIMA_MAX_A
   return Math.max(2, Math.floor((totalBytes / 2 ** 20 - RESERVED_MB) / AGENT_MB));
 }
 
+/**
+ * Memory an agent holds while it runs: a sandbox is a VM of its own size (the real size once sbx reports it, so an
+ * old sandbox made at sbx's half-the-RAM default counts as that); a Local or Container agent is its CLI process.
+ */
+export function agentMb(a: Pick<AgentConfig, "mode" | "sandbox">, actualGb?: number | null): number {
+  if (a.mode !== "sandbox") return AGENT_MB;
+  return Math.round((actualGb ?? a.sandbox.resources.memoryGb ?? SANDBOX_DEFAULT.memoryGb) * 1024);
+}
+
+/**
+ * Whether one more agent (`next`, or a plain CLI process when unknown) fits: with ARIMA_MAX_AGENTS set, by count;
+ * otherwise the running agents' memory plus the new one's must fit in RAM minus RESERVED_MB.
+ */
+export function fitsInRam(hubs: Pick<Hub, "snap">[], next: Pick<AgentConfig, "mode" | "sandbox"> | null, totalBytes = totalmem(), env = process.env.ARIMA_MAX_AGENTS): boolean {
+  const fromEnv = Number(env);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return runningAgents(hubs) < Math.floor(fromEnv);
+  let used = 0;
+  for (const h of hubs)
+    for (const st of h.snap.agents) {
+      if (st.session.state !== "running" && st.session.state !== "starting") continue;
+      const a = h.snap.config.team.find((x) => x.id === st.agentId);
+      used += a ? agentMb(a, st.session.sandbox?.memoryGb) : AGENT_MB;
+    }
+  const need = next ? agentMb(next) : AGENT_MB;
+  return used + need <= totalBytes / 2 ** 20 - RESERVED_MB;
+}
+
 /** Agents running or starting across these projects. */
-export function runningAgents(hubs: Hub[]): number {
+export function runningAgents(hubs: Pick<Hub, "snap">[]): number {
   return hubs.reduce((n, h) => n + h.snap.agents.filter((a) => a.session.state === "running" || a.session.state === "starting").length, 0);
 }

@@ -26,11 +26,14 @@ export type BasePolicy = "allow-all" | "balanced" | "deny-all" | "unknown";
 export const SERVICE_KEYS = ["anthropic", "openai", "github", "google", "groq", "mistral", "openrouter", "xai", "nebius", "copilot", "cursor", "devin", "droid"] as const;
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 
-/** VM size. null = let sbx decide (all host CPUs; 50% of RAM, 0.5–32 GB). Set at creation only. */
+/** VM size. null = HQ's default (SANDBOX_DEFAULT), not sbx's own (all host CPUs, half the RAM). Set at creation only. */
 export interface SandboxResources {
   cpus: number | null;
   memoryGb: number | null;
 }
+
+/** Size of a new sandbox when the owner set none: enough for a CLI plus a build. sbx's own default takes half the RAM per sandbox. */
+export const SANDBOX_DEFAULT = { cpus: 2, memoryGb: 2 } as const;
 
 /** Per-agent sandbox settings HQ applies through sbx. Machine-wide ones live in SbxState. */
 export interface SandboxSettings {

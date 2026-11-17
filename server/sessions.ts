@@ -8,14 +8,14 @@ import { homedir } from "node:os";
 import { stackSkills } from "../src/data/stack";
 import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
-import { HOST_TERMINAL, CLI_LABEL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
+import { HOST_TERMINAL, CLI_LABEL, SANDBOX_DEFAULT, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
 import { adapters, containerArgs, localBinary } from "./adapters";
 import { isStream } from "./streamEngine";
 import { streamCommand } from "./streamRunner";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
-import { accountEnv, accountHome, accountOf, maxAgents, mirrorHome, ownsHome, runningAgents } from "./accounts";
+import { accountEnv, accountHome, accountOf, agentMb, fitsInRam, maxAgents, mirrorHome, ownsHome } from "./accounts";
 import { accounts } from "./credentials/registry";
 import { prepareSecrets, removeSecrets } from "./credentials/deliver";
 import type { ProviderEnv } from "../src/data/providers";
@@ -148,9 +148,10 @@ export class Sessions {
     if (over && !agent.isLead) return fail(`Paused: the project's ${over === "day" ? "daily" : "monthly"} spend cap is reached. Raise it in Settings → Project, or wait for the ${over === "day" ? "next day" : "next month"}.`);
     if (!agent.isLead && rolePaused(hub.slug, agent.roleId)) return fail("Paused: this role's daily budget is used. Raise it in Settings → Team, or wait until midnight.");
 
-    const cap = maxAgents();
-    if (this.atCap())
-      return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);
+    if (this.atCap(id))
+      return fail(process.env.ARIMA_MAX_AGENTS
+        ? `${maxAgents()} agents are already running across your projects (ARIMA_MAX_AGENTS). Stop one first, or raise it.`
+        : `Not enough free memory: the running agents and ${agent.name}'s ${agentMb(agent) / 1024} GB would not fit in this machine's RAM (3 GB kept for the system). Stop an agent or give sandboxes less memory (Settings → Sandbox → Resources).`);
 
     const name = this.name(id);
     this.onSessionDown(id);
@@ -196,9 +197,10 @@ export class Sessions {
           hub.setSession(id, { detail: "Starting sandbox…" });
           // sbx only accepts a size when it creates the sandbox; an existing (stopped) one keeps its size,
           // and passing --cpus/--memory again makes `sbx run` fail. "Recreate sandbox" applies a new size.
-          const { cpus, memoryGb } = agent.sandbox.resources;
+          const cpus = Math.min(agent.sandbox.resources.cpus ?? SANDBOX_DEFAULT.cpus, hub.snap.setup.machine.cpus || SANDBOX_DEFAULT.cpus);
+          const memoryGb = agent.sandbox.resources.memoryGb ?? SANDBOX_DEFAULT.memoryGb;
           const isNew = !(await this.sandboxExists(name));
-          const size = !isNew ? [] : [...(cpus ? ["--cpus", String(cpus)] : []), ...(memoryGb ? ["--memory", `${Math.round(memoryGb * 1024)}m`] : [])];
+          const size = !isNew ? [] : ["--cpus", String(cpus), "--memory", `${Math.round(memoryGb * 1024)}m`];
           const env = [...(envFile ? ["--env-file", envFile] : []), "-e", `BROWSER=${SANDBOX_BROWSER}`];
           const sbxArgs = launch.sbxArgs ?? launch.args;
           const args = sbxArgs.length ? ["--", ...sbxArgs] : [];
@@ -237,10 +239,11 @@ export class Sessions {
     }
   }
 
-  /** True when as many agents run (or start) across the loaded projects as this machine allows. */
-  atCap(): boolean {
+  /** True when starting `id` (or one more agent) would not fit: ARIMA_MAX_AGENTS if set, else the machine's RAM. */
+  atCap(id?: string): boolean {
     const hubs = liveHubs().includes(this.hub) ? liveHubs() : [...liveHubs(), this.hub];
-    return runningAgents(hubs) >= maxAgents();
+    const next = id ? this.hub.cfg(id) : undefined;
+    return !fitsInRam(hubs, next ?? null);
   }
 
   async stop(id: string) {

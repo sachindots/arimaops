@@ -199,7 +199,7 @@ inbox4.stop();
   log.length = 0;
   tasks.push({ id: "T2", ownerId: "d1", status: "todo" });
   od.ready("d1");
-  check("over the cap the start waits", !log.length && od.managed().queued.join() === "d1" && /free slot/.test(st.get("d1")!.note ?? ""));
+  check("over the cap the start waits", !log.length && od.managed().queued.join() === "d1" && /free memory/.test(st.get("d1")!.note ?? ""));
   st.get("d2")!.session.state = "stopped";
   await od.tick(t0 + 20 * GRACE_MS);
   check("…and starts when a slot frees", log.join() === "start d1", log.join());

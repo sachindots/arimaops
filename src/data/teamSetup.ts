@@ -5,7 +5,7 @@
 import { bestFree, FREE_SOURCES, FREE_SOURCE_INFO, type FreeModel, type FreeSource } from "./freeModels";
 import type { Role } from "./model";
 import type { Provider } from "./providers";
-import type { AgentCli } from "./types";
+import { SANDBOX_DEFAULT, type AgentCli } from "./types";
 
 export interface SetupFacts {
   ramGb: number;
@@ -49,7 +49,7 @@ const PAID: Partial<Record<AgentCli, [string, string]>> = {
   agy: ["claude-opus-5-5-high", "claude-sonnet-5-5-high"],
 };
 const AGY_FREE = "gemini-3.8-flash-high";
-const SANDBOX_GB = 2;
+const SANDBOX_GB = SANDBOX_DEFAULT.memoryGb;
 const RESERVED_GB = 3;
 
 export function proposeSetup(roles: Role[], f: SetupFacts): SetupProposal {

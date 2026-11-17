@@ -12,8 +12,8 @@ export const GRACE_MS = 2 * 60_000;
 export interface Starter {
   start(id: string): Promise<void>;
   stop(id: string): Promise<void>;
-  /** True when the machine already runs as many agents as it allows. */
-  atCap(): boolean;
+  /** True when starting this agent would not fit on the machine (count or RAM). */
+  atCap(id?: string): boolean;
 }
 
 export class OnDemand {
@@ -50,9 +50,9 @@ export class OnDemand {
   ready(agentId: string) {
     if (!this.onDemand(agentId) || this.up(agentId) || this.queue.includes(agentId)) return;
     const hold = this.paused(agentId);
-    if (hold || this.sessions.atCap()) {
+    if (hold || this.sessions.atCap(agentId)) {
       this.queue.push(agentId);
-      const why = hold ?? "a free slot (this machine runs as many agents as it allows)";
+      const why = hold ?? "free memory (the running agents fill this machine's RAM)";
       this.hub.setStatus(agentId, { note: `Waiting for ${why}` });
       this.hub.activity("session", agentId, `${this.hub.cfg(agentId)?.name} waits for ${why} to start`);
       return;
@@ -86,7 +86,7 @@ export class OnDemand {
     // One pass: a seat still held (its role over budget) goes back in line without blocking the others.
     for (const id of this.queue.splice(0)) {
       if (!this.openTasks(id)) continue;
-      if (this.paused(id) || this.sessions.atCap()) this.queue.push(id);
+      if (this.paused(id) || this.sessions.atCap(id)) this.queue.push(id);
       else this.ready(id);
     }
   }

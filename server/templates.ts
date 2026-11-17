@@ -13,7 +13,7 @@ import { slugify } from "./paths";
 import { packProblems } from "./templateIO";
 
 export const defaultSandbox = (): SandboxSettings => ({
-  resources: { cpus: null, memoryGb: null }, // sbx's own defaults
+  resources: { cpus: null, memoryGb: null }, // HQ's default size (SANDBOX_DEFAULT)
   allow: [],
   deny: [],
 });
