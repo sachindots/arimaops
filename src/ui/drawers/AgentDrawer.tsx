@@ -570,7 +570,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
   const [draft, setDraft] = useState("");
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#00f0ff" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#3b82f6" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;
@@ -588,10 +588,16 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
             const out = m.fromId === agent.id;
             const other = who(out ? m.toId : m.fromId);
             return (
-              <li key={m.id} className={`rounded-lg border border-white/10 px-2.5 py-1.5 ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
-                <div className="flex items-center gap-1.5 text-[13px] text-muted">
+              <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.kind === "disagree" ? "border-amber/45 bg-amber/[0.06]" : "border-white/10"} ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
+                <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
                   {other && <Dot color={other.color} size={8} />}
                   {out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
+                  {m.kind && (
+                    <span className="chip text-[11px]" style={{ ["--c" as string]: m.kind === "disagree" ? "var(--color-amber)" : "var(--accent)" }}>
+                      {m.kind === "disagree" ? "disagrees" : "question"}
+                    </span>
+                  )}
+                  {m.taskId && <span className="font-term text-[11px] text-muted">{m.taskId}</span>}
                   {!out && m.delivered && (
                     <span
                       className="font-mono text-[11px]"

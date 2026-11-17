@@ -17,7 +17,7 @@ import { agentMode } from "../hud/theme";
 const MODE_COLOR: Record<Mode, string> = {
   "needs-input": "#ffb020",
   alert: "#ff2a4b",
-  working: "#00f0ff",
+  working: "#3b82f6",
   cheer: "#3fb950",
   starting: "#818cf8",
   idle: "#8b9bb4",
@@ -463,7 +463,7 @@ function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
           <ol className="m-0 flex list-none flex-col gap-2 border-l border-accent/20 p-0 pl-3">
             {snap.activity.slice(0, 30).map((e) => (
               <li key={e.id} className="relative text-[12px]">
-                <i className="absolute -left-[16.5px] top-1.5 h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_6px_#00f0ff]" />
+                <i className="absolute -left-[16.5px] top-1.5 h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
                 <button className="text-left hover:underline disabled:no-underline" disabled={!e.agentId} onClick={() => e.agentId && onFocus(e.agentId)}>
                   <b className="font-medium text-ink">{name(e.agentId)}</b> <span className="text-muted">{e.text}</span>
                 </button>

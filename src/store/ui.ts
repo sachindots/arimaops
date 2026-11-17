@@ -3,7 +3,7 @@ import { readPref, writePref } from "../lib/prefs";
 
 export type DrawerState =
   | { kind: "agent"; id: string; tab?: AgentTab }
-  | { kind: "boards"; boardId?: string }
+  | { kind: "boards"; boardId?: string; stageId?: string }
   | { kind: "prs" }
   | { kind: "env"; name: string }
   | { kind: "actions" }
@@ -45,18 +45,31 @@ interface UiState {
   layoutChoice: LayoutChoice;
   /** Desktop: the pixel office, or the command center (every agent of every project, tiled). */
   view: View;
+  /** Surface appearance: pure-black dark mode (default) or crisp white light mode. */
+  scheme: Scheme;
   /** A pop-out window showing one thing full-window: an agent (`?solo=agent&agent=<id>`) or the command center. */
   solo: Solo | null;
 }
 
 export type View = "office" | "command";
+export type Scheme = "dark" | "light";
 export type Solo = { kind: "agent"; agentId: string } | { kind: "command" };
 const VIEW_PREF = "view";
+const SCHEME_PREF = "scheme";
 function savedView(): View {
   try {
     return readPref(VIEW_PREF) === "command" ? "command" : "office";
   } catch {
     return "office";
+  }
+}
+function savedScheme(): Scheme {
+  try {
+    const s = readPref(SCHEME_PREF) === "light" ? "light" : "dark";
+    if (typeof document !== "undefined") document.documentElement.dataset.scheme = s;
+    return s;
+  } catch {
+    return "dark";
   }
 }
 function soloFromUrl(): Solo | null {
@@ -114,6 +127,7 @@ export const useUi = create<UiState>(() => ({
   compact: isCompact(savedLayout()),
   layoutChoice: savedLayout(),
   view: soloFromUrl()?.kind === "command" ? "command" : savedView(),
+  scheme: savedScheme(),
   solo: soloFromUrl(),
 }));
 
@@ -130,8 +144,8 @@ export const ui = {
     useUi.setState({ drawer: { kind: "agent", id, tab } });
     ui.focus({ kind: "agent", id });
   },
-  openBoards(boardId?: string) {
-    useUi.setState({ drawer: { kind: "boards", boardId } });
+  openBoards(boardId?: string, stageId?: string) {
+    useUi.setState({ drawer: { kind: "boards", boardId, stageId } });
   },
   openTerminal() {
     useUi.setState({ drawer: { kind: "terminal" } });
@@ -197,6 +211,16 @@ export const ui = {
       /* private window */
     }
     useUi.setState({ view });
+  },
+  toggleScheme() {
+    const next: Scheme = useUi.getState().scheme === "light" ? "dark" : "light";
+    document.documentElement.dataset.scheme = next;
+    try {
+      writePref(SCHEME_PREF, next);
+    } catch {
+      /* private window */
+    }
+    useUi.setState({ scheme: next });
   },
   /** Opens an agent in its own window (drag it to another monitor). */
   popOutAgent(project: string, agentId: string) {

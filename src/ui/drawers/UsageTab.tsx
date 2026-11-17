@@ -26,7 +26,7 @@ export function UsageTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentCo
     .slice(0, 8);
   const range = RANGES.find((r) => r.days === days)!;
   const parts = [
-    { label: "Fresh input", value: mine?.input ?? 0, color: "#00f0ff" },
+    { label: "Fresh input", value: mine?.input ?? 0, color: "#3b82f6" },
     { label: "From cache", value: mine?.cached ?? 0, color: "#818cf8" },
     { label: "Output", value: mine?.output ?? 0, color: "#ffb020" },
   ];
@@ -90,7 +90,7 @@ export function UsageTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentCo
                 <span className="min-w-0 flex-1 truncate">{t.title}</span>
                 <span className="font-display text-muted">{fmtTokens(n)}</span>
               </div>
-              <Meter value={n} max={tasks[0].n} color="#00f0ff" label={`${t.id} tokens`} />
+              <Meter value={n} max={tasks[0].n} color="#3b82f6" label={`${t.id} tokens`} />
             </div>
           ))
         )}

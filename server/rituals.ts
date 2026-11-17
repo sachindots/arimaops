@@ -9,16 +9,14 @@ import { join } from "node:path";
 import type { Ritual } from "../src/data/model";
 import { readDoc, writeDoc } from "./lib/docs";
 import { homeRoot } from "./paths";
+import { ritualWhen } from "../src/data/rituals";
+
+export { ritualWhen };
 
 export const RUN_WINDOW_H = 2;
-export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-/** "Mondays at 09:00" / "Every day at 18:00". */
-export const ritualWhen = (r: Pick<Ritual, "day" | "hour" | "monthly">) =>
-  `${r.day === undefined ? "Every day" : r.monthly ? `The first ${DAY_NAMES[r.day]} of the month` : `${DAY_NAMES[r.day]}s`} at ${pad(r.hour)}:00`;
 
 /** The rituals due now: right day, inside the window after their hour, and not run yet today. */
 export function dueRituals(rituals: readonly Ritual[], now: Date, last: Record<string, string>): Ritual[] {

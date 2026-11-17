@@ -13,7 +13,8 @@ import { SetupChecklist } from "./ui/setup/SetupChecklist";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
 import { SettingsModal } from "./ui/settings/SettingsModal";
 import { CompactApp } from "./ui/compact/CompactApp";
-import { SpatialHud } from "./ui/hud/SpatialHud";
+import { useProjectTheme } from "./ui/theme/projectTheme";
+import { Deck } from "./ui/deck/Deck";
 import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
@@ -176,6 +177,7 @@ export function App() {
   useKeyboard();
   useSetupPrompt();
   const desktopHud = useDesktopHud();
+  useProjectTheme(useOffice((s) => s.snap)); // <html data-theme>: the accent follows the open project
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
@@ -228,7 +230,7 @@ export function App() {
         )}
         {ready && (
           <>
-            {desktopHud ? <SpatialHud /> : <CompactApp />}
+            {desktopHud ? <Deck /> : <CompactApp />}
             <SettingsModal />
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
             {!welcome && !setupOpen && <OwnerPrompt />}

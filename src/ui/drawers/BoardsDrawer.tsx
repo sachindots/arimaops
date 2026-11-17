@@ -16,7 +16,7 @@ const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
 
 const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "Planned", done: "Done" };
 
-export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
+export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardId?: string; initialStageId?: string }) {
   const snap = useOffice((s) => s.snap);
   const now = useNow(30_000);
   const boards = [...(snap?.boards ?? [])].sort((a, b) => a.order - b.order);
@@ -27,11 +27,13 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
       boards.find((b) => b.status === "active")?.id ??
       boards[0]?.id,
   );
+  const [stageId, setStageId] = useState<string | null>(initialStageId ?? null);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [byAgent, setByAgent] = useState(() => readPref("board.lanes") === "agent");
   if (!snap) return null;
   const board = boards.find((b) => b.id === boardId);
-  const tasks = snap.tasks.filter((t) => t.boardId === boardId);
+  const stageName = stageId ? snap.config.template?.flow.stages.find((s) => s.id === stageId)?.name ?? stageId : null;
+  const tasks = snap.tasks.filter((t) => t.boardId === boardId && (!stageId || t.stageId === stageId));
   const cols = COLUMNS.filter((c) => c.id !== "blocked" || tasks.some((t) => t.status === "blocked"));
   const template = cols.map((c) => (tasks.some((t) => t.status === c.id) ? "minmax(min(230px, 86%), 1fr)" : "minmax(96px, 0.35fr)")).join(" ");
   const toggleLanes = () => {
@@ -82,6 +84,11 @@ export function BoardsDrawer({ initialBoardId }: { initialBoardId?: string }) {
             ))}
           </select>
           <span className="text-[12px] text-muted">Agents only pick tasks from active boards.</span>
+          {stageName && (
+            <button type="button" className="btn px-2 text-[12px]" aria-pressed="true" onClick={() => setStageId(null)} title="Show every stage">
+              Stage: {stageName} ×
+            </button>
+          )}
           <span className="flex-1" />
           {tasks.length > 0 && (
             <span className="flex w-[180px] items-center gap-2" title="Tasks done on this board">

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { officeActions, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { CommitInput, Toggle } from "./controls";
+import { ritualWhen } from "../../data/rituals";
 
 /** Engagement scope: one entry per line. The server keeps only domains, IPs and CIDRs. */
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -120,7 +121,7 @@ function ScopeEditor() {
 }
 
 /** The outcomes this project works toward; the lead links tasks to them and records where each number is. */
-function Goals() {
+export function Goals({ headed = true }: { headed?: boolean } = {}) {
   const goals = useOffice((s) => s.snap?.goals) ?? [];
   const [draft, setDraft] = useState({ title: "", metric: "", target: "" });
   const add = () => {
@@ -130,8 +131,8 @@ function Goals() {
   };
   return (
     <section className="flex flex-col gap-2">
-      <SectionTitle>Goals</SectionTitle>
-      <p className="text-[13px] text-muted">A few outcomes this project works toward. The lead links each task to one and records where the number is now.</p>
+      {headed && <SectionTitle>Goals</SectionTitle>}
+      {headed && <p className="text-[13px] text-muted">A few outcomes this project works toward. The lead links each task to one and records where the number is now.</p>}
       {goals.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {goals.map((g) => (
@@ -217,6 +218,18 @@ export function ProjectSettings() {
           onChange={(v) => officeActions.updateProject({ standup: v })}
           label="Morning (09:00) and evening (18:00) note from the team"
         />
+        {(snap?.config.template?.rituals?.length ?? 0) > 0 && (
+          <div className="flex flex-col gap-1">
+            <Toggle checked={project.rituals !== false} onChange={(v) => officeActions.updateProject({ rituals: v })} label="Scheduled rituals: HQ hands the lead these on time" />
+            <ul className="m-0 list-none pl-1 text-[13px] text-muted">
+              {snap!.config.template!.rituals!.map((r) => (
+                <li key={r.id}>
+                  <span className="text-ink">{r.title}</span> · {ritualWhen(r)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <Field
           label="The company"
           hint={`What every agent in every project knows: the product, customers, voice, prices, do and don't. Owner only; up to 3000 characters. Agents get it at their next start.`}

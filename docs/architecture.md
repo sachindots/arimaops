@@ -41,7 +41,7 @@ One Node process (the **HQ server**) runs every project on a machine. Each proje
 |---|---|
 | Data in | `data/ws/wsSource.ts` (live), `data/mock/*` (demo), `store/office.ts` (one project), `store/building.ts` (other projects, read-only) |
 | Shared types | `data/types.ts` (the contract between server and UI; change it on both sides) |
-| Desktop | `ui/hud/SpatialHud.tsx` and `ui/hud/*` (top bar, team, activity), `ui/drawers/*`, `ui/settings/*` |
+| Desktop | `ui/deck/Deck.tsx` (header, rail, stage ribbon, slide-over, Goals page), `ui/hud/*` (orb, orbit, command bar, usage), `ui/theme/projectTheme.ts`, `ui/drawers/*`, `ui/settings/*` |
 | Phone / tablet | `ui/compact/CompactApp.tsx` (tabs) |
 
 **Rules that keep it clear:**

@@ -56,6 +56,24 @@ export function UsagePage() {
         <Stat label="Agents with usage" value={`${usage.rows.length} / ${snap.config.team.length}`} />
       </div>
 
+      {(snap.spend?.roles?.length ?? 0) > 0 && (
+        <section className="hud-glass flex flex-col gap-2 rounded-2xl px-4 py-3" aria-label="Role budgets today">
+          <h2 className="m-0 text-[14px] font-semibold">
+            Role budgets today <span className="font-normal text-muted">· API-key accounts; over budget, that role stops until midnight</span>
+          </h2>
+          {snap.spend!.roles!.map((r) => (
+            <div key={r.roleId} className="grid grid-cols-[minmax(120px,1fr)_minmax(120px,2fr)_auto] items-center gap-3 text-[13px]">
+              <span>{r.title}</span>
+              <Meter value={r.usd} max={r.cap} color={r.paused ? "#ef4444" : r.usd >= r.cap * 0.8 ? "#f59e0b" : "var(--accent)"} label={`${r.title}: ${fmtUsd(r.usd)} of ${fmtUsd(r.cap)}`} />
+              <span className={r.paused ? "text-red" : "text-muted"}>
+                {fmtUsd(r.usd)} / {fmtUsd(r.cap)}
+                {r.paused ? " · stopped" : ""}
+              </span>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section className="hud-glass overflow-hidden rounded-2xl" aria-label="Leaderboard">
         <div className="grid grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-white/[0.08] px-4 py-2 text-[12px] text-muted max-[900px]:hidden">
           <span>#</span>
@@ -87,13 +105,13 @@ export function UsagePage() {
                 </span>
               </span>
               <span className="max-[900px]:hidden">
-                <Sparkline data={r.series} width={140} height={26} color={a?.color ?? "#00f0ff"} label={`${a?.name ?? r.agentId} over ${range.label.toLowerCase()}`} />
+                <Sparkline data={r.series} width={140} height={26} color={a?.color ?? "#3b82f6"} label={`${a?.name ?? r.agentId} over ${range.label.toLowerCase()}`} />
               </span>
               <span className="text-right font-display text-[15px] font-semibold">{fmtTokens(n)}</span>
               <span className="text-right font-display text-[13px] text-muted max-[900px]:hidden">{fmtUsd(r.costUsd)}</span>
               <span className="flex flex-col gap-1 max-[900px]:hidden">
                 <span className="text-[11px] text-muted">{team ? Math.round((n / team) * 100) : 0}%</span>
-                <Meter value={n} max={usage.max} color={a?.color ?? "#00f0ff"} label={`${a?.name ?? r.agentId}'s share`} />
+                <Meter value={n} max={usage.max} color={a?.color ?? "#3b82f6"} label={`${a?.name ?? r.agentId}'s share`} />
               </span>
             </button>
           );

@@ -4,7 +4,7 @@ import type { AgentConfig, OfficeSnapshot } from "../../data/types";
 export type TeamMode = "build" | "redteam" | "blueteam" | "purpleteam";
 
 export const TEAM_MODE_LABEL: Record<TeamMode, string> = { build: "Build", redteam: "Red team", blueteam: "Blue team", purpleteam: "Purple team" };
-export const TEAM_MODE_COLOR: Record<TeamMode, string> = { build: "#00f0ff", redteam: "#ff2a4b", blueteam: "#38bdf8", purpleteam: "#a371f7" };
+export const TEAM_MODE_COLOR: Record<TeamMode, string> = { build: "#3b82f6", redteam: "#ff2a4b", blueteam: "#38bdf8", purpleteam: "#a371f7" };
 export const TEAM_MODE_HINT: Record<TeamMode, string> = {
   build: "Software project: tasks, PRs and reviews",
   redteam: "Security testing: scope, findings and the report",

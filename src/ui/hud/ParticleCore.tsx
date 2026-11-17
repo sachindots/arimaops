@@ -14,8 +14,8 @@ interface Particle {
 interface ParticleCoreProps {
   workingCount: number;
   attentionCount: number;
-  /** A red-team project's core is red and steel; a build project's cyan and gold. */
-  redTeam: boolean;
+  /** The project theme's orb colours (src/ui/theme/projectTheme.ts); a change cross-fades over about 600 ms. */
+  palette: { primary: readonly [number, number, number]; secondary: readonly [number, number, number] };
   /** Inside a page (phones, tablets): fill the parent instead of the window. */
   compact?: boolean;
 }
@@ -47,11 +47,13 @@ function makeParticles(): Particle[] {
  * Interactive 60fps 3D-projected particle core.
  * Cyan/gold (build) or red/steel (red team); it spins faster with more agents working and pulses while something needs you.
  */
-export function ParticleCore({ workingCount, attentionCount, redTeam, compact = false }: ParticleCoreProps) {
+export function ParticleCore({ workingCount, attentionCount, palette, compact = false }: ParticleCoreProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const strip = useOffice((s) => (s.snap?.config.template?.flow.stages.length ?? 0) > 1);
-  const stateRef = useRef({ workingCount, attentionCount, redTeam, strip });
-  stateRef.current = { workingCount, attentionCount, redTeam, strip };
+  const stateRef = useRef({ workingCount, attentionCount, palette, strip });
+  stateRef.current = { workingCount, attentionCount, palette, strip };
+  // The colours drawn now, eased toward the palette each frame (so switching projects fades, not jumps).
+  const shown = useRef({ p: [...palette.primary], s: [...palette.secondary] });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,9 +114,14 @@ export function ParticleCore({ workingCount, attentionCount, redTeam, compact = 
       const R = baseR * pulse;
 
       // Ambient core glow
+      const light = document.documentElement.dataset.scheme === "light";
+      const sec = light && cur.palette.secondary[0] > 200 ? ([30, 41, 59] as const) : cur.palette.secondary;
       const glow = ctx.createRadialGradient(cx, cy, R * 0.08, cx, cy, R * 1.45);
-      const [pR, pG, pB] = cur.redTeam ? [255, 42, 75] : [0, 240, 255];
-      const [sR, sG, sB] = cur.redTeam ? [148, 163, 184] : [255, 176, 32];
+      const ease = (from: number[], to: readonly number[]) => from.forEach((v, i) => (from[i] = v + (to[i] - v) * (reduced ? 1 : 0.08)));
+      ease(shown.current.p, cur.palette.primary);
+      ease(shown.current.s, sec);
+      const [pR, pG, pB] = shown.current.p.map(Math.round);
+      const [sR, sG, sB] = shown.current.s.map(Math.round);
 
       glow.addColorStop(0, `rgba(${pR}, ${pG}, ${pB}, 0.18)`);
       glow.addColorStop(0.55, `rgba(${sR}, ${sG}, ${sB}, 0.06)`);
@@ -144,9 +151,9 @@ export function ParticleCore({ workingCount, attentionCount, redTeam, compact = 
       }
       ctx.restore();
 
-      // 3D particle projection with additive blending
+      // 3D particle projection (additive on dark, alpha-blended on light)
       ctx.save();
-      ctx.globalCompositeOperation = "lighter";
+      ctx.globalCompositeOperation = light ? "source-over" : "lighter";
       const tiltX = 0.25 + smoothY * 0.22;
       const rotY = elapsed * 0.22 * activityBoost + smoothX * 0.35;
       const cosX = Math.cos(tiltX);

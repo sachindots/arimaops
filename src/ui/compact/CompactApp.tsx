@@ -8,6 +8,7 @@ import { modeOf, type Mode } from "../../data/mode";
 import { mentioned } from "../../data/mentions";
 import { AgentOrbit } from "../hud/AgentOrbit";
 import { ParticleCore } from "../hud/ParticleCore";
+import { projectTheme } from "../theme/projectTheme";
 import { projectMode } from "../hud/theme";
 import { ui, useUi } from "../../store/ui";
 import { signOut, useAuth } from "../../store/auth";
@@ -27,7 +28,7 @@ import { StageStrip } from "../hud/StageStrip";
 
 export type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
 
-const MODE_COLOR: Record<Mode, string> = { working: "#00f0ff", cheer: "#3fb950", "needs-input": "#ffb020", alert: "#ff2a4b", starting: "#818cf8", idle: "#8b9bb4", stopped: "#475569" };
+const MODE_COLOR: Record<Mode, string> = { working: "#3b82f6", cheer: "#3fb950", "needs-input": "#ffb020", alert: "#ff2a4b", starting: "#818cf8", idle: "#8b9bb4", stopped: "#475569" };
 
 export const NAV: { id: Tab; label: string; icon: ReactNode }[] = [
   { id: "home", label: "Home", icon: <path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" /> },
@@ -70,7 +71,7 @@ export function CompactApp() {
     : drawer?.kind === "terminal" ? <TerminalDrawer />
     : drawer?.kind === "cto" ? <CtoDrawer />
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
-    : drawer?.kind === "boards" ? <BoardsDrawer initialBoardId={drawer.boardId} />
+    : drawer?.kind === "boards" ? <BoardsDrawer key={drawer.stageId ?? "all"} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} />
     : drawer?.kind === "findings" ? <FindingsDrawer />
     : drawer?.kind === "flow" ? <FlowDrawer />
     : null;
@@ -226,7 +227,7 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
   const now = useNow(5000);
   const [draft, setDraft] = useState("");
   const lead = snap.config.team.find((a) => a.isLead);
-  const who = (id: string) => (id === HUMAN_ID ? { name: "You", color: "#3fb950" } : snap.config.team.find((a) => a.id === id) ?? { name: "HQ", color: "#00f0ff" });
+  const who = (id: string) => (id === HUMAN_ID ? { name: "You", color: "#3fb950" } : snap.config.team.find((a) => a.id === id) ?? { name: "HQ", color: "#3b82f6" });
   const to = mentioned(snap.config.team, draft);
   // @Name goes straight to those agents; no mention asks the whole team through the lead.
   const send = () => {
@@ -253,11 +254,17 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
           const to = who(m.toId);
           const mine = m.fromId === HUMAN_ID;
           return (
-            <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.team ? "border-accent/40 bg-accent/[0.06]" : "border-white/10"} ${mine ? "ml-10" : "mr-10"}`}>
-              <div className="flex items-center gap-1.5 text-[12px] text-muted">
+            <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.kind === "disagree" ? "border-amber/45 bg-amber/[0.06]" : m.team ? "border-accent/40 bg-accent/[0.06]" : "border-white/10"} ${mine ? "ml-10" : "mr-10"}`}>
+              <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: from.color }} aria-hidden="true" />
                 <b className="text-ink">{from.name}</b>
                 <span>→ {m.team ? "the team" : to.name}</span>
+                {m.kind && (
+                  <span className="chip text-[11px]" style={{ ["--c" as string]: m.kind === "disagree" ? "var(--color-amber)" : "var(--accent)" }}>
+                    {m.kind === "disagree" ? "disagrees" : "question"}
+                  </span>
+                )}
+                {m.taskId && <span className="font-term text-[11px] text-muted">{m.taskId}</span>}
                 <span className="ml-auto font-term">{ago(m.at, now)}</span>
               </div>
               <div className="whitespace-pre-wrap text-[14px]">{m.text}</div>
@@ -422,6 +429,7 @@ export function More() {
     return () => window.removeEventListener("arima-native-ready", ready);
   }, []);
   const auth = useAuth((s) => s.status);
+  const scheme = useUi((s) => s.scheme);
   const security = useOffice((s) => !!s.snap?.config.rules.findings);
   const open = useOffice((s) => (s.snap?.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length);
   const item = (label: string, sub: string, onClick: () => void, show = true): ReactNode =>
@@ -444,6 +452,7 @@ export function More() {
         {item("Your terminal", "A shell on the server: the repo, an agent's folder or any folder", () => ui.openTerminal(), !isViewer)}
         {item("Setup checklist", "What's missing on the server", () => ui.openSetup())}
         {item("Settings", "Team, workflow, sandbox, project", () => ui.openSettings("team"), !isViewer)}
+        {item(scheme === "light" ? "Dark mode" : "Light mode", `Switch from ${scheme} to ${scheme === "light" ? "dark" : "light"} surfaces`, () => ui.toggleScheme())}
         {item("Sign out", "Sign this device out of HQ", () => void signOut(), auth === "signed-in")}
         {item("Switch server", "Connect this app to another HQ", () => window.ArimaNative?.switchServer(), native)}
       </ul>
@@ -462,7 +471,7 @@ function HudHome() {
     : snap.config.template ? "No agents yet. Add a team in Settings → Team." : "No agents in this project.";
   return (
     <div className="hud-void relative min-h-0 flex-1 overflow-hidden" aria-label="Team">
-      <ParticleCore compact workingCount={working} attentionCount={selectAttention(snap).total} redTeam={projectMode(snap) === "redteam" || projectMode(snap) === "purpleteam"} />
+      <ParticleCore compact workingCount={working} attentionCount={selectAttention(snap).total} palette={projectTheme(snap).orb} />
       <StageStrip compact snap={snap} />
       <AgentOrbit compact team={team} tasks={snap.tasks} activeAgentId={null} caption={caption} redTeamProject={projectMode(snap) !== "build"} lift={!snap.welcome && !snap.config.template} />
     </div>

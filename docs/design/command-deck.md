@@ -1,6 +1,6 @@
 # Command deck: the desktop UI redesign
 
-Status: sketch, waiting for the owner's sign-off (2026-11-17). No code yet.
+Status: built (2026-11-17), as written. As built: `AgentOrbit` (placement math, pods) and the compact `StageStrip` stay in `src/ui/hud/`; the deck's pods add the float and the amber needs-you ring there; Space Grotesk is gone (Inter everywhere).
 Source: the owner's "Spatial Multi-Agent Command Deck" mockup, with these decisions:
 
 - **Theme follows the open project.** No domain toggle. Every project is dark. Software projects: cyan-blue

@@ -7,11 +7,12 @@ import { ui } from "../../store/ui";
 import { fmtTokens, fmtUsd, Meter, Portrait, Sparkline, useCountUp } from "../kit";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
 import { agentMode } from "./theme";
+import { DECK } from "../deck/frame";
 
 type Member = { config: AgentConfig; status: AgentStatus };
 
 const STATE: Record<Mode, { color: string; label: string }> = {
-  working: { color: "#00f0ff", label: "Working" },
+  working: { color: "#3b82f6", label: "Working" },
   cheer: { color: "#3fb950", label: "Done" },
   "needs-input": { color: "#ffb020", label: "Needs you" },
   alert: { color: "#ff2a4b", label: "Problem" },
@@ -27,10 +28,11 @@ const STATE: Record<Mode, { color: string; label: string }> = {
 export function hudFrame(w: number, h: number, compact = false, strip = false) {
   // `strip`: room under the ring for the flow's stage strip.
   if (compact) return { cx: w / 2, cy: (h - (strip ? 52 : 0)) / 2 - 8, width: w, height: h - 16 - (strip ? 52 : 0), r: Math.min(w, h) * (w < 640 ? 0.17 : 0.2) };
-  const left = 92;
-  const top = 64;
-  const width = w - left - 16;
-  const height = h - top - 16 - (strip ? 60 : 0);
+  // The command deck's frame (src/ui/deck/frame.ts): header, rail, and the stage ribbon when there is one.
+  const left = DECK.rail;
+  const top = DECK.header;
+  const width = w - left;
+  const height = h - top - (strip ? DECK.footer : 0);
   return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.2 };
 }
 
@@ -115,12 +117,15 @@ export function AgentOrbit({ team, tasks, activeAgentId, caption, compact = fals
             })}
           </svg>
           <div className="absolute inset-0" aria-label="Agents">
-            {slots.map(({ m, x, y }) => {
+            {slots.map(({ m, x, y }, i) => {
               const task = m.status.currentTaskId ? tasks.find((t) => t.id === m.status.currentTaskId) : undefined;
               const selected = activeAgentId === m.config.id;
               return (
                 <div key={m.config.id} className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2" style={{ left: x, top: y }}>
+                  {/* A slow float, staggered per pod (none with reduced motion: .deck-float in index.css). */}
+                  <div className={kind === "node" ? "" : "deck-float"} style={{ animationDelay: `${-(i * 1.3) % 5}s`, animationDuration: `${4 + (i % 3)}s` }}>
                   {kind === "node" ? <NodeCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : kind === "pill" ? <SmallCard m={m} selected={selected} use={usage.byId.get(m.config.id)} /> : <AgentCard m={m} task={task} stage={stages?.find((s) => s.id === task?.stageId)?.name} selected={selected} badge={!redTeamProject} use={usage.byId.get(m.config.id)} max={usage.max} />}
+                  </div>
                 </div>
               );
             })}
@@ -132,8 +137,8 @@ export function AgentOrbit({ team, tasks, activeAgentId, caption, compact = fals
 }
 
 function frame(mode: Mode, selected: boolean) {
-  if (selected) return "border-accent shadow-[0_0_24px_rgba(0,240,255,0.25)]";
-  if (mode === "needs-input") return "border-amber/70 shadow-[0_0_22px_rgba(255,176,32,0.22)]";
+  if (selected) return "border-accent shadow-[0_0_24px_var(--accent-glow)]";
+  if (mode === "needs-input") return "border-amber/70 deck-needs";
   if (mode === "alert") return "border-red/70 shadow-[0_0_22px_rgba(255,42,75,0.22)]";
   return "border-white/10 hover:border-accent/50";
 }
@@ -176,6 +181,11 @@ function AgentCard({ m, task, stage, selected, badge, use, max }: { m: Member; t
         <button type="button" onClick={() => ui.openAgent(config.id, "terminal")} className="cursor-pointer rounded-md px-2 py-0.5 text-[12px] text-muted transition-colors hover:bg-white/[0.08] hover:text-ink">
           Terminal
         </button>
+        {mode === "needs-input" && (
+          <button type="button" onClick={() => ui.openActions()} className="cursor-pointer rounded-md bg-amber/15 px-2 py-0.5 text-[12px] font-semibold text-amber transition-colors hover:bg-amber/25">
+            Answer
+          </button>
+        )}
         <span className="flex-1" />
         {!isViewer && (
           <button
@@ -229,7 +239,7 @@ function NodeCard({ m, selected, use }: { m: Member; selected: boolean; use?: Ag
     >
       <span
         className={`rounded-full p-[3px] ${waiting ? "animate-pulse" : ""}`}
-        style={{ boxShadow: `0 0 0 2px ${selected ? "#00f0ff" : st.color}, 0 0 ${waiting || mode === "working" ? 16 : 6}px ${st.color}66`, background: "rgba(8,13,24,0.85)" }}
+        style={{ boxShadow: `0 0 0 2px ${selected ? "#3b82f6" : st.color}, 0 0 ${waiting || mode === "working" ? 16 : 6}px ${st.color}66`, background: "rgba(10,10,10,0.85)" }}
       >
         <Portrait name={config.name} color={config.color} lead={false} size={40} />
       </span>

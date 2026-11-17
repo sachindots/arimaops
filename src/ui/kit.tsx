@@ -102,7 +102,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
           role="tab"
           aria-selected={value === t.id}
           className={`shrink-0 cursor-pointer whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
-            value === t.id ? "bg-accent/15 text-accent shadow-[inset_0_-2px_0_#00f0ff]" : "text-muted hover:bg-white/[0.05] hover:text-ink"
+            value === t.id ? "bg-accent/15 text-accent shadow-[inset_0_-2px_0_var(--accent)]" : "text-muted hover:bg-white/[0.05] hover:text-ink"
           }`}
           onClick={() => onChange(t.id)}
         >
@@ -176,7 +176,7 @@ export function useCountUp(value: number): number {
 }
 
 /** A small line-and-area chart of `data` (oldest first). */
-export function Sparkline({ data, color = "#00f0ff", width = 96, height = 24, label }: { data: number[]; color?: string; width?: number; height?: number; label?: string }) {
+export function Sparkline({ data, color = "#3b82f6", width = 96, height = 24, label }: { data: number[]; color?: string; width?: number; height?: number; label?: string }) {
   const id = useId();
   const max = Math.max(1, ...data);
   const step = data.length > 1 ? width / (data.length - 1) : width;
@@ -197,7 +197,7 @@ export function Sparkline({ data, color = "#00f0ff", width = 96, height = 24, la
 }
 
 /** A thin glowing bar: `value` of `max`. */
-export function Meter({ value, max, color = "#00f0ff", label }: { value: number; max: number; color?: string; label: string }) {
+export function Meter({ value, max, color = "#3b82f6", label }: { value: number; max: number; color?: string; label: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="hud-meter" role="meter" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={Math.round(max)} style={{ ["--c" as string]: color }}>

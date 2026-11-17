@@ -316,7 +316,7 @@ export function CtoDrawer() {
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <b className="text-[16px]">{p.name}</b>
                       {p.isCurrent ? (
-                        <span className="chip text-[11px]" style={{ ["--c" as string]: "#00f0ff" }}>
+                        <span className="chip text-[11px]" style={{ ["--c" as string]: "var(--accent)" }}>
                           Viewing
                         </span>
                       ) : p.online ? (
@@ -381,7 +381,7 @@ export function CtoDrawer() {
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "#00f0ff" }}
+                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "var(--accent)" }}
                     />
                   </div>
 

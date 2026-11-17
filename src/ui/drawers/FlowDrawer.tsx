@@ -37,7 +37,7 @@ function StageNode({ data }: NodeProps<Node<StageData>>) {
   return (
     <div
       className="hud-glass hud-corners w-[250px] rounded-2xl px-3.5 py-3 text-left transition-shadow"
-      style={selected ? { ["--corner" as string]: "#00f0ff", borderColor: "rgba(0,240,255,0.7)", boxShadow: "0 0 0 1px #00f0ff, 0 0 26px rgba(0,240,255,0.28)" } : undefined}
+      style={selected ? { ["--corner" as string]: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 70%, transparent)", boxShadow: "0 0 0 1px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 28%, transparent)" } : undefined}
     >
       <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
       <Handle id="up" type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
@@ -148,7 +148,7 @@ export function FlowDrawer() {
     // A row's last stage hands down to the next row's first.
     sourceHandle: (i + 1) % cols === 0 ? "down" : undefined,
     targetHandle: (i + 1) % cols === 0 ? "up" : undefined,
-    style: { stroke: "rgba(0,240,255,0.55)", strokeWidth: 1.5 },
+    style: { stroke: "rgba(59,130,246,0.55)", strokeWidth: 1.5 },
   }));
 
   if (!saved || !draft)
@@ -257,7 +257,7 @@ export function FlowDrawer() {
             proOptions={{ hideAttribution: true }}
             aria-label="Flow stages"
           >
-            <Background gap={24} size={1} color="rgba(0,240,255,0.12)" />
+            <Background gap={24} size={1} color="rgba(59,130,246,0.12)" />
             <Controls showInteractive={false} />
           </ReactFlow>
         </div>
