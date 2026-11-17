@@ -7,6 +7,7 @@ import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
 import type { AccountInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
+import { autoSetup, machineFacts, withProposal } from "./setupCli";
 import { CHARTER_MAX, saveCompany } from "./company";
 import { memoryState, memoryStore, saveExtractionSettings } from "./memory";
 import { memoryWorker } from "./memoryJobs";
@@ -628,6 +629,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       try {
         forgetProjectTemplate(hqDb(), hub.slug); // left over from a deleted project with the same id
         template = copyToProject(hqDb(), hub.slug, str(input.templateId, 40));
+        // `arimaops setup --apply`: this machine's picks (paid for builders, free for light roles) instead of the template's.
+        if (autoSetup()) template = updateProjectTemplate(hqDb(), hub.slug, withProposal(template, await machineFacts()));
       } catch (e) {
         return hub.activity("config", null, e instanceof Error ? e.message : String(e));
       }

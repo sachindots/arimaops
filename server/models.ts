@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AgentCli } from "../src/data/types";
 import { clisFor, type Provider } from "../src/data/providers";
 import { accounts } from "./credentials/registry";
+import { AMD_TOKENLAB_URL } from "../src/data/freeModels";
 
 const list = z.object({ data: z.array(z.object({ id: z.string() })) });
 const googleList = z.object({ models: z.array(z.object({ name: z.string(), supportedGenerationMethods: z.array(z.string()).optional() })) });
@@ -27,6 +28,8 @@ export async function accountModels(id: string, cli: AgentCli, fetcher = fetch):
     case "openai": url = "https://api.openai.com/v1/models"; headers.Authorization = `Bearer ${key}`; break;
     case "google": url = "https://generativelanguage.googleapis.com/v1beta/models"; headers["x-goog-api-key"] = key; break;
     case "openrouter": url = "https://openrouter.ai/api/v1/models"; headers.Authorization = `Bearer ${key}`; break;
+    case "nvidia": url = "https://integrate.api.nvidia.com/v1/models"; headers.Authorization = `Bearer ${key}`; break;
+    case "amd": url = `${AMD_TOKENLAB_URL}/models`; headers.Authorization = `Bearer ${key}`; break;
     case "deepseek": url = "https://api.deepseek.com/models"; headers.Authorization = `Bearer ${key}`; break;
     case "bedrock": case "vertex": throw new Error("Use a custom model ID from this cloud account's regional catalog.");
   }

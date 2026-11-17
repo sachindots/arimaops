@@ -16,6 +16,19 @@ await build({
 });
 console.log("built dist-server/main.mjs");
 
+await build({
+  entryPoints: ["server/setupMain.ts"],
+  outfile: "dist-server/setup.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  packages: "external",
+  sourcemap: false,
+  logLevel: "warning",
+});
+console.log("built dist-server/setup.mjs");
+
 // ee/ (commercial) builds on its own: the core bundle never contains it, and loads it only if present.
 if (existsSync("ee/index.ts")) {
   await build({

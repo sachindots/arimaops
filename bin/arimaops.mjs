@@ -14,6 +14,9 @@ if (args.includes("--help") || args.includes("-h")) {
 
 Usage:
   arimaops [options]       run inside a git repo
+  arimaops setup           check this machine and propose a model for every role
+                           (paid for lead and builders, free for light roles)
+  arimaops setup --apply   use that proposal for every new project (--off to undo)
 
 Options:
   --repo <path>   the git repo to manage (default: current folder)
@@ -47,4 +50,7 @@ for (const name of ["--repo", "--port"]) {
   if (name === "--port" && !(/^\d+$/.test(value) && Number(value) >= 1024 && Number(value) <= 65535)) fail(`--port must be a number from 1024 to 65535 (got "${value}").`);
 }
 
-await import("../dist-server/main.mjs");
+if (args[0] === "setup") {
+  process.argv = [process.argv[0], process.argv[1], ...args.slice(1)];
+  await import("../dist-server/setup.mjs");
+} else await import("../dist-server/main.mjs");

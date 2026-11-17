@@ -266,6 +266,16 @@ export class World {
         running: false,
         last: null,
       },
+      freeModels: {
+        checkedAt: now(),
+        error: null,
+        models: [
+          { id: "opencode/glm-5.3-flash-free", source: "opencode" as const, name: "GLM-5.3-Flash Free", family: "glm-flash", context: 200000, reasoning: true, released: "2026-08-26" },
+          { id: "opencode/deepseek-v4.1-flash-free", source: "opencode" as const, name: "DeepSeek V4.1 Flash Free", family: "deepseek", context: 128000, reasoning: true, released: "2026-09-10" },
+          { id: "opencode/big-pickle", source: "opencode" as const, name: "Big Pickle", family: "", context: 200000, reasoning: false, released: "2026-06-01" },
+          { id: "nvidia/deepseek-ai/deepseek-v4.1-flash", source: "nvidia" as const, name: "DeepSeek V4.1 Flash", family: "deepseek", context: 128000, reasoning: true, released: "2026-09-10" },
+        ],
+      },
       skillPacks: [
         { source: "trailofbits/skills", commit: "e4dd0bb5b15535f7c5a0834187dffba6ac37e4ff", licence: "CC-BY-SA-4.0", credit: "Trail of Bits", use: "any" as const, skills: 98, status: "vetted" as const, blocked: [], warnings: 0 },
         { source: "cloudflare/security-audit-skill", commit: "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8", licence: "MIT", credit: "Cloudflare", use: "any" as const, skills: 1, status: "vetted" as const, blocked: [], warnings: 0 },

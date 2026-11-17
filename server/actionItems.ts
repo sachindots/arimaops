@@ -36,7 +36,7 @@ export class ActionItems {
     writeDoc(this.file, this.hub.snap.actionItems);
   }
 
-  add(fromId: string, title: string, details: string, waiting: boolean, kind: "request" | "plan" = "request"): ActionItem {
+  add(fromId: string, title: string, details: string, waiting: boolean, kind: "request" | "plan" | "info" = "request"): ActionItem {
     const clean = title.trim().replace(/\s+/g, " ").slice(0, 160);
     if (!clean) throw new Error("Give the action item a short title.");
     const item: ActionItem = {
@@ -72,7 +72,7 @@ export class ActionItems {
     this.save();
     hqDb().prepare("INSERT OR REPLACE INTO action_answers (project_id, id, kind, decision, at) VALUES (?, ?, ?, ?, ?)").run(this.hub.snap.config.project.id, item.id, item.kind ?? "request", decision, Date.parse(item.closedAt));
     this.hub.emit({ type: "action.updated", item: { ...item } });
-    if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "memory" || item.kind === "spend" || item.kind === "info") return; // no agent to tell
     if (item.kind === "send") {
       if (item.send?.sentAt) this.planner.notify(item.fromId, `The owner sent "${item.title}" through ${item.send.connection}.`);
       else this.planner.notify(item.fromId, `The owner didn't send "${item.title}".${item.note ? ` Note: ${item.note}` : ""} Revise it and propose again only if asked.`);

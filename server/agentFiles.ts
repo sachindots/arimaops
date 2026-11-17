@@ -2,6 +2,7 @@
 // clone's .git/info/exclude, so they are never committed.
 
 import { CHARTER_MAX, companyText } from "./company";
+import { AMD_TOKENLAB_URL, freeSourceOf } from "../src/data/freeModels";
 import { GATEWAY as CONTAINER_GATEWAY } from "./containers";
 import { lstatSync } from "node:fs";
 import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
@@ -538,10 +539,14 @@ export function writeOpenCodeFiles(dir: string, agent: AgentConfig, cfg: HqConfi
       enabled: true,
     },
   };
+  // shortcut: Token Lab model ids are assumed to match models.dev's "amd" list; if they differ, read them from Token Lab's /models with the key.
+  const provider = freeSourceOf(agent.model ?? "") === "amd"
+    ? { ...((config.provider as Record<string, unknown> | undefined) ?? {}), amd: { options: { baseURL: AMD_TOKENLAB_URL } } }
+    : config.provider;
   agentWrite(
     dir,
     OPENCODE_CONFIG,
-    JSON.stringify({ $schema: "https://opencode.ai/config.json", ...config, instructions, mcp }, null, 2) + "\n",
+    JSON.stringify({ $schema: "https://opencode.ai/config.json", ...config, instructions, mcp, ...(provider ? { provider } : {}) }, null, 2) + "\n",
     { mode: 0o600 },
   );
   if (hookScriptFor(agent, dir)) writeHookScript(dir);

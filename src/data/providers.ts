@@ -5,7 +5,7 @@
 
 import type { AgentCli } from "./types";
 
-export const PROVIDERS = ["anthropic", "openai", "google", "openrouter", "deepseek", "bedrock", "vertex"] as const;
+export const PROVIDERS = ["anthropic", "openai", "google", "openrouter", "nvidia", "amd", "deepseek", "bedrock", "vertex"] as const;
 export type Provider = (typeof PROVIDERS)[number];
 export const isProvider = (v: unknown): v is Provider => typeof v === "string" && (PROVIDERS as readonly string[]).includes(v);
 
@@ -90,6 +90,22 @@ export const PROVIDER_SPECS: Record<Provider, ProviderSpec> = {
     secretHint: "sk-or-… from openrouter.ai",
     fields: [],
     clis: { opencode: key("OPENROUTER_API_KEY") },
+  },
+  nvidia: {
+    label: "NVIDIA NIM",
+    auth: "api-key",
+    secretLabel: "API key",
+    secretHint: "nvapi-… from build.nvidia.com (free, about 40 requests a minute)",
+    fields: [],
+    clis: { opencode: key("NVIDIA_API_KEY") },
+  },
+  amd: {
+    label: "AMD Token Lab",
+    auth: "api-key",
+    secretLabel: "API key",
+    secretHint: "From notebooks.amd.com/tokenlab (AMD AI Developer Program)",
+    fields: [],
+    clis: { opencode: key("AMD_API_KEY") },
   },
   deepseek: {
     label: "DeepSeek",

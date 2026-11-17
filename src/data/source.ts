@@ -1,3 +1,4 @@
+import type { FreeModelsState } from "./freeModels";
 import type { TemplateFile } from "./templateFile";
 import type { TeamTemplate } from "./model";
 import type { StackConfig } from "./stack";
@@ -74,6 +75,7 @@ export type OfficeEvent =
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
+  | { type: "freeModels.updated"; freeModels: FreeModelsState }
   | { type: "templates.updated"; templateLibrary: TemplateEntry[] }
   | { type: "lessons.updated"; lessons: LessonsState }
   /** Answer to exportTemplate: the file to download (only the device that asked saves it). */

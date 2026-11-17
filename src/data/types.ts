@@ -1,3 +1,4 @@
+import type { FreeModelsState } from "./freeModels";
 import type { TaskScore } from "./scorers";
 
 /** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
@@ -636,6 +637,8 @@ export interface OfficeSnapshot {
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
+  /** Free models from models.dev, re-read daily (src/data/freeModels.ts). */
+  freeModels?: FreeModelsState;
   /** This HQ's template library (built-in and saved or imported), for the welcome. */
   templateLibrary?: TemplateEntry[];
   lessons?: LessonsState;
@@ -664,7 +667,7 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "send";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "send" | "info";
   /** kind send: what HQ sends through the owner's connection when the owner clicks Send (Dismiss: nothing is sent). */
   send?: { connection: string; tool: string; args: Record<string, unknown>; sentAt?: string; error?: string };
   /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */

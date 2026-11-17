@@ -202,6 +202,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, githubApp: e.githubApp };
     case "skillPacks.updated":
       return { ...snap, skillPacks: e.skillPacks };
+    case "freeModels.updated":
+      return { ...snap, freeModels: e.freeModels };
     case "templates.updated":
       return { ...snap, templateLibrary: e.templateLibrary };
     case "lessons.updated":

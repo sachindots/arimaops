@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CLI_MODELS, type AgentCli } from "../../data/types";
 import { useOffice } from "../../store/office";
+import { FREE_SOURCE_INFO } from "../../data/freeModels";
 
 const CUSTOM_SENTINEL = "__custom__";
 
@@ -36,7 +37,10 @@ export function ModelSelect({
     }).catch((e: unknown) => { if (!controller.signal.aborted) setCatalogError(e instanceof Error ? e.message : "Catalog unavailable"); });
     return () => controller.abort();
   }, [apiAccount?.id, apiAccount?.provider, apiAccount?.secret?.updatedAt, cli, live]);
-  const presets = apiAccount ? catalog : CLI_MODELS[cli] ?? [];
+  const freeList = useOffice((s) => s.snap?.freeModels?.models);
+  const free = cli === "opencode" && !apiAccount ? (freeList ?? []) : [];
+  const freeIds = new Set(free.map((m) => m.id));
+  const presets = apiAccount ? catalog : [...free.map((m) => m.id), ...(CLI_MODELS[cli] ?? []).filter((m) => !freeIds.has(m))];
   const isCustomValue = Boolean(value && !presets.includes(value));
   const [customMode, setCustomMode] = useState(isCustomValue);
 
@@ -81,13 +85,22 @@ export function ModelSelect({
       }}
     >
       <option value="">CLI Default</option>
-      {presets.map((m) => (
+      {free.length > 0 && (
+        <optgroup label="Free (rotates; HQ swaps a model that leaves the list)">
+          {free.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} · free · {FREE_SOURCE_INFO[m.source].label}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {presets.filter((m) => !freeIds.has(m)).map((m) => (
         <option key={m} value={m}>
           {m}
         </option>
       ))}
       <option value={CUSTOM_SENTINEL}>Custom model ID…</option>
     </select>
-    {catalogError && <p role="status" className="text-[11px] text-red">{catalogError}</p>}
+    {catalogError && <p role="status" className="text-[12px] text-red">{catalogError}</p>}
   </div>);
 }

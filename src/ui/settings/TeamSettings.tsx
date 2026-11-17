@@ -8,6 +8,7 @@ import { AGENT_CLIS, CLI_MODELS, type AgentCli, type AgentConfig, type AgentMode
 import { officeActions, useOffice } from "../../store/office";
 import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, RoleBadge, SectionTitle } from "../kit";
+import { ModelSetup } from "../setup/ModelSetup";
 import { ModelSelect } from "../primitives/ModelSelect";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
@@ -91,6 +92,7 @@ export function TeamSettings() {
 
   return (
     <div className="flex flex-col gap-5">
+      <ModelSetup />
       <section>
         <SectionTitle>
           Roles · {template.name} v{template.version}

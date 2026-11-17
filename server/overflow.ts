@@ -25,6 +25,8 @@ export class Overflow {
     private hub: Pick<Hub, "snap" | "cfg" | "status" | "setStatus" | "activity" | "configChanged">,
     private planner: Pick<Planner, "currentTask" | "task" | "notify"> & { actions?: ActionItems | null },
     private sessions: { start(id: string): Promise<void>; stop(id: string): Promise<void> },
+    /** Used when the role has no fallback of its own: the best free model this machine can use, or null. */
+    private freeFallback: () => { cli: AgentCli; model: string } | null = () => null,
   ) {}
 
   private role(agentId: string): Role | undefined {
@@ -35,7 +37,7 @@ export class Overflow {
   /** A seat hit its usage limit: offer the fallback for its current task, once per seat and task. */
   offer(agentId: string, until: Date): boolean {
     const a = this.hub.cfg(agentId);
-    const fallback = this.role(agentId)?.fallback;
+    const fallback = this.role(agentId)?.fallback ?? this.freeFallback();
     const task = this.planner.currentTask(agentId);
     if (!a || a.isLead || !fallback || a.cli === fallback.cli || !task || task.status === "done") return false;
     const at = until.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

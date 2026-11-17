@@ -64,6 +64,8 @@ const accountProvider = (id: string): Provider | null => {
 import { workspaceFor } from "./workspace";
 import { isStream, StreamEngine } from "./streamEngine";
 import { companyText } from "./company";
+import { freeModelsState, onFreeModels, swapGoneModels, usableSources } from "./freeModels";
+import { bestFree } from "../src/data/freeModels";
 import { publishGoals } from "./goals";
 import { ritualWhen, tickRituals } from "./rituals";
 import { listConnections } from "./connections";
@@ -206,7 +208,10 @@ export async function startProject(path: string, port: number, paused: boolean):
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
   const onDemand = new OnDemand(hub, sessions, (id) =>
     spendPaused(slug) ? "the spend cap to lift (the project is paused)" : rolePaused(slug, id ? hub.cfg(id)?.roleId : undefined) ? "midnight (its role's daily budget is used)" : null);
-  const overflow = new Overflow(hub, planner, sessions);
+  const overflow = new Overflow(hub, planner, sessions, () => {
+    const m = bestFree(freeModelsState().models, usableSources());
+    return m ? { cli: "opencode", model: m.id } : null;
+  });
   const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
     try {
       return accounts().views().map((a) => a.id); // API-key and cloud accounts: the ones with a bill
@@ -372,6 +377,14 @@ export async function startProject(path: string, port: number, paused: boolean):
   publishGoals(hqDb(), hub);
   hub.snap.connections = listConnections();
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
+  hub.snap.freeModels = freeModelsState();
+  const stopFree = onFreeModels((freeModels) => {
+    hub.snap.freeModels = freeModels;
+    hub.emit({ type: "freeModels.updated", freeModels });
+    const moved = swapGoneModels(hub, freeModels.models, (roleId, patch) => commands.updateRole(roleId, patch));
+    if (moved.length)
+      planner.actions?.add("hq", `Switched ${moved.length} model${moved.length === 1 ? "" : "s"} to another free model`, moved.map((m) => `${m.who}: ${m.from} is no longer free, now ${m.to}. It applies from the next start.`).join("\n"), false, "info");
+  });
   const stopListening = onAccountLimit((cli, until, from) => {
     const marked = markLimited(hub, cli, until, from);
     if (!marked.length) return;
@@ -399,6 +412,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   // Terminal polling always runs: agents left in tmux must keep reporting. Pause stops GitHub and sbx approval polling.
   sessions.startPolling();
 
+  const commands = makeCommands(hub, sessions, planner, inbox, sbx, mcp);
   const rt: Runtime = {
     stream,
     onToolDone(agentId, event, body) {
@@ -412,7 +426,7 @@ export async function startProject(path: string, port: number, paused: boolean):
     inbox,
     planner,
     agentSecret: secret,
-    commands: makeCommands(hub, sessions, planner, inbox, sbx, mcp),
+    commands,
     isNew,
     paused: true,
     recheckSetup: () => sessions.recheckSetup(),
@@ -437,6 +451,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       inbox.stop();
       clearInterval(usageTimer);
       stopListening();
+      stopFree();
       memoryReview.stop();
       sessions.shutdown();
     },

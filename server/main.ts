@@ -35,6 +35,7 @@ import { memoryWorker } from "./memoryJobs";
 import { daily, DIGEST_HOUR } from "./memoryReview";
 import { STANDUP_HOURS, standupNote } from "./standup";
 import { broadcastMemory } from "./commands";
+import { DAY_MS, freeModelsState, refreshFreeModels } from "./freeModels";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -153,6 +154,9 @@ async function main() {
       rt.memoryReview.digest();
     }
   });
+  // Free model lists rotate: re-read daily (and now, if the saved list is older than a day).
+  if (Date.now() - (Date.parse(freeModelsState().checkedAt) || 0) > DAY_MS) void refreshFreeModels();
+  setInterval(() => void refreshFreeModels(), DAY_MS).unref();
   // The team's morning and evening note to you (free: built from HQ's records); a project can turn it off.
   for (const kind of ["morning", "evening"] as const)
     daily(STANDUP_HOURS[kind], () => {
