@@ -3,7 +3,7 @@ import { readPref, writePref } from "../lib/prefs";
 
 export type DrawerState =
   | { kind: "agent"; id: string; tab?: AgentTab }
-  | { kind: "boards"; boardId?: string; stageId?: string }
+  | { kind: "boards"; boardId?: string; stageId?: string; taskId?: string }
   | { kind: "prs" }
   | { kind: "env"; name: string }
   | { kind: "actions" }
@@ -153,6 +153,10 @@ export const ui = {
   },
   openBoards(boardId?: string, stageId?: string) {
     useUi.setState({ drawer: { kind: "boards", boardId, stageId } });
+  },
+  /** The board the task is on, with the task open. */
+  openTask(taskId: string, boardId?: string) {
+    useUi.setState({ drawer: { kind: "boards", boardId, taskId } });
   },
   openTerminal() {
     useUi.setState({ drawer: { kind: "terminal" } });

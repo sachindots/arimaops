@@ -4,7 +4,8 @@ import { modeOf } from "../../data/mode";
 import { selectAttention, selectTeam, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { CommandView } from "../command/CommandView";
-import { AgentList, ChatList, More, Thread } from "../compact/CompactApp";
+import { AgentList, More } from "../compact/CompactApp";
+import { ChatPage, TEAM } from "../chat/ChatPage";
 import { ActionItemsDrawer } from "../drawers/ActionItemsDrawer";
 import { AgentDrawer } from "../drawers/AgentDrawer";
 import { BoardsDrawer } from "../drawers/BoardsDrawer";
@@ -77,21 +78,13 @@ export function Deck() {
     setPage(id);
   };
 
-  const chatWith = thread ?? snap.config.team.find((a) => a.isLead)?.id ?? snap.config.team[0]?.id ?? null;
   const main =
-    drawer?.kind === "boards" ? <BoardsDrawer key={drawer.stageId ?? "all"} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} />
+    drawer?.kind === "boards" ? <BoardsDrawer key={`${drawer.stageId ?? "all"}:${drawer.taskId ?? ""}`} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} initialTaskId={drawer.taskId} />
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
     : drawer?.kind === "prs" ? <PrDrawer />
     : drawer?.kind === "findings" ? <FindingsDrawer />
     : drawer?.kind === "flow" ? <FlowDrawer />
-    : page === "chat" ? (
-      <div className="flex min-h-0 flex-1">
-        <div className="flex w-[320px] shrink-0 flex-col border-r border-[var(--border-hairline)]">
-          <ChatList onOpen={setThread} selected={chatWith} />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col">{chatWith && <Thread key={chatWith} agentId={chatWith} />}</div>
-      </div>
-    )
+    : page === "chat" ? <ChatPage thread={thread ?? TEAM} onThread={setThread} />
     : page === "agents" ? <AgentList />
     : page === "goals" ? <GoalsPage />
     : page === "more" ? <More />

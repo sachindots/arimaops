@@ -3,6 +3,8 @@
 import { Fragment, useState } from "react";
 import { isLong, SHORT_LINES, splitTag, TAG_LABEL, type MessageTag } from "../../data/messageTags";
 import type { AgentMessage } from "../../data/types";
+import { useOffice } from "../../store/office";
+import { ui } from "../../store/ui";
 
 const TAG_COLOR: Record<MessageTag, string> = {
   done: "var(--color-ok, #3fb950)",
@@ -23,7 +25,26 @@ export function TagChip({ tag }: { tag: MessageTag }) {
 /** The tag and body to show; older messages get the same parsing (filler trimmed only for agents' words). */
 export const shown = (m: Pick<AgentMessage, "text" | "kind">, fromAgent: boolean) => splitTag(m.text, m.kind ?? null, fromAgent);
 
-/** `inline code` inside a line. */
+/** Task ids in text ("P3-T01", "REC-T05") that open the task. */
+function TaskLinks({ text }: { text: string }) {
+  const tasks = useOffice((s) => s.snap?.tasks);
+  const parts = text.split(/\b([A-Z][A-Z0-9]{0,5}-T\d{1,3})\b/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1 && tasks?.some((t) => t.id === p) ? (
+          <button key={i} type="button" className="font-medium text-accent hover:underline" onClick={() => ui.openTask(p)}>
+            {p}
+          </button>
+        ) : (
+          <Fragment key={i}>{p}</Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+/** `inline code` and task links inside a line. */
 function Inline({ text }: { text: string }) {
   const parts = text.split(/(`[^`\n]+`)/g);
   return (
@@ -34,7 +55,7 @@ function Inline({ text }: { text: string }) {
             {p.slice(1, -1)}
           </code>
         ) : (
-          <Fragment key={i}>{p}</Fragment>
+          <TaskLinks key={i} text={p} />
         ),
       )}
     </>

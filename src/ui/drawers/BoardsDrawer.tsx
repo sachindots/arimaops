@@ -16,19 +16,20 @@ const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
 
 const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "Planned", done: "Done" };
 
-export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardId?: string; initialStageId?: string }) {
+export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: { initialBoardId?: string; initialStageId?: string; initialTaskId?: string }) {
   const snap = useOffice((s) => s.snap);
   const now = useNow(30_000);
   const boards = [...(snap?.boards ?? [])].sort((a, b) => a.order - b.order);
   // Open where the work is: an active board with open tasks, then any active board, then the first.
   const [boardId, setBoardId] = useState(
     initialBoardId ??
+      (snap?.tasks ?? []).find((t) => t.id === initialTaskId)?.boardId ??
       boards.find((b) => b.status === "active" && (snap?.tasks ?? []).some((t) => t.boardId === b.id && t.status !== "done"))?.id ??
       boards.find((b) => b.status === "active")?.id ??
       boards[0]?.id,
   );
   const [stageId, setStageId] = useState<string | null>(initialStageId ?? null);
-  const [openTask, setOpenTask] = useState<string | null>(null);
+  const [openTask, setOpenTask] = useState<string | null>(initialTaskId ?? null);
   const [byAgent, setByAgent] = useState(() => readPref("board.lanes") === "agent");
   if (!snap) return null;
   const board = boards.find((b) => b.id === boardId);

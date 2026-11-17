@@ -71,7 +71,7 @@ export function CompactApp() {
     : drawer?.kind === "terminal" ? <TerminalDrawer />
     : drawer?.kind === "cto" ? <CtoDrawer />
     : drawer?.kind === "actions" ? <ActionItemsDrawer />
-    : drawer?.kind === "boards" ? <BoardsDrawer key={drawer.stageId ?? "all"} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} />
+    : drawer?.kind === "boards" ? <BoardsDrawer key={`${drawer.stageId ?? "all"}:${drawer.taskId ?? ""}`} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} initialTaskId={drawer.taskId} />
     : drawer?.kind === "findings" ? <FindingsDrawer />
     : drawer?.kind === "flow" ? <FlowDrawer />
     : null;
