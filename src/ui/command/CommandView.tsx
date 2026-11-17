@@ -3,14 +3,15 @@ import { BRAND } from "../../data/brand";
 import type { Mode } from "../../data/mode";
 import { CLI_LABEL } from "../../data/types";
 import { followBuilding, useBuilding } from "../../store/building";
-import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
+import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
 import { readPref, writePref } from "../../lib/prefs";
-import { ago, fmtTokens, fmtUsd, Meter, Portrait, Sparkline, StateChip, useCountUp, useNow } from "../kit";
+import { ago, fmtTokens, fmtUsd, Portrait, Sparkline, StateChip, useCountUp, useNow } from "../kit";
 import { TerminalView } from "../drawers/TerminalView";
 import { FILTERS, matches, rowsOf, sortRows, tokensOf, type Filter, type Row } from "./rank";
 import { useScreens } from "./screens";
+import { RosterTable } from "../agents/RosterTable";
 import { FactoryCard } from "./Factory";
 import { agentMode } from "../hud/theme";
 
@@ -50,9 +51,12 @@ function usePrefSet(name: string): [Set<string>, (key: string) => void] {
   return [set, toggle];
 }
 
+/** Projects in the order their first row comes (needs-you first), each project's rows together. */
+const groupedRows = (rows: Row[]) => [...new Set(rows.map((r) => r.project))].flatMap((p) => rows.filter((r) => r.project === p));
+
 /**
- * Mission control: every agent of every running project in a roster (what needs you first), the focused agent's
- * live screen in the middle, and what's waiting on you plus the latest activity on the right. 1–9 focus an agent.
+ * Mission control: every agent of every running project in one roster (grouped by project, what needs you first) and
+ * the focused agent's live screen beside it. Needs you and activity live on Home. 1–9 focus an agent.
  */
 export function CommandView() {
   const solo = useUi((s) => s.solo?.kind === "command");
@@ -88,15 +92,15 @@ export function CommandView() {
   const inScope = all.filter((r) => !projectsOff.has(r.project) && matches(r, query));
   const shown = inScope.filter((r) => FILTERS[filter](r.mode) && !hidden.has(r.key));
   const hiddenRows = inScope.filter((r) => hidden.has(r.key));
-  const focus = shown.find((r) => r.key === focusKey) ?? shown[0];
   const multi = projects.length > 1;
+  const ordered = multi ? groupedRows(shown) : shown; // the order on screen, which 1–9 follow
+  const focus = ordered.find((r) => r.key === focusKey) ?? ordered[0];
   const usageOf = (r: Row): AgentUsage | undefined => (r.current ? usage.byId.get(r.agent.id) : undefined);
   const tokensToday = (r: Row) => {
     const u = usageOf(r);
     return u ? usage.total(u) : tokensOf(r);
   };
   const teamToday = useCountUp(shown.reduce((t, r) => t + tokensToday(r), 0));
-  const maxTokens = Math.max(1, ...shown.map(tokensToday));
 
   // Keys: 1–9 focus that agent, / search, o back home.
   useEffect(() => {
@@ -106,7 +110,7 @@ export function CommandView() {
       const st = useUi.getState();
       if (st.settings || st.setupOpen || st.drawer) return;
       if (/^[1-9]$/.test(e.key)) {
-        const r = shown[Number(e.key) - 1];
+        const r = ordered[Number(e.key) - 1];
         if (r) setFocusKey(r.key);
       } else if (e.key === "/") search.current?.focus();
       else if ((e.key === "o" || e.key === "O") && !solo) ui.setView("office");
@@ -116,7 +120,7 @@ export function CommandView() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [shown, solo]);
+  }, [ordered, solo]);
 
   const count = (f: Filter) => inScope.filter((r) => FILTERS[f](r.mode) && !hidden.has(r.key)).length;
 
@@ -177,20 +181,33 @@ export function CommandView() {
 
       <FactoryCard projects={projects.filter((p) => !projectsOff.has(p.id))} live={live} defaultOpen={false} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(260px,300px)]">
-        <Roster
-          rows={shown}
-          focus={focus?.key}
-          onFocus={setFocusKey}
-          multi={multi}
-          now={now}
-          usageOf={usageOf}
-          tokensToday={tokensToday}
-          maxTokens={maxTokens}
-          hiddenRows={hiddenRows}
-          onUnhide={toggleHidden}
-          empty={all.length ? "No agents match this filter." : "No agents yet. Add a team in Settings → Team."}
-        />
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-y-auto rounded-2xl p-3 max-[1099px]:max-h-[50vh]" aria-label="Agents">
+          {shown.length === 0 ? (
+            <p className="m-0 px-2 py-6 text-center text-[13px] text-muted">{all.length ? "No agents match this filter." : "No agents yet. Add a team in Settings → Team."}</p>
+          ) : (
+            <RosterTable
+              rows={ordered}
+              selected={focus?.key}
+              onPick={(r) => setFocusKey(r.key)}
+              usageOf={usageOf}
+              tokensOf={tokensToday}
+              grouped={multi}
+              narrow
+              keys
+            />
+          )}
+          {hiddenRows.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--border-hairline)] px-2 pt-2 text-[12px]">
+              <span className="text-muted">Hidden:</span>
+              {hiddenRows.map((r) => (
+                <button key={r.key} className="btn min-h-[28px] px-2 text-[12px]" onClick={() => toggleHidden(r.key)} title="Show again">
+                  {r.agent.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
         {focus ? (
           <Focus
             key={focus.key}
@@ -206,99 +223,8 @@ export function CommandView() {
         ) : (
           <section className="hud-glass grid place-items-center rounded-2xl p-8 text-[13px] text-muted">Pick an agent on the left.</section>
         )}
-        <SidePanels onFocus={(id) => setFocusKey(`${current}/${id}`)} />
       </div>
     </div>
-  );
-}
-
-function Roster({
-  rows,
-  focus,
-  onFocus,
-  multi,
-  now,
-  usageOf,
-  tokensToday,
-  maxTokens,
-  hiddenRows,
-  onUnhide,
-  empty,
-}: {
-  rows: Row[];
-  focus: string | undefined;
-  onFocus: (key: string) => void;
-  multi: boolean;
-  now: number;
-  usageOf: (r: Row) => AgentUsage | undefined;
-  tokensToday: (r: Row) => number;
-  maxTokens: number;
-  hiddenRows: Row[];
-  onUnhide: (key: string) => void;
-  empty: string;
-}) {
-  return (
-    <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-y-auto rounded-2xl p-2 max-[1099px]:max-h-[45vh]" aria-label="Agents">
-      <h2 className="m-0 px-2 pb-2 pt-1 font-display text-[13px] font-semibold text-muted">
-        Agents <span className="text-[12px]">{rows.length}</span>
-      </h2>
-      {rows.length === 0 && <p className="m-0 px-2 py-6 text-center text-[13px] text-muted">{empty}</p>}
-      <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {rows.map((r, i) => {
-          const color = MODE_COLOR[r.mode];
-          const on = r.key === focus;
-          const urgent = r.mode === "needs-input" || r.mode === "alert";
-          const u = usageOf(r);
-          const n = tokensToday(r);
-          return (
-            <li key={r.key}>
-              <button
-                className={`flex w-full flex-col gap-1.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${on ? "border-accent bg-accent/[0.08]" : urgent ? "border-amber/60 bg-amber/[0.06] hover:bg-amber/[0.1]" : "border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:bg-cream-2"}`}
-                aria-current={on ? "true" : undefined}
-                onClick={() => onFocus(r.key)}
-                title={i < 9 ? `Focus (${i + 1})` : "Focus"}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="relative shrink-0">
-                    <Portrait name={r.agent.name} color={r.agent.color} lead={r.agent.isLead} size={28} />
-                    <i className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-navy ${r.mode === "working" || urgent ? "animate-pulse" : ""}`} style={{ background: color }} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <b className="truncate text-[13px] font-semibold text-ink">{r.agent.name}</b>
-                      {multi && <span className="truncate text-[12px] text-muted">· {r.projectName}</span>}
-                    </span>
-                    <span className="block truncate text-[12px]">
-                      <span style={{ color }}>{MODE_LABEL[r.mode]}</span>
-                      <span className="text-muted">{r.task ? ` · ${r.task.id} ${r.task.title}` : r.status?.note ? ` · ${r.status.note}` : ""}</span>
-                    </span>
-                  </span>
-                  {i < 9 && <kbd className="kbd shrink-0">{i + 1}</kbd>}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="w-[44px] shrink-0 font-display text-[12px] text-ink">{fmtTokens(n)}</span>
-                  <span className="min-w-0 flex-1">
-                    <Meter value={n} max={maxTokens} color={color} label={`${r.agent.name}'s tokens today`} />
-                  </span>
-                  {u && <Sparkline data={u.series} color={color} width={48} height={14} label={`${r.agent.name} today`} />}
-                  {r.status && <span className="w-[30px] shrink-0 text-right text-[12px] text-muted">{ago(r.status.stateSince, now)}</span>}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-      {hiddenRows.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-white/[0.06] px-2 pt-2 text-[12px]">
-          <span className="text-muted">Hidden:</span>
-          {hiddenRows.map((r) => (
-            <button key={r.key} className="btn min-h-[28px] px-2 text-[12px]" onClick={() => onUnhide(r.key)} title="Show again">
-              {r.agent.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -416,62 +342,5 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
         </button>
       </footer>
     </section>
-  );
-}
-
-/** Right column: what's waiting on you in this project, then the latest activity. */
-function SidePanels({ onFocus }: { onFocus: (agentId: string) => void }) {
-  const snap = useOffice((s) => s.snap);
-  const now = useNow(15_000);
-  if (!snap) return null;
-  const att = selectAttention(snap);
-  const name = (id: string | null) => (id ? (snap.config.team.find((a) => a.id === id)?.name ?? (id === "hq" ? "HQ" : id)) : "HQ");
-  return (
-    <div className="flex min-h-0 flex-col gap-3 max-[1099px]:hidden">
-      <section className="hud-glass scroll-thin flex max-h-[45%] min-h-0 flex-col overflow-y-auto rounded-2xl p-3" aria-label="Needs you">
-        <h2 className="m-0 mb-2 flex items-center gap-2 font-display text-[13px] font-semibold text-muted">
-          Needs you
-          {att.total > 0 && <span className="rounded-full bg-amber px-1.5 font-term text-[12px] font-semibold text-navy">{att.total}</span>}
-          <span className="flex-1" />
-          <button className="text-[12px] font-normal text-accent hover:underline" onClick={() => ui.openActions()}>
-            Open inbox
-          </button>
-        </h2>
-        {att.items.length === 0 ? (
-          <p className="m-0 text-[13px] text-muted">Nothing waits on you.</p>
-        ) : (
-          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-            {att.items.slice(0, 8).map((i) => (
-              <li key={i.id}>
-                <button className="flex w-full flex-col rounded-lg border border-amber/25 bg-amber/[0.05] px-2.5 py-1.5 text-left hover:bg-amber/[0.1]" onClick={() => ui.openActions()}>
-                  <span className="line-clamp-2 text-[12px] text-ink">{i.title}</span>
-                  <span className="text-[12px] text-muted">
-                    {name(i.fromId)} · {ago(i.at, now)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="hud-glass scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto rounded-2xl p-3" aria-label="Activity">
-        <h2 className="m-0 mb-2 font-display text-[13px] font-semibold text-muted">Activity</h2>
-        {snap.activity.length === 0 ? (
-          <p className="m-0 text-[13px] text-muted">Nothing yet.</p>
-        ) : (
-          <ol className="m-0 flex list-none flex-col gap-2 border-l border-accent/20 p-0 pl-3">
-            {snap.activity.slice(0, 30).map((e) => (
-              <li key={e.id} className="relative text-[12px]">
-                <i className="absolute -left-[16.5px] top-1.5 h-1.5 w-1.5 rounded-full bg-accent" />
-                <button className="text-left hover:underline disabled:no-underline" disabled={!e.agentId} onClick={() => e.agentId && onFocus(e.agentId)}>
-                  <b className="font-medium text-ink">{name(e.agentId)}</b> <span className="text-muted">{e.text}</span>
-                </button>
-                <span className="block text-[12px] text-muted">{ago(e.at, now)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
-    </div>
   );
 }

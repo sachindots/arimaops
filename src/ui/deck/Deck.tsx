@@ -4,7 +4,8 @@ import { modeOf } from "../../data/mode";
 import { selectAttention, selectTeam, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
 import { CommandView } from "../command/CommandView";
-import { AgentList, More } from "../compact/CompactApp";
+import { More } from "../compact/CompactApp";
+import { AgentsPage } from "../agents/AgentsPage";
 import { ChatPage, TEAM } from "../chat/ChatPage";
 import { ActionItemsDrawer } from "../drawers/ActionItemsDrawer";
 import { AgentDrawer } from "../drawers/AgentDrawer";
@@ -85,7 +86,7 @@ export function Deck() {
     : drawer?.kind === "findings" ? <FindingsDrawer />
     : drawer?.kind === "flow" ? <FlowDrawer />
     : page === "chat" ? <ChatPage thread={thread ?? TEAM} onThread={setThread} />
-    : page === "agents" ? <AgentList />
+    : page === "agents" ? <AgentsPage />
     : page === "goals" ? <GoalsPage />
     : page === "more" ? <More />
     : page === "usage" ? <UsagePage />
