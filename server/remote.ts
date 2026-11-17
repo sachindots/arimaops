@@ -18,7 +18,7 @@ import { projectHome } from "./paths";
 
 /** Never written to the audit log with arguments. */
 const QUIET = new Set(["sendTerminalInput", "resizeTerminal"]);
-const REDACT_ARGS = new Set(["setSecret", "setProxy", "saveAccount", "saveMemory"]);
+const REDACT_ARGS = new Set(["setSecret", "setProxy", "saveAccount"]);
 
 const STEP_UP_MS = 24 * 60 * 60 * 1000;
 const DEVICE_MS = 30 * 24 * 60 * 60 * 1000;

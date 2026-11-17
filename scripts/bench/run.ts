@@ -159,10 +159,8 @@ export function collect(home: string, projectId: string): Pick<RunFacts, "findin
     }));
     const u = db.prepare("SELECT COALESCE(SUM(cost_usd), 0) usd, COALESCE(SUM(input), 0) input, COALESCE(SUM(output), 0) output, COALESCE(SUM(cached), 0) cached FROM usage_events WHERE project_id = ?").get(projectId) as { usd: number; input: number; output: number; cached: number };
     const gateRejections = (db.prepare("SELECT COUNT(*) n FROM gate_events WHERE project_id = ? AND state = 'failed'").get(projectId) as { n: number }).n;
-    // Replans live in the memory ledger: the local copy (and what's still queued for Neo4j).
-    const replans =
-      (db.prepare("SELECT COUNT(*) n FROM ledger WHERE project_id = ? AND kind = 'replan'").get(projectId) as { n: number }).n +
-      (db.prepare(`SELECT COUNT(*) n FROM memory_outbox WHERE project_id = ? AND op LIKE '%"kind":"replan"%'`).get(projectId) as { n: number }).n;
+    // Replans live in the progress ledger.
+    const replans = (db.prepare("SELECT COUNT(*) n FROM ledger_entries WHERE project_id = ? AND kind = 'replan'").get(projectId) as { n: number }).n;
     return { findings, usd: u.usd, tokens: { input: u.input, output: u.output, cached: u.cached }, gateRejections, replans };
   } finally {
     db.close();

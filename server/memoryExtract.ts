@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { CORE_MEMORY_TYPES, type Memory, type TaskSummary } from "../src/data/model";
 import { log } from "./lib/log";
-import { STOPWORDS, type Neo4jMemory } from "./memory";
+import { STOPWORDS, type SqliteMemory } from "./memory";
 import type { ModelRunner } from "./modelRunner";
 
 export const EXTRACT_MODEL = "claude-haiku-5-5";
@@ -93,7 +93,7 @@ export class MemoryWorker {
   private extracting: Promise<void> | null = null;
 
   constructor(
-    private mem: Neo4jMemory,
+    private mem: SqliteMemory,
     private runner: ModelRunner,
     private settings: () => ExtractionSettings,
     private typesFor: (projectId: string) => string[] = () => [],
@@ -182,7 +182,6 @@ export class MemoryWorker {
         log.warn(`memory: merging ${drop} into ${keep} failed: ${err instanceof Error ? err.message : err}`);
       }
     }
-    if (merged) await this.mem.flush();
     return merged;
   }
 

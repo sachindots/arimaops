@@ -373,8 +373,6 @@ export function createMockSource(): OfficeDataSource {
 
     saveAccount() {},
     removeAccount() {},
-    saveMemory() {},
-    restoreMemory() {},
     setMemoryExtraction() {},
     setTeamMode(mode) {
       for (const a of world.snap.config.team) {

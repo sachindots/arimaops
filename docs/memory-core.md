@@ -1,5 +1,7 @@
 # Memory core (Phase 2)
 
+> **Storage changed (2026-11-17):** memory no longer uses Neo4j. Memories, their file links and the ledgers live in HQ's own SQLite database (`server/memory.ts`), with FTS5 for recall and the task summaries for "related". The nightly backup is now one copy of the whole HQ database (`server/backups.ts`), and forgetting a project also removes it from those copies. Old Neo4j exports are moved in once on start (`server/memoryImport.ts`). Sections below that describe Neo4j, Bolt, the outbox, per-project restore or the Neo4j Browser are history. See `docs/design/revamp.md`, unit 3.
+
 What the team remembers across tasks, and how it is kept, searched, certified and forgotten. Builds on the Phase 1 `MemoryStore` and `ModelRunner` interfaces (`docs/core-model.md` section 8). Status: **built locally 2026-11-13**, waiting for the owner's approval (decisions in section 10). The Tailscale half of 2.9 and a real Haiku extraction run are not checked yet.
 
 ## 1. What changes

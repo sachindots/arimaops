@@ -34,7 +34,6 @@ import type {
   WorkflowPatch,
   AccountInput,
   AccountsState,
-  MemoryInput,
   MemoryState,
   SpendState,
   AgentMode,
@@ -156,8 +155,6 @@ export interface OfficeDataSource {
   // Accounts (machine-wide): API keys and cloud credentials, stored encrypted on the server
   saveAccount(input: AccountInput): void;
   removeAccount(id: string): void;
-  saveMemory(input: MemoryInput): void;
-  restoreMemory(date: string): void;
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
   /** Owner only: lifts the scope requirement for CTFs and practice ranges. */
   setLabMode(on: boolean): void;

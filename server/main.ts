@@ -30,8 +30,7 @@ import { seedBuiltins } from "./templates";
 import { loadEe, startFeatures } from "./features";
 import { readLicense } from "./license";
 import { RemoteGuard, startPushNotifier } from "./remote";
-import { memoryStore } from "./memory";
-import { scheduleBackups } from "./memoryBackup";
+import { scheduleBackups } from "./backups";
 import { memoryWorker } from "./memoryJobs";
 import { daily, DIGEST_HOUR } from "./memoryReview";
 const IMPROVE_HOUR = 4; // after the 03:00 memory backup and tidy
@@ -143,7 +142,7 @@ async function main() {
   // Container mode: the agents' network, HQ on its gateway, and the allowlist proxy. Skipped without Docker.
   const containers = (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok && (await ensureNetwork());
   if (containers) startEgressProxy(projects, port);
-  scheduleBackups(memoryStore(), () => {
+  scheduleBackups(() => {
     broadcastMemory();
     void memoryWorker().nightly().catch((err) => log.warn(`memory: nightly tidy skipped: ${err instanceof Error ? err.message : err}`));
   });

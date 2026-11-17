@@ -112,8 +112,6 @@ export const COMMANDS = {
   // Machine-wide: accounts, memory, money, GitHub
   saveAccount: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
   removeAccount: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
-  saveMemory: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
-  restoreMemory: entry({ role: "owner", stepUp: true, args: z.tuple([text(10)]) }),
   setMemoryExtraction: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
   decideMemories: entry({ role: "operator", stepUp: true, args: z.tuple([id, obj]) }),
   keepOutOfMemory: entry({ role: "operator", args: z.tuple([text(1000)]) }),

@@ -276,13 +276,6 @@ export class World {
       ],
       spend: { day: { usd: 4.12, cap: 5 }, month: { usd: 31.4, cap: 50 }, paused: null, unpriced: 3 },
       memory: {
-        source: "env" as const,
-        url: "bolt://127.0.0.1:7687",
-        user: "neo4j",
-        passwordSet: true,
-        browserUrl: null,
-        status: "online" as const,
-        queued: 0,
         extraction: { enabled: true, account: "default" },
         keepOut: ["Ravi Kumar"],
         backups: [0, 1, 2].map((d) => new Date(Date.now() - d * 86_400_000).toISOString().slice(0, 10)),

@@ -5,10 +5,9 @@ import { ownerPacks, packsState } from "./skillPacks";
 import { isAgentCli, isAgentMode, SERVICE_KEYS, type AgentConfig, type AgentPatch, type ReviewTool, type RolePatch, type WelcomeInput, type NewMcpServer, type Board, type NewAgentInput, type ProjectConfig, type RemoveAgentOptions, type SandboxSettings, type SetupCheckId, type WorkflowPatch } from "../src/data/types";
 import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
-import type { AccountInput, MemoryInput, MemoryState } from "../src/data/types";
+import type { AccountInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
-import { memoryState, memoryStore, saveExtractionSettings, saveMemorySettings } from "./memory";
-import { listBackups, restoreProject } from "./memoryBackup";
+import { memoryState, memoryStore, saveExtractionSettings } from "./memory";
 import { memoryWorker } from "./memoryJobs";
 
 /** Sends the accounts list (no secrets) to every loaded project. */
@@ -20,15 +19,9 @@ function broadcastAccounts() {
   }
 }
 
-/** Where memory is, whether it answers, and the project's backups. */
+/** Extraction, HQ's backups, and the project's keep-out names. */
 export function projectMemoryState(projectId: string, state = memoryState()): MemoryState {
-  let backups: string[] = [];
-  try {
-    backups = listBackups(projectId);
-  } catch {
-    /* an id that can't name a folder has no backups */
-  }
-  return { ...state, backups, keepOut: memoryStore().keptOut(projectId) };
+  return { ...state, keepOut: memoryStore().keptOut(projectId) };
 }
 
 /** Sends the memory state to every loaded project. */
@@ -461,16 +454,6 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         hub.activity("config", null, `Couldn't save the account: ${e instanceof Error ? e.message : String(e)}`);
       }
     },
-    saveMemory: (raw) => {
-      try {
-        void saveMemorySettings(raw as unknown as MemoryInput);
-        redactor().refresh(); // the Neo4j password is masked in terminal output like any vault secret
-        broadcastMemory();
-        hub.activity("config", null, "Saved the memory settings. HQ is connecting to Neo4j.");
-      } catch (e) {
-        hub.activity("config", null, `Couldn't save the memory settings: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    },
     // Lab mode (CTFs, practice ranges): agents start without a scope. Owner only; a remote device needs the step-up.
     setLabMode: (on) => {
       const cfg = hub.snap.config;
@@ -522,15 +505,6 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       } catch (e) {
         hub.activity("config", null, `Couldn't change memory extraction: ${e instanceof Error ? e.message : String(e)}`);
       }
-    },
-    restoreMemory: (date) => {
-      const day = str(date, 10);
-      const projectId = hub.snap.config.project.id;
-      hub.activity("config", null, `Restoring this project's memory from the ${day} backup…`);
-      restoreProject(memoryStore(), projectId, day)
-        .then(() => hub.activity("config", null, `Memory restored from the ${day} backup. Ledger entries written since then are gone.`))
-        .catch((e) => hub.activity("config", null, `Couldn't restore memory: ${e instanceof Error ? e.message : String(e)}`))
-        .finally(broadcastMemory);
     },
     removeAccount: (id) => {
       const acct = str(id, 40);

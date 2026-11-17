@@ -14,7 +14,7 @@ import { WorkflowSettings } from "./WorkflowSettings";
 const TABS: { id: SettingsTab; label: string; hint: string }[] = [
   { id: "team", label: "Team", hint: "Agents, roles, skills" },
   { id: "accounts", label: "Accounts", hint: "API keys, cloud" },
-  { id: "memory", label: "Memory", hint: "Neo4j connection" },
+  { id: "memory", label: "Memory", hint: "Extraction, keep-out, backups" },
   { id: "users", label: "Users", hint: "People, roles, sign-out" },
   { id: "workflow", label: "Workflow", hint: "Review, merge, deploy" },
   { id: "stack", label: "Stack", hint: "Frameworks, tools" },

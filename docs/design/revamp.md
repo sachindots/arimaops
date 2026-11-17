@@ -1,6 +1,6 @@
 # Server revamp: security and subtraction
 
-Status: units 1, 2, 4 and 5 implemented (2026-11-17). Unit 3 (memory) waits for the owner's decision on backups.
+Status: all five units implemented (2026-11-17). Unit 3 went with the nightly whole-database backup, approved by the owner.
 Audience: solo developers and small teams (decided 2026-11-17). Not multi-tenant, not enterprise.
 
 Five units, each one small enough to ship and test alone. Order: 2, 4 and 5 first (they close
@@ -169,12 +169,20 @@ On first start after the upgrade, for each project:
 the Neo4j URL/user/password settings and their UI, `MemoryStatus` "offline"/"unconfigured".
 Memory works for every user with no setup.
 
-### Open question for the owner
+### Backups (decided 2026-11-17)
 
-Per-project memory restore (`restoreMemory(date)` in Settings) depends on the Neo4j backups.
-Proposal: replace it with one nightly `VACUUM INTO ~/.arima/backups/arima-<day>.db` (keep 7),
-which backs up all HQ state, not just memory. Restore becomes "stop HQ, copy the file back".
-Per-project restore is lost.
+One nightly `VACUUM INTO ~/.arima/backups/arima-<day>.db` (keep 7, mode 0600) backs up all HQ state,
+not just memory (`server/backups.ts`). Restore is "stop HQ, copy the file back"; per-project restore is gone.
+Forget project purges the project from every backup too (secure_delete, FTS optimize, VACUUM), so a
+deleted project leaves no bytes behind; the test scans the backup file to prove it.
+
+### As built
+
+- The ledgers moved too: in the Neo4j era they lived in the graph, with an in-process copy. Now `ledger_entries`.
+- `related()` walks memories, their files, and task summaries (`files`, `needs`) for up to two hops; agents
+  and ledger entries were never on a path between memories, so they aren't modelled.
+- Merging keeps one `task_id` per memory (a `shortcut:` comment marks it).
+- `memory_outbox` is dropped by the one-time move, not by a migration, because the move reads files.
 
 ---
 

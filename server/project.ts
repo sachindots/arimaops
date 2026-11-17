@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
 import { ActionItems } from "./actionItems";
 import { Findings } from "./findings";
-import { broadcastMemory, makeCommands, projectMemoryState } from "./commands";
+import { makeCommands, projectMemoryState } from "./commands";
 import { GitHubSync } from "./githubSync";
 import { Hub } from "./hub";
 import { Inbox } from "./inbox";
@@ -298,7 +298,6 @@ export async function startProject(path: string, port: number, paused: boolean):
   void memoryReview.sync();
   planner.findings = new Findings(hub);
   planner.memory = memoryStore();
-  memoryStore().onChange ??= broadcastMemory;
   planner.memoryJobs = memoryWorker();
   for (const t of hub.snap.tasks) if (t.status === "done" && inSuite(hub.snap.config.project.id, t.id)) t.benchmark = suiteId(hub.snap.config.project.id, t.id);
   for (const t of hub.snap.tasks) t.evidence = latestEvidence(hub.slug, t.id) ?? undefined; // one existsSync per task when there's none

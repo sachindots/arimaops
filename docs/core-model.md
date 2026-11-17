@@ -191,7 +191,7 @@ interface LedgerEntry {
 
 - The **task ledger** is the lead's (facts, guesses, plan). Team MCP gains `ledger_add` and `ledger_revise`, lead only.
 - The **progress ledger** is HQ's: stall checks, nudges, replans. `planner.checkStalls` writes to it.
-- Both go through `MemoryStore`, so Phase 2 moves them into Neo4j without touching callers.
+- Both go through `MemoryStore`, so the storage behind it can change without touching callers (Phase 2 used Neo4j; it is SQLite again since 2026-11-17).
 
 ## 8. Interfaces (1.7)
 
@@ -214,7 +214,7 @@ interface MemoryStore {
   forgetProject(projectId: string): void;
   // Phase 2 adds recall, related, remember and the graph.
 }
-// Implementation now: SqliteMemory. Phase 2: Neo4jMemory.
+// Implementation: SqliteMemory (server/memory.ts).
 ```
 
 As built (`server/memory.ts`, `server/githubEvents.ts`, `server/modelRunner.ts`):

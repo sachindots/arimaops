@@ -6,7 +6,7 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccountInput, MemoryInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentMode, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentMode, AgentStatus, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -303,8 +303,6 @@ export const officeActions = {
   resolveActionItem: (id: string, decision: "done" | "dismissed", note?: string) => source.resolveActionItem(id, decision, note),
   saveAccount: (input: AccountInput) => source.saveAccount(input),
   removeAccount: (id: string) => source.removeAccount(id),
-  saveMemory: (input: MemoryInput) => source.saveMemory(input),
-  restoreMemory: (date: string) => source.restoreMemory(date),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
   setLabMode: (on: boolean) => source.setLabMode(on),
   exportTemplate: () => {

@@ -290,6 +290,59 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX template_proposals_pattern ON template_proposals (template_id, pattern);
   `,
+  // Memory moves from Neo4j into this database (docs/design/revamp.md, unit 3). Ids still come from memory_ids.
+  // memory_outbox stays until server/memoryImport.ts has moved what Neo4j's backups and the queue held.
+  `
+  CREATE TABLE ledger_entries (
+    id INTEGER PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    task_id TEXT,
+    ledger TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    by TEXT NOT NULL,
+    at TEXT NOT NULL,
+    superseded_by INTEGER
+  );
+  CREATE INDEX ledger_entries_project ON ledger_entries (project_id, task_id);
+
+  CREATE TABLE memories (
+    n INTEGER PRIMARY KEY,
+    id TEXT NOT NULL UNIQUE,
+    project_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    text TEXT NOT NULL,
+    task_id TEXT,
+    source TEXT NOT NULL,
+    by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    certified INTEGER NOT NULL DEFAULT 0,
+    certified_by TEXT,
+    superseded_by TEXT
+  );
+  CREATE INDEX memories_project ON memories (project_id, task_id);
+
+  CREATE TABLE memory_about (
+    project_id TEXT NOT NULL,
+    memory_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    PRIMARY KEY (memory_id, path)
+  );
+  CREATE INDEX memory_about_path ON memory_about (project_id, path);
+
+  CREATE VIRTUAL TABLE memory_text USING fts5 (text, content = 'memories', content_rowid = 'n');
+  CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memory_text (rowid, text) VALUES (new.n, new.text);
+  END;
+  CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memory_text (memory_text, rowid, text) VALUES ('delete', old.n, old.text);
+  END;
+  CREATE TRIGGER memories_au AFTER UPDATE OF text ON memories BEGIN
+    INSERT INTO memory_text (memory_text, rowid, text) VALUES ('delete', old.n, old.text);
+    INSERT INTO memory_text (rowid, text) VALUES (new.n, new.text);
+  END;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

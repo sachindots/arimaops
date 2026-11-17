@@ -21,7 +21,7 @@ check(
 );
 const OWNER = [
   "addMcp", "addToSuite", "finishGithubApp", "importTemplate", "openHostShell", "openShell", "promoteLessons", "proposeImprovements",
-  "removeAccount", "removeLesson", "restoreMemory", "runSetupFix", "saveAccount", "saveMemory", "setLabMode", "setLessonPromotion",
+  "removeAccount", "removeLesson", "runSetupFix", "saveAccount", "setLabMode", "setLessonPromotion",
   "setMemoryExtraction", "setProxy", "setSpendCaps",
 ].sort();
 check("owner-only commands are exactly these", JSON.stringify(byRole("owner")) === JSON.stringify(OWNER), JSON.stringify(byRole("owner")));

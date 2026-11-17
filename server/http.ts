@@ -32,8 +32,7 @@ import { releasePortBlock } from "./ports";
 import { hqDb } from "./lib/db";
 import { agentUsage } from "./usageEvents";
 import { forgetProject, recordsDir, saveRecord } from "./forget";
-import { memoryStore } from "./memory";
-import { backupsRoot } from "./memoryBackup";
+import { backupsDir } from "./backups";
 import { EXPORT_FORMATS, RENDER, type ExportFormat } from "./reports";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
@@ -569,7 +568,7 @@ export function startHttp(o: Options) {
             if (existsSync(dir) && !(await run("git", ["ls-files", "--error-unmatch", d], { cwd: p.path })).ok) folders.push(dir);
           }
           // Forget project (docs/memory-core.md section 9): graph, tables, backups, folders; then a record for the client.
-          const record = await forgetProject({ db: hqDb(), mem: memoryStore(), projectId: p.id, projectName: p.name, by: who.userName ?? "the owner", backupsRoot: backupsRoot(), folders });
+          const record = await forgetProject({ db: hqDb(), projectId: p.id, projectName: p.name, by: who.userName ?? "the owner", backupsDir: backupsDir(), folders });
           const recordName = saveRecord(record);
           if (existsSync(p.path)) await run("git", ["worktree", "prune"], { cwd: p.path });
           for (const a of p.team) releasePortBlock(p.id, a.id);

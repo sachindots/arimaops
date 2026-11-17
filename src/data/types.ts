@@ -701,32 +701,14 @@ export interface AccountsState {
   error?: string;
 }
 
-/** Where the team's memory (Neo4j) is and whether HQ reaches it. Never carries the password. */
+/** Settings → Memory: extraction, keep-out names and HQ's backups. */
 export interface MemoryState {
-  /** "env": set by compose (ARIMA_NEO4J_*), read-only here. "settings": saved in Settings → Memory. */
-  source: "env" | "settings" | null;
-  url: string;
-  user: string;
-  passwordSet: boolean;
-  /** The Neo4j Browser on the tailnet (ARIMA_NEO4J_BROWSER_URL), for the owner. */
-  browserUrl: string | null;
-  status: "unconfigured" | "offline" | "online";
-  error?: string;
-  /** Writes waiting for Neo4j. */
-  queued: number;
   /** Claude Haiku reads finished tasks into memories (spends usage on `account`). */
   extraction: { enabled: boolean; account: string };
   /** Names this project keeps out of memory. */
   keepOut: string[];
-  /** This project's nightly memory backups, newest first (dates). */
+  /** HQ's nightly whole-database backups, newest first (dates). */
   backups: string[];
-}
-
-export interface MemoryInput {
-  url: string;
-  user: string;
-  /** Empty keeps the stored one. */
-  password?: string;
 }
 
 /** What the Accounts form sends; the secret is optional when updating. */

@@ -11,7 +11,7 @@ import type { Memory } from "../src/data/model";
 import type { ActionItems } from "./actionItems";
 import type { Hub } from "./hub";
 import { log } from "./lib/log";
-import type { Neo4jMemory } from "./memory";
+import type { SqliteMemory } from "./memory";
 
 const URGENT_TYPES = new Set(["Decision", "DeadEnd"]);
 export const DIGEST_HOUR = 9;
@@ -22,7 +22,7 @@ export class MemoryReview {
   constructor(
     private hub: Pick<Hub, "emit" | "snap">,
     private actions: ActionItems,
-    private mem: Neo4jMemory,
+    private mem: SqliteMemory,
   ) {
     this.stopListening = mem.onRemember((m) => this.filed(m));
   }
@@ -49,7 +49,7 @@ export class MemoryReview {
     }
   }
 
-  /** Lines the items up with the graph (memories made while the project wasn't loaded, merged or faded ones). Needs Neo4j. */
+  /** Lines the items up with memory (memories made while the project wasn't loaded, merged or faded ones). */
   async sync() {
     try {
       const all = await this.mem.memories(this.projectId);
