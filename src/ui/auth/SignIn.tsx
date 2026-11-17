@@ -24,10 +24,10 @@ export function SignIn() {
           aria-label="Sign in"
         >
           <div className="flex items-center gap-3">
-            <Logo size={34} />
+            <Logo size={48} />
             <div>
               <b className="block text-[17px] font-bold tracking-tight text-ink">{BRAND.name}</b>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">HQ Access</span>
+              <span className="text-[12px] font-medium text-muted">HQ access</span>
             </div>
           </div>
           <p className="m-0 text-[13px] text-muted">Sign in to connect to this HQ instance.</p>

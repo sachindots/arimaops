@@ -5,6 +5,7 @@ import { isViewer, officeActions, openProject, useOffice } from "../../store/off
 import { ui } from "../../store/ui";
 import { Field, Portrait, SectionTitle } from "../kit";
 import { DrawerHeader } from "./Drawer";
+import { presets } from "../../data/mock/presets";
 
 const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done", "blocked"];
 
@@ -281,6 +282,19 @@ export function CtoDrawer() {
           <div role="alert" className="rounded-lg border border-red/40 bg-red/10 px-3 py-2 text-[13px] text-red">
             {error}
           </div>
+        )}
+
+        {!live && (
+          <section className="flex flex-col gap-2">
+            <SectionTitle>Sample projects</SectionTitle>
+            <div className="flex flex-wrap gap-2">
+              {presets.map((p) => (
+                <button key={p.id} type="button" className="btn text-[13px]" aria-pressed={snap?.config.project.name === p.config.project.name} onClick={() => officeActions.loadPreset(p.id)}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </section>
         )}
 
         <section className="flex flex-col gap-3">

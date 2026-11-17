@@ -1,6 +1,6 @@
 import type { OfficeSnapshot } from "../../data/types";
-import { isViewer, officeActions, selectAttention, setupToDo, useOffice } from "../../store/office";
-import { ui, useUi } from "../../store/ui";
+import { isViewer, selectAttention, setupToDo, useOffice } from "../../store/office";
+import { ui } from "../../store/ui";
 import { useAgentUsage } from "../../store/usage";
 import { CommandBar } from "../hud/CommandBar";
 import { fmtUsd, Logo } from "../kit";
@@ -10,31 +10,20 @@ import { Icon } from "./Icon";
 
 /**
  * Top header matching the Spatial Multi-Agent Command Deck specification:
- * Left: AO badge + ArimaOps / Project switcher + online dot.
- * Center: Domain Toggle Pill (Software & Marketing vs Cybersecurity Red-Team) + ⌘K Command Bar.
+ * Left: lion + ArimaOps / project name with its type chip (opens the project switcher) + online dot.
+ * Center: ⌘K Command Bar. The theme follows the project, so there is no domain toggle.
  * Right: Working count · Burn + Need You pill + Settings gear.
  */
-export function DeckHeader({ snap, theme, workingCount, activeTasks }: { snap: OfficeSnapshot; theme: Theme; workingCount: number; activeTasks: number }) {
+export function DeckHeader({ snap, theme, workingCount }: { snap: OfficeSnapshot; theme: Theme; workingCount: number; activeTasks: number }) {
   const live = useOffice((s) => s.live);
   const connection = useOffice((s) => s.connection);
-  const scheme = useUi((s) => s.scheme);
   const attention = selectAttention(snap).total;
   const setup = setupToDo(snap);
   const usage = useAgentUsage(1);
   const cost = usage.rows.reduce((sum, a) => sum + a.costUsd, 0);
   const online = !live || connection === "open";
-  const isCyber = theme.security || scheme === "dark";
-  const findingsCount = (snap.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length;
-
-  const selectDomain = (domain: "software" | "cybersec") => {
-    if (domain === "cybersec") {
-      ui.setScheme("dark", false);
-      if (!live && snap.config.project.id !== "redcell-ops") officeActions.loadPreset("red-cell");
-    } else {
-      ui.setScheme("light", false);
-      if (!live && snap.config.project.id === "redcell-ops") officeActions.loadPreset("askwell");
-    }
-  };
+  // Build projects show their template ("Dev team", "Marketing"); security ones their team colour ("Red team").
+  const kind = theme.security ? theme.label : (snap.config.template?.name ?? theme.label);
 
   return (
     <header
@@ -54,10 +43,13 @@ export function DeckHeader({ snap, theme, workingCount, activeTasks }: { snap: O
               type="button"
               onClick={() => ui.openCto()}
               title="Switch, create or manage projects"
-              className="flex cursor-pointer items-center gap-1 rounded bg-cream-2 px-2 py-0.5 text-[12px] font-semibold text-ink transition-colors hover:bg-cream-3"
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 font-semibold text-ink transition-colors hover:bg-cream-2"
             >
-              <span className="max-w-[180px] truncate">{snap.config.project.name}</span>
-              <Icon name="expand_more" size={14} className="text-muted" />
+              <span className="max-w-[200px] truncate text-[13px]">{snap.config.project.name}</span>
+              <span className="rounded-full px-2 py-px text-[12px] font-medium" style={{ color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 12%, transparent)" }}>
+                {kind}
+              </span>
+              <Icon name="expand_more" size={16} className="text-muted" />
             </button>
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${online ? "bg-green" : "bg-amber"}`}
@@ -66,57 +58,17 @@ export function DeckHeader({ snap, theme, workingCount, activeTasks }: { snap: O
             />
           </div>
         </div>
-        {isViewer && <span className="chip shrink-0 text-[11px]">Viewer</span>}
+        {isViewer && <span className="chip shrink-0 text-[12px]">Viewer</span>}
         {!live && (
-          <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "var(--accent)" }} title="Sample projects and agents running in your browser.">
+          <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "var(--accent)" }} title="Sample projects and agents running in your browser.">
             Demo
           </span>
         )}
       </div>
 
-      {/* Center: Domain Toggle Pill + Command Bar */}
-      <div className="flex items-center gap-2.5">
-        <div className="hidden items-center gap-1 rounded-full border border-[var(--border-hairline)] bg-cream-2 p-1 shadow-inner lg:flex">
-          <button
-            type="button"
-            onClick={() => selectDomain("software")}
-            className={`flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-1 text-[12px] font-semibold transition-all ${
-              !isCyber ? "bg-cream text-ink shadow-xs" : "text-muted hover:text-ink"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${!isCyber ? "bg-cyan-500" : "bg-slate-400"}`} />
-            <span>Software &amp; Marketing</span>
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                !isCyber ? "bg-cyan-50 text-cyan-700" : "bg-cream-3 text-muted"
-              }`}
-            >
-              {workingCount || activeTasks || 3} Active
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => selectDomain("cybersec")}
-            className={`flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-1 text-[12px] font-semibold transition-all ${
-              isCyber ? "bg-red-600 text-white shadow-sm" : "text-muted hover:text-red-600"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full ${isCyber ? "bg-white" : "bg-slate-400"}`} />
-            <span>Cybersecurity Red-Team</span>
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                isCyber ? "bg-red-800 text-white" : "bg-cream-3 text-muted"
-              }`}
-            >
-              {findingsCount || 1} Alert{findingsCount === 1 || !findingsCount ? "" : "s"}
-            </span>
-          </button>
-        </div>
-
-        <div className="w-[min(220px,22vw)]">
-          <CommandBar snap={snap} />
-        </div>
+      {/* Center: Command Bar */}
+      <div className="w-[min(360px,30vw)]">
+        <CommandBar snap={snap} />
       </div>
 
       {/* Right: Telemetry & Operator Approval Queue */}

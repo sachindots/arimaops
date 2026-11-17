@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AgentState, ReviewState, SessionState, Tokens } from "../data/types";
 import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
+import { Lion } from "./brand/Lion";
 
 /** The agent's role, in its colour. */
 export function RoleBadge({ role, color, compact = false }: { role: string; color: string; compact?: boolean }) {
@@ -45,16 +46,9 @@ export function ReviewChip({ review, merged }: { review: ReviewState; merged?: b
 }
 
 /** ArimaOps' mark: rounded-lg AO badge matching the command deck design. */
+/** The ArimaOps lion in the project accent. */
 export function Logo({ size = 32 }: { size?: number }) {
-  return (
-    <span
-      className="inline-flex shrink-0 items-center justify-center rounded-lg bg-slate-900 font-bold text-white shadow-xs transition-colors [[data-theme=redteam]_&]:bg-red-600"
-      style={{ width: size, height: size, fontSize: Math.max(11, Math.round(size * 0.38)) }}
-      aria-hidden
-    >
-      AO
-    </span>
-  );
+  return <Lion size={size} className="text-accent" />;
 }
 
 /** An agent's avatar: crisp rounded square badge with its initial. */

@@ -5,5 +5,8 @@ Which files are MIT, AGPL-3.0-or-later or commercial (ee/) is set out in LICENSE
 The MIT License text and its copyright notices are in LICENSES/MIT.txt and must be
 kept in copies and forks.
 
+The lion logo (src/ui/brand/Lion.tsx, public/lion.svg, public/favicon.svg) is adapted
+from an MIT-licensed icon; its notice is in LICENSES/THIRD-PARTY.txt and must be kept too.
+
 Third-party packages keep their own licenses; see each package under
 node_modules or the published package's dependency list.
