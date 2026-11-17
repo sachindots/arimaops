@@ -278,6 +278,10 @@ export class World {
         running: false,
         last: null,
       },
+      goals: [
+        { id: "G1", title: "Launch the knowledge base", metric: "Help articles live", target: "40", current: "26", status: "active" as const, done: 3, total: 7, usd: 4.12 },
+        { id: "G2", title: "Cut first-reply time", metric: "Median reply", target: "2 min", current: "3.5 min", status: "active" as const, done: 1, total: 4, usd: 1.08 },
+      ],
       freeModels: {
         checkedAt: now(),
         error: null,

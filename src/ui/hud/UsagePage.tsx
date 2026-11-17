@@ -1,11 +1,13 @@
-// The team's token use, ranked: today, 7 or 30 days. Totals across the top, one row per agent with its
-// day shape, tokens, cost and share; a row opens that agent's Usage tab.
+// The team's token use over today, 7 or 30 days: four tiles (tokens, cost, share on free models, budget left), one
+// stacked bar chart of tokens by agent over the range, role budgets, and the per-agent table (also the chart's table
+// view); a row opens that agent's Usage tab.
 
 import { useState } from "react";
 import { CLI_LABEL } from "../../data/types";
 import { useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
-import { useAgentUsage } from "../../store/usage";
+import { useAgentUsage, type AgentUsage } from "../../store/usage";
+import { freeSourceOf } from "../../data/freeModels";
 import { fmtTokens, fmtUsd, Meter, Portrait, Sparkline, useCountUp } from "../kit";
 
 const RANGES = [
@@ -14,12 +16,66 @@ const RANGES = [
   { days: 30, label: "30 days" },
 ] as const;
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="hud-glass flex min-w-[150px] flex-1 flex-col gap-1 rounded-lg px-4 py-3">
+    <div className="flex min-w-[170px] flex-1 flex-col gap-1.5 rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] px-4 py-3.5">
       <span className="text-[12px] text-muted">{label}</span>
-      <span className={`font-display text-[20px] font-semibold leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</span>
+      <span className="text-[28px] font-semibold leading-none tracking-tight text-ink">{value}</span>
+      {sub && <span className="text-[12px] text-muted">{sub}</span>}
     </div>
+  );
+}
+
+/** Tokens per time slice, one stacked segment per agent (its own colour, the same as its avatar). */
+function StackedBars({ rows, agents, rangeLabel }: { rows: AgentUsage[]; agents: { id: string; name: string; color: string }[]; rangeLabel: string }) {
+  const slices = Math.max(0, ...rows.map((r) => r.series.length));
+  const totals = Array.from({ length: slices }, (_, i) => rows.reduce((t, r) => t + (r.series[i] ?? 0), 0));
+  const max = Math.max(1, ...totals);
+  const who = (id: string) => agents.find((a) => a.id === id);
+  if (!slices) return null;
+  return (
+    <figure className="m-0 flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted" aria-label="Legend">
+        {rows.map((r) => (
+          <span key={r.agentId} className="flex items-center gap-1.5">
+            <i className="h-2.5 w-2.5 rounded-sm" style={{ background: who(r.agentId)?.color ?? "#64748b" }} aria-hidden="true" />
+            {who(r.agentId)?.name ?? r.agentId}
+          </span>
+        ))}
+      </div>
+      <div className="relative">
+        <span className="absolute -top-1 left-0 text-[12px] text-muted">{fmtTokens(max)}</span>
+        <div className="flex h-[180px] items-end gap-[3px] border-b border-[var(--border-hairline)] pt-5" role="img" aria-label={`Tokens by agent over ${rangeLabel}`}>
+          {totals.map((t, i) => (
+            <div
+              key={i}
+              className="group relative flex flex-1 flex-col-reverse gap-[2px]"
+              style={{ height: `${(t / max) * 100}%` }}
+            >
+              {rows.map((r, k) => {
+                const v = r.series[i] ?? 0;
+                if (!v) return null;
+                return (
+                  <span
+                    key={r.agentId}
+                    className={`block min-h-[2px] w-full ${k === rows.length - 1 || rows.slice(k + 1).every((x) => !x.series[i]) ? "rounded-t-[4px]" : ""}`}
+                    style={{ height: `${(v / t) * 100}%`, background: who(r.agentId)?.color ?? "#64748b" }}
+                    title={`${who(r.agentId)?.name ?? r.agentId}: ${fmtTokens(v)}`}
+                  />
+                );
+              })}
+              <span className="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-1.5 py-0.5 text-[12px] text-[var(--surface-card)] group-hover:block">
+                {fmtTokens(t)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 flex justify-between text-[12px] text-muted">
+          <span>{rangeLabel === "today" ? "24 h ago" : `${rangeLabel} ago`}</span>
+          <span>now</span>
+        </div>
+      </div>
+    </figure>
   );
 }
 
@@ -30,19 +86,20 @@ export function UsagePage() {
   const team = usage.rows.reduce((sum, r) => sum + usage.total(r), 0);
   const cost = usage.rows.reduce((sum, r) => sum + r.costUsd, 0);
   const shownTeam = useCountUp(team);
-  const top = usage.rows[0];
-  const name = (id: string) => snap.config.team.find((a) => a.id === id)?.name ?? id;
   const range = RANGES.find((r) => r.days === days)!;
+  const onFree = usage.rows.filter((r) => freeSourceOf(snap.config.team.find((a) => a.id === r.agentId)?.model ?? "")).reduce((t, r) => t + usage.total(r), 0);
+  const freeAgents = snap.config.team.filter((a) => freeSourceOf(a.model)).length;
+  const day = snap.spend?.day;
 
   return (
-    <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+    <div className="scroll-thin flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">Usage</h1>
-        <span className="text-[13px] text-muted">{snap.config.project.name} · tokens and estimated cost per agent</span>
+        <h1 className="m-0 text-[20px] font-semibold tracking-tight text-ink">Usage</h1>
+        <span className="text-[13px] text-muted">{snap.config.project.name} · tokens and estimated cost</span>
         <span className="flex-1" />
-        <div className="flex gap-1.5" role="group" aria-label="Range">
+        <div className="flex gap-1" role="group" aria-label="Range">
           {RANGES.map((r) => (
-            <button key={r.days} className="btn px-2.5 text-[12px]" aria-pressed={days === r.days} onClick={() => setDays(r.days)}>
+            <button key={r.days} className="btn text-[13px]" aria-pressed={days === r.days} onClick={() => setDays(r.days)}>
               {r.label}
             </button>
           ))}
@@ -50,15 +107,28 @@ export function UsagePage() {
       </header>
 
       <div className="flex flex-wrap gap-3">
-        <Stat label={`Team tokens · ${range.label.toLowerCase()}`} value={fmtTokens(shownTeam)} accent />
-        <Stat label="Estimated cost" value={fmtUsd(cost)} />
-        <Stat label="Busiest agent" value={top ? name(top.agentId) : "—"} />
-        <Stat label="Agents with usage" value={`${usage.rows.length} / ${snap.config.team.length}`} />
+        <Stat label={`Tokens · ${range.label.toLowerCase()}`} value={fmtTokens(shownTeam)} sub={`${usage.rows.length} of ${snap.config.team.length} agents used some`} />
+        <Stat label="Estimated cost" value={fmtUsd(cost)} sub={snap.spend?.unpriced ? `${snap.spend.unpriced} events on unpriced models count as $0` : "List prices"} />
+        <Stat label="On free models" value={`${team ? Math.round((onFree / team) * 100) : 0}%`} sub={`${freeAgents} agent${freeAgents === 1 ? "" : "s"} on a free model`} />
+        <Stat
+          label="Budget left today"
+          value={day && day.cap > 0 ? fmtUsd(Math.max(0, day.cap - day.usd)) : "No cap"}
+          sub={day && day.cap > 0 ? `${fmtUsd(day.usd)} of ${fmtUsd(day.cap)} spent` : "Set one in Settings → Project"}
+        />
       </div>
 
+      <section className="rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] px-5 py-4" aria-label="Tokens over time">
+        <h2 className="m-0 mb-3 text-[15px] font-semibold text-ink">Tokens by agent</h2>
+        {usage.rows.length ? (
+          <StackedBars rows={usage.rows} agents={snap.config.team} rangeLabel={range.days === 1 ? "today" : range.label.toLowerCase()} />
+        ) : (
+          <p className="m-0 text-[13px] text-muted">No tokens used {days === 1 ? "today" : `in the last ${days} days`}.</p>
+        )}
+      </section>
+
       {(snap.spend?.roles?.length ?? 0) > 0 && (
-        <section className="hud-glass flex flex-col gap-2 rounded-lg px-4 py-3" aria-label="Role budgets today">
-          <h2 className="m-0 text-[13px] font-semibold text-ink">
+        <section className="flex flex-col gap-2 rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] px-5 py-4" aria-label="Role budgets today">
+          <h2 className="m-0 text-[15px] font-semibold text-ink">
             Role budgets today <span className="font-normal text-muted">· API-key accounts; over budget, that role stops until midnight</span>
           </h2>
           {snap.spend!.roles!.map((r) => (
@@ -74,7 +144,7 @@ export function UsagePage() {
         </section>
       )}
 
-      <section className="hud-glass overflow-hidden rounded-lg" aria-label="Leaderboard">
+      <section className="shrink-0 overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)]" aria-label="By agent">
         <div className="grid grid-cols-[32px_minmax(160px,1.4fr)_minmax(100px,1fr)_90px_80px_minmax(90px,0.8fr)] items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-2 text-[12px] font-medium text-muted max-[900px]:hidden">
           <span>#</span>
           <span>Agent</span>
