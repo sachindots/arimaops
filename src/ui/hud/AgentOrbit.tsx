@@ -5,7 +5,7 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { fmtTokens, fmtUsd, Portrait, useCountUp } from "../kit";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
-import { DECK } from "../deck/frame";
+import { DECK, homeSides } from "../deck/frame";
 import { Icon } from "../deck/Icon";
 
 type Member = { config: AgentConfig; status: AgentStatus };
@@ -23,7 +23,7 @@ const STATE: Record<Mode, { dot: string; label: string; badge: string }> = {
   },
   "needs-input": {
     dot: "bg-amber-500 animate-pulse",
-    label: "Needs Attention",
+    label: "Needs you",
     badge: "border-amber-400/60 bg-amber-500/15 font-semibold text-amber-900 [[data-scheme=dark]_&]:text-amber-300",
   },
   alert: {
@@ -38,12 +38,12 @@ const STATE: Record<Mode, { dot: string; label: string; badge: string }> = {
   },
   idle: {
     dot: "bg-slate-400",
-    label: "Standby",
+    label: "Idle",
     badge: "border-[var(--border-hairline)] bg-cream-2 text-muted",
   },
   stopped: {
     dot: "bg-slate-400/60",
-    label: "Off",
+    label: "Stopped",
     badge: "border-[var(--border-hairline)] bg-cream-2 text-muted/80",
   },
 };
@@ -51,13 +51,14 @@ const STATE: Record<Mode, { dot: string; label: string; badge: string }> = {
 /**
  * Where the core and the ring sit inside a box of w × h.
  */
-export function hudFrame(w: number, h: number, compact = false, strip = false) {
+export function hudFrame(w: number, h: number, compact = false, strip = false, team = 0) {
   if (compact) return { cx: w / 2, cy: (h - (strip ? 52 : 0)) / 2 - 8, width: w, height: h - 16 - (strip ? 52 : 0), r: Math.min(w, h) * (w < 640 ? 0.17 : 0.2) };
-  const left = DECK.rail;
+  const side = homeSides(w, team); // Home's Needs you / Today columns
+  const left = DECK.rail + side.left;
   const top = DECK.header;
-  const width = w - left;
+  const width = w - left - side.right;
   const height = h - top - (strip ? DECK.footer : 0);
-  return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.175 };
+  return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.14 };
 }
 
 function useBoxSize(ref: RefObject<HTMLElement | null>) {
@@ -72,7 +73,7 @@ function useBoxSize(ref: RefObject<HTMLElement | null>) {
   return size;
 }
 
-const HALF = { node: { x: 40, y: 42 }, pill: { x: 90, y: 26 }, card: { x: 138, y: 66 } } as const;
+const HALF = { node: { x: 40, y: 42 }, pill: { x: 90, y: 26 }, card: { x: 150, y: 74 } } as const;
 
 export function AgentOrbit({
   team,
@@ -80,7 +81,6 @@ export function AgentOrbit({
   activeAgentId,
   caption,
   compact = false,
-  redTeamProject = false,
   lift = false,
 }: {
   team: Member[];
@@ -88,7 +88,6 @@ export function AgentOrbit({
   activeAgentId: string | null;
   caption: string;
   compact?: boolean;
-  redTeamProject?: boolean;
   lift?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -96,11 +95,11 @@ export function AgentOrbit({
   const usage = useAgentUsage(1);
   const snap = useOffice((s) => s.snap);
   const stages = snap?.config.template?.flow.stages;
-  const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1);
+  const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1, team.length);
   const kind = compact && w < 640 ? "node" : team.length > 6 ? "pill" : "card";
   const half = HALF[kind];
   const rx = Math.min(f.width * 0.34, f.width / 2 - half.x - 16);
-  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.36, f.height / 2 - half.y - 16);
+  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.4, f.height / 2 - half.y - 16);
   const outerTrack = Math.round(Math.min(rx, ry) * 1.92);
   const innerTrack = Math.round(outerTrack * 0.68);
   const slots = team.map((m, i) => {
@@ -109,7 +108,6 @@ export function AgentOrbit({
   });
 
   const projectName = snap?.config.project.name ?? "Project";
-  const statusText = redTeamProject ? "Offensive Threat Simulation Core" : "Swarm Synchronized";
 
   return (
     <div ref={box} className={`pointer-events-none inset-0 ${compact ? "absolute" : "fixed z-[2]"}`}>
@@ -133,12 +131,12 @@ export function AgentOrbit({
       {w > 0 && (
         <div
           className="pointer-events-none absolute -translate-x-1/2 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3.5 py-1 text-[12px] text-muted shadow-2xs"
-          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.r * 1.06 }}
+          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.height / 2 - 36 }} // below the lowest cards, above the stage ribbon
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${redTeamProject ? "bg-red-500 animate-pulse" : "bg-cyan-500"}`} />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
           <span className="font-semibold text-ink">{projectName}</span>
           <span className="text-muted/40">·</span>
-          <span>{compact ? caption : statusText}</span>
+          <span>{caption}</span>
         </div>
       )}
 
@@ -182,11 +180,11 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
   const running = status.session.state === "running";
   const tokens = use ? use.input + use.cached + use.output : 0;
   const shown = useCountUp(tokens);
-  const line = task ? `${stage ? `${stage} · ` : ""}${task.id} · ${task.title}` : status.note ?? "Assigned to project team";
+  const line = task ? `${stage ? `${stage} · ` : ""}${task.id} · ${task.title}` : status.note ?? "No task right now";
 
   return (
     <div
-      className={`w-[276px] rounded-lg border bg-[var(--surface-card)] p-3.5 shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${cardBorder(mode, selected)}`}
+      className={`w-[300px] rounded-xl border bg-[var(--surface-card)] p-4 shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${cardBorder(mode, selected)}`}
     >
       {/* Header row: avatar + name/role on left, status badge on right */}
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -196,9 +194,9 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
           title={`Open ${config.name}`}
         >
-          <Portrait name={config.name} color={config.color} lead={!!config.isLead} size={24} />
+          <Portrait name={config.name} color={config.color} lead={!!config.isLead} size={32} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[12px] font-semibold leading-tight text-ink">{config.name}</span>
+            <span className="block truncate text-[15px] font-semibold leading-tight text-ink">{config.name}</span>
             <span className="block truncate text-[12px] text-muted">
               {config.role} · {CLI_LABEL[config.cli] ?? config.cli}
             </span>
@@ -211,7 +209,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
       </div>
 
       {/* Task / note description */}
-      <p className="m-0 mb-2.5 truncate text-[12px] text-muted" title={line}>
+      <p className="m-0 mb-3 line-clamp-2 text-[13px] leading-5 text-ink" title={line}>
         {line}
       </p>
 
@@ -224,7 +222,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
             className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded bg-amber-500 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600"
           >
             <Icon name="check" size={14} />
-            <span>Authorize</span>
+            <span>Answer</span>
           </button>
           <button
             type="button"

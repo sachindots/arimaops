@@ -12,6 +12,8 @@ interface Particle {
 }
 
 interface ParticleCoreProps {
+  /** Agents on Home: decides whether the side columns show, which moves the centre. */
+  teamSize?: number;
   workingCount: number;
   attentionCount: number;
   /** The project theme's orb colours (src/ui/theme/projectTheme.ts); a change cross-fades over about 600 ms. */
@@ -47,11 +49,11 @@ function makeParticles(): Particle[] {
  * Interactive 60fps 3D-projected particle core.
  * Cyan/gold (build) or red/steel (red team); it spins faster with more agents working and pulses while something needs you.
  */
-export function ParticleCore({ workingCount, attentionCount, palette, compact = false }: ParticleCoreProps) {
+export function ParticleCore({ workingCount, attentionCount, palette, compact = false, teamSize = 0 }: ParticleCoreProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const strip = useOffice((s) => (s.snap?.config.template?.flow.stages.length ?? 0) > 1);
-  const stateRef = useRef({ workingCount, attentionCount, palette, strip });
-  stateRef.current = { workingCount, attentionCount, palette, strip };
+  const stateRef = useRef({ workingCount, attentionCount, palette, strip, team: teamSize });
+  stateRef.current = { workingCount, attentionCount, palette, strip, team: teamSize };
   // The colours drawn now, eased toward the palette each frame (so switching projects fades, not jumps).
   const shown = useRef({ p: [...palette.primary], s: [...palette.secondary] });
 
@@ -105,7 +107,7 @@ export function ParticleCore({ workingCount, attentionCount, palette, compact = 
       const h = canvas.clientHeight;
       ctx.clearRect(0, 0, w, h);
 
-      const f = hudFrame(w, h, compact, cur.strip);
+      const f = hudFrame(w, h, compact, cur.strip, cur.team);
       const cx = f.cx + smoothX * 6;
       const cy = f.cy + smoothY * 4;
       const baseR = f.r;

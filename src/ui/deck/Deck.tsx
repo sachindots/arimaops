@@ -20,7 +20,8 @@ import { UsagePage } from "../hud/UsagePage";
 import { projectTheme } from "../theme/projectTheme";
 import { DeckHeader } from "./DeckHeader";
 import { DeckRail, type RailId } from "./DeckRail";
-import { DECK } from "./frame";
+import { DECK, homeSides } from "./frame";
+import { ActivityPanel, NeedsYouPanel } from "./HomePanels";
 import { GoalsPage } from "./GoalsPage";
 import { StageRibbon } from "./StageRibbon";
 
@@ -29,9 +30,9 @@ type Page = "home" | "agents" | "chat" | "goals" | "usage" | "more";
 const PAGE_OF: Partial<Record<string, RailId>> = { boards: "board", actions: "inbox", prs: "prs", findings: "findings", flow: "flow" };
 
 /**
- * The Spatial Multi-Agent Command Deck (desktop, 1000 px and up):
- * Top header, micro icon rail, dot-matrix spatial canvas with the 3D particle sphere and orbiting agent pods,
- * streamlined bottom stage ribbon, and a docked right slide-over drawer.
+ * The command deck (desktop, 1000 px and up): header, icon rail, and Home = the team orbiting the particle core,
+ * with Needs you + goals on the left and today's activity on the right (wide windows), the stage ribbon below,
+ * and a right slide-over for an agent, terminal or projects.
  */
 export function Deck() {
   const snap = useOffice((s) => s.snap);
@@ -41,6 +42,12 @@ export function Deck() {
   const reduce = useReducedMotion();
   const [page, setPage] = useState<Page>("home");
   const [thread, setThread] = useState<string | null>(null);
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
 
   const panelKey = drawer ? (drawer.kind === "agent" ? `agent:${drawer.id}` : drawer.kind) : null;
   useEffect(() => {
@@ -52,6 +59,7 @@ export function Deck() {
 
   const theme = projectTheme(snap);
   const team = selectTeam(snap);
+  const sides = homeSides(width, team.length);
   const workingCount = team.filter((a) => modeOf(a.status) === "working").length;
   const attention = selectAttention(snap).total;
   const activeTasks = snap.tasks.filter((t) => t.status === "in-progress" || t.status === "in-review" || t.status === "blocked").length;
@@ -69,7 +77,6 @@ export function Deck() {
     setPage(id);
   };
 
-  const activeGoals = (snap.goals ?? []).filter((g) => g.status === "active");
   const chatWith = thread ?? snap.config.team.find((a) => a.isLead)?.id ?? snap.config.team[0]?.id ?? null;
   const main =
     drawer?.kind === "boards" ? <BoardsDrawer key={drawer.stageId ?? "all"} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} />
@@ -132,49 +139,17 @@ export function Deck() {
     <div className="deck fixed inset-0 overflow-hidden" aria-label="ArimaOps">
       {home && <div className="deck-grid pointer-events-none fixed inset-0" aria-hidden="true" />}
 
-      {/* Top-left context subtitle + active goals pills on Home */}
-      {home && (
-        <div
-          className="pointer-events-none fixed z-20 flex flex-wrap items-center gap-2 px-6"
-          style={{ top: DECK.header + 16, left: DECK.rail }}
-        >
-          <span className="h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />
-          <span className="text-[12px] font-semibold text-ink">
-            {theme.security ? "Offensive Security Operation" : "Multi-Agent Swarm Orbit"}
-          </span>
-          <span className="text-muted/40">/</span>
-          <span className="text-[12px] text-muted">
-            {workingCount} active agent{workingCount === 1 ? "" : "s"}
-            {attention ? ` · ${attention} pending approval${attention === 1 ? "" : "s"}` : ""}
-            {activeTasks ? ` · ${activeTasks} task${activeTasks === 1 ? "" : "s"} in flight` : ""}
-          </span>
-          {activeGoals.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => go("goals")}
-              className="deck-pill pointer-events-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px]"
-              title={`${g.title}: ${g.done} of ${g.total} tasks done · $${g.usd.toFixed(2)} spent`}
-            >
-              <span className="font-term text-muted">{g.id}</span>
-              <span className="max-w-[160px] truncate font-medium text-ink">{g.title}</span>
-              <span className="font-semibold text-accent">
-                {g.done}/{g.total}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {home && sides.left > 0 && <NeedsYouPanel snap={snap} onGoals={() => go("goals")} />}
+      {home && sides.right > 0 && <ActivityPanel snap={snap} />}
 
-      {home && <ParticleCore workingCount={workingCount} attentionCount={attention} palette={theme.orb} />}
+      {home && <ParticleCore workingCount={workingCount} attentionCount={attention} palette={theme.orb} teamSize={team.length} />}
       {home && (
         <AgentOrbit
           team={team}
           tasks={snap.tasks}
           activeAgentId={drawer?.kind === "agent" ? drawer.id : null}
-          redTeamProject={theme.id !== "build"}
           lift={!snap.welcome && !snap.config.template}
-          caption={`${workingCount} working${attention ? ` · ${attention} need you` : ""}`}
+          caption={`${team.length} agent${team.length === 1 ? "" : "s"} · ${workingCount} working${attention ? ` · ${attention} need you` : ""}`}
         />
       )}
       {home && <StageRibbon snap={snap} theme={theme} />}

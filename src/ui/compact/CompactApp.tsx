@@ -9,7 +9,6 @@ import { mentioned } from "../../data/mentions";
 import { AgentOrbit } from "../hud/AgentOrbit";
 import { ParticleCore } from "../hud/ParticleCore";
 import { projectTheme } from "../theme/projectTheme";
-import { projectMode } from "../hud/theme";
 import { ui, useUi } from "../../store/ui";
 import { signOut, useAuth } from "../../store/auth";
 import { ago, fmtTokens, fmtUsd, Logo, Meter, Portrait, Sparkline, StateChip, useNow } from "../kit";
@@ -471,7 +470,7 @@ function HudHome() {
     <div className="hud-void relative min-h-0 flex-1 overflow-hidden" aria-label="Team">
       <ParticleCore compact workingCount={working} attentionCount={selectAttention(snap).total} palette={projectTheme(snap).orb} />
       <StageStrip compact snap={snap} />
-      <AgentOrbit compact team={team} tasks={snap.tasks} activeAgentId={null} caption={caption} redTeamProject={projectMode(snap) !== "build"} lift={!snap.welcome && !snap.config.template} />
+      <AgentOrbit compact team={team} tasks={snap.tasks} activeAgentId={null} caption={caption} lift={!snap.welcome && !snap.config.template} />
     </div>
   );
 }
