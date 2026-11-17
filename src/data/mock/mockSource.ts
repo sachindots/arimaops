@@ -1,7 +1,9 @@
 import { agentPalette } from "../../theme/tokens";
+import { readTemplateFile, toTemplateFile } from "../templateFile";
+import { BUILTIN_TEMPLATES } from "../templates";
 import type { OfficeDataSource, OfficeEvent, SimSpeed } from "../source";
 import { stackDomains } from "../stack";
-import { HOST_TERMINAL, type AccessRequest, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
+import { HOST_TERMINAL, type AccessRequest, type GitHubAppState, AgentConfig, AgentPatch, Board, NewAgentInput, RolePatch, ProjectConfig, SandboxSettings, WorkflowPatch } from "../types";
 import { defaultPresetId, presets, type Preset } from "./presets";
 import { Simulation } from "./simulation";
 import * as T from "./terminalScripts";
@@ -19,6 +21,7 @@ export function createMockSource(): OfficeDataSource {
   let timers: number[] = [];
   let last = 0;
   let inputBuf = new Map<string, string>();
+  let githubApp: GitHubAppState | undefined; // machine-wide, like the real one: survives a reconnect
 
   function findPreset(id: string): Preset {
     return presets.find((p) => p.id === id) ?? presets[0];
@@ -37,6 +40,7 @@ export function createMockSource(): OfficeDataSource {
   }
 
   function boot() {
+    if (githubApp) world.snap.githubApp = githubApp;
     world.setEmitter((e) => listener?.(e));
     listener?.({ type: "snapshot", snapshot: structuredClone(world.snap) });
     sim.start();
@@ -153,6 +157,77 @@ export function createMockSource(): OfficeDataSource {
       if (!world.cfg(toId) || !text.trim()) return;
       world.message("you", toId, text.trim());
       world.after(1.2, () => world.write(toId, T.cannedReply(!!world.cfg(toId)?.isLead, text.length)));
+    },
+
+    askTeam(text) {
+      const lead = world.snap.config.team.find((a) => a.isLead);
+      if (!lead || !text.trim()) return;
+      world.message("you", lead.id, text.trim(), true);
+      const helper = world.snap.config.team.find((a) => !a.isLead);
+      // The lead asks one teammate, then answers once with what it heard (the shape the real lead is told to follow).
+      if (helper) world.after(1, () => world.message(lead.id, helper.id, `Quick one from the owner: ${text.trim().slice(0, 120)}. What do you know?`));
+      if (helper) world.after(2.2, () => world.message(helper.id, lead.id, "From my side: it's covered in the task I just finished; one risk left, noted in my handoff."));
+      world.after(3.4, () => world.message(lead.id, "you", `Team answer: ${helper ? `${helper.name} says it's covered, with one risk in their handoff. ` : ""}I'll keep an eye on it.`));
+    },
+
+    addGoal(goal) {
+      const goals = world.snap.goals ?? [];
+      world.snap.goals = [...goals, { id: `G${goals.length + 1}`, title: goal.title.trim(), metric: goal.metric, target: goal.target, status: "active", done: 0, total: 0, usd: 0 }];
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    updateGoal(id, patch) {
+      world.snap.goals = (world.snap.goals ?? []).map((g) => (g.id === id ? { ...g, ...patch } : g));
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    setTaskGoal(taskId, goalId) {
+      const t = world.snap.tasks.find((x) => x.id === taskId);
+      if (!t) return;
+      t.goalId = goalId;
+      world.emit({ type: "task.updated", task: { ...t } });
+      world.snap.goals = (world.snap.goals ?? []).map((g) => {
+        const mine = world.snap.tasks.filter((x) => x.goalId === g.id);
+        return { ...g, total: mine.length, done: mine.filter((x) => x.status === "done").length };
+      });
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    saveConnection(input) {
+      const all = world.snap.connections ?? [];
+      const old = all.find((c) => c.name === input.name);
+      const next = { name: input.name, url: input.url ?? old?.url ?? "", roles: input.roles ?? old?.roles ?? [], read: input.read ?? old?.read ?? [], send: input.send === undefined ? (old?.send ?? null) : input.send, tools: old?.tools ?? [], probedAt: old?.probedAt ?? null, hasKey: input.apiKey !== undefined ? !!input.apiKey : !!old?.hasKey };
+      world.snap.connections = [...all.filter((c) => c.name !== input.name), next];
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    removeConnection(name) {
+      world.snap.connections = (world.snap.connections ?? []).filter((c) => c.name !== name);
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    checkConnection(name) {
+      // The demo's pretend CRM: two tools that read and one that sends.
+      const tools = [
+        { name: "search_contacts", description: "Find contacts by name or company." },
+        { name: "get_deal", description: "Read one deal with its stage and amount." },
+        { name: "send_email", description: "Send an email from the connected mailbox." },
+      ];
+      world.snap.connections = (world.snap.connections ?? []).map((c) => (c.name === name ? { ...c, tools, probedAt: new Date().toISOString() } : c));
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    sendProposal(itemId) {
+      const item = world.snap.actionItems?.find((i) => i.id === itemId);
+      if (!item?.send) return;
+      const done = { ...item, status: "done" as const, send: { ...item.send, sentAt: new Date().toISOString() }, closedAt: new Date().toISOString() };
+      world.snap.actionItems = world.snap.actionItems!.map((i) => (i.id === itemId ? done : i));
+      world.emit({ type: "action.updated", item: done });
+    },
+
+    setCompany(text) {
+      world.snap.company = text.trim().slice(0, 3000);
+      world.emit({ type: "company.updated", company: world.snap.company });
     },
 
     resizeTerminal() {
@@ -281,6 +356,11 @@ export function createMockSource(): OfficeDataSource {
       world.configChanged();
     },
 
+    updateProjectTemplate(template) {
+      world.snap.config.template = structuredClone(template);
+      world.configChanged();
+    },
+
     inspectWorkspace(id) {
       const st = world.status(id);
       if (!st) return;
@@ -353,11 +433,121 @@ export function createMockSource(): OfficeDataSource {
       item.note = note?.trim() || null;
       item.closedAt = new Date().toISOString();
       world.emit({ type: "action.updated", item: { ...item } });
+      if (item.kind === "skills" && item.pack && world.snap.skillPacks) {
+        const pack = world.snap.skillPacks.find((p) => p.source === item.pack);
+        if (pack) pack.status = decision === "done" ? "approved" : "rejected";
+        world.emit({ type: "skillPacks.updated", skillPacks: structuredClone(world.snap.skillPacks) });
+        return;
+      }
       world.message("you", item.fromId, decision === "done" ? `Done: ${item.title}${item.note ? ` (${item.note})` : ""}` : `Dismissed: ${item.title}${item.note ? ` (${item.note})` : ""}`);
     },
 
     saveAccount() {},
     removeAccount() {},
+    setMemoryExtraction() {},
+    setTeamMode(mode) {
+      for (const a of world.snap.config.team) {
+        const up = ["running", "starting"].includes(world.status(a.id)?.session.state ?? "");
+        if (up && a.mode !== mode) a.nextMode = mode;
+        else {
+          a.mode = mode;
+          delete a.nextMode;
+        }
+      }
+      world.configChanged();
+    },
+    finishGithubApp() {
+      githubApp = { app: { id: 1, slug: "arimaops-demo", htmlUrl: "https://github.com/apps/arimaops-demo", owner: "demo", installUrl: "https://github.com/apps/arimaops-demo/installations/new" }, webhookPath: "/api/github/webhook", lastDeliveryAt: null };
+      world.snap.githubApp = githubApp;
+      world.emit({ type: "githubApp.updated", githubApp });
+    },
+    setSpendCaps(caps) {
+      world.snap.config.project.spendCaps = caps;
+      const spend = world.snap.spend;
+      if (spend) {
+        spend.day.cap = caps.dailyUsd;
+        spend.month.cap = caps.monthlyUsd;
+        spend.paused = spend.month.usd >= caps.monthlyUsd ? "month" : spend.day.usd >= caps.dailyUsd ? "day" : null;
+        world.emit({ type: "spend.updated", spend: structuredClone(spend) });
+      }
+      world.configChanged();
+    },
+    promoteLessons() {
+      const l = world.snap.lessons;
+      if (!l) return;
+      const lesson = { id: `L-demo${Date.now().toString(36)}`, templateId: l.templateId ?? "dev", type: "DeadEnd", text: "Polling the auth provider for sign-outs misses revoked sessions; subscribe to its session webhook instead.", status: "pending" as const, createdAt: new Date().toISOString() };
+      world.snap.lessons = { ...l, pending: l.pending + 1, last: "Lessons for the template: 1 waiting for your check (Action items), 2 dropped because the rewrite still named something of this project." };
+      const item = {
+        id: `ai-${lesson.id}`,
+        fromId: "hq",
+        taskId: null,
+        title: `Add this dead end to the ${lesson.templateId} template?`,
+        details: `${lesson.text}\n\nApprove: every new project from this template gets it in its briefs. Reject: it's never offered again.`,
+        waiting: true,
+        kind: "lesson" as const,
+        lesson: { id: lesson.id, templateId: lesson.templateId, type: lesson.type },
+        status: "open" as const,
+        note: null,
+        at: new Date().toISOString(),
+        closedAt: null,
+      };
+      world.snap.actionItems = [item, ...(world.snap.actionItems ?? [])];
+      world.emit({ type: "action.updated", item: structuredClone(item) });
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
+    setLessonPromotion(on) {
+      if (!world.snap.lessons) return;
+      world.snap.lessons = { ...world.snap.lessons, enabled: on };
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
+    addToSuite(taskId) {
+      const task = world.snap.tasks.find((t) => t.id === taskId);
+      if (!task || task.status !== "done") return;
+      task.benchmark = `task-demo-${taskId.toLowerCase()}`;
+      world.emit({ type: "task.updated", task: structuredClone(task) });
+      world.activity("config", null, `${taskId} added to the benchmark suite as ${task.benchmark}. Replay it with: pnpm bench task:${task.benchmark} --models developer=claude/claude-opus-5-5`);
+    },
+    removeLesson(id) {
+      if (!world.snap.lessons) return;
+      world.snap.lessons = { ...world.snap.lessons, approved: world.snap.lessons.approved.filter((l) => l.id !== id) };
+      world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+    },
+    exportTemplate() {
+      const t = world.snap.config.template;
+      if (t) world.emit({ type: "template.file", file: toTemplateFile(t, {}) });
+    },
+    importTemplate(text) {
+      try {
+        const { template } = readTemplateFile(text);
+        const lib = world.snap.templateLibrary ?? BUILTIN_TEMPLATES.map((x) => ({ template: x, builtin: true, problems: [] }));
+        let id = template.id;
+        for (let i = 2; lib.some((e) => e.template.id === id); i++) id = `${template.id}-${i}`;
+        world.snap.templateLibrary = [...lib, { template: { ...template, id }, builtin: false, problems: [] }];
+        world.emit({ type: "templates.updated", templateLibrary: structuredClone(world.snap.templateLibrary) });
+        world.emit({ type: "template.imported", ok: true, message: `Imported ${template.name} as "${id}". New projects can use it now.`, id });
+      } catch (e) {
+        world.emit({ type: "template.imported", ok: false, message: `Template not imported: ${(e as Error).message}` });
+      }
+    },
+    setLabMode(on) {
+      world.snap.config.rules.labMode = on;
+      world.configChanged();
+    },
+    decideMemories(itemId, decisions) {
+      const item = world.snap.actionItems?.find((i) => i.id === itemId && i.status === "open");
+      if (!item) return;
+      item.memories = (item.memories ?? []).filter((m) => !decisions[m.id]);
+      const n = item.memories.length;
+      item.title = `${n} memor${n === 1 ? "y" : "ies"} to check`;
+      if (!n) (item.status = "done"), (item.closedAt = new Date().toISOString()), (item.note = "Checked");
+      world.emit({ type: "action.updated", item: structuredClone(item) });
+    },
+    keepOutOfMemory(name) {
+      const m = world.snap.memory;
+      if (!m || m.keepOut.includes(name)) return;
+      m.keepOut = [...m.keepOut, name].sort();
+      world.emit({ type: "memory.updated", memory: structuredClone(m) });
+    },
     refreshMcp() {
       if (world.snap.mcp) world.emit({ type: "mcp.updated", mcp: structuredClone(world.snap.mcp) });
     },

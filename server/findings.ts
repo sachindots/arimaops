@@ -3,7 +3,7 @@
 // projects keep them in the HQ database; projects made before templates show theirs read-only.
 // Every change rewrites <repo>/deliverables/security-report.md, so the report is versioned with the repo.
 
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { ASSET_KINDS, EVIDENCE_KINDS, type AssetKind, type EvidenceKind, type Finding, type Ssvc } from "../src/data/model";
@@ -17,7 +17,8 @@ import { log } from "./lib/log";
 import { renderMarkdown } from "./reports";
 import { checkScope } from "./scope";
 
-const REPORT = join("deliverables", "security-report.md");
+export const FINDINGS_REPORT = join("deliverables", "security-report.md");
+const REPORT = FINDINGS_REPORT;
 const clip = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 /** Network assets must be in scope; code, cloud and app findings name things scope doesn't list. */
 const NETWORK: ReadonlySet<AssetKind> = new Set(["url", "host", "ip"]);
@@ -38,6 +39,10 @@ function atomicWrite(file: string, text: string) {
   mkdirSync(dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   writeFileSync(tmp, text);
+  // File times come from the kernel's coarse clock, a few ms behind Date.now(): set it exactly, so a report written
+  // right after a finding's update never looks older than it (the findings-report gate compares the two).
+  const now = new Date();
+  utimesSync(tmp, now, now);
   renameSync(tmp, file);
 }
 
@@ -171,6 +176,11 @@ export class Findings {
   }
 
   /** From you or the lead: triage, verification, scoring and text. */
+  /** Who reported a finding, or null when there's no such finding. */
+  reporterOf(id: string): string | null {
+    return this.list.find((x) => x.id === id)?.reporterId ?? null;
+  }
+
   update(id: string, patch: Record<string, unknown>, byId = "you"): Finding {
     this.writable();
     const f = this.list.find((x) => x.id === id);

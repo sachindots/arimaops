@@ -1,5 +1,5 @@
 // Persistence in the repo: config.json (team + workflow) and plan.json (boards + tasks),
-// both rows in .arima/arima.db (see lib/docs.ts). An older .hq/ or .jsmhq/ is read where it is (see paths.repoDirOf).
+// both rows in .arima/arima.db (see lib/docs.ts). An older .hq/ is read where it is (see paths.repoDirOf).
 
 import { join } from "node:path";
 import { isAgentCli, type HqConfig } from "../src/data/types";

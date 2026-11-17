@@ -1,5 +1,5 @@
 // Global multi-project registry for ArimaOps and CTO Overwatch.
-// Tracks all .hq projects in ~/.arima/projects.json (added explicitly: created, opened with --repo, or registered),
+// Tracks all projects in ~/.arima/projects.json (added explicitly: created, opened with --repo, or registered),
 // knows which are loaded in this server, and lets both the CTO agent (via MCP) and the user (via CTO Overwatch Drawer)
 // inspect and update tasks across every project from a single command center.
 
@@ -13,8 +13,10 @@ import type { TeamTemplate } from "../src/data/model";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
-import { loadConfig, loadPlan, resolveSaved, saveConfig, savePlan } from "./store";
+import { loadConfig, loadPlan, resolveSaved, savePlan } from "./store";
 import { assertTaskMove } from "./planStore";
+import { goalsOf } from "./goals";
+import { hqDb } from "./lib/db";
 
 export interface RegistryEntry {
   id: string;
@@ -117,7 +119,8 @@ export function removeFromRegistry(root: string) {
 }
 
 /** Manually registers an existing repo path on disk; initializes `.arima/config.json` and `.arima/plan.json` if not yet present. */
-export function registerProjectPath(rawPath: string, create = false): ProjectOverview | null {
+/** Registers a folder (made first when `create`); `path` is where it is, `project` its overview once it has a config. */
+export function registerProjectPath(rawPath: string, create = false): { path: string; project: ProjectOverview | null } {
   const cleanPath = resolve(rawPath.trim().replace(/^~(?=\/|$)/, homedir()));
   if (create) {
     if (existsSync(cleanPath) && readdirSync(cleanPath).length) throw new Error(`${cleanPath} already exists and isn't empty. Use "Add existing folder" for it.`);
@@ -140,13 +143,12 @@ export function registerProjectPath(rawPath: string, create = false): ProjectOve
       },
       7420,
     );
+    // Not saved: with no config on disk the project loads as new and opens on the welcome screen, where its
+    // template makes the team. Saving this blank one made it a read-only "made before templates" project.
     cfg = loaded.config;
-    saveConfig(cleanPath, cfg);
-    savePlan(cleanPath, loadPlan(cleanPath, cfg), cfg);
   }
   registerProjectInRegistry(cleanPath, cfg);
-  const all = listProjectsOverview();
-  return all.find((p) => resolve(p.path) === cleanPath) ?? null;
+  return { path: cleanPath, project: listProjectsOverview().find((p) => resolve(p.path) === cleanPath) ?? null };
 }
 
 function summarizeCounts(tasks: Task[]) {
@@ -200,6 +202,9 @@ export function listProjectsOverview(): ProjectOverview[] {
         boards,
         tasks,
         counts: summarizeCounts(tasks),
+        ...(loaded.hub.snap.spend ? { spend: loaded.hub.snap.spend } : {}),
+        waiting: (loaded.hub.snap.actionItems ?? []).filter((i) => i.status === "open").length + loaded.hub.snap.agents.filter((a) => a.state === "needs-input").length,
+        goals: loaded.hub.snap.goals ?? [],
       });
       continue;
     }
@@ -235,6 +240,7 @@ export function listProjectsOverview(): ProjectOverview[] {
       boards: plan.boards ?? [],
       tasks: plan.tasks ?? [],
       counts: summarizeCounts(plan.tasks ?? []),
+      goals: goalsOf(hqDb(), slugify(cfg.project.id || cfg.project.name || entry.id), plan.tasks ?? []),
     });
   }
 
@@ -350,11 +356,7 @@ export function updateCrossProjectTask(
     if (patch.note !== undefined) t.note = patch.note;
     if (patch.ownerId !== undefined) {
       if (patch.ownerId) {
-        try {
-          return currentPlanner.assign(taskId, patch.ownerId, "cto");
-        } catch {
-          t.ownerId = patch.ownerId;
-        }
+        return currentPlanner.assign(taskId, patch.ownerId, "cto"); // its errors (stage roles, limits) reach the caller
       } else {
         t.ownerId = null;
       }
@@ -368,7 +370,7 @@ export function updateCrossProjectTask(
   const task = plan.tasks.find((t) => t.id.toLowerCase() === taskId.trim().toLowerCase());
   if (!task) throw new Error(`Task "${taskId}" not found in project "${target.config.project.name}".`);
   if (patch.status === "done" && task.status !== "done") {
-    assertTaskMove(target.config, { ...task, ...patch }, null, reviewerId, []);
+    assertTaskMove(target.config, { ...task, ...patch }, null, reviewerId, [], { tasks: plan.tasks, repoRoot: target.path });
     task.stageId = target.config.template.flow.stages.at(-1)!.id;
   }
   if (patch.title !== undefined) task.title = patch.title;

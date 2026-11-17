@@ -5,9 +5,9 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, Field, SectionTitle, useNow } from "../kit";
 
 const MASTER: Record<"env" | "keychain" | "file", [string, string]> = {
-  env: ["Master key from ARIMA_MASTER_KEY", "#00ff66"],
-  keychain: ["Master key in this computer's keychain", "#00ff66"],
-  file: ["Master key in a file beside the vault", "#F59E0B"],
+  env: ["Master key from ARIMA_MASTER_KEY", "#3fb950"],
+  keychain: ["Master key in this computer's keychain", "#3fb950"],
+  file: ["Master key in a file beside the vault", "#ffb020"],
 };
 
 const EMPTY = { id: "", provider: "anthropic" as Provider, label: "", fields: {} as Record<string, string>, secret: "" };
@@ -38,7 +38,7 @@ export function AccountsSettings() {
         that uses them when it starts, and hidden as ••••1a2b if anything prints them. Pick an account for an agent in its panel.
       </p>
 
-      {state?.error && <p className="m-0 border-[3px] border-red px-3 py-1.5 text-[13px]">{state.error}</p>}
+      {state?.error && <p className="m-0 border border-red px-3 py-1.5 text-[13px]">{state.error}</p>}
       {state?.masterSource && (
         <p className="m-0 flex flex-wrap items-center gap-2 text-[13px]">
           <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: MASTER[state.masterSource][1] }}>
@@ -57,12 +57,12 @@ export function AccountsSettings() {
         {list.length === 0 ? (
           <p className="text-[13px] text-muted">No accounts yet. Agents use your CLI subscriptions until you add one.</p>
         ) : (
-          <div className="border-[3px] border-ink">
+          <div className="rounded-lg border border-white/10">
             {list.map((a) => {
               const users = team.filter((t) => t.account === a.id);
               return (
                 <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
-                  <b className="font-term text-[17px]">{a.id}</b>
+                  <b className="font-term text-[13px]">{a.id}</b>
                   <span className="text-[13px]">{PROVIDER_SPECS[a.provider].label}</span>
                   {a.label !== PROVIDER_SPECS[a.provider].label && <span className="text-[12px] text-muted">{a.label}</span>}
                   <span className="font-mono text-[12px] text-muted">{a.secret ? `••••${a.secret.last4} · ${ago(a.secret.updatedAt, now)}` : "no key"}</span>

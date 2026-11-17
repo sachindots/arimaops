@@ -186,6 +186,8 @@ for (let i = 0; i < 5; i++) g2.verify("000000");
 const b32b = readFileSync(join(process.env.HOME, "g2", "totp-secret"), "utf8").trim();
 check("each server home gets its own totp secret", b32b !== b32);
 check("after 5 wrong codes even the right one is refused", g2.verify(code(undefined, keyFrom(b32b))) === false);
+const own = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"; // a person's own authenticator
+check("one secret locked out doesn't lock out another person's", g2.verify(code(undefined, keyFrom(own)), own) === true);
 const g3 = new RemoteGuard(join(process.env.HOME, "g3"));
 const k3 = keyFrom(readFileSync(join(process.env.HOME, "g3", "totp-secret"), "utf8").trim());
 for (let i = 0; i < 4; i++) g3.verify("000000");
@@ -196,7 +198,7 @@ const beta = connect(`?token=${OP}&project=beta`, { Origin: LOCAL });
 await beta.opened;
 await beta.settle();
 check("?project= picks the project's snapshot", (beta.events[0] as unknown as { snapshot: { config: { project: { id: string } } } })?.snapshot?.config.project.id === "beta");
-beta.send("sendMessage");
+beta.send("sendMessage", "lead", "hi");
 await beta.settle();
 check("commands go to that project", ran.includes("sendMessage:beta"));
 const stale = connect(`?token=${OP}&project=gone`, { Origin: LOCAL });
@@ -215,12 +217,22 @@ for (const c of [beta, stale]) c.ws.close();
 
 // ---------------------------------------------------------------- legacy migration
 const repo = join(process.env.HOME, "repo");
-mkdirSync(join(repo, ".jsmhq"), { recursive: true });
-writeFileSync(join(repo, ".jsmhq", "config.json"), "{}");
-mkdirSync(join(process.env.HOME, ".jsmhq", "legacyproj", "dwight"), { recursive: true });
+mkdirSync(join(repo, ".hq"), { recursive: true });
+writeFileSync(join(repo, ".hq", "config.json"), "{}");
+mkdirSync(join(process.env.HOME, ".hq", "legacyproj", "dwight"), { recursive: true });
 await migrateLegacy(repo, "legacyproj");
-check("repo .jsmhq (untracked) moves to .arima", existsSync(join(repo, ".arima", "config.json")) && !existsSync(join(repo, ".jsmhq")));
-check("~/.jsmhq/<project> moves to ~/.arima/<project>", existsSync(join(process.env.HOME, ".arima", "legacyproj", "dwight")) && !existsSync(join(process.env.HOME, ".jsmhq", "legacyproj")));
+check("repo .hq (untracked) moves to .arima", existsSync(join(repo, ".arima", "config.json")) && !existsSync(join(repo, ".hq")));
+check("~/.hq/<project> moves to ~/.arima/<project>", existsSync(join(process.env.HOME, ".arima", "legacyproj", "dwight")) && !existsSync(join(process.env.HOME, ".hq", "legacyproj")));
+
+// The GitHub webhook path: public, so nothing but GitHub's signature gets through.
+{
+  const hook = (init: RequestInit) => fetch(`${BASE}/api/github/webhook`, init);
+  check("webhook: GET is refused", (await hook({})).status === 405);
+  check("webhook: no App on this machine, 503 without a session", (await hook({ method: "POST", headers: { "X-GitHub-Event": "pull_request", "X-Hub-Signature-256": "sha256=00" }, body: "{}" })).status === 503);
+  const cb = await fetch(`${BASE}/api/github/app/callback?code=abc_123&state=s1`, { redirect: "manual" });
+  check("manifest callback hands the code to the page, nothing else", cb.status === 302 && cb.headers.get("location") === "/?github_code=abc_123&github_state=s1");
+  check("manifest callback refuses a code that isn't one", (await fetch(`${BASE}/api/github/app/callback?code=%3Cscript%3E`, { redirect: "manual" })).status === 400);
+}
 
 for (const c of [local, script, proxied, phone, phone2]) c.ws.close();
 server.close();

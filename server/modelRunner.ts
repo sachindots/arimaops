@@ -5,6 +5,7 @@
 // Two ways in: the owner's CLI sign-ins (`claude -p`, billed to the subscription) and API keys from
 // the vault (customers; billed per token). Which one a run takes follows its account.
 
+import { spendPaused } from "./spendCaps";
 import Anthropic from "@anthropic-ai/sdk";
 import { mkdtempSync, rmSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
@@ -107,6 +108,8 @@ export class MeteredRunner implements ModelRunner {
   ) {}
 
   async run(req: RunRequest): Promise<ModelResult> {
+    const over = spendPaused(req.projectId);
+    if (over) throw new Error(`Project ${req.projectId} is paused at its ${over === "day" ? "daily" : "monthly"} spend cap: no model runs until it lifts.`);
     const provider = this.accounts.provider(req.account);
     let result: ModelResult;
     let cli: AgentCli | null = null;

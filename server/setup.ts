@@ -10,7 +10,7 @@ import { parseCliJson, sandboxList } from "./lib/json";
 import { has, run } from "./lib/exec";
 import { accounts } from "./credentials/registry";
 import type { RepoInfo } from "./repo";
-import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
+import { agentIp, authDirOf, authEnvArgs, authVolume, BRIDGE, buildCommand, buildVerifierCommand, VERIFIER_IMAGE, EGRESS_LOCK_CMD, egressPort, ensureNetwork, GATEWAY, hostFirewallCmd, IMAGE, LOGIN_PREFIX, loginCommand, NETWORK } from "./containers";
 
 const SBX_DOCS = "https://docs.docker.com/ai/sandboxes/install/";
 const os = platform();
@@ -114,7 +114,7 @@ async function checkSbxLogin(sbxOk: boolean): Promise<Check> {
 async function checkTmux(brew: boolean): Promise<Check> {
   const base = { id: "tmux" as const, label: "tmux (keeps agents running if HQ closes)", neededFor: "all" as const };
   if (!usesTmux())
-    return { ...base, label: "Agent sessions", status: "ok", detail: "HQ runs agents itself on Windows (no tmux needed). They stop when HQ stops; sandboxes and folders are kept.", fix: null };
+    return { ...base, label: "Agent sessions", status: "ok", detail: "HQ runs agents in its own process (no tmux needed). They stop when HQ stops; sandboxes and folders are kept.", fix: null };
   const v = await run("tmux", ["-V"], { timeoutMs: 5000 });
   if (v.ok) return { ...base, status: "ok", detail: v.stdout.trim(), fix: null };
   if (os === "win32") return { ...base, status: "unsupported", detail: "tmux needs WSL on Windows. Run HQ inside WSL.", fix: fix("wsl --install", false, "https://learn.microsoft.com/windows/wsl/install") };
@@ -263,6 +263,15 @@ async function checkAgentImage(dockerOk: boolean): Promise<Check> {
   return { ...base, status: "missing", detail: "Not built yet. Takes a few minutes the first time (Node, git, gh and the agent CLIs).", fix: fix(buildCommand(), true, null) };
 }
 
+/** The verifier's image (Playwright and Chromium), when the team has a verifier: without it the verifier can't start in container mode. */
+async function checkVerifierImage(agentImageOk: boolean): Promise<Check> {
+  const base = { id: "verifier-image" as const, label: `Verifier image (${VERIFIER_IMAGE})`, neededFor: "container" as const };
+  if (!agentImageOk) return { ...base, status: "missing", detail: "Build the agent image first.", fix: null };
+  const r = await run("docker", ["image", "inspect", VERIFIER_IMAGE, "--format", "{{.Created}}"], { timeoutMs: 8000 });
+  if (r.ok) return { ...base, status: "ok", detail: `Built ${r.stdout.trim().slice(0, 10)}.`, fix: fix(buildVerifierCommand(), true, null) };
+  return { ...base, status: "warning", detail: "Not built yet: the verifier takes screenshots of UI changes with Playwright and Chromium, which only this image carries.", fix: fix(buildVerifierCommand(), true, null) };
+}
+
 /** A container on hq-agents tries to reach the internet without the proxy; it must fail. */
 async function checkEgressLock(imageOk: boolean): Promise<Check> {
   const base = { id: "egress-lock" as const, label: "Containers can only go through HQ's proxy", neededFor: "container" as const };
@@ -272,7 +281,7 @@ async function checkEgressLock(imageOk: boolean): Promise<Check> {
   return {
     ...base,
     status: "warning",
-    detail: "Containers can skip the proxy and reach any site. Add this firewall rule once (and make it persist, e.g. with iptables-persistent).",
+    detail: "Containers could skip the proxy and reach any site, so Container mode stays off until you add this firewall rule (make it persist, e.g. with iptables-persistent).",
     fix: fix(EGRESS_LOCK_CMD, false, null),
   };
 }
@@ -408,9 +417,10 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
     const reach = await checkHqReach(imageOk, hqPort);
     const logins = await Promise.all(loginsNeeded.map(([c, acct]) => checkContainerLogin(c, imageOk, hqPort, acct)));
     checks.push(docker, image, lock, reach, ...logins);
+    if (team.some((a) => a.roleId === "verifier")) checks.push(await checkVerifierImage(imageOk));
     const scopeFw = project ? await checkScopeFirewall(project, team) : null;
     if (scopeFw) checks.push(scopeFw);
-    containerReady = docker.status === "ok" && imageOk && lock.status !== "missing" && reach.status === "ok" && tmux.status === "ok";
+    containerReady = docker.status === "ok" && imageOk && lock.status === "ok" && reach.status === "ok" && tmux.status === "ok";
   }
 
   const ok = (c: SetupCheck) => c.status === "ok";

@@ -41,12 +41,11 @@ One Node process (the **HQ server**) runs every project on a machine. Each proje
 |---|---|
 | Data in | `data/ws/wsSource.ts` (live), `data/mock/*` (demo), `store/office.ts` (one project), `store/building.ts` (other projects, read-only) |
 | Shared types | `data/types.ts` (the contract between server and UI; change it on both sides) |
-| Desktop | `ui/hud/*` (top bar, team, activity), `ui/drawers/*`, `ui/settings/*` |
-| Phone / tablet | `ui/compact/CompactApp.tsx` (tabs; the office is a tab or sits beside the page) |
-| Office | `office/iso/*`: layout and building (pure), behaviour and events (pure), art, robots, effects and the Pixi scene. `office/engine/*` holds the camera, pen, font and paths |
+| Desktop | `ui/deck/Deck.tsx` (header, rail, stage ribbon, slide-over, Goals page), `ui/hud/*` (orb, orbit, command bar, usage), `ui/theme/projectTheme.ts`, `ui/drawers/*`, `ui/settings/*` |
+| Phone / tablet | `ui/compact/CompactApp.tsx` (tabs) |
 
 **Rules that keep it clear:**
-- Pure logic (layout, behaviour, events, limits, ports, scope) has no Pixi, no I/O, and its own test script under `scripts/`.
+- Pure logic (limits, ports, scope) has no I/O, and its own test script under `scripts/`.
 - The server is the source of truth. The UI never decides anything that matters, and the server re-checks every command.
 - Machine-wide concerns live in their own module (`accounts.ts`, `ports.ts`), never inside one project.
 
@@ -65,7 +64,7 @@ One Node process (the **HQ server**) runs every project on a machine. Each proje
 1. ~~Single owner~~: named people with owner, operator and viewer roles, passwords and an authenticator code (stage B).
 2. ~~No HQ secret store~~: an encrypted vault for API keys and cloud credentials (stage A).
 3. ~~Terminal output isn't redacted~~: every stored secret is masked before output leaves the server (stage A).
-4. ~~Upstream names remain~~: the CLI, package, folders and UI are ArimaOps; `.hq`, `.jsmhq` and `~/.hq` move on first start (stage C).
+4. ~~Old names remain~~: the CLI, package, folders and UI are ArimaOps; `.hq` and `~/.hq` move on first start (stage C).
 5. ~~Unsigned releases~~: tagged releases carry `SHA256SUMS` and a build-provenance attestation (stage C). Still open: a signed update manifest for in-app updates.
 
 ## 3. Where it's going (your decisions, 10 Nov 2026)
@@ -136,15 +135,15 @@ interface Account {
   - spend policies across accounts;
   - fleet view across several HQ servers;
   - priority updates.
-- **Licensing choice to make:** the core is MIT today, inherited from JSM HQ. Keeping MIT is the simplest. AGPL-3.0 for new core code would stop someone hosting your core as a competing SaaS without sharing changes. JSM HQ's MIT notice must stay either way.
+- **Licensing choice to make:** the core is MIT today. Keeping MIT is the simplest. AGPL-3.0 for new core code would stop someone hosting your core as a competing SaaS without sharing changes. The MIT notices in `LICENSES/MIT.txt` stay either way.
 
 ### 3.4 Release and security hygiene (before the first sale)
 
 - **Finish the rename:**
   - the CLI becomes `arimaops`;
-  - folders `.arima/` and `~/.arima/`, with migration from `.hq`/`.jsmhq`;
+  - folders `.arima/` and `~/.arima/`, with migration from `.hq`;
   - the package name;
-  - remove the `jsm-hq` alias.
+  - remove the old CLI alias.
 - **Ship safely:**
   - signed release artifacts and a signed update manifest;
   - `SECURITY.md` with a disclosure address;
@@ -162,7 +161,7 @@ interface Account {
 |---|---|---|
 | A | Accounts and credentials: vault, provider table, delivery, redaction, UI to add keys | Unblocks API keys; everything else assumes it |
 | B | Users and roles, audit log | Needed for any team or customer |
-| C | Rename to ArimaOps everywhere, remove JSM names, signed releases (done) | Legal and brand; must be done before selling |
+| C | Rename to ArimaOps everywhere, remove old names, signed releases (done) | Legal and brand; must be done before selling |
 | D | Open-core seam: `ee/` hooks, license file, first paid feature (SSO or audit export) | Revenue |
 | E | Spend tracking and limits per account | Cost control once API keys are used |
 

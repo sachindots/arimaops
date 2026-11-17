@@ -30,11 +30,19 @@ import { seedBuiltins } from "./templates";
 import { loadEe, startFeatures } from "./features";
 import { readLicense } from "./license";
 import { RemoteGuard, startPushNotifier } from "./remote";
+import { scheduleBackups } from "./backups";
+import { memoryWorker } from "./memoryJobs";
+import { daily, DIGEST_HOUR } from "./memoryReview";
+import { STANDUP_HOURS, standupNote } from "./standup";
+import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : undefined;
 }
+// Agents run in HQ's terminals: a background promise that fails (a delivery retry, a poll) must not stop HQ and every agent with it.
+process.on("unhandledRejection", (err) => log.error(`unhandled: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`));
+
 const flag = (name: string) => process.argv.includes(`--${name}`);
 const args = (name: string) => process.argv.flatMap((a, i) => (a === `--${name}` && process.argv[i + 1] ? [process.argv[i + 1]] : []));
 
@@ -134,6 +142,27 @@ async function main() {
   // Container mode: the agents' network, HQ on its gateway, and the allowlist proxy. Skipped without Docker.
   const containers = (await run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 8000 })).ok && (await ensureNetwork());
   if (containers) startEgressProxy(projects, port);
+  scheduleBackups(() => {
+    broadcastMemory();
+    void memoryWorker().nightly().catch((err) => log.warn(`memory: nightly tidy skipped: ${err instanceof Error ? err.message : err}`));
+  });
+  memoryWorker().extractPending(); // summaries left from before a restart
+  daily(DIGEST_HOUR, async () => {
+    for (const rt of projects.values()) {
+      await rt.memoryReview.sync();
+      rt.memoryReview.digest();
+    }
+  });
+  // The team's morning and evening note to you (free: built from HQ's records); a project can turn it off.
+  for (const kind of ["morning", "evening"] as const)
+    daily(STANDUP_HOURS[kind], () => {
+      const since = Date.now() - (kind === "morning" ? 15 : 9) * 3_600_000; // since the last note
+      for (const rt of projects.values()) {
+        if (rt.paused || rt.hub.snap.config.project.standup === false) continue;
+        const note = standupNote(hqDb(), rt.hub.snap, kind, since);
+        if (note) rt.planner.message("hq", "you", note);
+      }
+    });
   await startHttp({
     projects,
     defaultProject,
@@ -167,8 +196,10 @@ async function main() {
     if (lines.length === 2) lines.push(`    Install Tailscale (recommended) or pass --host 0.0.0.0 for LAN.`);
     lines.push(
       `  Risky commands from remote (terminal, approvals, secrets, settings) need a 6-digit code once a day per device.`,
-      `    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`,
-      `    (or type the key manually: ${guard.secretB32})`,
+      // Docker and service logs are kept on disk: the second factor is printed only to a terminal.
+      ...(process.stdout.isTTY
+        ? [`    Add to Google Authenticator / Aegis / 1Password once:  ${guard.otpauthUrl()}`, `    (or type the key manually: ${guard.secretB32})`]
+        : [`    Authenticator key: in ~/${BRAND.homeDir}/totp-secret (only you can read it). Add it once to Google Authenticator / Aegis / 1Password as a time-based key.`]),
       `  Audit log: ~/.arima/arima.db (log table, audit.log)`,
     );
     log.info(lines.join("\n") + "\n");

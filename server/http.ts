@@ -5,7 +5,9 @@
 //   GET  /api/health
 //   GET  /*                     the built UI (dist/), when present
 
-import { createReadStream, existsSync, rmSync, statSync } from "node:fs";
+import { ownerSeen } from "./presence";
+import { githubAppState, handleWebhook, WEBHOOK_PATH } from "./githubApp";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { redactor } from "./credentials/registry";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
@@ -16,23 +18,11 @@ import type { OfficeEvent } from "../src/data/source";
 import { handleHook } from "./hooks";
 import { handleMcp } from "./mcp";
 import type { Runtime } from "./project";
-import {
-  createCrossProjectTask,
-  listProjectsOverview,
-  registerProjectPath,
-  removeFromRegistry,
-  setRegistryArchived,
-  setRegistryPaused,
-  updateCrossProjectTask,
-} from "./projectsRegistry";
-import { run } from "./lib/exec";
-import { releasePortBlock } from "./ports";
-import { hqDb } from "./lib/db";
-import { forgetProjectTemplate } from "./templates";
-import { EXPORT_FORMATS, RENDER, type ExportFormat } from "./reports";
+import { handleProjectsApi } from "./projectsApi";
 import { log } from "./lib/log";
 import { agentTokenFor } from "./paths";
-import { canOperate, RISKY_COMMANDS, type RemoteGuard, type Role } from "./remote";
+import { canOperate, type RemoteGuard, type Role } from "./remote";
+import { authorize } from "./commandPolicy";
 import { Throttle, Users } from "./users";
 import { homedir } from "node:os";
 import { BRAND } from "../src/data/brand";
@@ -62,10 +52,11 @@ function cookie(req: IncomingMessage, name: string): string {
   return "";
 }
 
+// The app page: only its own scripts, and it talks only to this server. Inline styles stay (the body's, React's).
+const APP_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 /** Commands a viewer token may send. Everything else needs the operator token. */
-const VIEWER_COMMANDS = new Set(["sendMessage", "recheckSetup", "refreshSbx", "refreshMcp"]);
 
 function readBody(req: IncomingMessage, limit = 256 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -117,8 +108,7 @@ interface Who {
   userName?: string;
 }
 
-/** Only the owner manages accounts (API keys) and the machine-wide proxy. */
-const OWNER_COMMANDS = new Set(["saveAccount", "removeAccount", "setProxy"]);
+/** Only the owner manages accounts (API keys), the memory database and the machine-wide proxy. */
 
 export function startHttp(o: Options) {
   const users = o.users ?? new Users(join(homedir(), BRAND.homeDir, "users.json"));
@@ -186,14 +176,49 @@ export function startHttp(o: Options) {
   };
 
   const json = (res: ServerResponse, code: number, body: unknown) => send(res, code, JSON.stringify(body), "application/json");
-  const clientIp = (req: IncomingMessage) => String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim() || req.socket.remoteAddress || "?";
+  // X-Forwarded-For counts only from a proxy on this machine (tailscale serve, a tunnel); anyone else could forge it.
+  const clientIp = (req: IncomingMessage) =>
+    (LOOPBACK.has(req.socket.remoteAddress ?? "") && String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim()) || req.socket.remoteAddress || "?";
   const setCookie = (req: IncomingMessage, res: ServerResponse, id: string, maxAge: number) => {
     const https = req.headers["x-forwarded-proto"] === "https" || (req.headers.origin ?? "").startsWith("https://");
     res.setHeader("Set-Cookie", `hq_sid=${id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${https ? "; Secure" : ""}`);
   };
 
+  let deliveryEmitAt = 0;
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+    // GitHub App webhooks: the one path Tailscale Funnel makes public. No cookie or origin, only GitHub's signature.
+    if (url.pathname === WEBHOOK_PATH) {
+      if (req.method !== "POST") return send(res, 405, "POST only");
+      let body: string;
+      try {
+        body = await readBody(req, 5 * 1024 * 1024);
+      } catch {
+        return send(res, 413, "too large");
+      }
+      const code = handleWebhook(req.headers, body);
+      if (code === 202 && Date.now() - deliveryEmitAt > 60_000) {
+        deliveryEmitAt = Date.now();
+        const state = githubAppState();
+        for (const rt of o.projects.values()) {
+          rt.hub.snap.githubApp = state;
+          rt.hub.emit({ type: "githubApp.updated", githubApp: state });
+        }
+      }
+      if (code === 401) log.warn(`github webhook: bad signature from ${clientIp(req)}`);
+      return send(res, code, code === 202 ? "ok" : code === 401 ? "bad signature" : code === 503 ? "no GitHub App here" : "");
+    }
+
+    // The manifest flow's way back: GitHub sends the owner's browser here with a one-time code. The cookie isn't sent
+    // on that cross-site hop, so this only hands the code to the page, where the owner's own session finishes it.
+    if (req.method === "GET" && url.pathname === "/api/github/app/callback") {
+      const code = url.searchParams.get("code") ?? "";
+      const state = url.searchParams.get("state") ?? "";
+      if (!/^[A-Za-z0-9_-]{1,100}$/.test(code) || !/^[A-Za-z0-9_-]{0,100}$/.test(state)) return send(res, 400, "bad code");
+      res.writeHead(302, { Location: `/?${new URLSearchParams({ github_code: code, github_state: state })}` });
+      return res.end();
+    }
 
     if (req.method === "POST" && url.pathname === "/api/login") {
       if (!okOrigin(req)) return send(res, 403, "bad origin");
@@ -361,6 +386,30 @@ export function startHttp(o: Options) {
       }
     }
 
+    // A stream-engine agent's runner (docs/design/stream-json.md): its next message, and Claude's events. Same token as hooks.
+    if (url.pathname.startsWith("/agent/")) {
+      const [, , rawAgent, what] = url.pathname.split("/");
+      const agentId = decodeURIComponent(rawAgent ?? "");
+      const rt = agentProject(req.headers.authorization ?? "", agentId);
+      if (!rt) return send(res, 401, "unauthorized");
+      try {
+        if (req.method === "GET" && what === "next") {
+          const gone = new AbortController();
+          res.on("close", () => gone.abort());
+          const item = await rt.stream.next(agentId, Math.max(0, Number(url.searchParams.get("ack")) || 0), 25_000, gone.signal);
+          if (!item) return void res.writeHead(204).end();
+          return send(res, 200, JSON.stringify(item), "application/json");
+        }
+        if (req.method === "POST" && what === "events") {
+          rt.stream.events(agentId, JSON.parse((await readBody(req, 1024 * 1024)) || "[]"));
+          return void res.writeHead(204).end();
+        }
+        return send(res, 404, "");
+      } catch {
+        return res.headersSent ? void res.end() : send(res, 400, "bad request");
+      }
+    }
+
     // Team MCP: the agent's own token + its id (written into its MCP config by HQ).
     if (url.pathname === "/mcp") {
       const qToken = url.searchParams.get("token");
@@ -392,131 +441,19 @@ export function startHttp(o: Options) {
       const qToken = url.searchParams.get("token") ?? "";
       const bearer = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
       const who = whoIs(req, bearer || qToken);
-      const operator = !!who && canOperate(who.role);
-      const viewer = who?.role === "viewer";
-      if (viewer && req.method !== "GET") return send(res, 403, JSON.stringify({ error: "viewer token is read-only" }), "application/json");
-      if (!operator && !viewer) return send(res, 401, JSON.stringify({ error: "unauthorized" }), "application/json");
-      if (req.method !== "GET" && !okOrigin(req)) return send(res, 403, JSON.stringify({ error: "bad origin" }), "application/json");
-      if (req.method !== "GET" && isRemote(req) && !(who?.deviceId && Date.now() < o.guard.deviceElevatedUntil(who.deviceId)))
-        return send(res, 403, JSON.stringify({ error: "step-up required: enter your authenticator code in HQ first" }), "application/json");
-
-      try {
-        if (req.method === "GET" && url.pathname === "/api/projects") {
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
-        }
-        if (req.method === "POST" && (url.pathname === "/api/projects/register" || url.pathname === "/api/projects/create")) {
-          const create = url.pathname.endsWith("/create");
-          const body = JSON.parse((await readBody(req)) || "{}") as { path?: string; name?: string };
-          // New project by name: a fresh folder under ~/projects.
-          const slug = String(body.name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-          const path = body.path?.trim() || (create && slug ? join(homedir(), "projects", slug) : "");
-          if (!path) return send(res, 400, JSON.stringify({ error: create ? "name or path required" : "path required" }), "application/json");
-          const project = registerProjectPath(path, create);
-          if (project) setRegistryArchived(project.path, null); // adding an archived folder again restores it
-          if (project && !o.projects.has(project.id)) { await o.loadProject(project.path); refreshPush(); }
-          return send(res, 200, JSON.stringify({ project, projects: listProjectsOverview() }), "application/json");
-        }
-        const parts = url.pathname.split("/").filter(Boolean); // ["api", "projects", projectId, "tasks", taskId?]
-        // Findings exports (Markdown, JSON, SARIF, printable HTML, HackerOne, Bugcrowd), secrets masked. Read-only.
-        if (parts.length === 5 && parts[3] === "findings" && parts[4] === "export" && req.method === "GET") {
-          const rt = o.projects.get(decodeURIComponent(parts[2]));
-          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
-          const format = url.searchParams.get("format") ?? "markdown";
-          if (!(EXPORT_FORMATS as readonly string[]).includes(format)) return send(res, 400, JSON.stringify({ error: `format is one of ${EXPORT_FORMATS.join(", ")}` }), "application/json");
-          const out = RENDER[format as ExportFormat];
-          const { config, findings } = rt.hub.snap;
-          const text = out.render({ project: config.project.name, scope: config.project.scope, findings: findings ?? [], name: (id) => rt.hub.name(id), generatedAt: new Date().toISOString() });
-          res.setHeader("Content-Disposition", `${format === "html" ? "inline" : "attachment"}; filename="${config.project.id}-findings.${out.ext}"`);
-          // Agent-written text on HQ's own origin: no scripts, no fetches, styles only.
-          if (format === "html") res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
-          return send(res, 200, redactor().redact(text), out.type);
-        }
-        // The command center's tile previews: each running agent's last lines, secrets masked. Read-only.
-        if (parts.length === 4 && parts[3] === "screens" && req.method === "GET") {
-          const rt = o.projects.get(decodeURIComponent(parts[2]));
-          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
-          const lines = Math.max(5, Math.min(60, Number(url.searchParams.get("lines")) || 30));
-          const screens = await rt.screens(lines);
-          return send(res, 200, redactor().redact(JSON.stringify({ screens, at: new Date().toISOString() })), "application/json");
-        }
-        if (parts.length === 4 && parts[3] === "archive" && req.method === "POST") {
-          const rt = o.projects.get(decodeURIComponent(parts[2]));
-          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
-          if (o.projects.size <= 1) return send(res, 400, JSON.stringify({ error: "That's the only active project. Add or restore another one first." }), "application/json");
-          await o.unloadProject(rt.slug);
-          refreshPush();
-          setRegistryArchived(rt.root, new Date().toISOString());
-          for (const ws of sockets.get(rt) ?? []) ws.close(4004, "project archived");
-          log.info(`archived ${rt.slug}`);
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
-        }
-        if (parts.length === 4 && (parts[3] === "restore" || parts[3] === "delete") && req.method === "POST") {
-          const id = decodeURIComponent(parts[2]);
-          const p = listProjectsOverview().find((x) => x.id === id && x.archived);
-          if (!p) return send(res, 404, JSON.stringify({ error: "no archived project with that id" }), "application/json");
-          if (parts[3] === "restore") {
-            setRegistryArchived(p.path, null);
-            await o.loadProject(p.path);
-            refreshPush();
-            return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
-          }
-          if (who?.role !== "owner") return send(res, 403, JSON.stringify({ error: "only the owner can delete a project" }), "application/json");
-          const body = JSON.parse((await readBody(req)) || "{}") as { confirm?: string };
-          if (body.confirm !== p.id) return send(res, 400, JSON.stringify({ error: `type the project id (${p.id}) to confirm` }), "application/json");
-          // HQ's data for it: agent folders, secrets, logs under ~/.arima/<id>, and the repo's HQ folder when git doesn't track it.
-          // The repo's own files and history are never touched.
-          if (/^[a-z0-9][a-z0-9._-]*$/.test(p.id)) for (const d of [BRAND.homeDir, ...BRAND.legacyHomeDirs]) rmSync(join(homedir(), d, p.id), { recursive: true, force: true });
-          for (const d of [BRAND.repoDir, ...BRAND.legacyRepoDirs]) {
-            const dir = join(p.path, d);
-            if (existsSync(dir) && !(await run("git", ["ls-files", "--error-unmatch", d], { cwd: p.path })).ok) rmSync(dir, { recursive: true, force: true });
-          }
-          if (existsSync(p.path)) await run("git", ["worktree", "prune"], { cwd: p.path });
-          for (const a of p.team) releasePortBlock(p.id, a.id);
-          forgetProjectTemplate(hqDb(), p.id);
-          removeFromRegistry(p.path);
-          log.info(`deleted project ${p.id} (repo files kept at ${p.path})`);
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
-        }
-        if (parts.length === 4 && (parts[3] === "pause" || parts[3] === "resume") && req.method === "POST") {
-          const rt = o.projects.get(decodeURIComponent(parts[2]));
-          if (!rt) return send(res, 404, JSON.stringify({ error: "project not loaded" }), "application/json");
-          if (parts[3] === "pause") rt.pause();
-          else rt.resume();
-          setRegistryPaused(rt.root, rt.paused);
-          return send(res, 200, JSON.stringify({ projects: listProjectsOverview() }), "application/json");
-        }
-        if (parts.length === 4 && parts[3] === "tasks" && req.method === "POST") {
-          const projectId = decodeURIComponent(parts[2]);
-          const body = JSON.parse((await readBody(req)) || "{}") as {
-            title?: string;
-            boardId?: string;
-            description?: string;
-            doneWhen?: string;
-            ownerId?: string;
-          };
-          if (!body.title?.trim()) return send(res, 400, JSON.stringify({ error: "title required" }), "application/json");
-          const task = createCrossProjectTask(
-            projectId,
-            {
-              title: body.title,
-              boardId: body.boardId,
-              description: body.description,
-              doneWhen: body.doneWhen,
-              ownerId: body.ownerId,
-            },
-          );
-          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");
-        }
-        if (parts.length === 5 && parts[3] === "tasks" && (req.method === "PATCH" || req.method === "POST")) {
-          const projectId = decodeURIComponent(parts[2]);
-          const taskId = decodeURIComponent(parts[4]);
-          const body = JSON.parse((await readBody(req)) || "{}");
-          const task = updateCrossProjectTask(projectId, taskId, body);
-          return send(res, 200, JSON.stringify({ task, projects: listProjectsOverview() }), "application/json");
-        }
-      } catch (err) {
-        return send(res, 400, JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), "application/json");
-      }
+      const elevated = !!(who?.deviceId && Date.now() < o.guard.deviceElevatedUntil(who.deviceId));
+      return await handleProjectsApi(req, res, url, {
+        who,
+        okOrigin: okOrigin(req),
+        remote: isRemote(req),
+        elevated,
+        projects: o.projects,
+        loadProject: o.loadProject,
+        unloadProject: o.unloadProject,
+        refreshPush,
+        closeSockets: (rt) => { for (const ws of sockets.get(rt) ?? []) ws.close(4004, "project archived"); },
+        readBody,
+      });
     }
 
     if ((req.method === "GET" || req.method === "HEAD") && o.distDir) {
@@ -527,7 +464,7 @@ export function startHttp(o: Options) {
       // Text assets gzipped (a phone on Wi-Fi loads ~4× less); hashed assets cached, the page itself never.
       const gzip = /text|javascript|json|svg|manifest/.test(type) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""));
       const cache = file.includes(`${sep}assets${sep}`) ? "public, max-age=31536000, immutable" : "no-cache";
-      res.writeHead(200, { "Content-Type": type, "Cache-Control": cache, Vary: "Accept-Encoding", ...(gzip ? { "Content-Encoding": "gzip" } : {}) });
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": cache, Vary: "Accept-Encoding", ...(gzip ? { "Content-Encoding": "gzip" } : {}), ...(type.startsWith("text/html") ? { "Content-Security-Policy": APP_CSP } : {}) });
       if (req.method === "HEAD") return void res.end();
       const stream = createReadStream(file);
       return void (gzip ? stream.pipe(createGzip()).pipe(res) : stream.pipe(res));
@@ -553,6 +490,7 @@ export function startHttp(o: Options) {
     // ?watch=1: the one-building office following another project. Status only (no terminal output), commands ignored.
     const watch = url.searchParams.get("watch") === "1";
     log.info(`ui connected: ${rt.slug} ${who.role}${watch ? " watching" : ""}${remote ? " (remote)" : ""}${origin ? ` from ${origin}` : ""}`);
+    if (who.role === "owner" && !watch) ownerSeen(); // a page or the phone app opening
     wss.handleUpgrade(req, socket, head, (ws) => onClient(ws, rt, who, origin, remote, watch));
   });
 
@@ -583,6 +521,7 @@ export function startHttp(o: Options) {
         const me = current();
         if (!me) return void (audit("blocked"), ws.close());
         const role = me.role;
+        if (role === "owner") ownerSeen();
 
         // Step-up: { cmd: "elevate", args: [code, pendingCmd?, pendingArgs?] }
         if (cmd === "elevate") {
@@ -604,20 +543,20 @@ export function startHttp(o: Options) {
           args = pArgs;
         }
 
-        const fn = cmd ? rt.commands[cmd] : undefined;
-        if (!fn) return log.warn("unknown command", cmd);
-        if (OWNER_COMMANDS.has(cmd) && role !== "owner") {
+        const verdict = authorize(cmd, args, { role, remote, elevated: Date.now() <= Math.max(elevatedUntil, deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0) }, {
+          agentMode: (id) => rt.hub.cfg(id)?.mode,
+        });
+        const fn = verdict.ok ? rt.commands[verdict.name] : undefined;
+        if (!verdict.ok || !fn) {
+          if (verdict.ok || verdict.why === "unknown") return log.warn("unknown command", cmd);
+          if (verdict.why === "step-up") {
+            audit("step-up-required");
+            return sendEvent({ type: "remote.stepup", status: "required", cmd, args });
+          }
           audit("blocked");
-          return log.warn("owner-only command blocked:", cmd);
+          return log.warn(`${verdict.why === "role" ? "not allowed for a " + role : "bad arguments"}:`, cmd);
         }
-        if (role === "viewer" && !VIEWER_COMMANDS.has(cmd)) {
-          audit("blocked");
-          return log.warn("viewer blocked:", cmd);
-        }
-        if (remote && RISKY_COMMANDS.has(cmd) && Date.now() > Math.max(elevatedUntil, deviceId ? o.guard.deviceElevatedUntil(deviceId) : 0)) {
-          audit("step-up-required");
-          return sendEvent({ type: "remote.stepup", status: "required", cmd, args });
-        }
+        args = verdict.args;
         try {
           await fn(...args);
           audit("ok");

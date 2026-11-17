@@ -71,3 +71,34 @@ export function spend(db: DatabaseSync, by: { projectId: string } | { account: s
     )
     .get(val, sinceMs) as { input: number; cached: number; output: number; costUsd: number; unpriced: number };
 }
+
+export interface AgentUsage extends Tokens {
+  agentId: string;
+  costUsd: number;
+  /** Tokens (input + cached + output) per bucket, oldest first; `buckets` of them cover the window. */
+  series: number[];
+}
+
+/**
+ * Per agent since `sinceMs`: tokens, estimated cost, and a series of `buckets` equal slices up to `nowMs` (for sparklines).
+ * Events with no agent (one-shot helpers) are left out; busiest agent first.
+ */
+export function agentUsage(db: DatabaseSync, projectId: string, sinceMs: number, nowMs = Date.now(), buckets = 24): AgentUsage[] {
+  const span = Math.max(1, nowMs - sinceMs);
+  const rows = db
+    .prepare("SELECT agent_id, at, input, cached, output, cost_usd FROM usage_events WHERE project_id = ? AND agent_id IS NOT NULL AND at >= ? AND at <= ?")
+    .all(projectId, sinceMs, nowMs) as { agent_id: string; at: number; input: number; cached: number; output: number; cost_usd: number | null }[];
+  const by = new Map<string, AgentUsage>();
+  for (const r of rows) {
+    const a = by.get(r.agent_id) ?? { agentId: r.agent_id, input: 0, cached: 0, output: 0, costUsd: 0, series: Array<number>(buckets).fill(0) };
+    a.input += r.input;
+    a.cached += r.cached;
+    a.output += r.output;
+    a.costUsd += r.cost_usd ?? 0;
+    a.series[Math.min(buckets - 1, Math.floor(((r.at - sinceMs) / span) * buckets))] += r.input + r.cached + r.output;
+    by.set(r.agent_id, a);
+  }
+  const total = (a: Tokens) => a.input + a.cached + a.output;
+  return [...by.values()].sort((a, b) => total(b) - total(a));
+}
+

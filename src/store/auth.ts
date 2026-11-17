@@ -45,16 +45,26 @@ export async function checkAuth() {
     if (!res.ok) return useAuth.setState({ status: "none" });
     const me = (await res.json()) as { role: AuthRole; user: { id: string; name: string } | null; people: number };
     useAuth.setState({ status: "signed-in", role: me.role, user: me.user, people: me.people });
-    // The rest of the UI reads the role at load: keep it in step (a changed role takes effect on reload).
-    const was = (() => {
+    // The rest of the UI reads the role at load (session first, then saved). The server's answer wins:
+    // a viewer link must never show owner controls, so a mismatch is stored everywhere and the page reloads once.
+    const read = (k: "sessionStorage" | "localStorage") => {
       try {
-        return localStorage.getItem("hq-role");
+        return window[k].getItem("hq-role");
       } catch {
         return null;
       }
-    })();
+    };
+    const shownViewer = (read("sessionStorage") ?? read("localStorage")) === "viewer";
     const now = me.role === "viewer" ? "viewer" : "operator";
-    if (was !== now) store("hq-role", now);
+    if (read("localStorage") !== now) store("hq-role", now);
+    if (read("sessionStorage") !== null && read("sessionStorage") !== now) {
+      try {
+        sessionStorage.setItem("hq-role", now);
+      } catch {
+        /* private mode */
+      }
+    }
+    if (shownViewer !== (now === "viewer")) location.reload();
   } catch {
     useAuth.setState({ status: "none" }); // no HQ server: the demo
   }

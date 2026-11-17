@@ -70,8 +70,8 @@ const LOCAL = "http://localhost:5173";
 const guard = new RemoteGuard(join(HOME, "guard"));
 const users = new Users(join(HOME, "users.json"));
 const calls: string[] = [];
-const hub = { snap: { config: { team: [] }, agents: [], environments: [] }, subscribe: () => () => {} };
-const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), removeAccount: async () => void calls.push("removeAccount"), setProxy: async () => void calls.push("setProxy"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent") } };
+const hub = { snap: { config: { team: [] }, agents: [], environments: [] }, subscribe: () => () => {}, cfg: (id: string) => (id === "worker" ? { mode: "sandbox" } : id === "localbot" ? { mode: "local" } : undefined) };
+const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), removeAccount: async () => void calls.push("removeAccount"), setProxy: async () => void calls.push("setProxy"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent"), openHostShell: async () => void calls.push("openHostShell"), updateAgent: async () => void calls.push("updateAgent"), updateProject: async () => void calls.push("updateProject"), sendTerminalInput: async () => void calls.push("sendTerminalInput"), addAgent: async () => void calls.push("addAgent"), setTeamMode: async () => void calls.push("setTeamMode") } };
 const server = await startHttp({
   projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {}, unloadProject: async () => {},
   port: PORT, browserToken: "link-token-123", viewerToken: "viewer-token-456", host: "127.0.0.1",
@@ -114,16 +114,26 @@ r = await call("GET", "/api/users", { cookie: ana.cookie });
 check("an operator can't see or manage people", r.status === 403);
 
 // WebSocket: owner-only commands, viewers, live role changes.
-async function ws(cookie: string, cmds: string[]) {
+// Arguments each command accepts (server/commandPolicy.ts), for tests that only care about the role.
+const VALID: Record<string, unknown[]> = { saveAccount: [{}], removeAccount: ["x"], setProxy: [null], startAgent: ["a"], sendMessage: ["lead", "hi"], openHostShell: ["/"] };
+async function ws(cookie: string, cmds: (string | [string, ...unknown[]])[]) {
   const sock = new WebSocket(`ws://127.0.0.1:${PORT}/ws?project=alpha`, { headers: { Cookie: cookie, Origin: LOCAL } });
   await new Promise((res, rej) => (sock.once("open", res), sock.once("error", rej)));
-  for (const c of cmds) sock.send(JSON.stringify({ cmd: c, args: [] }));
+  for (const c of cmds) sock.send(JSON.stringify(typeof c === "string" ? { cmd: c, args: VALID[c] ?? [] } : { cmd: c[0], args: c.slice(1) }));
   await new Promise((res) => setTimeout(res, 300));
   sock.close();
 }
 calls.length = 0;
 await ws(ana.cookie, ["saveAccount", "startAgent"]);
 check("an operator runs agents but can't change API keys", JSON.stringify(calls) === JSON.stringify(["startAgent"]), JSON.stringify(calls));
+calls.length = 0;
+await ws(ana.cookie, ["openHostShell", ["updateAgent", "a", { workspacePath: "/" }], ["updateAgent", "a", { name: "x" }], ["updateProject", { crossProject: true }], ["updateProject", { exportPlan: true }]]);
+check("an operator can't open a host shell, pick a folder or turn on cross-project", JSON.stringify(calls) === JSON.stringify(["updateAgent", "updateProject"]), JSON.stringify(calls));
+calls.length = 0;
+await ws(ana.cookie, [["updateAgent", "a", { mode: "local" }], ["addAgent", { roleId: "dev", mode: "local" }], ["setTeamMode", "local"], ["sendTerminalInput", "shell:host", "id\r"], ["sendTerminalInput", "setup:gh", "x"], ["sendTerminalInput", "localbot", "x"], ["addAgent", { roleId: "dev", mode: "sandbox" }], ["setTeamMode", "sandbox"], ["sendTerminalInput", "worker", "x"]]);
+check("an operator can't move agents to Local mode or type into host terminals", JSON.stringify(calls) === JSON.stringify(["addAgent", "setTeamMode", "sendTerminalInput"]), JSON.stringify(calls));
+r = await call("POST", "/api/projects/register", { cookie: ana.cookie, body: { path: "/" } });
+check("an operator can't add a project folder", r.status === 403, String(r.status));
 calls.length = 0;
 await ws(sam.cookie, ["saveAccount"]);
 check("the owner can change API keys", JSON.stringify(calls) === JSON.stringify(["saveAccount"]));
@@ -140,8 +150,8 @@ for (const pending of ["saveAccount", "removeAccount", "setProxy"]) {
   const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));
   const code = totp(key, Math.floor(Date.now() / 30_000));
   calls.length = 0;
-  sock.send(JSON.stringify({ cmd: "elevate", args: [code, pending, []] }));
-  sock.send(JSON.stringify({ cmd: "startAgent", args: [] }));
+  sock.send(JSON.stringify({ cmd: "elevate", args: [code, pending, VALID[pending]] }));
+  sock.send(JSON.stringify({ cmd: "startAgent", args: VALID.startAgent }));
   await new Promise((res) => setTimeout(res, 150));
   check(`operator TOTP cannot resume ${pending}; ordinary operator work still works`, JSON.stringify(calls) === JSON.stringify(["startAgent"]));
   const audit = readLines(join(HOME, "guard", "audit.log")).join("\n");

@@ -19,6 +19,8 @@ export interface InboxItem {
   msgId?: string;
   /** For "assign": the task it starts, so a start that waited past a reassignment isn't delivered. */
   taskId?: string;
+  /** A question to the whole team (to the lead): gather from teammates, answer the human once. */
+  team?: boolean;
 }
 
 export const HISTORY = 300; // messages kept (and sent to the UI)
@@ -43,6 +45,8 @@ export class Inbox {
   private lastHook = new Map<string, number>();
   private lastSubmit = new Map<string, number>();
   private typing = new Set<string>();
+  /** Started since its last typed delivery: everything held for it goes in with its first one. */
+  private fresh = new Set<string>();
   private timer: NodeJS.Timeout;
   private file: string;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -52,7 +56,7 @@ export class Inbox {
     this.load();
     // Safety net: retry anything queued for agents that have gone idle.
     this.timer = setInterval(() => {
-      for (const id of this.queues.keys()) void this.tryType(id);
+      for (const id of this.queues.keys()) this.attempt(id);
     }, 2000);
   }
 
@@ -107,7 +111,7 @@ export class Inbox {
     q.push(item);
     this.queues.set(agentId, q);
     this.save();
-    void this.tryType(agentId);
+    this.attempt(agentId);
   }
 
   /** When the agent's last hook arrived (0 if never). */
@@ -122,10 +126,13 @@ export class Inbox {
   /** Every hook event goes through here (before the state change it causes). */
   noteHook(agentId: string, event: string) {
     this.lastHook.set(agentId, Date.now());
-    if (event === "SessionStart") this.sessionUp.add(agentId);
+    if (event === "SessionStart") {
+      this.sessionUp.add(agentId);
+      this.fresh.add(agentId);
+    }
     if (event === "SessionEnd") this.sessionUp.delete(agentId);
     if (event === "UserPromptSubmit") this.lastSubmit.set(agentId, Date.now());
-    if (event === "Stop" || event === "SessionStart" || event === "Notification") setTimeout(() => void this.tryType(agentId), QUIET_MS + 100);
+    if (event === "Stop" || event === "SessionStart" || event === "Notification") setTimeout(() => this.attempt(agentId), QUIET_MS + 100);
   }
 
   /** An already-running session was reattached: its prompt exists even though HQ missed SessionStart. */
@@ -153,6 +160,12 @@ export class Inbox {
     this.delivered(q, "on-stop");
     return this.format(q);
   }
+
+  /**
+   * Set by the project: true when this item isn't typed into this agent's idle prompt. It waits for the agent's
+   * Stop hook or its next start instead (on-demand workers get only the lead's, the owner's and HQ's typed).
+   */
+  holds: (agentId: string, item: InboxItem) => boolean = () => false;
 
   /** Set by the project: true when an "assign" no longer applies (task reassigned or done). */
   isStale: (agentId: string, taskId: string) => boolean = () => false;
@@ -183,6 +196,11 @@ export class Inbox {
     return JSON.stringify({ up: this.sessionUp.has(agentId), session: st?.session.state, state: st?.state, note: st?.note, typing: this.typing.has(agentId), quietMs: Date.now() - (this.lastHook.get(agentId) ?? 0) });
   }
 
+  /** A delivery attempt whose failure is logged: an error here must never stop HQ (and every agent with it). */
+  private attempt(agentId: string) {
+    this.tryType(agentId).catch((err) => log.warn(`inbox ${agentId}: delivery failed, will retry: ${err instanceof Error ? err.message : err}`));
+  }
+
   /** Types queued items into an idle agent. Safe to call any time. */
   async tryType(agentId: string) {
     this.dropStale(agentId);
@@ -193,9 +211,16 @@ export class Inbox {
       return;
     }
     if (this.keys.promptReady && !(await this.keys.promptReady(agentId))) return; // retried every 2 s
+    // While that check awaited, another attempt (the 2 s retry, a hook) may have typed and emptied the queue.
+    if (!q.length || this.typing.has(agentId)) return;
     if (q[0].kind === "reset") return this.typeReset(agentId, q.splice(0, 1)[0]);
     const nextReset = q.findIndex((i) => i.kind === "reset");
-    const items = q.splice(0, nextReset === -1 ? q.length : nextReset);
+    const upTo = q.slice(0, nextReset === -1 ? q.length : nextReset);
+    const fresh = this.fresh.has(agentId);
+    if (!fresh && upTo.every((i) => this.holds(agentId, i))) return; // only held items: they wait
+    const items = upTo; // anything typed takes the held items with it, so nothing is reordered
+    q.splice(0, items.length);
+    this.fresh.delete(agentId);
     this.typing.add(agentId);
     const typedAt = Date.now();
     try {
@@ -229,16 +254,20 @@ export class Inbox {
     } finally {
       this.typing.delete(agentId);
     }
-    void this.tryType(agentId);
+    this.attempt(agentId);
   }
 
   private format(items: InboxItem[]): string {
     const lines = items.map((i) =>
-      i.kind === "message" ? `[HQ] Message from ${this.hub.name(i.fromId)}: ${i.text}` : `[HQ] ${i.text}`,
+      i.team ? `[HQ] Question for the whole team from the human: ${i.text}`
+      : i.kind === "message" ? `[HQ] Message from ${this.hub.name(i.fromId)}: ${i.text}` : `[HQ] ${i.text}`,
     );
+    const teamAsk = items.some((i) => i.team);
     const fromAgent = items.some((i) => i.kind === "message" && i.fromId !== "you");
     const fromYou = items.some((i) => i.kind === "message" && i.fromId === "you");
-    const hint = fromYou
+    const hint = teamAsk
+      ? '  (Ask only the teammates whose work or strengths it touches, with send_message, then answer the human once with send_message to "you": one combined answer that says who it came from. Answer it yourself if nobody else is needed.)'
+      : fromYou
       ? '  (Answer the human with the hq send_message tool, to "you".)'
       : fromAgent ? "  (Reply with the hq send_message tool only if a reply is needed.)" : "";
     // Claude Code submits on newline, so everything goes on one line.

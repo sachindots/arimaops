@@ -127,7 +127,7 @@ check("a held-back tail is flushed shortly after when no key follows", out2.join
 
 // ---------------------------------------------------------------- audit log
 const { RemoteGuard } = await import("../server/remote");
-check("saveAccount and removeAccount need the remote step-up", (await import("../server/remote")).RISKY_COMMANDS.has("saveAccount") && (await import("../server/remote")).RISKY_COMMANDS.has("removeAccount"));
+check("saveAccount and removeAccount need the remote step-up", (await import("../server/commandPolicy")).needsStepUp("saveAccount") && (await import("../server/commandPolicy")).needsStepUp("removeAccount"));
 void RemoteGuard;
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

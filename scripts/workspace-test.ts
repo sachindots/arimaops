@@ -5,14 +5,14 @@
 //   npx tsx scripts/workspace-test.ts
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { managedWorkspace } from "../server/paths";
 import { detectRepo } from "../server/repo";
 import { resolveSeat, seatsFor } from "../server/templates";
 import { DEV_TEMPLATE } from "../src/data/templates";
-import { ensureWorkspace } from "../server/workspace";
+import { ensureWorkspace, syncDeliverablesFromAgent } from "../server/workspace";
 import type { AgentConfig } from "../src/data/types";
 
 const tmp = mkdtempSync(join(tmpdir(), "hq-workspace-"));
@@ -21,7 +21,7 @@ const plainConfig = join(tmp, "plain.gitconfig"); // a sandbox, or a macOS/Linux
 writeFileSync(crlfConfig, "[core]\n\tautocrlf = true\n");
 writeFileSync(plainConfig, "");
 
-// HQ's own git calls act as the host. Agent folders land in tmp, not the real ~/.jsmhq.
+// HQ's own git calls act as the host. Agent folders land in tmp, not the real ~/.arima.
 Object.assign(process.env, { HOME: tmp, USERPROFILE: tmp, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: crlfConfig });
 
 const git = (config: string, cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe", env: { ...process.env, GIT_CONFIG_GLOBAL: config } });
@@ -129,6 +129,41 @@ const tests: [string, () => Promise<void>][] = [
       } finally {
         process.env.GIT_CONFIG_GLOBAL = crlfConfig;
       }
+    },
+  ],
+  [
+    "deliverables sync: the task's files and deliverables/ only",
+    async () => {
+      const dir = await ensureWorkspace(agent("writer"), SLUG, repo);
+      mkdirSync(join(dir, "deliverables"), { recursive: true });
+      mkdirSync(join(dir, "src"), { recursive: true });
+      write(dir, { "deliverables/T01.md": "report\n", "src/app.ts": "task file\n", "notes.txt": "stray edit\n", "stray.txt": "x\n" });
+      const synced = await syncDeliverablesFromAgent(agent("writer"), [agent("writer")], SLUG, source, ["src/app.ts"]);
+      same("synced", synced.sort().join(","), "deliverables/T01.md,src/app.ts");
+      same("repo file untouched", read(source, "notes.txt"), NOTES_LF);
+    },
+  ],
+  [
+    "deliverables sync never follows a symlink, on either side",
+    async () => {
+      if (process.platform === "win32") return; // symlinks need admin rights there
+      const secret = join(tmp, "host-secret");
+      mkdirSync(secret);
+      write(secret, { "key.txt": "do not copy\n", "bashrc": "untouched\n" });
+      const a = await ensureWorkspace(agent("leaker"), SLUG, repo);
+      const b = await ensureWorkspace(agent("trap"), SLUG, repo);
+      // A: a symlinked folder that would read a host file into the repo.
+      symlinkSync(secret, join(a, "deliverables"));
+      // B: a symlink where A's file will land, aimed at a host file.
+      mkdirSync(join(b, "out"), { recursive: true });
+      symlinkSync(join(secret, "bashrc"), join(b, "out", "r.md"));
+      mkdirSync(join(a, "out"), { recursive: true });
+      write(a, { "out/r.md": "report\n" });
+      const synced = await syncDeliverablesFromAgent(agent("leaker"), [agent("leaker"), agent("trap")], SLUG, source, ["deliverables/key.txt", "out/r.md"]);
+      same("synced", synced.join(","), "out/r.md");
+      same("host file behind B's symlink", read(secret, "bashrc"), "untouched\n");
+      same("B now has a plain file", read(b, "out/r.md"), "report\n");
+      rmSync(join(source, "out"), { recursive: true, force: true });
     },
   ],
 ];

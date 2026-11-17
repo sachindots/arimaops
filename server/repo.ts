@@ -1,4 +1,4 @@
-// Facts about the repo (or project folder) .hq was started in.
+// Facts about the repo (or project folder) HQ was started in.
 
 import { existsSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -16,7 +16,7 @@ export interface RepoInfo {
 export async function detectRepo(start: string): Promise<RepoInfo> {
   let top = await run("git", ["rev-parse", "--show-toplevel"], { cwd: start });
   if (!top.ok) {
-    // Allow .hq to run in any folder (e.g., OSINT, research, content, or new project): initialize a local git repo automatically.
+    // Allow HQ to run in any folder (e.g., OSINT, research, content, or new project): initialize a local git repo automatically.
     const init = await run("git", ["init", "-q"], { cwd: start });
     if (!init.ok) throw new Error(`${start} is not a git repository and could not be initialized. Pass --repo <path>.`);
     top = await run("git", ["rev-parse", "--show-toplevel"], { cwd: start });

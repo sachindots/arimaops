@@ -3,7 +3,7 @@
 //
 // How skills work for Sandboxed Models:
 // Docker Sandboxes (`sbx run`) bind-mounts the agent's host workspace folder (`~/.arima/<project>/<agentId>`)
-// into the microVM. `.hq` resolves, downloads, and writes all skill folders on the HOST into:
+// into the microVM. HQ resolves, fetches (pinned packs only: server/skillPacks.ts) and writes all skill folders on the HOST into:
 // - .claude/skills/ (Claude Code, GitHub Copilot)
 // - .agents/skills/ (Codex, OpenCode, Gemini CLI)
 // - .agent/skills/  (Antigravity CLI / agy)
@@ -23,11 +23,12 @@ import { excludeFromGit } from "./agentFiles";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { projectHome } from "./paths";
+import { ensurePinnedSkills, pinFor } from "./skillPacks";
+import { scanFolder } from "./skillScan";
 
 const AGENT_DIRS = [".claude/skills", ".agents/skills", ".agent/skills"]; // Claude/Copilot, Codex/OpenCode/Gemini, Antigravity (agy)
 
 const cacheDir = (slug: string) => join(projectHome(slug), "skills-cache");
-const key = (specs: SkillSpec[]) => JSON.stringify(specs);
 
 let installing: Promise<void> | null = null;
 
@@ -46,37 +47,54 @@ export function mergeSkillSpecs(...lists: SkillSpec[][]): SkillSpec[] {
     .sort((a, b) => a.source.localeCompare(b.source));
 }
 
-/** Installs external specs into the project's cache on the host (once per change of specs). */
-export function ensureSkillCache(slug: string, specs: SkillSpec[]): Promise<void> {
+/** Who to tell when a role or the stack names a pack nobody pinned yet (set per project: files an Action item). */
+const proposers = new Map<string, (source: string) => void>();
+export const onUnpinnedPack = (slug: string, fn: (source: string) => void) => void proposers.set(slug, fn);
+
+export interface SkillOptions {
+  /** Offensive packs (BugHunter) are allowed: a red or purple project with a scope set, or lab mode. */
+  offensive?: boolean;
+}
+
+/**
+ * Puts the external skills these specs name into the project's cache on the host (once per change of specs), from
+ * pinned packs only (docs/templates.md section 2): each skill's files are checked against its pin's hash and scanned.
+ * A source nobody pinned is proposed to the owner (fetched, hashed and scanned, waiting for approval) and skipped.
+ */
+export function ensureSkillCache(slug: string, specs: SkillSpec[], opts: SkillOptions = {}): Promise<void> {
   const run_ = async () => {
     const dir = cacheDir(slug);
     const stamp = join(dir, "installed.json");
-    if (existsSync(stamp) && readFileSync(stamp, "utf8") === key(specs)) return;
+    const stampKey = JSON.stringify({ specs, offensive: !!opts.offensive });
+    if (existsSync(stamp) && readFileSync(stamp, "utf8") === stampKey) return;
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
-    if (!specs.length) return writeFileSync(stamp, key(specs));
-    await run("git", ["init", "-q"], { cwd: dir }); // the CLI installs into the current project
     const failed: string[] = [];
     for (const spec of specs) {
-      const skillArgs = spec.skills.includes("*") ? [] : ["--skill", ...spec.skills];
-      const args = ["-y", "skills", "add", spec.source, ...skillArgs, "-a", "claude-code", "codex", "-y", "--copy"];
-      // npx is a .cmd shim on Windows, which only runs through cmd.exe.
-      const [cmd, cmdArgs] = process.platform === "win32" ? ["cmd.exe", ["/d", "/s", "/c", "npx", ...args]] : ["npx", args];
-      const r = await run(cmd, cmdArgs, {
-        cwd: dir,
-        timeoutMs: 180_000,
-      });
-      if (!r.ok) failed.push(`${spec.source}: ${(r.stderr || r.stdout).trim().split("\n").pop()}`);
+      const found = pinFor(spec.source);
+      if (!found) {
+        proposers.get(slug)?.(spec.source);
+        failed.push(`${spec.source} waits for your approval in Action items`);
+        continue;
+      }
+      if (found.pin.use === "github-action") continue; // a workflow, not skills
+      if (found.pin.use === "scoped-offensive" && !opts.offensive) {
+        failed.push(`${spec.source} is offensive: only red and purple projects with a scope (or lab mode) get it`);
+        continue;
+      }
+      try {
+        const got = await ensurePinnedSkills(spec.source, spec.skills);
+        for (const [name, from] of Object.entries(got))
+          for (const sub of AGENT_DIRS) {
+            if (!SAFE_SKILL_NAME.test(name)) continue;
+            cpSync(from, join(dir, sub, name), { recursive: true, filter: (src) => !src.endsWith(".arima-ok") });
+          }
+      } catch (err) {
+        failed.push(err instanceof Error ? err.message : String(err));
+      }
     }
-    // Mirror .claude/skills into .agent/skills inside the cache for Antigravity (agy)
-    const claudeCache = join(dir, ".claude/skills");
-    const agyCache = join(dir, ".agent/skills");
-    if (existsSync(claudeCache)) {
-      mkdirSync(agyCache, { recursive: true });
-      cpSync(claudeCache, agyCache, { recursive: true });
-    }
+    writeFileSync(stamp, failed.length ? "" : stampKey); // a failure is retried at the next start
     if (failed.length) throw new Error(`Some skills didn't install. ${failed.join("; ")}`);
-    writeFileSync(stamp, key(specs));
   };
   // One install at a time per HQ; a second caller waits for the first.
   const next = (installing ?? Promise.resolve()).then(run_);
@@ -224,18 +242,28 @@ export async function prepareSkills(
   stackSpecs: SkillSpec[],
   agentSkills: string[] = [],
   repoRoot?: string,
+  opts: SkillOptions = {},
 ): Promise<{ count: number; error: string | null }> {
   const userSkillFolders = resolveUserSkillFolders(repoRoot, agentSkills);
+  // Custom skill folders are scanned like packs; a blocked one isn't copied.
+  const refused: string[] = [];
+  for (const [name, folder] of [...userSkillFolders]) {
+    const block = scanFolder(folder).find((f) => f.level === "block");
+    if (block) {
+      userSkillFolders.delete(name);
+      refused.push(`custom skill ${name} is blocked by the scanner (${block.path}: ${block.why})`);
+    }
+  }
   const { builtin, external, custom } = classifyAgentSkills(agentSkills);
   // Filter out custom stubs if a real user skill folder exists in .hq/skills/ or ~/.arima/skills/
   const directSkills = [...builtin, ...custom.filter((c) => !userSkillFolders.has(c.id))];
   const allSpecs = mergeSkillSpecs(stackSpecs, external);
-  let cacheError: string | null = null;
+  let cacheError: string | null = refused.length ? refused.join("; ") : null;
   if (allSpecs.length) {
     try {
-      await ensureSkillCache(slug, allSpecs);
+      await ensureSkillCache(slug, allSpecs, opts);
     } catch (err) {
-      cacheError = err instanceof Error ? err.message : String(err);
+      cacheError = [cacheError, err instanceof Error ? err.message : String(err)].filter(Boolean).join("; ");
       log.warn(`skills cache: ${cacheError}`);
     }
   }

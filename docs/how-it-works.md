@@ -1,6 +1,6 @@
 # How ArimaOps works
 
-What HQ does behind the office: where agents work, how they talk, what reaches GitHub, and what HQ saves. New here? Start with the [getting-started guide](getting-started.md).
+What HQ does behind the scenes: where agents work, how they talk, what reaches GitHub, and what HQ saves. New here? Start with the [getting-started guide](getting-started.md).
 
 - [The team](#the-team)
 - [Workspaces and sessions](#workspaces-and-sessions)
@@ -8,7 +8,7 @@ What HQ does behind the office: where agents work, how they talk, what reaches G
 - [GitHub and reviews](#github-and-reviews)
 - [Sandboxes and network access](#sandboxes-and-network-access)
 - [Terminals, links and ports](#terminals-links-and-ports)
-- [Action items](#action-items)
+- [Inbox](#inbox)
 - [Your stack](#your-stack)
 - [MCP servers](#mcp-servers)
 - [App variables and keys](#app-variables-and-keys)
@@ -23,7 +23,7 @@ What HQ does behind the office: where agents work, how they talk, what reaches G
 - **Workers** build. One task means one branch and one pull request. A worker edits only the files its task lists and asks the lead if it needs more.
 - Each agent runs **Claude Code** or **Codex**, in a **Sandbox** (the default) or in **Local** mode. Set this per agent in Settings → Team.
 
-New teams get names from The Office: Michael leads, then Dwight, Jim, Pam and so on. Rename them any time.
+New teams get callsigns: Cipher leads, then Ghost, Vortex, Nyx and so on. Rename them any time.
 
 ## Workspaces and sessions
 
@@ -82,16 +82,16 @@ Docker Sandboxes need a machine that can run VMs. On a cloud VM (for example AWS
 - **Opening the browser.** Tools in a sandbox that open a web page (for example a CLI sign-in) open it in your browser.
 - **Ports.** When a program in the Shell tab prints a `localhost:<port>` address, HQ offers to **Forward port**: then `localhost:<port>` on your machine reaches the sandbox. CLI sign-ins that redirect your browser back to `localhost` need this. You can also forward any port, and stop forwarding, in the agent's **Sandbox** tab. The program inside the sandbox must listen on all addresses (`0.0.0.0`), not only `127.0.0.1`.
 
-## Action items
+## Inbox
 
-**Action items** in the top bar is everything waiting on you:
+The **Inbox** is everything waiting on you:
 
 - requests from agents (made with the `ask_user` tool): create a database, add a key, change a dashboard setting. Each one has exact steps and names the variable, never the secret value;
 - agents waiting for an answer in their terminal;
 - websites agents asked to reach, and ones their sandbox blocked;
 - pull requests ready to merge.
 
-Mark a request **Done** (with an optional note) or **Dismiss** it, and HQ tells the agent so it can continue. Action items stay on your machine and are never committed.
+Mark a request **Done** (with an optional note) or **Dismiss** it, and HQ tells the agent so it can continue. Inbox items stay on your machine and are never committed.
 
 ## Your stack
 
@@ -126,10 +126,9 @@ HQ never stores key values and never reads your env files.
 
 | Setting | Where | Applies |
 | --- | --- | --- |
-| Office name (the sign on the wall) | Settings → Project | Right away, for everyone on the project |
-| Font: Pixel, Clean or Mono | Settings → Project | Right away, in this browser only. The office itself stays pixel. |
 | Review tool | Settings → Workflow | Right away |
 | Agents, roles, CLI, mode | Settings → Team | Next time the agent starts |
+| Stages, who works them, gates | Flow | Right away for tasks; agents get it at their next start |
 | CPU and memory | Settings → Sandbox | After **Recreate sandbox** |
 | MCP servers per agent | Settings → MCP | Right away for new servers |
 
@@ -137,12 +136,12 @@ HQ never stores key values and never reads your env files.
 
 | File | What | Commit it? |
 | --- | --- | --- |
-| `.arima/config.json` (in your repo) | Team, workflow, stack, office name | Yes, so your team shares it |
+| `.arima/config.json` (in your repo) | Team, workflow, stack | Yes, so your team shares it |
 | `.arima/plan.json` (in your repo) | Boards and tasks | Yes |
 | `docs/plan.md` (in your repo) | A readable copy of the plan, if **Settings → Project → Export plan** is on | Yes |
 | `~/.arima/<project>/` | Agents' folders, app variables, action items and HQ's own records | No, it's outside your repo, on your machine only |
 
-**Remove a project:** in **Projects**, press **Archive** (its agents stop and it leaves the office; nothing is deleted). From the archive you can **Restore** it, or **Delete…** it: that removes the agents' folders, chats, tasks and logs ArimaOps keeps, and never your repo's code or git history. Only the owner can delete.
+**Remove a project:** in **Projects**, press **Archive** (its agents stop and it leaves the list; nothing is deleted). From the archive you can **Restore** it, or **Delete…** it: that removes the agents' folders, chats, tasks and logs ArimaOps keeps, and never your repo's code or git history. Only the owner can delete.
 
 ## Windows
 
@@ -159,7 +158,8 @@ Windows 11 support is experimental. Run HQ in PowerShell or Windows Terminal, no
 | --- | --- |
 | `1`–`9` | Open that agent |
 | `Esc` | Close panels |
-| `+` / `-` | Zoom in / out |
+| `O` | Open or leave the Command center |
+| `⌘K` / `Ctrl+K`, `/` | Command bar: jump to an agent, a page or an action |
 | `D` | Toggle the debug panel |
 
-Drag to move around the office; scroll to zoom.
+On the Flow page, drag to move around the canvas and scroll to zoom.

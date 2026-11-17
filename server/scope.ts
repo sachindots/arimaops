@@ -88,3 +88,12 @@ export function firewallCommands(slug: string, agentIps: string[], targets: stri
   const adds = agentIps.flatMap((src) => targets.map((dst) => `sudo iptables -I DOCKER-USER -i ${bridge} -s ${src} -d ${dst} -m comment --comment ${tag} -j ACCEPT`));
   return [clear, ...adds];
 }
+
+/**
+ * Red and purple work: nobody but the lead starts before the engagement has a scope; lab mode (CTFs, practice
+ * ranges) lifts it. The reason, or null when the agent may start.
+ */
+export function scopeBlocksStart(cfg: { rules?: { scopeRequired: boolean; labMode: boolean }; project: { scope?: Scope } }, agent: { isLead: boolean }): string | null {
+  if (!cfg.rules?.scopeRequired || cfg.rules.labMode || agent.isLead || cfg.project.scope?.inScope.length) return null;
+  return "Set the engagement scope first (Settings → Project → Scope), or turn on lab mode for a CTF or practice range.";
+}

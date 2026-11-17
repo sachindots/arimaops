@@ -5,7 +5,7 @@ export function AuthenticatorLink({ url, who }: { url: string; who: string }) {
   const [copied, setCopied] = useState(false);
   const secret = new URL(url.replace("otpauth://", "https://")).searchParams.get("secret") ?? "";
   return (
-    <div className="border-[3px] border-gold p-3 text-[13px]">
+    <div className="border border-gold p-3 text-[13px]">
       <b>Authenticator for {who}</b>
       <p className="m-0 mt-1 text-muted">
         Add this to an authenticator app now; it's shown only once. HQ asks for a code from it before risky actions from another device.

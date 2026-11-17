@@ -122,7 +122,7 @@ Leave the terminal running while you work. On macOS and Linux, agents keep runni
 1. Press **Start team** in the top bar. The first start takes a minute or two while each sandbox is created.
 2. Click the lead (or press **1**) and open the **Messages** tab. Tell them what to build, for example:
    > Read plan.md. Create a board for Phase 1, plan its tasks with the files each one touches, and assign them.
-3. Watch the office: tasks appear on the plan wall, agents work at their desks, and PRs roll through the review gate.
+3. Watch Home: each agent's card shows its state and task, and the strip along the bottom shows how many tasks sit in each stage of the flow. **Board** has every task; **Flow** shows the stages and their gates.
 4. Review and merge PRs on GitHub yourself. HQ never merges. When you merge, the task is marked done.
 
 An agent with a red **Needs input** badge is waiting for you. Click them and answer in their terminal.
@@ -142,4 +142,4 @@ When an agent needs a website its sandbox blocks (a tool's docs, an API), it ask
 | "Port 7420 is in use" | Another HQ is running. Stop it or use `--port 7421`. |
 | Windows: `listen EACCES` | Windows reserved that port. Use `--port 8420`. |
 
-More in the [README](../README.md#troubleshooting). To learn what HQ does behind the office, read [How it works](how-it-works.md).
+More in the [README](../README.md#troubleshooting). To learn what HQ does behind the scenes, read [How it works](how-it-works.md).

@@ -110,6 +110,16 @@ findings.update("F-004", { status: "false-positive" });
 report = readFileSync(join(repo, "deliverables", "security-report.md"), "utf8");
 check("false positives move to their own section", report.includes("## Ruled out") && !report.includes("### F-004"));
 check("unknown id refused", throws(() => findings.update("F-999", { status: "fixed" }), /No finding/));
+{
+  // The findings-report gate compares the report's file time with the latest update: it must never look older.
+  const { statSync } = await import("node:fs");
+  let older = 0;
+  for (let i = 0; i < 40; i++) {
+    const f = findings.update("F-001", { remediation: `Fix ${i}` });
+    if (statSync(join(repo, "deliverables", "security-report.md")).mtimeMs < Date.parse(f.updatedAt)) older++;
+  }
+  check("the report is never older than the update that rewrote it", older === 0, `${older} of 40 looked older`);
+}
 
 // Every export reads the same findings.
 const input = { project: "Acme", scope: hub.snap.config.project.scope, findings: hub.snap.findings as never, name: hub.name, generatedAt: "2026-11-12T00:00:00Z" };

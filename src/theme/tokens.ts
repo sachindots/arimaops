@@ -1,29 +1,28 @@
 import type { AgentState, ReviewState, SessionState } from "../data/types";
 
-// Black-Red + Hacker Terminal Cyberspace palette. Shared by the office and the HUD.
-// Strictly zero yellow or orange: Crimson Red (#ff1744), Phosphor Green (#00ff66), Ice Cyan (#00e5ff), Neon Violet (#c04dff).
+// The calm palette, shared by the UI: neutral surfaces, indigo accent, muted status colours.
 export const colors = {
-  ink: "#040508",
+  ink: "#0b0c0f",
   cream: "#0a0c12",
   cream2: "#10141f",
   cream3: "#261520",
-  muted: "#6e7b94",
-  navy: "#07090e",
-  navy2: "#04060a",
-  blue: "#00e5ff",
-  red: "#ff1744",
-  orange: "#c04dff",
-  green: "#00ff66",
-  lav: "#6e7b94",
-  yellow: "#00ff66",
-  pink: "#ff2a85",
+  muted: "#6b7280",
+  navy: "#0b0c0f",
+  navy2: "#0b0c0f",
+  blue: "#818cf8",
+  red: "#f85149",
+  orange: "#a371f7",
+  green: "#3fb950",
+  lav: "#6b7280",
+  yellow: "#3fb950",
+  pink: "#db61a2",
   grass: "#050609",
-  white: "#e6edf7",
+  white: "#e6e8eb",
   // ArimaOps brand accents (HUD only; the office keeps its own palette).
-  gold: "#E8B339",
-  amber: "#F59E0B",
-  goldDark: "#B9791C",
-  cyan: "#22D3EE",
+  gold: "#a5b4fc",
+  amber: "#d29922",
+  goldDark: "#4f46e5",
+  cyan: "#818cf8",
 } as const;
 
 export interface StateStyle {
@@ -50,25 +49,23 @@ export const reviewStyle: Record<ReviewState, StateStyle> = {
   passed: { label: "Passed", color: colors.green, dim: "#007a33" },
 };
 
-/** Robot body colours offered for new agents, in order (zero yellow/orange). */
+/** Agent colours offered for new agents, in order: muted, distinct on the dark surface, never a status colour. */
 export const agentPalette = [
-  "#ff1744", // crimson red (lead)
-  "#00ff66", // matrix phosphor green
-  "#00e5ff", // cyber ice cyan
-  "#c04dff", // neon violet
-  "#ff2a85", // cyber magenta
-  "#3ee0d0", // plasma teal
-  "#5271ff", // electric cobalt
-  "#00b8d4", // deep cyan
-  "#ff5c8a", // neon rose
-  "#9d4edd", // dark amethyst
-  "#72efdd", // mint cyber
-  "#c2c9d6", // titanium silver
+  "#818cf8", // indigo (lead)
+  "#4fb3c4", // teal
+  "#c084fc", // violet
+  "#e879a6", // rose
+  "#60a5fa", // blue
+  "#a3b18a", // sage
+  "#f0a868", // sand
+  "#94a3b8", // slate
+  "#67c5a3", // jade
+  "#d4a5f5", // lilac
 ] as const;
 
 export const font = {
-  ui: '"Pixelify Sans", "Trebuchet MS", system-ui, sans-serif',
-  term: '"VT323", ui-monospace, Menlo, Consolas, monospace',
+  ui: '"Inter", system-ui, sans-serif',
+  term: '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace',
 };
 
 /** Lighter / darker variants of an agent colour for sprite shading. */

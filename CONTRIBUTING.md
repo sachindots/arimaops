@@ -34,7 +34,7 @@ src/
   ui/        Top bar, team panel, activity, drawers, settings, setup checklist, welcome
 server/      Local HQ server: setup checks, workspaces, sessions (tmux, or HQ-run on Windows), sbx, hooks, Team MCP, GitHub
 bin/         The arimaops command
-docs/        User guides, and the product spec (jsmhq-context.md)
+docs/        User guides and design docs
 context/     Implementation plans
 ```
 

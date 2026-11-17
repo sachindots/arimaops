@@ -1,4 +1,16 @@
-import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
+import type { TaskScore } from "./scorers";
+
+/** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
+export interface TaskEvidence {
+  sha: string;
+  prNumber: number | null;
+  by: string;
+  at: string;
+  steps: string[];
+  /** Files under ~/.arima/<project>/evidence/<task>/<sha>/, served by HQ. */
+  shots: { file: string; label: string }[];
+}
+import type { AgentEngine, Finding, Role, TeamTemplate, ToolRules } from "./model";
 
 export type { Finding };
 import type { StackConfig } from "./stack";
@@ -80,6 +92,8 @@ export interface AgentConfig {
   cli: AgentCli;
   model: string; // optional start model ("" = the CLI's default; users can switch with /model)
   mode: AgentMode;
+  /** Set while running: the mode it switches to at its next start (never mid-task). */
+  nextMode?: AgentMode | null;
   color: string; // hex, used for the robot, owner dots and chips
   skills: string[];
   roleMd: string; // contents of ROLE.md
@@ -89,6 +103,8 @@ export interface AgentConfig {
   account?: string;
   /** MCP servers (names in sbx's registry) this agent's sandbox gets. */
   mcp?: string[];
+  /** Claude Code in Sandbox or Container mode only: "stream" runs it headless (docs/design/stream-json.md). */
+  engine?: AgentEngine;
 }
 
 /** An MCP server registered with Docker Sandboxes (`sbx mcp ls`). */
@@ -135,13 +151,88 @@ export interface ProjectConfig {
   /** Fixed once created: names sandboxes, tmux sessions and ~/.arima/<id>. Renaming the project never changes it. */
   id: string; // "askwell"
   name: string; // "Askwell"
-  repo: string; // "jsmastery-pro/askwell"
+  repo: string; // "acme/askwell"
   path: string; // "~/developer/askwell"
   hqPort: number; // port sandboxes use to reach HQ via host.docker.internal
   exportPlan?: boolean; // also write the plan to docs/plan.md
-  officeName?: string; // the sign on the office wall; empty = ".HQ"
+  /** The lead may list other projects on this machine and create or update their tasks. Off unless the owner turns it on. */
+  crossProject?: boolean;
+  /** How this team works together (owns which area, how to disagree, when to bother the owner). In every agent's role file. */
+  charter?: string;
+  /** The morning (09:00) and evening (18:00) note to the owner. On unless set to false. */
+  standup?: boolean;
+  /** The template's scheduled rituals (default on). */
+  rituals?: boolean;
+  officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
+  /** Spend caps in USD on API-key accounts (docs/agent-engine.md section 8); missing = $5 a day, $50 a month. */
+  spendCaps?: { dailyUsd: number; monthlyUsd: number };
+  /** Lesson promotion to the template (docs/templates.md section 8); missing = on, except security engagements. */
+  promoteLessons?: boolean;
+}
+
+/** A lesson a project offered to its template: general, no project id. Approved ones go into the next projects' briefs. */
+export interface TemplateLesson {
+  id: string;
+  templateId: string;
+  type: string;
+  text: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+/** Settings → Memory: this project's template and its lessons. */
+export interface LessonsState {
+  templateId: string | null;
+  /** Promotion allowed for this project (off by default for security engagements). */
+  enabled: boolean;
+  approved: TemplateLesson[];
+  pending: number;
+  running: boolean;
+  /** The last promotion run's outcome, in words. */
+  last: string | null;
+  /** Template changes drafted from repeated failures (docs/factory.md section 5). */
+}
+
+/** The machine's GitHub App (docs/agent-engine.md section 6); null app = none created yet. */
+export interface GitHubAppState {
+  app: { id: number; slug: string; htmlUrl: string; owner: string; installUrl: string } | null;
+  /** The path GitHub posts to; made public with Tailscale Funnel (deploy/github-webhook.sh). */
+  webhookPath: string;
+  lastDeliveryAt: string | null;
+}
+
+/** A template in this HQ's library. problems: why a project can't use it yet (packs waiting for the owner). */
+export interface TemplateEntry {
+  template: TeamTemplate;
+  builtin: boolean;
+  problems: string[];
+}
+
+/** A skill pack on this machine (docs/templates.md section 2). */
+export interface SkillPackView {
+  source: string;
+  commit: string;
+  licence: string | null;
+  credit: string | null;
+  use: "any" | "scoped-offensive" | "github-action";
+  skills: number;
+  status: "vetted" | "pending" | "approved" | "rejected";
+  blocked: string[];
+  warnings: number;
+}
+
+/** A project's spend against its caps, on API-key accounts only (subscriptions have no bill). */
+export interface SpendState {
+  day: { usd: number; cap: number };
+  month: { usd: number; cap: number };
+  /** Over a cap: workers stopped, no new starts or model runs until the period rolls over or the cap is raised. */
+  paused: "day" | "month" | null;
+  /** Events on models without a price row (GPT, Gemini): counted as $0. */
+  unpriced: number;
+  /** Roles with a daily budget: today's spend and whether its seats are stopped. */
+  roles?: { roleId: string; title: string; usd: number; cap: number; paused: boolean }[];
 }
 
 /** Engagement scope: domains ("example.com", "*.example.com"), IPs or IPv4 CIDRs. Out of scope always wins. */
@@ -178,6 +269,8 @@ export interface AccessRequest {
   reason: string;
   at: string;
   status: "pending" | "allowed" | "denied";
+  /** HQ's proxy saw the agent try it (the agent didn't ask): it doesn't hold the agent, and a deny isn't sent to it. */
+  observed?: boolean;
 }
 
 export type AccessDecision = "agent" | "everyone" | "deny";
@@ -247,7 +340,66 @@ export interface Task {
   model?: string | null;
   /** Tokens recorded against it while it was its owner's current task (usage events). */
   usage?: Tokens | null;
+  /** The board spec's items this task covers ("S1", "S4"); the analyze gate checks every item has one. */
+  specItems?: string[];
+  /** The lead marked it high-stakes (sensitive files make it so too): a second opinion is required. */
+  highStakes?: boolean;
+  /** The project's template when the task was made (docs/factory.md section 2); empty on older tasks. */
+  templateId?: string;
+  templateVersion?: number;
+  /** Its scorers' verdicts once it finished (docs/factory.md section 4). */
+  scores?: TaskScore[];
+  /** Its id in the benchmark suite (~/.arima-bench/suite), once added (docs/factory.md section 6). */
+  benchmark?: string;
+  /** Screenshots of the running app for its PR, taken by the verifier (docs/factory.md section 7). */
+  evidence?: TaskEvidence;
+  /** When it entered its current status (ISO), from the task's status events; missing on projects without them. */
+  movedAt?: string;
+  /** The goal it moves forward (server/goals.ts). */
+  goalId?: string | null;
 }
+
+/** An outcome the owner wants, with the tasks that roll up to it. done/total/usd are worked out by HQ. */
+export interface Goal {
+  id: string; // "G1"
+  title: string;
+  /** The number that shows it, its target and where it is now: free text ("MRR", "$5k", "$3.2k"). */
+  metric?: string;
+  target?: string;
+  current?: string;
+  status: "active" | "done" | "dropped";
+  done: number;
+  total: number;
+  /** Estimated spend on its tasks (priced models only). */
+  usd: number;
+}
+/** A remote MCP server HQ calls for the agents (server/connections.ts). Never carries the key. */
+export interface ToolConnection {
+  name: string;
+  url: string;
+  /** Roles whose agents may use it; none = nobody. */
+  roles: string[];
+  /** Tools the owner ticked as read-only: the only ones agents can call. */
+  read: string[];
+  /** The tool HQ calls when the owner clicks Send on a proposed send; agents never call it. */
+  send: string | null;
+  /** The server's tools at the last check. */
+  tools: { name: string; description: string }[];
+  probedAt: string | null;
+  hasKey: boolean;
+}
+
+export interface ConnectionInput {
+  name: string;
+  url?: string;
+  roles?: string[];
+  read?: string[];
+  send?: string | null;
+  /** Stored in HQ's vault; "" removes it, left out keeps it. */
+  apiKey?: string;
+}
+
+export type GoalPatch = Partial<Pick<Goal, "title" | "metric" | "target" | "current" | "status">>;
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
 
@@ -266,6 +418,14 @@ export interface PullRequest {
   closed?: boolean; // closed without merging — hidden from the board
   conflict?: boolean; // has merge conflicts with the base branch
   reviewNote?: string | null; // e.g. "CodeRabbit: review rate limited"
+  /** The PR adds or changes a test file (unknown until GitHub sends the PR's files). */
+  testsChanged?: boolean;
+  /** The paths it changes, as GitHub last reported them (first 100). */
+  files?: string[];
+  /** The PR's head commit, as GitHub last reported it. */
+  headSha?: string;
+  /** Every check on the head commit finished green; false with no checks at all. */
+  ciGreen?: boolean;
 }
 
 export type EnvironmentStatus = "live" | "deploying" | "sleeping";
@@ -289,12 +449,19 @@ export interface AgentMessage {
   toId: string;
   text: string;
   delivered?: "typed" | "on-stop" | "queued" | "dropped"; // how HQ handed it over; dropped = a start that no longer applied
+  /** A question to the whole team: sent to the lead, who gathers from teammates and answers once. */
+  team?: boolean;
+  /** Between agents: a question (goes to the lead if unanswered) or a disagreement (two on one task go to the lead). */
+  kind?: "question" | "disagree";
+  /** The sender's task when it was sent. */
+  taskId?: string;
 }
 
 export type ActivityType =
   | "task.assigned"
   | "task.started"
   | "task.created"
+  | "task.scored"
   | "agent.needs-input"
   | "agent.answered"
   | "message"
@@ -354,6 +521,7 @@ export type SetupCheckId =
   | "google-secret"
   | "docker"
   | "agent-image"
+  | "verifier-image"
   | "egress-lock"
   | "hq-reach"
   | "scope-firewall"
@@ -459,8 +627,29 @@ export interface OfficeSnapshot {
   mcp?: McpState;
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
+  memory?: MemoryState;
+  /** What every agent on this machine knows about the company (Settings → Project). */
+  company?: string;
+  goals?: Goal[];
+  /** Owner and operators: the machine's tool connections (no keys). */
+  connections?: ToolConnection[];
+  spend?: SpendState;
+  githubApp?: GitHubAppState;
+  skillPacks?: SkillPackView[];
+  /** This HQ's template library (built-in and saved or imported), for the welcome. */
+  templateLibrary?: TemplateEntry[];
+  lessons?: LessonsState;
   actionItems?: ActionItem[];
   findings?: Finding[];
+}
+
+/** A memory waiting for the user's check. `conflict`: a certified memory of the same type about the same thing. */
+export interface PendingMemory {
+  id: string;
+  type: string;
+  text: string;
+  about: string[];
+  conflict?: { id: string; text: string } | null;
 }
 
 /** Something an agent needs the user to do outside its sandbox (Team MCP `ask_user`). */
@@ -472,8 +661,26 @@ export interface ActionItem {
   details: string; // steps; never secret values
   waiting: boolean; // the agent can't continue without it
   status: "open" | "done" | "dismissed";
-  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes. */
-  kind?: "request" | "plan";
+  /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
+   *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
+   *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "send";
+  /** kind send: what HQ sends through the owner's connection when the owner clicks Send (Dismiss: nothing is sent). */
+  send?: { connection: string; tool: string; args: Record<string, unknown>; sentAt?: string; error?: string };
+  /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */
+  lesson?: { id: string; templateId: string; type: string };
+  /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */
+  gate?: { taskId: string; gateId: string; reason: string };
+  /** kind spec: the board spec version waiting for the owner (Approve = done, Send back = dismissed). */
+  spec?: { boardId: string; version: number };
+  /** kind skills: the skill pack (owner/repo) waiting for the owner's approval of its scan. */
+  pack?: string;
+  /** kind overflow: the seat, its task and the fallback it would move to (Move = done, Wait = dismissed). */
+  overflow?: { agentId: string; taskId: string; cli: AgentCli; model: string };
+  /** kind approval: the gate the lead passed and the stage it belongs to. */
+  approval?: { gateId: string; stageId: string };
+  /** kind memory: the memories still to decide. */
+  memories?: PendingMemory[];
   note: string | null; // the user's note when closing it
   at: string;
   closedAt: string | null;
@@ -499,10 +706,14 @@ export interface WelcomeInput {
 }
 
 /** Changes to one seat. CLI, model, skills and role text belong to the role (RolePatch). */
-export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account">>;
+export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account" | "engine">>;
 
 /** Changes to one role of the project's template; every seat of the role picks them up at its next start. */
-export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">>;
+export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">> & {
+  /** null clears it. */
+  capUsd?: number | null;
+  outbound?: Role["outbound"] | null;
+};
 
 export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;
@@ -547,6 +758,11 @@ export interface ProjectOverview {
     blocked: number;
     total: number;
   };
+  /** Loaded projects: API-key spend today and this month against its caps. */
+  spend?: SpendState;
+  /** Open Inbox items plus agents waiting on you. */
+  waiting?: number;
+  goals?: Goal[];
 }
 
 
@@ -556,6 +772,16 @@ export interface AccountsState {
   masterSource: "env" | "keychain" | "file" | null;
   /** Set when the vault exists but can't be opened (wrong or missing master key). */
   error?: string;
+}
+
+/** Settings → Memory: extraction, keep-out names and HQ's backups. */
+export interface MemoryState {
+  /** Claude Haiku reads finished tasks into memories (spends usage on `account`). */
+  extraction: { enabled: boolean; account: string };
+  /** Names this project keeps out of memory. */
+  keepOut: string[];
+  /** HQ's nightly whole-database backups, newest first (dates). */
+  backups: string[];
 }
 
 /** What the Accounts form sends; the secret is optional when updating. */

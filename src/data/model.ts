@@ -5,6 +5,7 @@
 import type { Provider } from "./providers";
 import type { AgentCli, AgentMode, Board, FindingStatus, SandboxSettings, Severity, Task, Tokens } from "./types";
 import { AGENT_CLIS, isAgentCli } from "./types";
+import { isScorerId, SCORER_IDS } from "./scorers";
 
 // ── Team template (1.1) ──
 
@@ -19,6 +20,21 @@ export interface TeamTemplate {
   rules: ToolRules;
   /** Memory node types beyond the core ontology: "Asset", "Finding", "Source"… */
   memoryTypes: string[];
+  /** Checks run on each finished task (src/data/scorers.ts); left out, HQ picks ones that fit the template. */
+  scorers?: string[];
+  /** Recurring work HQ hands the lead on a schedule (server/rituals.ts). */
+  rituals?: Ritual[];
+}
+
+/** A recurring prompt to the lead: every day (no `day`) or one weekday (0 = Sunday), at `hour` local time. */
+export interface Ritual {
+  id: string;
+  title: string;
+  day?: number;
+  /** With `day`: only the first such weekday of the month. */
+  monthly?: boolean;
+  hour: number;
+  prompt: string;
 }
 
 export interface Role {
@@ -37,6 +53,10 @@ export interface Role {
   /** Agents of this role a new project starts with. */
   seats: number;
   color: string; // hex
+  /** Daily USD for all seats of this role together (API-key accounts only); over it, the role's workers stop until midnight. */
+  capUsd?: number;
+  /** Overrides rules.outbound for this role's seats: a mixed team where only marketing and sales are drafts only. */
+  outbound?: Outbound;
 }
 
 export const OUTBOUND = ["none", "drafts-only"] as const;
@@ -75,11 +95,17 @@ export interface Seat {
   roleId: string;
   color: string;
   mode: AgentMode;
+  /** The mode it switches to at its next start (set when the mode changed while it ran). */
+  nextMode?: AgentMode | null;
   account: string; // "" = the default account for the role's CLI
   workspacePath: string | null; // null = HQ-managed clone
   sandbox: SandboxSettings;
   mcp: string[];
+  /** How a Claude Code seat runs: its terminal UI (default) or headless stream-json (docs/design/stream-json.md). */
+  engine?: AgentEngine;
 }
+
+export type AgentEngine = "terminal" | "stream";
 
 // ── Flow and gates (1.2) ──
 
@@ -107,6 +133,7 @@ export const GATE_KINDS = [
   "file-delivered",
   "findings-report",
   "scope-set",
+  "evidence",
 ] as const;
 export type GateKind = (typeof GATE_KINDS)[number];
 
@@ -123,10 +150,13 @@ export type Gate = { id: string } & (
   /** Someone other than the task's owner; of this role when given. */
   | { kind: "reviewer"; roleId?: string }
   | { kind: "second-opinion"; when: "always" | "high-stakes" }
-  | { kind: "owner-approval"; reason: ApprovalReason }
+  /** "high-stakes": only tasks the lead marks high-stakes (or that touch sensitive files) wait for it. Default always. */
+  | { kind: "owner-approval"; reason: ApprovalReason; when?: "always" | "high-stakes" }
   | { kind: "file-delivered" }
   | { kind: "findings-report" }
   | { kind: "scope-set" }
+  /** A PR that changes UI files needs screenshots of the running app at its head commit (docs/factory.md section 7). */
+  | { kind: "evidence"; uiFiles?: string[] }
 );
 
 export const GATE_STATES = ["passed", "failed", "waived", "reset"] as const;
@@ -141,7 +171,8 @@ export interface GateEvent {
   gateId: string;
   state: GateState;
   by: Actor;
-  proof: { url?: string; path?: string; sha?: string; note?: string };
+  /** onBehalf: the lead passed a person gate for the owner while the owner was away (undoable). */
+  proof: { url?: string; path?: string; sha?: string; note?: string; onBehalf?: boolean };
   at: string;
 }
 
@@ -217,6 +248,54 @@ export type LedgerName = (typeof LEDGERS)[number];
 export const LEDGER_KINDS = ["fact", "guess", "plan", "stall", "replan", "note"] as const;
 export type LedgerKind = (typeof LEDGER_KINDS)[number];
 
+// ── Memory (Phase 2, docs/memory-core.md section 3) ──
+
+/** What the team learns, in every project. Templates add their own types through `memoryTypes`. */
+export const CORE_MEMORY_TYPES = ["Decision", "Lesson", "DeadEnd"] as const;
+/** The graph's own labels: the things memories are about. Never a memory type. */
+export const STRUCTURE_LABELS = ["Task", "Component", "Agent", "Person", "LedgerEntry", "Memory"] as const;
+export const RESERVED_LABELS = [...CORE_MEMORY_TYPES, ...STRUCTURE_LABELS] as const;
+
+export interface Memory {
+  id: string; // "M-41"
+  projectId: string;
+  /** A core type or one of the template's memoryTypes. */
+  type: string;
+  text: string;
+  taskId: string | null;
+  /** Components it is about: file paths or names. */
+  about: string[];
+  certified: boolean;
+  certifiedBy: string | null;
+  source: "extraction" | "remember" | "consolidation";
+  by: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+/** What a finished task leaves behind (2.3): built by HQ from what it already knows, no model call. Extraction reads it. */
+export interface TaskSummary {
+  projectId: string;
+  taskId: string;
+  title: string;
+  description: string | null;
+  doneWhen: string | null;
+  stageId: string | null;
+  ownerId: string | null;
+  /** Tasks it built on. */
+  needs: string[];
+  /** The files the task was given to edit. */
+  files: string[];
+  prNumber: number | null;
+  deliverablePath: string | null;
+  /** The owner's handoff note. */
+  note: string | null;
+  /** The lead's current task-ledger entries for it. */
+  ledger: { kind: LedgerKind; text: string }[];
+  usage: Tokens | null;
+  finishedAt: string;
+}
+
 export interface LedgerEntry {
   id: number;
   projectId: string;
@@ -283,6 +362,8 @@ export function templateErrors(t: TeamTemplate): string[] {
     if (!HEX.test(r.color ?? "")) say(`${name}: colour must be a hex value like #4f8cff.`);
     if (r.isLead && r.onDemand) say(`${name}: the lead stays on, so it can't be on demand.`);
     if (r.isLead && r.seats !== 1) say(`${name}: the lead role has exactly one seat.`);
+    if (r.capUsd !== undefined && !(typeof r.capUsd === "number" && r.capUsd >= 0 && Number.isFinite(r.capUsd))) say(`${name}: the daily budget is a dollar amount from 0.`);
+    if (r.outbound !== undefined && !isIn(OUTBOUND, r.outbound)) say(`${name}: outbound must be one of ${OUTBOUND.join(", ")}.`);
   }
 
   const stages = Array.isArray(t.flow?.stages) ? t.flow.stages : [];
@@ -302,7 +383,18 @@ export function templateErrors(t: TeamTemplate): string[] {
       else if (g.kind === "reviewer" && g.roleId !== undefined && !roleIds.has(g.roleId)) say(`Stage ${name}: reviewer gate names no role "${g.roleId}".`);
       else if (g.kind === "second-opinion" && g.when !== "always" && g.when !== "high-stakes") say(`Stage ${name}: second opinion "when" is "always" or "high-stakes".`);
       else if (g.kind === "owner-approval" && !isIn(APPROVAL_REASONS, g.reason)) say(`Stage ${name}: owner approval needs a reason (${APPROVAL_REASONS.join(", ")}).`);
+      else if (g.kind === "owner-approval" && g.when !== undefined && g.when !== "always" && g.when !== "high-stakes") say(`Stage ${name}: owner approval "when" is "always" or "high-stakes".`);
     }
+  }
+
+  for (const id of dupes((t.rituals ?? []).map((r) => r.id))) say(`Two rituals share the id "${id}".`);
+  for (const r of t.rituals ?? []) {
+    const name = `Ritual ${r.title || r.id}`;
+    if (!SLUG.test(r.id ?? "")) say(`${name}: id must be lowercase letters, digits and dashes.`);
+    if (!Number.isInteger(r.hour) || r.hour < 0 || r.hour > 23) say(`${name}: hour is a whole number from 0 to 23.`);
+    if (r.day !== undefined && !(Number.isInteger(r.day) && r.day >= 0 && r.day <= 6)) say(`${name}: day is 0 (Sunday) to 6 (Saturday), or left out for every day.`);
+    if (r.monthly && r.day === undefined) say(`${name}: a monthly ritual names its weekday (day).`);
+    if (!r.prompt?.trim() || r.prompt.length > 4000) say(`${name}: needs a prompt of up to 4000 characters.`);
   }
 
   const rules = t.rules;
@@ -325,7 +417,11 @@ export function templateErrors(t: TeamTemplate): string[] {
   if (cycle) say(`Starter tasks depend on each other in a loop: ${cycle.join(" → ")}.`);
 
   for (const id of dupes(t.memoryTypes ?? [])) say(`Memory type "${id}" is listed twice.`);
+  for (const m of t.memoryTypes ?? []) if ((RESERVED_LABELS as readonly string[]).includes(m)) say(`"${m}" is a core memory type already; leave it out of memoryTypes.`);
   if ((t.memoryTypes ?? []).some((m) => !/^[A-Z][A-Za-z]{1,39}$/.test(m))) say("Memory types are names like Asset or Finding.");
+  if (t.scorers !== undefined && !Array.isArray(t.scorers)) say("scorers is a list of scorer ids.");
+  for (const id of Array.isArray(t.scorers) ? t.scorers : []) if (!isScorerId(id)) say(`No scorer "${id}". Scorers: ${SCORER_IDS.join(", ")}.`);
+  for (const id of dupes(Array.isArray(t.scorers) ? t.scorers : [])) say(`Scorer "${id}" is listed twice.`);
   return errs;
 }
 

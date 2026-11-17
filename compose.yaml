@@ -23,9 +23,14 @@ services:
       - "${DOCKER_GID:?set DOCKER_GID}"
     environment:
       HOME: ${ARIMA_HOME_DIR:?set ARIMA_HOME_DIR}
-      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:?set ARIMA_MASTER_KEY}
+      # Empty: HQ uses the 0600 key file in ~/.arima (same as a native install). Servers should set it.
+      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:-}
+      # gh inside the container can't reach the host's keyring: it keeps its own sign-in here
+      # (`docker compose exec -it hq gh auth login` once), so the host's gh setup is never touched.
+      GH_CONFIG_DIR: ${ARIMA_HOME_DIR}/.arima/docker-gh
     volumes:
       - ${ARIMA_HOME_DIR}:${ARIMA_HOME_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
     working_dir: ${ARIMA_HOME_DIR}
     command: ["--repo", "${ARIMA_REPO:?set ARIMA_REPO}", "--port", "${ARIMA_PORT:-7420}", "--remote", "--no-open"]
+

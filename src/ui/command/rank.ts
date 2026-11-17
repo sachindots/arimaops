@@ -1,7 +1,7 @@
 // What the command center shows first. Pure (no React), so scripts/command-test.ts can check it.
 
 import type { AgentConfig, AgentStatus, OfficeSnapshot, Task } from "../../data/types";
-import { modeOf, type Mode } from "../../office/iso/behaviour";
+import { modeOf, type Mode } from "../../data/mode";
 
 export interface Row {
   key: string; // "<project>/<agent>": agent ids repeat across projects

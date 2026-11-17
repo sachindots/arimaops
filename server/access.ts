@@ -2,6 +2,7 @@
 // through the Team MCP (request_access); you answer Allow or Deny in HQ.
 // Allow adds a per-sandbox rule (the base policy is never touched).
 
+import { draftsOnly, isOutboundHost } from "../src/data/outbound";
 import type { AccessDecision, AccessRequest } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { Planner } from "./planner";
@@ -24,23 +25,30 @@ export function cleanDomain(raw: string): string | null {
 let seq = 0;
 
 /** Creates (or returns the open) request and asks you. Returns what the agent is told. */
-export function requestAccess(hub: Hub, agentId: string, rawDomain: string, reason: string): string {
+export function requestAccess(hub: Hub, agentId: string, rawDomain: string, reason: string, observed = false): string {
   const agent = hub.cfg(agentId);
   if (!agent) throw new Error("Unknown agent.");
   if (agent.mode === "local") return "You run in Local mode, outside a sandbox: HQ doesn't restrict your network. If a request fails, it isn't a sandbox block.";
   const domain = cleanDomain(rawDomain);
   if (!domain) throw new Error(`"${rawDomain}" isn't a domain. Pass just the host, like docs.example.com.`);
+  if (draftsOnly(hub.snap.config, agentId) && isOutboundHost(domain))
+    return `${domain} sends mail, posts or writes to a CRM, and this project is drafts only: write the message as a deliverable and the owner sends it.`;
   if (agent.sandbox.allow.includes(domain))
     return `${domain} is already allowed for your sandbox. If it still fails, the problem is something else (a typo, the site is down, or a different domain it redirects to).`;
   const open = hub.snap.accessRequests?.find((r) => r.agentId === agentId && r.domain === domain && r.status === "pending");
   if (open) return `You already asked for ${domain}; the user hasn't answered yet. Continue with other work; HQ will tell you.`;
 
-  const req: AccessRequest = { id: `ar${Date.now().toString(36)}${++seq}`, agentId, domain, reason: reason.trim().slice(0, 300) || "No reason given", at: new Date().toISOString(), status: "pending" };
-  hub.holdForAccess(agentId);
+  const req: AccessRequest = { id: `ar${Date.now().toString(36)}${++seq}`, agentId, domain, reason: reason.trim().slice(0, 300) || "No reason given", at: new Date().toISOString(), status: "pending", ...(observed ? { observed } : {}) };
+  // Seen by the proxy, not asked for: the agent isn't waiting on it, so it isn't held and its messages keep flowing.
+  if (!observed) hub.holdForAccess(agentId);
   // Keep every open request; trim only answered history.
   const all = [req, ...(hub.snap.accessRequests ?? [])];
   hub.snap.accessRequests = [...all.filter((r) => r.status === "pending"), ...all.filter((r) => r.status !== "pending").slice(0, 50)];
   hub.emit({ type: "access.updated", request: { ...req } });
+  if (observed) {
+    hub.activity("config", agentId, `${agent.name} tried to reach ${domain}: blocked. Allow it from their panel if they need it.`);
+    return `${domain} is blocked.`;
+  }
   hub.setStatus(agentId, { state: "needs-input", note: `Asking: access to ${domain}` });
   hub.activity("agent.needs-input", agentId, `${agent.name} needs you: access to ${domain}`);
   return `Asked the user to allow ${domain}. Continue with other work if you can; HQ will message you as soon as they answer. Don't work around the block meanwhile.`;
@@ -70,7 +78,7 @@ async function answer(hub: Hub, sbx: Sbx, planner: Planner, requestId: string, d
   if (decision === "deny") {
     settle(req, "denied");
     hub.activity("config", req.agentId, `You denied ${who} access to ${req.domain}`);
-    planner.notify(req.agentId, `The user denied access to ${req.domain}. Continue without it. If you can't, say why in your reply${hub.cfg(req.agentId)?.isLead ? "" : " and call set_my_status blocked with the reason"}.`);
+    if (!req.observed) planner.notify(req.agentId, `The user denied access to ${req.domain}. Continue without it. If you can't, say why in your reply${hub.cfg(req.agentId)?.isLead ? "" : " and call set_my_status blocked with the reason"}.`);
     return;
   }
 

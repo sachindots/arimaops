@@ -191,7 +191,7 @@ interface LedgerEntry {
 
 - The **task ledger** is the lead's (facts, guesses, plan). Team MCP gains `ledger_add` and `ledger_revise`, lead only.
 - The **progress ledger** is HQ's: stall checks, nudges, replans. `planner.checkStalls` writes to it.
-- Both go through `MemoryStore`, so Phase 2 moves them into Neo4j without touching callers.
+- Both go through `MemoryStore`, so the storage behind it can change without touching callers (Phase 2 used Neo4j; it is SQLite again since 2026-11-17).
 
 ## 8. Interfaces (1.7)
 
@@ -214,7 +214,7 @@ interface MemoryStore {
   forgetProject(projectId: string): void;
   // Phase 2 adds recall, related, remember and the graph.
 }
-// Implementation now: SqliteMemory. Phase 2: Neo4jMemory.
+// Implementation: SqliteMemory (server/memory.ts).
 ```
 
 As built (`server/memory.ts`, `server/githubEvents.ts`, `server/modelRunner.ts`):
@@ -243,7 +243,7 @@ A project whose config has no `roleId` on its agents is a legacy project.
 - **`server/license.ts`:** verifies `~/.arima/license.json` (`{ payload, signature }`) with Ed25519 from `node:crypto` (no new dependency) against a public key in the source. The payload names the licensee, tier, seats, features and expiry. No network call.
 - **`ee/`:** a stub feature registers through `registerFeature(name, setup)` in `server/features.ts`. `main.ts` loads `ee/` by dynamic import only if the folder exists; nothing in core imports it statically. The stub runs only with a valid licence that lists it.
 - **`scripts/license-keygen.ts` and `scripts/license-sign.ts`:** the owner makes the key pair once and keeps the private key outside the repo.
-- **Licences:** new core files start with `// SPDX-License-Identifier: AGPL-3.0-or-later`; existing MIT files keep MIT and the JSM HQ notice. `LICENSE` explains the split. `ee/LICENSE` is a commercial licence.
+- **Licences:** new core files start with `// SPDX-License-Identifier: AGPL-3.0-or-later`; existing MIT files keep MIT and its notices. `LICENSE` explains the split. `ee/LICENSE` is a commercial licence.
 - **CLA:** a CLA text in `CLA.md` and the CLA Assistant GitHub App on the repo. The app runs without GitHub Actions, so the billing lock doesn't block it.
 
 As built: `ee/index.ts` exports a plain map of features (`EeModule`), so no copy of core code ends up in it; `server/features.ts` loads `dist-server/ee.mjs` (built separately by `scripts/build-server.mjs`) or `ee/index.ts` from source, and starts each feature only when `readLicense()` is valid and lists it. `server/licenseKey.ts` holds the public key and is `null` until the owner runs `scripts/license-keygen.ts`, so no licence verifies before that. `LICENSE` sets out the split: AGPL for files with the SPDX header (`LICENSES/AGPL-3.0-or-later.txt`, fetched from gnu.org), MIT for the rest (`LICENSES/MIT.txt`), and `ee/LICENSE` (a draft) for `ee/`. `CLA.md` is a draft for legal review.

@@ -3,7 +3,7 @@ import { ui } from "../../store/ui";
 import { ago, Portrait, SectionTitle, useNow } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
-const STATUS_COLOR = { live: "#00e436", deploying: "#3ee0d0", sleeping: "#83769c" } as const;
+const STATUS_COLOR = { live: "#00e436", deploying: "#4fb3c4", sleeping: "#83769c" } as const;
 
 export function EnvironmentDrawer({ name }: { name: string }) {
   const snap = useOffice((s) => s.snap);
@@ -29,7 +29,7 @@ export function EnvironmentDrawer({ name }: { name: string }) {
         ) : (
           <>
             <div className="panel mb-4 px-3 py-2 text-[14px]">
-              <div className="font-term text-[19px]">{env.url}</div>
+              <div className="font-term text-[14px]">{env.url}</div>
               <div className="mt-1 text-muted">
                 {tool} · last deploy {ago(env.lastDeployAt, now)} ago
               </div>
@@ -37,7 +37,7 @@ export function EnvironmentDrawer({ name }: { name: string }) {
             <SectionTitle>Used by</SectionTitle>
             {agent ? (
               <button className="panel mb-4 flex w-full items-center gap-3 px-3 py-2 text-left" onClick={() => ui.openAgent(agent.id)}>
-                <Portrait color={agent.color} lead={agent.isLead} size={32} />
+                <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={32} />
                 <div>
                   <b>{agent.name}</b>
                   <div className="text-[13px] text-muted">Its own copy of the app and database, so agents never share state.</div>

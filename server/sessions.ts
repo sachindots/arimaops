@@ -10,6 +10,8 @@ import { hasHqSkills, prepareSkills } from "./skills";
 import { resolve, sep } from "node:path";
 import { HOST_TERMINAL, CLI_LABEL, type AgentCli, type SetupCheckId, type WorkspaceInfo } from "../src/data/types";
 import { adapters, containerArgs, localBinary } from "./adapters";
+import { isStream } from "./streamEngine";
+import { streamCommand } from "./streamRunner";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
 import { detectLimit } from "./limits";
 import type { Hub } from "./hub";
@@ -21,12 +23,15 @@ import { containerLoginSaved } from "./setup";
 import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
+import { scopeBlocksStart } from "./scope";
+import { rolePaused, spendPaused } from "./spendCaps";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
 import { sandboxList } from "./lib/json";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
+import { canType, readScreen } from "./screen";
 import { agentTokenFor, projectHome, sessionName } from "./paths";
 import { POLICY_NOT_INITIALIZED, policyVerdict, runSetupChecks } from "./setup";
 import { ensureWorkspace, workspaceFor } from "./workspace";
@@ -45,16 +50,6 @@ const SHELL_ENV = { ...TERM_ENV, FORCE_HYPERLINK: "1" };
  */
 const SANDBOX_BROWSER = "/usr/local/bin/xdg-open";
 
-// What the agents' screens show across supported CLIs.
-const BUSY = /esc to interrupt|esc to cancel/i; // the footer while a turn runs
-// A question or permission prompt.
-// "Enter to confirm": Claude Code's folder-trust prompt (Local mode, first start in a folder).
-const DIALOG = /Enter to select|Enter to confirm|↑\/↓ to navigate|↑\/↓ Navigate|Run this command\?|Do you want to (proceed|make this edit|create)|Would you like to|^\s*[❯›>]\s*1\.\s/im;
-// Folder-trust questions of every CLI (Claude Code, Codex, Antigravity, Gemini).
-const TRUST = /Do you trust (the contents of )?this (folder|directory|project)|Is this a project you created or one you trust|trust this folder/i;
-const PROMPT_READY = /⏵⏵|\? for shortcuts|Ask Codex to do anything|Type your message|Ask Gemini|Ask Antigravity|ctrl\+p commands/i; // the input prompt is up
-// The CLI has no login, so every message fails until you sign in (Claude Code prints this on its banner and on errors).
-const NO_LOGIN = /Not logged in · Run \/login|Login expired|Please run \/login|Invalid API key/i;
 const LOGIN_NOTE = "Not signed in: open its terminal and run /login";
 const SCREEN_QUIET_MS = 4000; // only second-guess hooks after this much silence
 const STALE_WORKING_MS = 15_000; // "working" with an idle screen this long = a missed Stop
@@ -105,6 +100,13 @@ export class Sessions {
     const agent = hub.cfg(id);
     const st = hub.status(id);
     if (!agent || !st || st.session.state === "running" || st.session.state === "starting") return;
+    if (agent.nextMode) {
+      // A mode change made while it ran takes effect now, between tasks.
+      agent.mode = agent.nextMode;
+      delete agent.nextMode;
+      hub.configChanged();
+      hub.activity("session", id, `${agent.name} switches to ${agent.mode} mode`);
+    }
     const setup = hub.snap.setup;
     const fail = (detail: string) => {
       hub.setSession(id, { state: "failed", detail });
@@ -140,9 +142,14 @@ export class Sessions {
       return fail("Codex needs an OpenAI key in sbx. Run `sbx secret set openai --oauth` (Setup checklist → Run in terminal).");
 
     // Every agent is a CLI process (~0.5 GB for Claude Code): too many at once and the machine swaps or kills them.
-    const hubs = liveHubs().includes(hub) ? liveHubs() : [...liveHubs(), hub];
+    const unscoped = scopeBlocksStart(hub.snap.config, agent);
+    if (unscoped) return fail(unscoped);
+    const over = spendPaused(hub.slug);
+    if (over && !agent.isLead) return fail(`Paused: the project's ${over === "day" ? "daily" : "monthly"} spend cap is reached. Raise it in Settings → Project, or wait for the ${over === "day" ? "next day" : "next month"}.`);
+    if (!agent.isLead && rolePaused(hub.slug, agent.roleId)) return fail("Paused: this role's daily budget is used. Raise it in Settings → Team, or wait until midnight.");
+
     const cap = maxAgents();
-    if (runningAgents(hubs) >= cap)
+    if (this.atCap())
       return fail(`${cap} agents are already running across your projects, the most this machine's memory allows. Stop one first, or set ARIMA_MAX_AGENTS to raise the cap.`);
 
     const name = this.name(id);
@@ -158,7 +165,9 @@ export class Sessions {
       const specs = stackSkills(hub.snap.config.stack);
       if (specs.length || agent.skills.length || hasHqSkills(hub.slug, dir)) {
         hub.setSession(id, { detail: "Installing agent skills…" });
-        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root);
+        const rules = hub.snap.config.rules;
+        const offensive = !!rules?.scopeRequired && (!!rules.labMode || !!hub.snap.config.project.scope?.inScope.length);
+        const skills = await prepareSkills(hub.slug, dir, specs, agent.skills, hub.repo.root, { offensive });
         if (skills.error) hub.activity("session", id, `${agent.name}: some agent skills didn't install (${skills.error.slice(0, 120)}). Starting anyway.`);
       }
       if (!(await this.backend.exists(name))) {
@@ -194,13 +203,23 @@ export class Sessions {
           const sbxArgs = launch.sbxArgs ?? launch.args;
           const args = sbxArgs.length ? ["--", ...sbxArgs] : [];
           spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, launch.sbxAgent, dir, ...args], envFile: null };
+          if (isStream(agent)) {
+            // `sbx run` always starts the CLI's own UI: create the sandbox once, then run the runner in it (exec starts a stopped one).
+            if (isNew) {
+              const made = await run("sbx", ["create", "--name", name, ...size, launch.sbxAgent, dir], { timeoutMs: 300_000 });
+              if (!made.ok) throw new Error(`Couldn't create the sandbox: ${(made.stderr || made.stdout).trim().slice(-300)}`);
+            }
+            spec = { file: "sbx", args: ["exec", "-it", ...env, "-w", dir, name, ...streamCommand(containerArgs(agent.cli, { ...launch, args: sbxArgs }))], envFile: null };
+          }
         }
         if (agent.mode === "container") {
           hub.setSession(id, { detail: "Starting container…" });
           if (!(await ensureNetwork())) throw new Error("Couldn't create the hq-agents Docker network. See HQ's log.");
           await run("docker", ["rm", "-f", name], { timeoutMs: 20_000 }); // a container left from a crash
           const gitEnv = await gitIdentityEnv(hub.repo.root);
-          spec = { file: "docker", args: runArgs(agent, name, dir, containerArgs(agent.cli, launch), envFile, hub.snap.config.project.hqPort, gitEnv, secrets), envFile: null };
+          const cliArgs = containerArgs(agent.cli, launch);
+          const command = isStream(agent) ? streamCommand(cliArgs) : undefined;
+          spec = { file: "docker", args: runArgs(agent, name, dir, cliArgs, envFile, hub.snap.config.project.hqPort, gitEnv, secrets, command), envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }
@@ -216,6 +235,12 @@ export class Sessions {
     } catch (err) {
       fail(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /** True when as many agents run (or start) across the loaded projects as this machine allows. */
+  atCap(): boolean {
+    const hubs = liveHubs().includes(this.hub) ? liveHubs() : [...liveHubs(), this.hub];
+    return runningAgents(hubs) >= maxAgents();
   }
 
   async stop(id: string) {
@@ -419,7 +444,7 @@ export class Sessions {
   /** True when nothing on the agent's screen is waiting for an answer (no dialog, no trust prompt, not mid-turn). */
   async promptReady(agentId: string): Promise<boolean> {
     const screen = await this.backend.screenText(this.name(agentId), 14);
-    return !!screen && !DIALOG.test(screen) && !TRUST.test(screen) && !BUSY.test(screen);
+    return canType(screen);
   }
 
   async pressEnter(agentId: string): Promise<boolean> {
@@ -497,9 +522,12 @@ export class Sessions {
             this.onSessionReattached(agent.id);
           }
           if (agent.cli === "codex") await this.watchCodexScreen(agent.id, name);
-          if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name, !agent.workspacePath);
-          await this.reconcileFromScreen(agent.id, agent.cli, name);
-          if (this.limitTick % 5 === 0) await this.watchLimits(agent.id, name);
+          if (agent.cli === "agy") await this.watchAgyScreen(agent.id, name);
+          // A stream agent's screen is its runner's log, not a CLI: its state comes from events (server/streamEngine.ts).
+          if (!isStream(agent)) {
+            await this.reconcileFromScreen(agent.id, agent.cli, name);
+            if (this.limitTick % 5 === 0) await this.watchLimits(agent.id, name);
+          }
         } else if (st.session.state === "running") {
           this.detach(agent.id);
           this.closeShell(agent.id);
@@ -547,7 +575,8 @@ export class Sessions {
       }
       return;
     }
-    if (/Ask Codex to do anything/i.test(screen) && !DIALOG.test(screen) && !BUSY.test(screen)) {
+    const seen = readScreen(screen);
+    if (/Ask Codex to do anything/i.test(screen) && !seen.dialog && !seen.busy) {
       this.onSessionReattached(agentId); // its prompt is ready for typed messages
       if (
         st.state === "needs-input" ||
@@ -562,17 +591,13 @@ export class Sessions {
 
   /**
    * Antigravity (`agy`) asks to trust a newly cloned folder on first run and does not emit SessionStart.
-   * For HQ-managed clones (`~/.arima/<slug>/<id>`), auto-confirm the folder trust prompt so agents start hands-free.
+   * The owner answers the folder trust prompt themself, even for HQ-managed clones; we only flag it.
    */
-  private async watchAgyScreen(agentId: string, name: string, managedWorkspace: boolean) {
+  private async watchAgyScreen(agentId: string, name: string) {
     const st = this.hub.status(agentId);
     if (!st) return;
     const screen = await this.backend.screenText(name, 18);
     if (/Do you trust the contents of this project\?/i.test(screen) && /Yes, I trust this folder/i.test(screen)) {
-      if (managedWorkspace) {
-        await this.backend.enter(name);
-        return;
-      }
       const TRUST_NOTE = "Asking: approve Antigravity's workspace trust prompt in the terminal";
       if (st.note !== TRUST_NOTE) {
         this.hub.setStatus(agentId, { state: "needs-input", note: TRUST_NOTE });
@@ -580,7 +605,7 @@ export class Sessions {
       }
       return;
     }
-    if (/\? for shortcuts/i.test(screen) && !BUSY.test(screen)) {
+    if (/\? for shortcuts/i.test(screen) && !readScreen(screen).busy) {
       this.onSessionReattached(agentId);
       if (st.note === "Sandbox running" || st.note === "Running locally" || st.note === "Reattached" || st.note?.includes("Antigravity's workspace"))
         this.hub.setStatus(agentId, { state: "idle", note: "Ready" });
@@ -600,20 +625,19 @@ export class Sessions {
     if (quietMs < SCREEN_QUIET_MS) return;
     const screen = await this.backend.screenText(name, 10);
     if (!screen) return;
-    const busy = BUSY.test(screen);
-    const dialog = DIALOG.test(screen);
+    const { busy, dialog, ready, noLogin } = readScreen(screen);
     const set = (state: "idle" | "working" | "needs-input", note: string) => {
       if (process.env.HQ_DEBUG) log.info(`screen ${agentId}: ${st.state} → ${state} (${note})`);
       this.hub.setStatus(agentId, { state, note });
     };
 
-    if (NO_LOGIN.test(screen)) return st.note === LOGIN_NOTE ? undefined : set("needs-input", LOGIN_NOTE);
+    if (noLogin) return st.note === LOGIN_NOTE ? undefined : set("needs-input", LOGIN_NOTE);
     if (st.state === "needs-input") {
       if (dialog || st.note?.includes("Codex's folder")) return; // still waiting (Codex trust is watched separately)
       this.idleScreens.delete(agentId);
       if (busy) return set("working", "Continuing after your answer");
       // Idle only on a positive sign: the normal input footer is back.
-      if (PROMPT_READY.test(screen)) set("idle", "Waiting for you");
+      if (ready) set("idle", "Waiting for you");
       return;
     }
     if (dialog) return set("needs-input", "Asking: answer the question in the terminal");
@@ -631,7 +655,7 @@ export class Sessions {
     }
     this.idleScreens.delete(agentId);
     // An idle agent's prompt is on screen, so typed messages will land (e.g. HQ missed SessionStart).
-    if (st.state === "idle" && !busy && PROMPT_READY.test(screen)) this.onSessionReattached(agentId);
+    if (st.state === "idle" && !busy && ready) this.onSessionReattached(agentId);
   }
 
   // ------------------------------------------------------------ setup helper
