@@ -3,6 +3,7 @@
 // verifier's evidence and its history. The board card stays small; this is where the detail lives.
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Gate } from "../../data/model";
 import { SCORERS, type TaskScore } from "../../data/scorers";
 import { benchmarkKind } from "../../data/suite";
@@ -290,7 +291,8 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
   const failed = task.scores?.filter((s) => !s.pass).length ?? 0;
   const template = snap.config.template;
 
-  return (
+  // On document.body: inside the Board page it would sit under the deck header (the page is its own stacking context).
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={`${task.id} ${task.title}`}>
       <button className="absolute inset-0 cursor-default bg-black/45" aria-label="Close" onClick={onClose} tabIndex={-1} />
       <div ref={panel} tabIndex={-1} className="hud-drawer relative flex h-full w-full max-w-[600px] flex-col border-l border-[var(--border-hairline)] outline-none">
@@ -395,6 +397,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

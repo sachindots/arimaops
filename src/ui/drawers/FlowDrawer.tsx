@@ -2,13 +2,14 @@
 // and the tasks in it now. Click a stage to edit it in a slide-over; drag stages to reorder. Edited on desktop and
 // tablet; phones and viewers only look.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { APPROVAL_REASONS, GATE_KINDS, templateErrors, type Gate, type GateKind, type Stage, type TeamTemplate } from "../../data/model";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Icon } from "../deck/Icon";
 import { Dot } from "../kit";
 import { DrawerHeader, PageTitle } from "./Drawer";
+import { SlideOver } from "./SlideOver";
 import { gateText } from "./TaskSheet";
 
 const GATE_NAME: Record<GateKind, string> = {
@@ -245,7 +246,7 @@ export function FlowDrawer() {
         </ol>
         {canEdit && stages.length > 1 && <p className="mt-4 text-[12px] text-muted">Drag a stage to reorder it, or click it to edit. Save to apply.</p>}
       </div>
-      {cur && <StageEditor title={`Stage ${curIndex + 1} · ${cur.name}`} onClose={() => setSelected(null)}><>
+      {cur && <SlideOver title={`Stage ${curIndex + 1} · ${cur.name}`} onClose={() => setSelected(null)} width={420}><>
             <div className="flex items-center gap-2">
               <span className="font-display text-[13px] text-muted">Stage {curIndex + 1}</span>
               {canEdit && (
@@ -364,32 +365,7 @@ export function FlowDrawer() {
             <p className="m-0 text-[12px] text-muted">
               {tasksIn(cur.id)} open task{tasksIn(cur.id) === 1 ? "" : "s"} here. Changes reach running agents at their next start.
             </p>
-</></StageEditor>}
+</></SlideOver>}
     </>
-  );
-}
-
-/** The right slide-over for one stage; Esc or the backdrop closes it. */
-function StageEditor({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), onClose());
-    window.addEventListener("keydown", onKey, true);
-    panel.current?.focus();
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={title}>
-      <button className="absolute inset-0 cursor-default bg-black/35" aria-label="Close" tabIndex={-1} onClick={onClose} />
-      <div ref={panel} tabIndex={-1} className="hud-drawer scroll-thin relative flex h-full w-full max-w-[420px] flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] p-5 outline-none">
-        <div className="flex items-center gap-2">
-          <h2 className="m-0 min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{title}</h2>
-          <button type="button" className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink" aria-label="Close" onClick={onClose}>
-            <Icon name="close" size={18} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
