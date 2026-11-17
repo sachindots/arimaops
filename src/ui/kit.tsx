@@ -39,13 +39,12 @@ export function StateChip({ state, session, blink = true }: { state: AgentState;
 export function ReviewChip({ review, merged }: { review: ReviewState; merged?: boolean }) {
   const st = merged ? { label: "Merged", color: "#2ea043" } : reviewStyle[review];
   return (
-    <span className="chip chip-dot" style={{ ["--c" as string]: st.color, color: merged ? "#fff" : undefined }}>
+    <span className="chip chip-dot" style={{ ["--c" as string]: st.color }}>
       {st.label}
     </span>
   );
 }
 
-/** ArimaOps' mark: rounded-lg AO badge matching the command deck design. */
 /** The ArimaOps lion in the project accent. */
 export function Logo({ size = 32 }: { size?: number }) {
   return <Lion size={size} className="text-accent" />;
