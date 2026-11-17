@@ -113,7 +113,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId }: { initialBoardI
             const oldest = c.id === "done" ? undefined : list.map((t) => t.movedAt).filter((x): x is string => !!x).sort()[0];
             return (
               <h4 key={c.id} className="m-0 flex min-w-0 snap-start items-center gap-2 border-b-2 pb-1.5 font-display text-[14px] font-semibold text-ink" style={{ borderColor: c.color }}>
-                <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color, boxShadow: `0 0 8px ${c.color}` }} />
+                <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />
                 <span className="truncate">{c.label}</span>
                 <span className="text-[13px] font-normal text-muted">{list.length}</span>
                 <span className="flex-1" />

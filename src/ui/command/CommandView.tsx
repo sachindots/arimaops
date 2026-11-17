@@ -253,8 +253,7 @@ function Roster({
           return (
             <li key={r.key}>
               <button
-                className={`hud-scan flex w-full flex-col gap-1.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${on ? "hud-corners border-accent/50 bg-accent/[0.08]" : urgent ? "border-amber/50 bg-amber/[0.06] hover:bg-amber/[0.1]" : "border-white/[0.06] hover:border-white/20 hover:bg-white/[0.03]"}`}
-                style={{ ["--corner" as string]: color, boxShadow: urgent ? `0 0 16px ${color}22` : undefined }}
+                className={`flex w-full flex-col gap-1.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${on ? "border-accent bg-accent/[0.08]" : urgent ? "border-amber/60 bg-amber/[0.06] hover:bg-amber/[0.1]" : "border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:bg-cream-2"}`}
                 aria-current={on ? "true" : undefined}
                 onClick={() => onFocus(r.key)}
                 title={i < 9 ? `Focus (${i + 1})` : "Focus"}
@@ -262,7 +261,7 @@ function Roster({
                 <span className="flex items-center gap-2">
                   <span className="relative shrink-0">
                     <Portrait name={r.agent.name} color={r.agent.color} lead={r.agent.isLead} size={28} />
-                    <i className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-navy ${r.mode === "working" || urgent ? "animate-pulse" : ""}`} style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+                    <i className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-navy ${r.mode === "working" || urgent ? "animate-pulse" : ""}`} style={{ background: color }} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
@@ -319,8 +318,8 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
 
   return (
     <section
-      className="hud-glass hud-corners flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl"
-      style={{ ["--corner" as string]: color, borderColor: urgent ? color : undefined, boxShadow: urgent ? `0 0 0 1px ${color}, 0 0 28px ${color}33` : undefined }}
+      className="hud-glass flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl"
+      style={{ borderColor: urgent ? color : undefined }}
       aria-label={`${r.agent.name}, ${r.mode}`}
     >
       <header className="flex flex-wrap items-center gap-3 border-b border-white/[0.07] px-4 py-3">

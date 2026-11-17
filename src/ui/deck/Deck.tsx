@@ -26,13 +26,12 @@ import { StageRibbon } from "./StageRibbon";
 
 type Page = "home" | "agents" | "chat" | "goals" | "usage" | "more";
 
-// Board, Inbox, PRs, Findings and Flow are pages kept in the drawer state, so ⌘K and links land on them too.
 const PAGE_OF: Partial<Record<string, RailId>> = { boards: "board", actions: "inbox", prs: "prs", findings: "findings", flow: "flow" };
 
 /**
- * The command deck (desktop, 1000 px and up; docs/design/command-deck.md): header, icon rail, and either the home
- * screen (the orb with the team in orbit and the stage ribbon) or a page. An agent, a terminal, an environment or
- * the projects open in the slide-over on the right. Colours come from the project's theme (data-theme on <html>).
+ * The Spatial Multi-Agent Command Deck (desktop, 1000 px and up):
+ * Top header, micro icon rail, dot-matrix spatial canvas with the 3D particle sphere and orbiting agent pods,
+ * streamlined bottom stage ribbon, and a docked right slide-over drawer.
  */
 export function Deck() {
   const snap = useOffice((s) => s.snap);
@@ -43,7 +42,6 @@ export function Deck() {
   const [page, setPage] = useState<Page>("home");
   const [thread, setThread] = useState<string | null>(null);
 
-  // Typing must never land in a panel that is closing: when the panel changes, the old one gives up focus.
   const panelKey = drawer ? (drawer.kind === "agent" ? `agent:${drawer.id}` : drawer.kind) : null;
   useEffect(() => {
     const el = document.activeElement;
@@ -72,7 +70,6 @@ export function Deck() {
   };
 
   const activeGoals = (snap.goals ?? []).filter((g) => g.status === "active");
-  // Chat is a list beside the open thread; it opens on the lead until you pick someone (or the Team thread).
   const chatWith = thread ?? snap.config.team.find((a) => a.isLead)?.id ?? snap.config.team[0]?.id ?? null;
   const main =
     drawer?.kind === "boards" ? <BoardsDrawer key={drawer.stageId ?? "all"} initialBoardId={drawer.boardId} initialStageId={drawer.stageId} />
@@ -82,7 +79,7 @@ export function Deck() {
     : drawer?.kind === "flow" ? <FlowDrawer />
     : page === "chat" ? (
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-[320px] shrink-0 flex-col border-r border-white/[0.08]">
+        <div className="flex w-[320px] shrink-0 flex-col border-r border-[var(--border-hairline)]">
           <ChatList onOpen={setThread} selected={chatWith} />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">{chatWith && <Thread key={chatWith} agentId={chatWith} />}</div>
@@ -104,19 +101,18 @@ export function Deck() {
   const sideKey = drawer ? (drawer.kind === "agent" ? `agent:${drawer.id}` : drawer.kind === "env" ? `env:${drawer.name}` : drawer.kind) : null;
   const current: RailId = drawerPage ?? page;
 
-  // The Grid is its own full screen; an agent (or a terminal, an environment, projects) opens over it, Esc returns.
   const grid = view === "command" && !drawerPage;
   const slideOver = (
     <AnimatePresence mode="wait">
       {side && sideKey && (
         <motion.aside
           key={sideKey}
-          initial={reduce ? false : { opacity: 0, x: 32 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={reduce ? { pointerEvents: "none" } : { opacity: 0, x: 24, pointerEvents: "none" }}
-          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-          className={`fixed bottom-3 right-3 z-30 flex flex-col overflow-hidden rounded-2xl hud-drawer ${maximized ? "" : "w-[min(calc(100vw-120px),760px)]"}`}
-          style={{ top: grid ? 12 : DECK.header + 12, left: maximized ? (grid ? 12 : DECK.rail + 12) : undefined }}
+          initial={reduce ? false : { x: "100%" }}
+          animate={{ x: 0 }}
+          exit={reduce ? { pointerEvents: "none" } : { x: "100%", pointerEvents: "none" }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className={`hud-drawer fixed bottom-0 right-0 z-50 flex flex-col overflow-hidden border-l ${maximized ? "" : "w-[min(calc(100vw-80px),680px)]"}`}
+          style={{ top: grid ? 0 : DECK.header, left: maximized ? (grid ? 0 : DECK.rail) : undefined }}
           aria-label="Side panel"
         >
           {side}
@@ -135,45 +131,50 @@ export function Deck() {
   return (
     <div className="deck fixed inset-0 overflow-hidden" aria-label="ArimaOps">
       {home && <div className="deck-grid pointer-events-none fixed inset-0" aria-hidden="true" />}
-      {home && <ParticleCore workingCount={workingCount} attentionCount={attention} palette={theme.orb} />}
-      {home && activeGoals.length > 0 && (
+
+      {/* Top-left context subtitle + active goals pills on Home */}
+      {home && (
         <div
-          className="no-scrollbar fixed z-10 flex items-center gap-2 overflow-x-auto px-4"
-          style={{ top: DECK.header + 10, left: DECK.rail, right: 0 }}
-          aria-label="Active goals"
+          className="pointer-events-none fixed z-20 flex flex-wrap items-center gap-2 px-6"
+          style={{ top: DECK.header + 16, left: DECK.rail }}
         >
+          <span className="h-2 w-2 rounded-full" style={{ background: "var(--accent)" }} />
+          <span className="text-[12px] font-semibold text-ink">
+            {theme.security ? "Offensive Security Operation" : "Multi-Agent Swarm Orbit"}
+          </span>
+          <span className="text-muted/40">/</span>
+          <span className="text-[12px] text-muted">
+            {workingCount} active agent{workingCount === 1 ? "" : "s"}
+            {attention ? ` · ${attention} pending approval${attention === 1 ? "" : "s"}` : ""}
+            {activeTasks ? ` · ${activeTasks} task${activeTasks === 1 ? "" : "s"} in flight` : ""}
+          </span>
           {activeGoals.map((g) => (
             <button
               key={g.id}
               type="button"
               onClick={() => go("goals")}
-              className="deck-pill flex shrink-0 items-center gap-2 rounded-full px-3 py-1 text-[12px]"
+              className="deck-pill pointer-events-auto flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px]"
               title={`${g.title}: ${g.done} of ${g.total} tasks done · $${g.usd.toFixed(2)} spent`}
             >
               <span className="font-term text-muted">{g.id}</span>
-              <span className="max-w-[200px] truncate text-ink">{g.title}</span>
-              <span className="font-display text-accent">
+              <span className="max-w-[160px] truncate font-medium text-ink">{g.title}</span>
+              <span className="font-semibold text-accent">
                 {g.done}/{g.total}
               </span>
-              {g.current && <span className="text-muted">· {g.current}</span>}
             </button>
           ))}
         </div>
       )}
+
+      {home && <ParticleCore workingCount={workingCount} attentionCount={attention} palette={theme.orb} />}
       {home && (
         <AgentOrbit
           team={team}
           tasks={snap.tasks}
           activeAgentId={drawer?.kind === "agent" ? drawer.id : null}
           redTeamProject={theme.id !== "build"}
-          lift={!snap.welcome && !snap.config.template} // clear of the read-only note
-          caption={
-            team.length
-              ? `${snap.config.project.name} · ${workingCount} working${attention ? ` · ${attention} need${attention === 1 ? "s" : ""} you` : ""}${activeTasks ? ` · ${activeTasks} task${activeTasks === 1 ? "" : "s"} in flight` : ""}`
-              : snap.config.template
-                ? "No agents yet. Add a team in Settings → Team."
-                : "No agents in this project."
-          }
+          lift={!snap.welcome && !snap.config.template}
+          caption={`${workingCount} working${attention ? ` · ${attention} need you` : ""}`}
         />
       )}
       {home && <StageRibbon snap={snap} theme={theme} />}
@@ -185,13 +186,13 @@ export function Deck() {
         {!home && (
           <motion.main
             key={current}
-            initial={reduce ? false : { opacity: 0, y: 8 }}
+            initial={reduce ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed bottom-3 right-3 z-10 flex min-w-0"
-            style={{ top: DECK.header + 12, left: DECK.rail + 12 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed bottom-0 right-0 z-10 flex min-w-0 bg-[var(--color-grass)]"
+            style={{ top: DECK.header, left: DECK.rail }}
           >
-            <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl hud-drawer">{main}</section>
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface-card)]">{main}</section>
           </motion.main>
         )}
       </AnimatePresence>

@@ -360,7 +360,7 @@ export function AgentList() {
                 <button className="flex min-w-0 items-center gap-3 text-left" onClick={() => ui.openAgent(a.id)} title={`Open ${a.name}`}>
                   <span className="relative shrink-0">
                     <Portrait name={a.name} color={a.color} lead={a.isLead} size={42} />
-                    <i className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-navy ${mode === "working" || mode === "needs-input" ? "animate-pulse" : ""}`} style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                    <i className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-navy ${mode === "working" || mode === "needs-input" ? "animate-pulse" : ""}`} style={{ background: color }} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">

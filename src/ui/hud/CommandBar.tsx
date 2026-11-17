@@ -104,9 +104,9 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
 
 
   return (
-    <div className="pointer-events-auto relative flex flex-col items-center gap-1.5">
-      <div className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 transition-colors hud-glass border-accent/35 focus-within:border-accent`}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-muted" aria-hidden="true">
+    <div className="pointer-events-auto relative flex flex-col items-center">
+      <div className="flex w-full items-center gap-2 rounded-full border border-[var(--border-hairline)] bg-cream px-3 py-1 transition-colors focus-within:border-[var(--accent)]">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-muted" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="m20 20-3.5-3.5" />
         </svg>
@@ -134,16 +134,16 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
           }}
           placeholder="Command or jump…"
           aria-label="Command bar"
-          className="w-[180px] bg-transparent text-[12px] text-ink placeholder-muted outline-none lg:w-[250px] xl:w-[300px]"
+          className="w-full min-w-0 bg-transparent text-[12px] text-ink placeholder-muted outline-none"
         />
-        <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-term text-[11px] text-muted">⌘K</kbd>
+        <kbd className="kbd">⌘K</kbd>
       </div>
 
       {/* Command Palette Dropdown */}
       {open && (
         <>
           <div className="fixed inset-0 -z-10" onClick={() => setOpen(false)} />
-          <div className={`scroll-thin mt-1 max-h-[320px] w-[min(92vw,440px)] overflow-y-auto rounded-xl p-1.5 hud-drawer`}>
+          <div className="deck-menu scroll-thin absolute top-[calc(100%+6px)] z-50 max-h-[320px] w-[min(92vw,420px)] overflow-y-auto rounded-xl p-1.5">
             {filtered.length === 0 ? (
               <div className="px-3 py-4 text-center text-[12px] text-muted">No matching command or agent</div>
             ) : (
@@ -154,16 +154,14 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
                   onMouseEnter={() => setCursor(idx)}
                   onClick={() => runItem(item)}
                   className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                    idx === cursor ? "bg-white/[0.08] text-white" : "text-ink hover:bg-white/[0.04]"
+                    idx === cursor ? "bg-cream-2 text-ink" : "text-ink hover:bg-cream-2/60"
                   }`}
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-[13px] font-medium">{item.label}</div>
+                    <div className="truncate text-[13px] font-semibold">{item.label}</div>
                     <div className="truncate text-[12px] text-muted">{item.sub}</div>
                   </div>
-                  <span className="shrink-0 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-term text-[11px] text-muted">
-                    {item.tag}
-                  </span>
+                  <span className="kbd shrink-0">{item.tag}</span>
                 </button>
               ))
             )}

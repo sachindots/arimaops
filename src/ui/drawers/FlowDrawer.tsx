@@ -36,8 +36,8 @@ function StageNode({ data }: NodeProps<Node<StageData>>) {
   const busy = tasks.filter((t) => t.status === "in-progress" || t.status === "in-review").length;
   return (
     <div
-      className="hud-glass hud-corners w-[250px] rounded-2xl px-3.5 py-3 text-left transition-shadow"
-      style={selected ? { ["--corner" as string]: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 70%, transparent)", boxShadow: "0 0 0 1px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 28%, transparent)" } : undefined}
+      className="hud-glass w-[250px] rounded-2xl px-3.5 py-3 text-left transition-shadow"
+      style={selected ? { borderColor: "var(--accent)", boxShadow: "0 0 0 1px var(--accent)" } : undefined}
     >
       <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
       <Handle id="up" type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />

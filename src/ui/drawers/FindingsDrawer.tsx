@@ -41,13 +41,13 @@ export function FindingsDrawer() {
               return (
                 <button
                   key={sev}
-                  className={`hud-glass hud-scan flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 text-left transition-colors ${on ? "hud-corners bg-white/[0.06]" : "hover:border-white/25"}`}
-                  style={{ ["--corner" as string]: SEVERITY_COLOR[sev], borderColor: on ? SEVERITY_COLOR[sev] : undefined, boxShadow: `inset 0 3px 0 ${SEVERITY_COLOR[sev]}${n ? `, 0 0 18px ${SEVERITY_COLOR[sev]}22` : ""}` }}
+                  className={`hud-glass flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 text-left transition-colors ${on ? "bg-cream-2" : "hover:border-[var(--border-strong)]"}`}
+                  style={{ borderColor: on ? SEVERITY_COLOR[sev] : undefined, boxShadow: `inset 0 3px 0 ${SEVERITY_COLOR[sev]}` }}
                   aria-pressed={on}
                   onClick={() => setOnly(on ? null : sev)}
                   title={on ? "Show every severity" : `Show only ${sev}`}
                 >
-                  <b className="font-display text-[28px] font-semibold leading-none" style={{ color: n ? SEVERITY_COLOR[sev] : undefined, textShadow: n ? `0 0 12px ${SEVERITY_COLOR[sev]}66` : undefined }}>
+                  <b className="font-display text-[28px] font-semibold leading-none" style={{ color: n ? SEVERITY_COLOR[sev] : undefined }}>
                     {n}
                   </b>
                   <span className="text-[12px] capitalize text-muted">{sev}</span>

@@ -115,33 +115,33 @@ export function ParticleCore({ workingCount, attentionCount, palette, compact = 
 
       // Ambient core glow
       const light = document.documentElement.dataset.scheme === "light";
-      const sec = light && cur.palette.secondary[0] > 200 ? ([30, 41, 59] as const) : cur.palette.secondary;
-      const glow = ctx.createRadialGradient(cx, cy, R * 0.08, cx, cy, R * 1.45);
+      const sec = cur.palette.secondary;
+      const glow = ctx.createRadialGradient(cx, cy, R * 0.05, cx, cy, R * 1.35);
       const ease = (from: number[], to: readonly number[]) => from.forEach((v, i) => (from[i] = v + (to[i] - v) * (reduced ? 1 : 0.08)));
       ease(shown.current.p, cur.palette.primary);
       ease(shown.current.s, sec);
       const [pR, pG, pB] = shown.current.p.map(Math.round);
       const [sR, sG, sB] = shown.current.s.map(Math.round);
 
-      glow.addColorStop(0, `rgba(${pR}, ${pG}, ${pB}, 0.18)`);
-      glow.addColorStop(0.55, `rgba(${sR}, ${sG}, ${sB}, 0.06)`);
+      glow.addColorStop(0, `rgba(${pR}, ${pG}, ${pB}, ${light ? 0.28 : 0.22})`);
+      glow.addColorStop(0.45, `rgba(${Math.round(pR * 0.65)}, ${Math.round(pG * 0.65)}, ${Math.round(pB * 0.75)}, ${light ? 0.14 : 0.1})`);
       glow.addColorStop(1, "rgba(0, 0, 0, 0)");
       ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(cx, cy, R * 1.45, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R * 1.35, 0, Math.PI * 2);
       ctx.fill();
 
       // Subtle concentric orbital HUD rings
       ctx.save();
       ctx.translate(cx, cy);
       for (let ring = 0; ring < 3; ring++) {
-        const rr = R * (1.28 + ring * 0.22);
-        const tilt = 0.28 + ring * 0.16 + smoothY * 0.06;
+        const rr = R * (1.24 + ring * 0.2);
+        const tilt = 0.34 + ring * 0.12 + smoothY * 0.05;
         const rot = elapsed * (ring % 2 === 0 ? 0.12 : -0.09) + ring * 0.8;
         ctx.save();
         ctx.rotate(rot);
         ctx.scale(1, tilt);
-        ctx.strokeStyle = `rgba(${pR}, ${pG}, ${pB}, ${0.14 - ring * 0.03})`;
+        ctx.strokeStyle = `rgba(${pR}, ${pG}, ${pB}, ${(light ? 0.28 : 0.18) - ring * 0.04})`;
         ctx.lineWidth = 1;
         ctx.setLineDash(ring === 2 ? [4, 8] : []);
         ctx.beginPath();
@@ -151,7 +151,7 @@ export function ParticleCore({ workingCount, attentionCount, palette, compact = 
       }
       ctx.restore();
 
-      // 3D particle projection (additive on dark, alpha-blended on light)
+      // 3D particle projection
       ctx.save();
       ctx.globalCompositeOperation = light ? "source-over" : "lighter";
       const tiltX = 0.25 + smoothY * 0.22;
@@ -179,11 +179,11 @@ export function ParticleCore({ workingCount, attentionCount, palette, compact = 
         const sy = cy + y1 * scale;
         const depth = Math.max(0.15, Math.min(1, (z1 + R * 1.4) / (R * 2.8)));
 
-        const useSecondary = pt.layer === 0 || (pt.layer === 1 && i % 5 === 0);
-        const cr = useSecondary ? sR : pR;
-        const cg = useSecondary ? sG : pG;
-        const cb = useSecondary ? sB : pB;
-        const alpha = (0.18 + depth * 0.68) * (pt.layer === 2 ? 0.55 : 0.95);
+        const useSecondary = i % 6 === 0;
+        const cr = useSecondary ? sR : light ? Math.round(pR * 0.78) : pR;
+        const cg = useSecondary ? sG : light ? Math.round(pG * 0.72) : pG;
+        const cb = useSecondary ? sB : light ? Math.round(pB * 0.88) : pB;
+        const alpha = (0.24 + depth * 0.68) * (pt.layer === 2 ? 0.6 : 0.95);
 
         ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alpha.toFixed(3)})`;
         ctx.beginPath();

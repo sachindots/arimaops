@@ -44,28 +44,29 @@ export function ReviewChip({ review, merged }: { review: ReviewState; merged?: b
   );
 }
 
-/** ArimaOps' mark: an indigo tile with the A. */
-export function Logo({ size = 28 }: { size?: number }) {
+/** ArimaOps' mark: rounded-lg AO badge matching the command deck design. */
+export function Logo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" className="shrink-0" aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#6366f1" />
-      <path d="M16 7 L24.5 25 H20.6 L18.9 21 H13.1 L11.4 25 H7.5 Z M14.4 18 H17.6 L16 14.2 Z" fill="#fff" />
-    </svg>
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-lg bg-slate-900 font-bold text-white shadow-xs transition-colors [[data-theme=redteam]_&]:bg-red-600"
+      style={{ width: size, height: size, fontSize: Math.max(11, Math.round(size * 0.38)) }}
+      aria-hidden
+    >
+      AO
+    </span>
   );
 }
 
-/** An agent's avatar: its colour, its initial, and a ring for the lead. */
-export function Portrait({ color, lead, size = 40, name }: { color: string; lead: boolean; size?: number; name?: string }) {
+/** An agent's avatar: crisp rounded square badge with its initial. */
+export function Portrait({ color, lead, size = 32, name }: { color: string; lead: boolean; size?: number; name?: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold"
+      className="inline-flex shrink-0 items-center justify-center rounded-md font-bold text-white"
       style={{
         width: size,
         height: size,
-        fontSize: Math.max(11, Math.round(size * 0.42)),
-        background: `color-mix(in srgb, ${color} 22%, #0a101d)`,
-        color: `color-mix(in srgb, ${color} 70%, white)`,
-        boxShadow: lead ? `0 0 0 2px #050914, 0 0 0 3px ${color}` : `inset 0 0 0 1px color-mix(in srgb, ${color} 45%, transparent)`,
+        fontSize: Math.max(10, Math.round(size * 0.42)),
+        background: lead ? "#0f172a" : color,
       }}
       title={lead ? "Lead" : undefined}
       aria-hidden
@@ -191,7 +192,7 @@ export function Sparkline({ data, color = "#3b82f6", width = 96, height = 24, la
         </linearGradient>
       </defs>
       {pts.length > 1 && <path d={`${line} L${width},${height} L0,${height} Z`} fill={`url(#${id})`} />}
-      {pts.length > 1 && <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 3px ${color})` }} />}
+      {pts.length > 1 && <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />}
     </svg>
   );
 }

@@ -45,8 +45,10 @@ interface UiState {
   layoutChoice: LayoutChoice;
   /** Desktop: the pixel office, or the command center (every agent of every project, tiled). */
   view: View;
-  /** Surface appearance: pure-black dark mode (default) or crisp white light mode. */
+  /** Surface appearance: clean light slate (default for software) or dark obsidian (default for security). */
   scheme: Scheme;
+  /** True when the user explicitly toggled light/dark mode in this browser. */
+  schemePinned: boolean;
   /** A pop-out window showing one thing full-window: an agent (`?solo=agent&agent=<id>`) or the command center. */
   solo: Solo | null;
 }
@@ -63,13 +65,17 @@ function savedView(): View {
     return "office";
   }
 }
-function savedScheme(): Scheme {
+function savedScheme(): { scheme: Scheme; pinned: boolean } {
   try {
-    const s = readPref(SCHEME_PREF) === "light" ? "light" : "dark";
-    if (typeof document !== "undefined") document.documentElement.dataset.scheme = s;
-    return s;
+    const raw = readPref(SCHEME_PREF);
+    if (raw === "light" || raw === "dark") {
+      if (typeof document !== "undefined") document.documentElement.dataset.scheme = raw;
+      return { scheme: raw, pinned: true };
+    }
+    if (typeof document !== "undefined") document.documentElement.dataset.scheme = "light";
+    return { scheme: "light", pinned: false };
   } catch {
-    return "dark";
+    return { scheme: "light", pinned: false };
   }
 }
 function soloFromUrl(): Solo | null {
@@ -127,7 +133,8 @@ export const useUi = create<UiState>(() => ({
   compact: isCompact(savedLayout()),
   layoutChoice: savedLayout(),
   view: soloFromUrl()?.kind === "command" ? "command" : savedView(),
-  scheme: savedScheme(),
+  scheme: savedScheme().scheme,
+  schemePinned: savedScheme().pinned,
   solo: soloFromUrl(),
 }));
 
@@ -212,15 +219,18 @@ export const ui = {
     }
     useUi.setState({ view });
   },
-  toggleScheme() {
-    const next: Scheme = useUi.getState().scheme === "light" ? "dark" : "light";
+  setScheme(next: Scheme, pinned = true) {
     document.documentElement.dataset.scheme = next;
     try {
-      writePref(SCHEME_PREF, next);
+      if (pinned) writePref(SCHEME_PREF, next);
     } catch {
       /* private window */
     }
-    useUi.setState({ scheme: next });
+    useUi.setState({ scheme: next, schemePinned: pinned });
+  },
+  toggleScheme() {
+    const next: Scheme = useUi.getState().scheme === "light" ? "dark" : "light";
+    ui.setScheme(next, true);
   },
   /** Opens an agent in its own window (drag it to another monitor). */
   popOutAgent(project: string, agentId: string) {

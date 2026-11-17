@@ -14,7 +14,7 @@ const TERM_MS = 30;
 
 
 export function createMockSource(): OfficeDataSource {
-  let presetId = defaultPresetId;
+  let presetId = (typeof location !== "undefined" && new URL(location.href).searchParams.get("preset")) || defaultPresetId;
   let world = new World(findPreset(presetId));
   let sim = new Simulation(world);
   let listener: ((e: OfficeEvent) => void) | null = null;

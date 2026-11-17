@@ -11,62 +11,71 @@ interface RailItem {
   id: RailId;
   label: string;
   icon: string;
-  /** What the tooltip says it opens. */
   hint: string;
 }
 
 const ITEMS: RailItem[] = [
-  { id: "home", label: "Home", icon: "home", hint: "The team around the core" },
-  { id: "board", label: "Board", icon: "view_kanban", hint: "Boards and tasks" },
-  { id: "inbox", label: "Inbox", icon: "inbox", hint: "Everything waiting on you" },
-  { id: "agents", label: "Agents", icon: "groups", hint: "Every agent and what it's doing" },
-  { id: "chat", label: "Chat", icon: "forum", hint: "Talk to an agent or the whole team" },
-  { id: "goals", label: "Goals", icon: "flag", hint: "What the work adds up to" },
-  { id: "flow", label: "Flow", icon: "account_tree", hint: "Tasks by stage and gate" },
-  { id: "prs", label: "PRs", icon: "merge", hint: "Pull requests and reviews" },
-  { id: "findings", label: "Findings", icon: "shield", hint: "Security findings and the report" },
-  { id: "usage", label: "Usage", icon: "monitoring", hint: "Tokens, spend and budgets" },
-  { id: "grid", label: "Grid", icon: "grid_view", hint: "Every terminal at once" },
-  { id: "more", label: "More", icon: "more_horiz", hint: "Environments, boards and the rest" },
+  { id: "home", label: "Home", icon: "explore", hint: "Spatial Orbit Home" },
+  { id: "board", label: "Board", icon: "view_kanban", hint: "Task Board" },
+  { id: "inbox", label: "Inbox", icon: "inbox", hint: "Inbox & Approvals" },
+  { id: "agents", label: "Agents", icon: "smart_toy", hint: "Agent Fleet" },
+  { id: "chat", label: "Chat", icon: "forum", hint: "Team Chat" },
+  { id: "goals", label: "Goals", icon: "flag", hint: "Project Goals & Outcomes" },
+  { id: "flow", label: "Flow", icon: "account_tree", hint: "Pipeline Flow" },
+  { id: "prs", label: "PRs", icon: "merge_type", hint: "Pull Requests" },
+  { id: "findings", label: "Findings", icon: "security", hint: "Security Findings" },
+  { id: "usage", label: "Usage", icon: "query_stats", hint: "Usage Stats & Budgets" },
+  { id: "grid", label: "Grid", icon: "grid_view", hint: "Multi-Project Command Grid" },
+  { id: "more", label: "More", icon: "more_horiz", hint: "Environments, Terminal & More" },
 ];
 
 /**
- * The icon rail down the left: each section with a visible label, a tooltip and a badge where something waits.
- * Software projects show PRs, security projects Findings. The user menu at the bottom holds Start all and Sign out.
+ * Micro navigation rail (w-14 = 56px): icon buttons (w-10 h-10 rounded-lg) with hover tooltips and an amber
+ * notification dot on Inbox when items wait. Bottom holds the compact operator menu.
  */
 export function DeckRail({ current, security, attention, onGo }: { current: RailId; security: boolean; attention: number; onGo: (id: RailId) => void }) {
   const items = ITEMS.filter((i) => (i.id === "prs" ? !security : i.id === "findings" ? security : true));
   return (
-    <nav className="deck-rail fixed bottom-0 left-0 z-20 flex flex-col items-center gap-0.5 border-r py-2" style={{ top: DECK.header, width: DECK.rail }} aria-label="Sections">
-      {items.map((n) => {
-        const on = current === n.id;
-        const badge = n.id === "inbox" && attention > 0 ? attention : 0;
-        return (
-          <button
-            key={n.id}
-            type="button"
-            className={`deck-rail-btn group relative flex w-[64px] flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] ${on ? "is-on" : ""}`}
-            aria-current={on ? "page" : undefined}
-            aria-label={badge ? `${n.label}, ${badge} waiting` : n.label}
-            onClick={() => onGo(n.id)}
-          >
-            <Icon name={n.icon} size={22} />
-            <span>{n.label}</span>
-            {badge > 0 && (
-              <span className="absolute right-1.5 top-0.5 min-w-[18px] rounded-full bg-amber px-1 text-center text-[11px] font-semibold leading-[18px] text-navy" aria-hidden="true">
-                {badge}
+    <aside
+      className="deck-rail fixed bottom-0 left-0 z-30 flex flex-col items-center justify-between border-r py-3"
+      style={{ top: DECK.header, width: DECK.rail }}
+      aria-label="Sections"
+    >
+      <nav className="flex w-full flex-col items-center gap-1 px-1.5">
+        {items.map((n) => {
+          const on = current === n.id;
+          const badge = n.id === "inbox" && attention > 0 ? attention : 0;
+          return (
+            <button
+              key={n.id}
+              type="button"
+              className={`deck-rail-btn group relative flex h-9 w-10 cursor-pointer items-center justify-center rounded-lg ${on ? "is-on" : ""}`}
+              aria-current={on ? "page" : undefined}
+              aria-label={badge ? `${n.label}, ${badge} waiting` : n.label}
+              onClick={() => onGo(n.id)}
+            >
+              <Icon name={n.icon} size={20} />
+              {badge > 0 && (
+                <span
+                  className="
+                    absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber
+                  "
+                  aria-hidden="true"
+                />
+              )}
+              <span
+                role="tooltip"
+                className="deck-tip pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-40 w-max max-w-[220px] -translate-y-1/2 rounded-lg px-2.5 py-1.5 text-left text-[12px] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                <b className="block text-ink">{n.label}</b>
+                <span className="text-muted">{n.hint}</span>
               </span>
-            )}
-            <span role="tooltip" className="deck-tip pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-40 w-max max-w-[220px] -translate-y-1/2 rounded-lg px-2.5 py-1.5 text-left text-[12px] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100">
-              <b className="block text-ink">{n.label}</b>
-              <span className="text-muted">{n.hint}</span>
-            </span>
-          </button>
-        );
-      })}
-      <div className="flex-1" />
+            </button>
+          );
+        })}
+      </nav>
       <UserMenu />
-    </nav>
+    </aside>
   );
 }
 
@@ -91,23 +100,24 @@ function UserMenu() {
       window.removeEventListener("keydown", close);
     };
   }, [open]);
-  const name = user?.name ?? (auth === "none" ? "Demo" : "You");
+  const name = user?.name ?? (auth === "none" ? "OP" : "You");
+  const initials = name.slice(0, 2).toUpperCase();
   return (
     <div ref={box} className="relative">
       <button
         type="button"
-        className="deck-avatar grid h-10 w-10 place-items-center rounded-full text-[14px] font-semibold"
+        className="deck-avatar relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${name}: menu`}
         onClick={() => setOpen(!open)}
       >
-        {name.slice(0, 1).toUpperCase()}
-        {stopped.length > 0 && !isViewer && <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber" aria-hidden="true" />}
+        {initials}
+        {stopped.length > 0 && !isViewer && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-amber" aria-hidden="true" />}
       </button>
       {open && (
         <div role="menu" className="deck-menu absolute bottom-0 left-[calc(100%+10px)] z-40 flex w-[220px] flex-col rounded-xl p-1.5 text-[13px]">
-          <div className="px-2.5 py-1.5 text-[12px] text-muted">{name}</div>
+          <div className="px-2.5 py-1.5 text-[12px] font-medium text-muted">{user?.name ?? "Operator"}</div>
           {!isViewer && (
             <button
               role="menuitem"

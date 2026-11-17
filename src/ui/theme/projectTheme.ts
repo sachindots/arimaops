@@ -4,6 +4,7 @@
 
 import { useEffect } from "react";
 import type { OfficeSnapshot } from "../../data/types";
+import { useUi } from "../../store/ui";
 import { projectMode } from "../hud/theme";
 
 export type ThemeId = "build" | "redteam" | "blueteam" | "purpleteam";
@@ -21,10 +22,10 @@ export interface Theme {
 }
 
 export const THEMES: Record<ThemeId, Theme> = {
-  build: { id: "build", label: "Software", pipeline: "Software delivery", orb: { primary: [59, 130, 246], secondary: [226, 232, 240] }, security: false },
-  redteam: { id: "redteam", label: "Red team", pipeline: "Red-team engagement", orb: { primary: [239, 68, 68], secondary: [226, 232, 240] }, security: true },
-  blueteam: { id: "blueteam", label: "Blue team", pipeline: "Detection and response", orb: { primary: [14, 165, 233], secondary: [226, 232, 240] }, security: true },
-  purpleteam: { id: "purpleteam", label: "Purple team", pipeline: "Attack and defence", orb: { primary: [168, 85, 247], secondary: [239, 68, 68] }, security: true },
+  build: { id: "build", label: "Software", pipeline: "Software Delivery Pipeline", orb: { primary: [0, 240, 255], secondary: [245, 158, 11] }, security: false },
+  redteam: { id: "redteam", label: "Red team", pipeline: "Red-Team Pipeline Stages", orb: { primary: [239, 68, 68], secondary: [245, 158, 11] }, security: true },
+  blueteam: { id: "blueteam", label: "Blue team", pipeline: "Detection & Response Pipeline", orb: { primary: [14, 165, 233], secondary: [56, 189, 248] }, security: true },
+  purpleteam: { id: "purpleteam", label: "Purple team", pipeline: "Attack & Defence Pipeline", orb: { primary: [168, 85, 247], secondary: [239, 68, 68] }, security: true },
 };
 
 /** The open project's theme (today's projectMode rules: the template first, then findings, then the team). */
@@ -32,11 +33,20 @@ export function projectTheme(snap: OfficeSnapshot | null): Theme {
   return THEMES[projectMode(snap)];
 }
 
-/** projectTheme, and keeps <html data-theme> on it so the CSS accent follows the project. */
+/** projectTheme, and keeps <html data-theme> and <html data-scheme> synced with the project and user choice. */
 export function useProjectTheme(snap: OfficeSnapshot | null): Theme {
   const theme = projectTheme(snap);
+  const scheme = useUi((s) => s.scheme);
+  const schemePinned = useUi((s) => s.schemePinned);
   useEffect(() => {
     document.documentElement.dataset.theme = theme.id;
-  }, [theme.id]);
+    if (!schemePinned) {
+      const auto = theme.security ? "dark" : "light";
+      document.documentElement.dataset.scheme = auto;
+      useUi.setState({ scheme: auto });
+    } else {
+      document.documentElement.dataset.scheme = scheme;
+    }
+  }, [theme.id, theme.security, scheme, schemePinned]);
   return theme;
 }
