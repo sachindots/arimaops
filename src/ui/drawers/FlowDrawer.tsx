@@ -1,13 +1,12 @@
-// The project's flow as a canvas (ROADMAP 5.2): stages left to right, each with the roles that work it,
-// its gates and the tasks in it now. Edited on desktop and tablet; phones and viewers only look.
+// The project's flow as a pipeline: stages in one row, left to right, each with the roles that work it, its gates
+// and the tasks in it now. Click a stage to edit it in a slide-over; drag stages to reorder. Edited on desktop and
+// tablet; phones and viewers only look.
 
-import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { APPROVAL_REASONS, GATE_KINDS, templateErrors, type Gate, type GateKind, type Role, type Stage, type TeamTemplate } from "../../data/model";
-import type { Task } from "../../data/types";
+import { APPROVAL_REASONS, GATE_KINDS, templateErrors, type Gate, type GateKind, type Stage, type TeamTemplate } from "../../data/model";
 import { isViewer, officeActions, useOffice } from "../../store/office";
-import { useUi } from "../../store/ui";
+import { ui } from "../../store/ui";
+import { Icon } from "../deck/Icon";
 import { Dot } from "../kit";
 import { DrawerHeader, PageTitle } from "./Drawer";
 import { gateText } from "./TaskSheet";
@@ -25,57 +24,6 @@ const GATE_NAME: Record<GateKind, string> = {
   "scope-set": "Scope set",
   evidence: "Screenshots of the app",
 };
-
-const NODE_W = 250;
-const GAP = 70;
-const ROW_H = 230;
-
-type StageData = { stage: Stage; index: number; roles: Role[]; tasks: Task[]; selected: boolean };
-
-function StageNode({ data }: NodeProps<Node<StageData>>) {
-  const { stage, index, roles, tasks, selected } = data;
-  const busy = tasks.filter((t) => t.status === "in-progress" || t.status === "in-review").length;
-  return (
-    <div
-      className="hud-glass w-[250px] rounded-2xl px-3.5 py-3 text-left transition-shadow"
-      style={selected ? { borderColor: "var(--accent)", boxShadow: "0 0 0 1px var(--accent)" } : undefined}
-    >
-      <Handle type="target" position={Position.Left} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
-      <Handle id="up" type="target" position={Position.Top} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
-      <div className="flex items-center gap-2">
-        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/15 font-display text-[12px] font-semibold text-accent">{index + 1}</span>
-        <b className="min-w-0 flex-1 truncate font-display text-[15px] font-semibold text-ink">{stage.name || stage.id}</b>
-        {tasks.length > 0 && (
-          <span className="rounded-full border border-white/10 px-2 py-0.5 text-[12px] text-muted" title={`${tasks.length} open task${tasks.length === 1 ? "" : "s"} in this stage`}>
-            {busy > 0 && <i className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green align-middle" />}
-            {tasks.length}
-          </span>
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1">
-        {roles.map((r) => (
-          <span key={r.id} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[12px]" style={{ color: r.color, borderColor: `${r.color}55`, background: `${r.color}14` }}>
-            {r.title}
-          </span>
-        ))}
-        {!roles.length && <span className="text-[12px] text-red">No roles</span>}
-      </div>
-      <ul className="m-0 mt-2.5 flex list-none flex-col gap-1 border-t border-white/[0.07] p-0 pt-2">
-        {stage.gates.map((g) => (
-          <li key={g.id} className="flex items-start gap-1.5 text-[12px] text-ink/90" title={gateText(g)}>
-            <span className="mt-[3px] h-2 w-2 shrink-0 rotate-45 border border-accent/70" aria-hidden />
-            <span className="min-w-0">{GATE_NAME[g.kind]}</span>
-          </li>
-        ))}
-        {!stage.gates.length && <li className="text-[12px] text-muted">No gate: tasks move on when done</li>}
-      </ul>
-      <Handle type="source" position={Position.Right} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
-      <Handle id="down" type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !border-0 !bg-accent/60 !opacity-0" isConnectable={false} />
-    </div>
-  );
-}
-
-const nodeTypes = { stage: StageNode };
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "stage";
 const uniqueId = (base: string, taken: string[]) => {
@@ -107,21 +55,11 @@ function usePhone() {
 export function FlowDrawer() {
   const saved = useOffice((s) => s.snap?.config.template ?? null);
   const tasks = useOffice((s) => s.snap?.tasks ?? []);
-  const scheme = useUi((s) => s.scheme);
   const phone = usePhone();
   const canEdit = !isViewer && !phone;
   const [draft, setDraft] = useState<TeamTemplate | null>(saved);
-  const [selected, setSelected] = useState<string | null>(saved?.flow.stages[0]?.id ?? null);
-  // Stages wrap into rows that fit the canvas, so it opens at a readable size instead of zoomed out.
-  const box = useRef<HTMLDivElement>(null);
-  const [cols, setCols] = useState(4);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setCols(Math.max(1, Math.floor((el.clientWidth - 48 + GAP) / (NODE_W + GAP)))));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [saved]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
 
   // A save (or a change from elsewhere) resets the draft while nothing is being edited.
   const dirty = !!draft && !!saved && JSON.stringify(draft.flow) !== JSON.stringify(saved.flow);
@@ -133,25 +71,6 @@ export function FlowDrawer() {
   const stages = draft?.flow.stages ?? [];
   const roles = draft?.roles ?? [];
   const errors = draft && dirty ? templateErrors(draft) : [];
-
-  const nodes: Node<StageData>[] = stages.map((stage, index) => ({
-    id: stage.id,
-    type: "stage",
-    position: { x: (index % cols) * (NODE_W + GAP), y: Math.floor(index / cols) * ROW_H },
-    draggable: false,
-    data: { stage, index, roles: roles.filter((r) => stage.roleIds.includes(r.id)), tasks: open.filter((t) => t.stageId === stage.id), selected: stage.id === selected },
-  }));
-  const edges: Edge[] = stages.slice(1).map((s, i) => ({
-    id: `${stages[i].id}->${s.id}`,
-    source: stages[i].id,
-    target: s.id,
-    type: "smoothstep",
-    animated: open.some((t) => t.stageId === s.id),
-    // A row's last stage hands down to the next row's first.
-    sourceHandle: (i + 1) % cols === 0 ? "down" : undefined,
-    targetHandle: (i + 1) % cols === 0 ? "up" : undefined,
-    style: { stroke: "var(--border-strong)", strokeWidth: 1.5 },
-  }));
 
   if (!saved || !draft)
     return (
@@ -184,6 +103,17 @@ export function FlowDrawer() {
     setStages((all) => {
       const next = all.filter((s) => s.id !== cur.id);
       next.splice(curIndex + d, 0, all[curIndex]);
+      return next;
+    });
+  };
+  /** Drag and drop: put `id` where `onto` is. */
+  const drop = (id: string, onto: string) => {
+    if (id === onto) return;
+    setStages((all) => {
+      const from = all.findIndex((x) => x.id === id);
+      const to = all.findIndex((x) => x.id === onto);
+      const next = all.filter((x) => x.id !== id);
+      next.splice(to, 0, all[from]);
       return next;
     });
   };
@@ -238,30 +168,84 @@ export function FlowDrawer() {
           ))}
         </ul>
       )}
-      <div className="flex min-h-0 flex-1 max-[900px]:flex-col">
-        <div ref={box} className="relative min-h-[300px] min-w-0 flex-1 max-[640px]:min-h-[55vh]">
-          <ReactFlow
-            key={`${cols}-${scheme}`}
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            colorMode={scheme}
-            fitView
-            fitViewOptions={{ padding: 0.15, maxZoom: 1.15, minZoom: 0.8 }}
-            minZoom={0.3}
-            maxZoom={1.6}
-            nodesConnectable={false}
-            nodesDraggable={false}
-            onNodeClick={(_, n) => setSelected(n.id)}
-            proOptions={{ hideAttribution: true }}
-            aria-label="Flow stages"
-          >
-            <Background gap={28} size={1} color="var(--dot-grid)" />
-            <Controls showInteractive={false} />
-          </ReactFlow>
-        </div>
-        {cur && (
-          <aside className="scroll-thin flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] bg-[var(--surface-drawer)] p-4 max-[900px]:max-h-[45%] max-[900px]:w-full max-[900px]:border-l-0 max-[900px]:border-t" aria-label={`Stage ${cur.name}`}>
+      <div className="scroll-thin min-h-0 flex-1 overflow-auto px-6 py-5">
+        <ol className="m-0 flex list-none items-stretch gap-0 p-0" aria-label="Flow stages">
+          {stages.map((stage, index) => {
+            const who = roles.filter((r) => stage.roleIds.includes(r.id));
+            const here = open.filter((t) => t.stageId === stage.id);
+            const busy = here.filter((t) => t.status === "in-progress" || t.status === "in-review").length;
+            const on = stage.id === selected;
+            return (
+              <li key={stage.id} className="flex items-stretch">
+                {index > 0 && (
+                  <span className="flex w-8 shrink-0 items-center justify-center text-muted" aria-hidden="true">
+                    <Icon name="chevron_right" size={20} />
+                  </span>
+                )}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  draggable={canEdit}
+                  onDragStart={(e) => (setDragging(stage.id), e.dataTransfer.setData("text/plain", stage.id))}
+                  onDragEnd={() => setDragging(null)}
+                  onDragOver={(e) => canEdit && dragging && e.preventDefault()}
+                  onDrop={(e) => (e.preventDefault(), dragging && drop(dragging, stage.id), setDragging(null))}
+                  onClick={() => setSelected(stage.id)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setSelected(stage.id))}
+                  aria-label={`Stage ${index + 1}: ${stage.name}. ${here.length} open tasks. Open to edit.`}
+                  className={`flex w-[250px] shrink-0 cursor-pointer flex-col gap-3 rounded-xl border bg-[var(--surface-card)] p-4 text-left transition-colors outline-none focus-visible:border-[var(--accent)] ${on ? "border-[var(--accent)]" : "border-[var(--border-hairline)] hover:border-[var(--border-strong)]"} ${dragging === stage.id ? "opacity-50" : ""}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] text-[12px] font-semibold text-accent">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{stage.name || stage.id}</span>
+                    {canEdit && <Icon name="drag_indicator" size={16} className="text-muted" />}
+                  </div>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 self-start rounded-md text-[13px] text-muted hover:text-ink"
+                    onClick={(e) => (e.stopPropagation(), ui.openBoards(undefined, stage.id))}
+                    title="Open the board filtered to this stage"
+                  >
+                    {busy > 0 && <i className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />}
+                    <span className="font-semibold text-ink">{here.length}</span> open task{here.length === 1 ? "" : "s"}
+                  </button>
+                  <div>
+                    <div className="mb-1.5 text-[12px] text-muted">Who works it</div>
+                    {who.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {who.map((r) => (
+                          <span key={r.id} className="flex items-center gap-1.5 rounded-full border border-[var(--border-hairline)] py-0.5 pr-2 pl-0.5 text-[12px] text-ink">
+                            <span className="grid h-5 w-5 place-items-center rounded-full text-[12px] font-semibold text-white" style={{ background: r.color }} aria-hidden="true">
+                              {r.title.slice(0, 1)}
+                            </span>
+                            {r.title}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[12px] text-red">No roles: nobody can take its tasks</span>
+                    )}
+                  </div>
+                  <div className="border-t border-[var(--border-hairline)] pt-3">
+                    <div className="mb-1.5 text-[12px] text-muted">To leave this stage</div>
+                    <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                      {stage.gates.map((g) => (
+                        <li key={g.id} className="flex items-start gap-1.5 text-[13px] text-ink" title={gateText(g)}>
+                          <Icon name="check_circle" size={16} className="mt-px text-accent" />
+                          <span className="min-w-0">{GATE_NAME[g.kind]}</span>
+                        </li>
+                      ))}
+                      {!stage.gates.length && <li className="text-[12px] text-muted">No gate: tasks move on when done</li>}
+                    </ul>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+        {canEdit && stages.length > 1 && <p className="mt-4 text-[12px] text-muted">Drag a stage to reorder it, or click it to edit. Save to apply.</p>}
+      </div>
+      {cur && <StageEditor title={`Stage ${curIndex + 1} · ${cur.name}`} onClose={() => setSelected(null)}><>
             <div className="flex items-center gap-2">
               <span className="font-display text-[13px] text-muted">Stage {curIndex + 1}</span>
               {canEdit && (
@@ -380,9 +364,32 @@ export function FlowDrawer() {
             <p className="m-0 text-[12px] text-muted">
               {tasksIn(cur.id)} open task{tasksIn(cur.id) === 1 ? "" : "s"} here. Changes reach running agents at their next start.
             </p>
-          </aside>
-        )}
-      </div>
+</></StageEditor>}
     </>
+  );
+}
+
+/** The right slide-over for one stage; Esc or the backdrop closes it. */
+function StageEditor({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), onClose());
+    window.addEventListener("keydown", onKey, true);
+    panel.current?.focus();
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={title}>
+      <button className="absolute inset-0 cursor-default bg-black/35" aria-label="Close" tabIndex={-1} onClick={onClose} />
+      <div ref={panel} tabIndex={-1} className="hud-drawer scroll-thin relative flex h-full w-full max-w-[420px] flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] p-5 outline-none">
+        <div className="flex items-center gap-2">
+          <h2 className="m-0 min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{title}</h2>
+          <button type="button" className="grid h-8 w-8 place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink" aria-label="Close" onClick={onClose}>
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }

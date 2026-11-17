@@ -412,27 +412,6 @@ pre:not(.xterm *) {
   }
 }
 
-/* Flow canvas: React Flow on the clean palette. */
-.react-flow.dark {
-  --xy-background-color: transparent;
-  --xy-edge-stroke: var(--border-strong);
-  --xy-controls-button-background-color: var(--surface-card);
-  --xy-controls-button-background-color-hover: var(--cream-2);
-  --xy-controls-button-color: var(--color-ink);
-  --xy-controls-button-border-color: var(--border-hairline);
-  --xy-node-background-color: transparent;
-  --xy-node-border: none;
-  --xy-node-boxshadow-selected: none;
-}
-.react-flow .react-flow__node-stage {
-  cursor: pointer;
-}
-.react-flow .react-flow__controls {
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: var(--card-shadow);
-}
-
 /* ---------------------------------------------------------------- command deck (src/ui/deck) */
 @layer components {
   .deck {
