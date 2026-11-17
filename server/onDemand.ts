@@ -26,8 +26,8 @@ export class OnDemand {
   constructor(
     private hub: Pick<Hub, "snap" | "cfg" | "status" | "setStatus" | "activity">,
     private sessions: Starter,
-    /** Why starts must wait (the project is paused at its spend cap), or null. */
-    private paused: () => string | null = () => null,
+    /** Why this seat's start must wait (the project or its role is paused for spend), or null. */
+    private paused: (agentId?: string) => string | null = () => null,
   ) {}
 
   /** Whether this seat's role is started per task. The lead never is. */
@@ -49,7 +49,7 @@ export class OnDemand {
   /** `agentId` has a task it can start now. */
   ready(agentId: string) {
     if (!this.onDemand(agentId) || this.up(agentId) || this.queue.includes(agentId)) return;
-    const hold = this.paused();
+    const hold = this.paused(agentId);
     if (hold || this.sessions.atCap()) {
       this.queue.push(agentId);
       const why = hold ?? "a free slot (this machine runs as many agents as it allows)";
@@ -83,9 +83,11 @@ export class OnDemand {
       this.hub.activity("session", id, `${this.hub.cfg(id)?.name} has no open task: stopping it until the next one`);
       await this.sessions.stop(id);
     }
-    while (this.queue.length && !this.paused() && !this.sessions.atCap()) {
-      const id = this.queue.shift()!;
-      if (this.openTasks(id)) this.ready(id);
+    // One pass: a seat still held (its role over budget) goes back in line without blocking the others.
+    for (const id of this.queue.splice(0)) {
+      if (!this.openTasks(id)) continue;
+      if (this.paused(id) || this.sessions.atCap()) this.queue.push(id);
+      else this.ready(id);
     }
   }
 

@@ -343,6 +343,21 @@ export const MIGRATIONS: readonly string[] = [
     INSERT INTO memory_text (rowid, text) VALUES (new.n, new.text);
   END;
   `,
+  // Goals that tasks roll up to (server/goals.ts).
+  `
+  CREATE TABLE goals (
+    project_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    metric TEXT,
+    target TEXT,
+    current TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'dropped')),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+  );
+  ALTER TABLE tasks ADD COLUMN goal_id TEXT;
+  `,
 ];
 
 /** The schema version a database is at (0 = none of the core tables yet). */

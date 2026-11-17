@@ -5,7 +5,7 @@
 //    mandatory (setup check "egress-lock"); HQ never runs sudo, so it shows the command.
 //  - Sign-in: one Docker volume per CLI (hq-auth-<cli>), shared by that CLI's containers; you sign in once.
 
-import { isOutboundHost } from "../src/data/outbound";
+import { draftsOnly, isOutboundHost } from "../src/data/outbound";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { homedir } from "node:os";
@@ -227,7 +227,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
     if (!who) return { ok: false, why: "unknown container" };
     const agent = who.rt.hub.cfg(who.agent.id) ?? who.agent; // live config: allow/deny change at runtime
     if (hostAllowed(agent.sandbox.deny, host, port)) return { ok: false, why: "denied" };
-    if (who.rt.hub.snap.config.rules?.outbound === "drafts-only" && isOutboundHost(host)) {
+    if (draftsOnly(who.rt.hub.snap.config, agent.id) && isOutboundHost(host)) {
       const key = `${who.rt.slug}/${agent.id}/send/${host}`;
       if (!asked.has(key)) {
         asked.add(key);

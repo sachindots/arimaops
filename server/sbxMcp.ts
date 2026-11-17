@@ -5,7 +5,7 @@
 // what's attached: sbx can't detach a server from one sandbox, so an unticked
 // server stays until that sandbox is recreated.
 
-import { outboundMcpProblem } from "../src/data/outbound";
+import { draftsOnly, outboundMcpProblem } from "../src/data/outbound";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServer, McpState, NewMcpServer } from "../src/data/types";
@@ -174,7 +174,7 @@ export class SbxMcp {
 
   /** Drafts only: mail, social and CRM servers are never attached (by name; sbx doesn't say what a server does). */
   private allowedNames(names: string[], agentId: string) {
-    if (!this.drafts()) return names;
+    if (!draftsOnly(this.hub.snap.config, agentId)) return names;
     const refused = names.filter((n) => outboundMcpProblem(n));
     if (refused.length) this.hub.activity("config", agentId, `Not attached to ${this.hub.name(agentId)}: ${refused.join(", ")}. This project is drafts only: agents write, you send.`);
     return names.filter((n) => !refused.includes(n));

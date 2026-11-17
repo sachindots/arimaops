@@ -172,6 +172,9 @@ const ESCALATION: string[] = [
   "Same error three times: change approach, don't retry the same thing.",
 ];
 
+/** The owner's goals: what the lead plans against. */
+const GOALS_RULE = "Plan against the owner's goals (`list_goals`): link each task to the goal it moves (`goalId`), question work that moves none, and record a goal's number with `update_goal` when a report shows it.";
+
 export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {}): string {
   const team = cfg.team
     .map((a) => `- ${a.name} — ${a.role}${a.isLead ? " (lead)" : ""}${a.id === agent.id ? " ← you" : ""}`)
@@ -186,6 +189,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "You plan the mission and assign tasks to the team. You coordinate and review deliverables rather than executing worker tasks yourself.",
           "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
           "Assign only to agents that are running and free (check `list_workers`).",
+          GOALS_RULE,
           "When a worker marks a task `in-review`, inspect the deliverable against doneWhen. Accept with `update_task` done and a concrete verification note, or send revision feedback. Never accept your own work when review is enabled.",
           ...(cross ? ["Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`."] : []),
         ]
@@ -193,6 +197,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "You plan the work and assign it to the team. You never write app code.",
           "Keep tasks small: one task = one branch = one PR. Give each task the files it may edit and a clear done-when.",
           "Assign only to agents that are running and free (check list_workers).",
+          GOALS_RULE,
           cfg.workflow.merge.by === "lead"
             ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
             : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
@@ -262,8 +267,8 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   const charter = (cfg.project.charter ?? "").trim().slice(0, CHARTER_MAX);
   const hasEvidence = !isExecOrLead && Boolean(!cfg.template || cfg.template.flow.stages.some((s) => s.gates.some((g) => g.kind === "evidence")));
   const tools = isExecOrLead
-    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, write_spec, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status, create_project_task, update_project_task" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`
-    : `get_my_task, set_my_status, record_gate${hasEvidence ? ", attach_evidence" : ""}, list_workers, get_status, list_tasks, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`;
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, write_spec, assign_task, list_goals, update_goal, record_gate, ledger_add, ledger_revise, read_ledger, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status, create_project_task, update_project_task" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, record_gate${hasEvidence ? ", attach_evidence" : ""}, list_workers, get_status, list_tasks, list_goals, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",

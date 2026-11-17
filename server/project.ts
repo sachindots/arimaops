@@ -25,7 +25,7 @@ import { githubAppState } from "./githubApp";
 import { decidePack, packsState, proposePack } from "./skillPacks";
 import { onUnpinnedPack } from "./skills";
 import { Overflow } from "./overflow";
-import { capsOf, SpendGuard, spendPaused } from "./spendCaps";
+import { capsOf, rolePaused, SpendGuard, spendPaused } from "./spendCaps";
 import { detectRepo } from "./repo";
 import { Sbx } from "./sbx";
 import { SbxMcp } from "./sbxMcp";
@@ -64,6 +64,9 @@ const accountProvider = (id: string): Provider | null => {
 import { workspaceFor } from "./workspace";
 import { isStream, StreamEngine } from "./streamEngine";
 import { companyText } from "./company";
+import { publishGoals } from "./goals";
+import { ritualWhen, tickRituals } from "./rituals";
+import { listConnections } from "./connections";
 
 export interface Runtime {
   slug: string;
@@ -201,7 +204,8 @@ export async function startProject(path: string, port: number, paused: boolean):
     return meter.readByModel(a.cli, a.mode === "container" ? "/work" : workspaceFor(a, slug), home, a.model || a.cli);
   };
   planner.lastActivityAt = (id) => inbox.lastHookAt(id);
-  const onDemand = new OnDemand(hub, sessions, () => (spendPaused(slug) ? "the spend cap to lift (the project is paused)" : null));
+  const onDemand = new OnDemand(hub, sessions, (id) =>
+    spendPaused(slug) ? "the spend cap to lift (the project is paused)" : rolePaused(slug, id ? hub.cfg(id)?.roleId : undefined) ? "midnight (its role's daily budget is used)" : null);
   const overflow = new Overflow(hub, planner, sessions);
   const spendGuard = new SpendGuard(slug, hqDb(), () => capsOf(hub.snap.config.project.spendCaps), () => {
     try {
@@ -210,10 +214,10 @@ export async function startProject(path: string, port: number, paused: boolean):
       return []; // vault locked: nothing to count
     }
   }, {
-    stopWorkers: async () => {
+    stopWorkers: async (ids) => {
       for (const a of hub.snap.config.team) {
         const s = hub.status(a.id)?.session.state;
-        if (!a.isLead && (s === "running" || s === "starting")) await sessions.stop(a.id);
+        if (!a.isLead && (!ids || ids.includes(a.id)) && (s === "running" || s === "starting")) await sessions.stop(a.id);
       }
     },
     tellLead: (text) => {
@@ -225,7 +229,11 @@ export async function startProject(path: string, port: number, paused: boolean):
       hub.snap.spend = spend;
       hub.emit({ type: "spend.updated", spend });
     },
-  });
+  }, () =>
+    (hub.snap.config.template?.roles ?? [])
+      .filter((r) => !r.isLead && (r.capUsd ?? 0) > 0)
+      .map((r) => ({ roleId: r.id, title: r.title, capUsd: r.capUsd!, agentIds: hub.snap.config.team.filter((a) => a.roleId === r.id).map((a) => a.id) })),
+  );
   planner.onReady = (id) => onDemand.ready(id);
   inbox.holds = (agentId, item) => {
     if (!onDemand.onDemand(agentId) || item.kind !== "message" || item.fromId === "you") return false;
@@ -254,6 +262,19 @@ export async function startProject(path: string, port: number, paused: boolean):
       }
     }
     void spendGuard.check().catch((err) => log.warn(`spend check failed: ${err instanceof Error ? err.message : err}`));
+    publishGoals(hqDb(), hub);
+    tickRituals(hqDb(), {
+      projectId: slug,
+      rituals: () => hub.snap.config.template?.rituals ?? [],
+      enabled: () => hub.snap.config.project.rituals !== false && !spendPaused(slug),
+      messages: () => hub.snap.messages,
+      run: (r, prompt) => {
+        const lead = hub.snap.config.team.find((a) => a.isLead);
+        if (lead) planner.notify(lead.id, prompt);
+        hub.activity("config", null, `${r.title}: handed to the lead (${ritualWhen(r)}).`);
+      },
+      skipped: (r) => hub.activity("config", null, `${r.title} skipped: nothing moved since the last one.`),
+    });
   };
   const guard = new LoopGuard(
     async () => null, // no model judge: the repeated-failure rule decides
@@ -348,6 +369,8 @@ export async function startProject(path: string, port: number, paused: boolean):
   setMemoryScope(hub.snap.config.project.id, () => hub.snap.config.project.scope);
   hub.snap.memory = projectMemoryState(hub.snap.config.project.id);
   hub.snap.company = companyText();
+  publishGoals(hqDb(), hub);
+  hub.snap.connections = listConnections();
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
   const stopListening = onAccountLimit((cli, until, from) => {
     const marked = markLimited(hub, cli, until, from);

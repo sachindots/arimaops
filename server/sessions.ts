@@ -24,7 +24,7 @@ import { loginCommand } from "./containers";
 import { portBlockFor, portEnv } from "./ports";
 import { liveHubs } from "./projectsRegistry";
 import { scopeBlocksStart } from "./scope";
-import { spendPaused } from "./spendCaps";
+import { rolePaused, spendPaused } from "./spendCaps";
 import { sessionBackend, type LaunchSpec, type TermHandle } from "./backends";
 import { resolveCommand } from "./backends/pty";
 import { loadEnvFile } from "./backends/tmux";
@@ -146,6 +146,7 @@ export class Sessions {
     if (unscoped) return fail(unscoped);
     const over = spendPaused(hub.slug);
     if (over && !agent.isLead) return fail(`Paused: the project's ${over === "day" ? "daily" : "monthly"} spend cap is reached. Raise it in Settings → Project, or wait for the ${over === "day" ? "next day" : "next month"}.`);
+    if (!agent.isLead && rolePaused(hub.slug, agent.roleId)) return fail("Paused: this role's daily budget is used. Raise it in Settings → Team, or wait until midnight.");
 
     const cap = maxAgents();
     if (this.atCap())

@@ -2,7 +2,7 @@
 // keys, proxy) and syncs each agent's allowed/blocked domains. It only ever
 // removes rules it added itself (tracked in ~/.arima/<project>/sbx-owned.json).
 
-import { isOutboundHost, OUTBOUND_HOSTS } from "../src/data/outbound";
+import { draftsOnly, isOutboundHost, OUTBOUND_HOSTS } from "../src/data/outbound";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BRAND } from "../src/data/brand";
@@ -302,7 +302,7 @@ export class Sbx {
     const target = approvalId === "all" ? null : list.find((a) => a.id === approvalId);
     if (approvalId !== "all" && !target) return;
     const respond = (id: string, option: "allow" | "dismiss") => this.respondApproval(id, option);
-    if (decision === "allow" && this.hub.snap.config.rules?.outbound === "drafts-only") {
+    if (decision === "allow" && draftsOnly(this.hub.snap.config, agentId)) {
       const blocked = (approvalId === "all" ? list : target ? [target] : []).filter((a) => isOutboundHost(a.host));
       if (blocked.length) this.hub.activity("config", agentId, `${[...new Set(blocked.map((a) => a.host))].join(", ")} stays blocked: this project is drafts only (agents write, you send).`);
       if (approvalId !== "all" && blocked.length) return;
@@ -416,7 +416,7 @@ export class Sbx {
     const sec = this.hub.snap.config.rules.findings;
     // The template's own hosts (Research: the paper APIs) come with every seat.
     // Drafts only (Marketing, Sales): mail, social and CRM hosts are denied, whatever else allows them.
-    const drafts = this.hub.snap.config.rules?.outbound === "drafts-only";
+    const drafts = draftsOnly(this.hub.snap.config, agent.id);
     const allow = [...agent.sandbox.allow, ...(this.hub.snap.config.rules?.egress ?? []), ...(sec ? scopeDomains(project.scope) : [])].filter((h) => !drafts || !isOutboundHost(h));
     const deny = [...agent.sandbox.deny, ...(sec ? outOfScopeDomains(project.scope) : []), ...(drafts ? OUTBOUND_HOSTS : [])];
     const want = new Set([...allow.map((r) => key("allow", r)), ...deny.map((r) => key("deny", r))]);

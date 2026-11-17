@@ -170,6 +170,61 @@ export function createMockSource(): OfficeDataSource {
       world.after(3.4, () => world.message(lead.id, "you", `Team answer: ${helper ? `${helper.name} says it's covered, with one risk in their handoff. ` : ""}I'll keep an eye on it.`));
     },
 
+    addGoal(goal) {
+      const goals = world.snap.goals ?? [];
+      world.snap.goals = [...goals, { id: `G${goals.length + 1}`, title: goal.title.trim(), metric: goal.metric, target: goal.target, status: "active", done: 0, total: 0, usd: 0 }];
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    updateGoal(id, patch) {
+      world.snap.goals = (world.snap.goals ?? []).map((g) => (g.id === id ? { ...g, ...patch } : g));
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    setTaskGoal(taskId, goalId) {
+      const t = world.snap.tasks.find((x) => x.id === taskId);
+      if (!t) return;
+      t.goalId = goalId;
+      world.emit({ type: "task.updated", task: { ...t } });
+      world.snap.goals = (world.snap.goals ?? []).map((g) => {
+        const mine = world.snap.tasks.filter((x) => x.goalId === g.id);
+        return { ...g, total: mine.length, done: mine.filter((x) => x.status === "done").length };
+      });
+      world.emit({ type: "goals.updated", goals: world.snap.goals });
+    },
+
+    saveConnection(input) {
+      const all = world.snap.connections ?? [];
+      const old = all.find((c) => c.name === input.name);
+      const next = { name: input.name, url: input.url ?? old?.url ?? "", roles: input.roles ?? old?.roles ?? [], read: input.read ?? old?.read ?? [], send: input.send === undefined ? (old?.send ?? null) : input.send, tools: old?.tools ?? [], probedAt: old?.probedAt ?? null, hasKey: input.apiKey !== undefined ? !!input.apiKey : !!old?.hasKey };
+      world.snap.connections = [...all.filter((c) => c.name !== input.name), next];
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    removeConnection(name) {
+      world.snap.connections = (world.snap.connections ?? []).filter((c) => c.name !== name);
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    checkConnection(name) {
+      // The demo's pretend CRM: two tools that read and one that sends.
+      const tools = [
+        { name: "search_contacts", description: "Find contacts by name or company." },
+        { name: "get_deal", description: "Read one deal with its stage and amount." },
+        { name: "send_email", description: "Send an email from the connected mailbox." },
+      ];
+      world.snap.connections = (world.snap.connections ?? []).map((c) => (c.name === name ? { ...c, tools, probedAt: new Date().toISOString() } : c));
+      world.emit({ type: "connections.updated", connections: world.snap.connections });
+    },
+
+    sendProposal(itemId) {
+      const item = world.snap.actionItems?.find((i) => i.id === itemId);
+      if (!item?.send) return;
+      const done = { ...item, status: "done" as const, send: { ...item.send, sentAt: new Date().toISOString() }, closedAt: new Date().toISOString() };
+      world.snap.actionItems = world.snap.actionItems!.map((i) => (i.id === itemId ? done : i));
+      world.emit({ type: "action.updated", item: done });
+    },
+
     setCompany(text) {
       world.snap.company = text.trim().slice(0, 3000);
       world.emit({ type: "company.updated", company: world.snap.company });

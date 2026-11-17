@@ -15,6 +15,8 @@ import type { Planner } from "./planner";
 import { repoDirOf, slugify } from "./paths";
 import { loadConfig, loadPlan, resolveSaved, savePlan } from "./store";
 import { assertTaskMove } from "./planStore";
+import { goalsOf } from "./goals";
+import { hqDb } from "./lib/db";
 
 export interface RegistryEntry {
   id: string;
@@ -200,6 +202,9 @@ export function listProjectsOverview(): ProjectOverview[] {
         boards,
         tasks,
         counts: summarizeCounts(tasks),
+        ...(loaded.hub.snap.spend ? { spend: loaded.hub.snap.spend } : {}),
+        waiting: (loaded.hub.snap.actionItems ?? []).filter((i) => i.status === "open").length + loaded.hub.snap.agents.filter((a) => a.state === "needs-input").length,
+        goals: loaded.hub.snap.goals ?? [],
       });
       continue;
     }
@@ -235,6 +240,7 @@ export function listProjectsOverview(): ProjectOverview[] {
       boards: plan.boards ?? [],
       tasks: plan.tasks ?? [],
       counts: summarizeCounts(plan.tasks ?? []),
+      goals: goalsOf(hqDb(), slugify(cfg.project.id || cfg.project.name || entry.id), plan.tasks ?? []),
     });
   }
 

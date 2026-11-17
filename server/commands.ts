@@ -10,6 +10,16 @@ import { liveHubs } from "./projectsRegistry";
 import { CHARTER_MAX, saveCompany } from "./company";
 import { memoryState, memoryStore, saveExtractionSettings } from "./memory";
 import { memoryWorker } from "./memoryJobs";
+import { callConnection, listConnections, probeConnection, removeConnection, saveConnection } from "./connections";
+
+/** Sends the tool connections (no keys) to every loaded project. */
+function broadcastConnections() {
+  const connections = listConnections();
+  for (const h of liveHubs()) {
+    h.snap.connections = connections;
+    h.emit({ type: "connections.updated", connections });
+  }
+}
 
 /** Sends the accounts list (no secrets) to every loaded project. */
 function broadcastAccounts() {
@@ -55,6 +65,7 @@ import type { Sessions } from "./sessions";
 import { mergeByNotice } from "./githubSync";
 import { cleanEntry } from "./scope";
 import { finishManifest } from "./githubApp";
+import { addGoal, assertGoal, publishGoals, updateGoal } from "./goals";
 
 /** A stack from the browser, checked against the catalog. Null when nothing is chosen. */
 function cleanStack(raw: unknown): StackConfig | null {
@@ -177,6 +188,49 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       hub.activity("config", null, "Company context saved. Agents get it at their next start.");
     },
 
+    saveConnection: (input) => {
+      const c = saveConnection(input);
+      broadcastConnections();
+      hub.activity("config", null, `Connection ${c.name} saved${c.roles.length ? ` for ${c.roles.join(", ")}` : " (no role uses it yet)"}.`);
+    },
+    removeConnection: (name) => {
+      removeConnection(str(name, 40));
+      broadcastConnections();
+      hub.activity("config", null, `Connection ${name} removed, with its key.`);
+    },
+    checkConnection: async (name) => {
+      try {
+        const c = await probeConnection(str(name, 40));
+        hub.activity("config", null, `${c.name} offers ${c.tools.length} tools. Tick the ones that only read.`);
+      } catch (err) {
+        hub.activity("config", null, `Couldn't reach ${name}: ${err instanceof Error ? err.message : err}`);
+      }
+      broadcastConnections();
+    },
+    sendProposal: async (itemId) => {
+      if (!planner.actions) throw new Error("Action items aren't available.");
+      try {
+        await planner.actions.send(str(itemId, 60), (s) => callConnection(s.connection, s.tool, s.args, "owner-send"));
+      } catch (err) {
+        hub.activity("config", null, `Not sent: ${err instanceof Error ? err.message : err}`);
+      }
+    },
+
+    addGoal: (goal) => {
+      const id = addGoal(hqDb(), hub.snap.config.project.id, goal);
+      publishGoals(hqDb(), hub);
+      hub.activity("config", null, `Goal ${id} added: ${goal.title}`);
+    },
+    updateGoal: (id, patch) => {
+      updateGoal(hqDb(), hub.snap.config.project.id, str(id, 20), patch);
+      publishGoals(hqDb(), hub);
+    },
+    setTaskGoal: (taskId, goalId) => {
+      if (goalId) assertGoal(hqDb(), hub.snap.config.project.id, goalId);
+      planner.updateTask(str(taskId, 40), { goalId: goalId || null });
+      publishGoals(hqDb(), hub);
+    },
+
     addAgent: (raw) => {
       const t = hub.snap.config.template;
       if (!t) return;
@@ -269,9 +323,15 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       }
       if (Array.isArray(p.skills)) next.skills = p.skills.map((x) => str(x, 80)).filter(Boolean);
       if (typeof p.onDemand === "boolean") next.onDemand = p.onDemand;
+      if (p.capUsd === null) delete next.capUsd;
+      else if (typeof p.capUsd === "number" && p.capUsd >= 0) next.capUsd = p.capUsd;
+      if (p.outbound === null) delete next.outbound;
+      else if (p.outbound === "none" || p.outbound === "drafts-only") next.outbound = p.outbound;
       if (p.fallback === null) next.fallback = null;
       else if (p.fallback && isAgentCli(p.fallback.cli)) next.fallback = { cli: p.fallback.cli, model: str(p.fallback.model, 80) };
       setTemplate({ ...t, roles: t.roles.map((r) => (r.id === role.id ? next : r)) }, `Role ${next.title} updated. Restart its agents to give them the change.`);
+      // Sending rules are safety: the sandbox firewall changes now, not at the next start (the container proxy reads live).
+      if (next.outbound !== role.outbound) for (const a of hub.snap.config.team) if (a.roleId === role.id) void sbx.syncRules(a.id);
     },
 
     /** Replaces this project's template copy (roles, flow, rules). The library is untouched. */
@@ -659,6 +719,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       if (typeof p.crossProject === "boolean") project.crossProject = p.crossProject;
       if (typeof p.standup === "boolean") project.standup = p.standup;
+      if (typeof p.rituals === "boolean") project.rituals = p.rituals;
       if (typeof p.charter === "string") project.charter = str(p.charter, CHARTER_MAX).trim() || undefined;
       hub.configChanged();
       if (exportOn) {

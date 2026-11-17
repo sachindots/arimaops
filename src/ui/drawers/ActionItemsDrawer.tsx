@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BRAND } from "../../data/brand";
 import type { ActionItem } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
+import { useAuth } from "../../store/auth";
 import { ago, Dot, SectionTitle, useNow } from "../kit";
 import { DrawerHeader } from "./Drawer";
 
@@ -103,7 +104,7 @@ export function ActionItemsDrawer() {
                 {closed.map((i) => (
                   <li key={i.id} className="border-t border-white/[0.06] py-1.5">
                     <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : (agent(i.fromId)?.name ?? (i.fromId === "hq" ? BRAND.name : i.fromId))} ·{" "}
-                    {i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
+                    {i.kind === "send" ? (i.status === "done" ? "sent" : "not sent") : i.kind === "approval" ? (i.status === "done" ? "kept" : "undone") : i.kind === "overflow" ? (i.status === "done" ? "moved" : "waited") : i.kind === "skills" ? (i.status === "done" ? "approved" : "rejected") : i.kind === "gate" ? (i.status === "done" ? "approved" : "sent back") : i.kind === "lesson" ? (i.status === "done" ? "added" : "left out") : i.kind === "spec" ? (i.status === "done" ? "approved" : i.note?.startsWith("Replaced") ? "replaced" : "sent back") : i.status} {i.closedAt ? `${ago(i.closedAt, now)} ago` : ""}
                     {i.note && <div className="pl-3">“{i.note}”</div>}
                   </li>
                 ))}
@@ -146,6 +147,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
         {item.kind === "spec" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
         {item.kind === "skills" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
         {item.kind === "overflow" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
+        {item.kind === "send" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>send · {item.send?.connection}</span>}
         {item.kind === "spend" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ff2a4b" }}>spend</span>}
         {item.kind === "approval" && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#ffb020" }}>lead approved · undoable</span>}
         {item.waiting && <span className="chip shrink-0 text-[11px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
@@ -170,7 +172,9 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
-      {item.kind === "skills" ? (
+      {item.kind === "send" && item.send ? (
+        <SendProposal item={item} send={item.send} />
+      ) : item.kind === "skills" ? (
         <div className="mt-2 flex items-center gap-2">
           <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done")}>
             Approve
@@ -222,6 +226,42 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       </div>
       )}
     </li>
+  );
+}
+
+/** An agent's proposed send: the exact call, and Send (owner only) makes it once. */
+function SendProposal({ item, send }: { item: ActionItem; send: NonNullable<ActionItem["send"]> }) {
+  const owner = useAuth((s) => s.role === "owner" || s.status === "none"); // "none": the demo, no sign-in
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setBusy(false), [send.error, send.sentAt]);
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <div className="text-[12px] text-muted">
+        HQ calls <span className="font-term text-ink">{send.tool}</span> on {send.connection} with exactly this, once, when you click Send:
+      </div>
+      <pre className="scroll-thin max-h-[240px] overflow-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-2 font-term text-[12px]">{JSON.stringify(send.args, null, 2)}</pre>
+      {send.error && (
+        <p className="text-[13px] text-red" role="alert">
+          {send.error}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          className="btn min-h-[44px] px-3 text-[13px]"
+          disabled={!owner || busy}
+          title={owner ? undefined : "Only the owner sends"}
+          onClick={() => {
+            setBusy(true);
+            officeActions.sendProposal(item.id);
+          }}
+        >
+          {busy ? "Sending…" : send.error ? "Send again" : "Send"}
+        </button>
+        <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed")}>
+          Don't send
+        </button>
+      </div>
+    </div>
   );
 }
 

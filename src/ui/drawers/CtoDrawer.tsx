@@ -82,6 +82,9 @@ export function CtoDrawer() {
             blocked: count("blocked"),
             total: tasks.length,
           },
+          ...(snap.spend ? { spend: snap.spend } : {}),
+          waiting: (snap.actionItems ?? []).filter((i) => i.status === "open").length + snap.agents.filter((a) => a.state === "needs-input").length,
+          goals: snap.goals ?? [],
         },
       ]);
       return;
@@ -246,6 +249,7 @@ export function CtoDrawer() {
         </div>
       </DrawerHeader>
 
+      <CompanyStrip projects={active} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-2">
         <div className="flex flex-wrap items-center gap-2">
           {ctoAgent && (
@@ -388,6 +392,8 @@ export function CtoDrawer() {
                       <span className="text-[#a371f7]">Review {p.counts.inReview}</span>
                       <span className="text-green">Done {p.counts.done}</span>
                       {p.counts.blocked > 0 && <span className="text-red">Blocked {p.counts.blocked}</span>}
+                      {p.spend && <span className="text-muted">Today ${p.spend.day.usd.toFixed(2)} · month ${p.spend.month.usd.toFixed(2)}{p.spend.paused ? " · paused" : ""}</span>}
+                      {(p.waiting ?? 0) > 0 && <span className="text-amber">{p.waiting} waiting on you</span>}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
                       {p.team.slice(0, 6).map((m) => (
@@ -626,5 +632,51 @@ export function CtoDrawer() {
         )}
       </div>
     </>
+  );
+}
+
+/** Every project at a glance: spend today and this month, what waits on you, and each project's goals. */
+function CompanyStrip({ projects }: { projects: ProjectOverview[] }) {
+  const priced = projects.filter((p) => p.spend);
+  const day = priced.reduce((n, p) => n + (p.spend?.day.usd ?? 0), 0);
+  const month = priced.reduce((n, p) => n + (p.spend?.month.usd ?? 0), 0);
+  const waiting = projects.reduce((n, p) => n + (p.waiting ?? 0), 0);
+  const goals = projects.flatMap((p) => (p.goals ?? []).filter((g) => g.status === "active").map((g) => ({ ...g, project: p.name })));
+  if (!projects.length) return null;
+  return (
+    <section className="flex flex-col gap-2 border-b border-white/[0.08] px-4 py-3" aria-label="Company">
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+        <span>
+          <span className="text-muted">Spend today </span>
+          <b className="font-display">${day.toFixed(2)}</b>
+        </span>
+        <span>
+          <span className="text-muted">This month </span>
+          <b className="font-display">${month.toFixed(2)}</b>
+        </span>
+        <span className={waiting ? "text-amber" : "text-muted"}>{waiting ? `${waiting} waiting on you` : "Nothing waits on you"}</span>
+        {priced.length < projects.length && <span className="text-[12px] text-muted">Spend covers running projects and API-key accounts.</span>}
+      </div>
+      {goals.length > 0 && (
+        <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-1.5 p-0">
+          {goals.map((g) => (
+            <li key={`${g.project}-${g.id}`} className="rounded-lg border border-white/10 px-2 py-1.5 text-[12px]">
+              <div className="truncate">
+                <b>{g.title}</b> <span className="text-muted">· {g.project}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-muted">
+                <div className="h-1 flex-1 overflow-hidden rounded bg-white/10" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+                  <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
+                </div>
+                <span>
+                  {g.done}/{g.total}
+                  {g.current ? ` · ${g.current}${g.target ? ` of ${g.target}` : ""}` : ""}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

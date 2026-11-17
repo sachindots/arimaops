@@ -22,6 +22,19 @@ export interface TeamTemplate {
   memoryTypes: string[];
   /** Checks run on each finished task (src/data/scorers.ts); left out, HQ picks ones that fit the template. */
   scorers?: string[];
+  /** Recurring work HQ hands the lead on a schedule (server/rituals.ts). */
+  rituals?: Ritual[];
+}
+
+/** A recurring prompt to the lead: every day (no `day`) or one weekday (0 = Sunday), at `hour` local time. */
+export interface Ritual {
+  id: string;
+  title: string;
+  day?: number;
+  /** With `day`: only the first such weekday of the month. */
+  monthly?: boolean;
+  hour: number;
+  prompt: string;
 }
 
 export interface Role {
@@ -40,6 +53,10 @@ export interface Role {
   /** Agents of this role a new project starts with. */
   seats: number;
   color: string; // hex
+  /** Daily USD for all seats of this role together (API-key accounts only); over it, the role's workers stop until midnight. */
+  capUsd?: number;
+  /** Overrides rules.outbound for this role's seats: a mixed team where only marketing and sales are drafts only. */
+  outbound?: Outbound;
 }
 
 export const OUTBOUND = ["none", "drafts-only"] as const;
@@ -133,7 +150,8 @@ export type Gate = { id: string } & (
   /** Someone other than the task's owner; of this role when given. */
   | { kind: "reviewer"; roleId?: string }
   | { kind: "second-opinion"; when: "always" | "high-stakes" }
-  | { kind: "owner-approval"; reason: ApprovalReason }
+  /** "high-stakes": only tasks the lead marks high-stakes (or that touch sensitive files) wait for it. Default always. */
+  | { kind: "owner-approval"; reason: ApprovalReason; when?: "always" | "high-stakes" }
   | { kind: "file-delivered" }
   | { kind: "findings-report" }
   | { kind: "scope-set" }
@@ -344,6 +362,8 @@ export function templateErrors(t: TeamTemplate): string[] {
     if (!HEX.test(r.color ?? "")) say(`${name}: colour must be a hex value like #4f8cff.`);
     if (r.isLead && r.onDemand) say(`${name}: the lead stays on, so it can't be on demand.`);
     if (r.isLead && r.seats !== 1) say(`${name}: the lead role has exactly one seat.`);
+    if (r.capUsd !== undefined && !(typeof r.capUsd === "number" && r.capUsd >= 0 && Number.isFinite(r.capUsd))) say(`${name}: the daily budget is a dollar amount from 0.`);
+    if (r.outbound !== undefined && !isIn(OUTBOUND, r.outbound)) say(`${name}: outbound must be one of ${OUTBOUND.join(", ")}.`);
   }
 
   const stages = Array.isArray(t.flow?.stages) ? t.flow.stages : [];
@@ -363,7 +383,18 @@ export function templateErrors(t: TeamTemplate): string[] {
       else if (g.kind === "reviewer" && g.roleId !== undefined && !roleIds.has(g.roleId)) say(`Stage ${name}: reviewer gate names no role "${g.roleId}".`);
       else if (g.kind === "second-opinion" && g.when !== "always" && g.when !== "high-stakes") say(`Stage ${name}: second opinion "when" is "always" or "high-stakes".`);
       else if (g.kind === "owner-approval" && !isIn(APPROVAL_REASONS, g.reason)) say(`Stage ${name}: owner approval needs a reason (${APPROVAL_REASONS.join(", ")}).`);
+      else if (g.kind === "owner-approval" && g.when !== undefined && g.when !== "always" && g.when !== "high-stakes") say(`Stage ${name}: owner approval "when" is "always" or "high-stakes".`);
     }
+  }
+
+  for (const id of dupes((t.rituals ?? []).map((r) => r.id))) say(`Two rituals share the id "${id}".`);
+  for (const r of t.rituals ?? []) {
+    const name = `Ritual ${r.title || r.id}`;
+    if (!SLUG.test(r.id ?? "")) say(`${name}: id must be lowercase letters, digits and dashes.`);
+    if (!Number.isInteger(r.hour) || r.hour < 0 || r.hour > 23) say(`${name}: hour is a whole number from 0 to 23.`);
+    if (r.day !== undefined && !(Number.isInteger(r.day) && r.day >= 0 && r.day <= 6)) say(`${name}: day is 0 (Sunday) to 6 (Saturday), or left out for every day.`);
+    if (r.monthly && r.day === undefined) say(`${name}: a monthly ritual names its weekday (day).`);
+    if (!r.prompt?.trim() || r.prompt.length > 4000) say(`${name}: needs a prompt of up to 4000 characters.`);
   }
 
   const rules = t.rules;

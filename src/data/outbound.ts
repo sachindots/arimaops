@@ -46,3 +46,16 @@ export function outboundMcpProblem(name: string, url?: string): string | null {
   }
   return null;
 }
+
+/**
+ * Whether this seat is drafts only: its role's `outbound` when set, else the project's rules. Without an agent, the
+ * project's rule. A mixed team (Startup) keeps engineers unrestricted while marketing, sales and support only draft.
+ */
+export function draftsOnly(
+  cfg: { team?: { id: string; roleId?: string }[]; template?: { roles: { id: string; outbound?: string }[] } | null; rules?: { outbound?: string } | null },
+  agentId?: string,
+): boolean {
+  const roleId = agentId ? cfg.team?.find((a) => a.id === agentId)?.roleId : undefined;
+  const role = roleId ? cfg.template?.roles.find((r) => r.id === roleId) : undefined;
+  return (role?.outbound ?? cfg.rules?.outbound) === "drafts-only";
+}

@@ -23,6 +23,8 @@ const OWNER = [
   "addMcp", "addToSuite", "finishGithubApp", "importTemplate", "openHostShell", "openShell", "promoteLessons",
   "removeAccount", "removeLesson", "runSetupFix", "saveAccount", "setCompany", "setLabMode", "setLessonPromotion",
   "setMemoryExtraction", "setProxy", "setSpendCaps",
+  // Tool connections: HQ holds the owner's keys and sends on the owner's click.
+  "saveConnection", "removeConnection", "checkConnection", "sendProposal",
 ].sort();
 check("owner-only commands are exactly these", JSON.stringify(byRole("owner")) === JSON.stringify(OWNER), JSON.stringify(byRole("owner")));
 check("every owner-only command needs the step-up from a remote device", OWNER.every(needsStepUp));
@@ -52,6 +54,9 @@ check("an operator can't move an agent to Local", why(authorize("updateAgent", [
 check("an operator can't give an agent a folder", why(authorize("updateAgent", ["a", { workspacePath: "/" }], who("operator"), ctx)) === "role");
 check("an operator can't move the team to Local", why(authorize("setTeamMode", ["local"], who("operator"), ctx)) === "role");
 check("an operator can't add a Local agent", why(authorize("addAgent", [{ mode: "local" }], who("operator"), ctx)) === "role");
+check("an operator can make a role drafts only", ok(authorize("updateRole", ["marketer", { outbound: "drafts-only" }], who("operator"), ctx)));
+check("…but can't lift it, or clear it", why(authorize("updateRole", ["marketer", { outbound: "none" }], who("operator"), ctx)) === "role" && why(authorize("updateRole", ["marketer", { outbound: null }], who("operator"), ctx)) === "role");
+check("an operator sets a role's budget", ok(authorize("updateRole", ["marketer", { capUsd: 2 }], who("operator"), ctx)));
 check("an operator can't turn on cross-project tools", why(authorize("updateProject", [{ crossProject: true }], who("operator"), ctx)) === "role");
 
 check("a remote device needs a fresh code for a risky command", why(authorize("updateWorkflow", [{}], who("operator", true), ctx)) === "step-up");

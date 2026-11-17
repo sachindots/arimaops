@@ -65,6 +65,7 @@ export class ActionItems {
   resolve(id: string, decision: "done" | "dismissed", note?: string) {
     const item = this.items.find((i) => i.id === id);
     if (!item || item.status !== "open") return;
+    if (item.kind === "send" && decision === "done" && !item.send?.sentAt) throw new Error("A proposed send goes out only with Send.");
     item.status = decision;
     item.note = note?.trim().slice(0, 1000) || null;
     item.closedAt = new Date().toISOString();
@@ -72,6 +73,11 @@ export class ActionItems {
     hqDb().prepare("INSERT OR REPLACE INTO action_answers (project_id, id, kind, decision, at) VALUES (?, ?, ?, ?, ?)").run(this.hub.snap.config.project.id, item.id, item.kind ?? "request", decision, Date.parse(item.closedAt));
     this.hub.emit({ type: "action.updated", item: { ...item } });
     if (item.kind === "memory" || item.kind === "spend") return; // no agent to tell
+    if (item.kind === "send") {
+      if (item.send?.sentAt) this.planner.notify(item.fromId, `The owner sent "${item.title}" through ${item.send.connection}.`);
+      else this.planner.notify(item.fromId, `The owner didn't send "${item.title}".${item.note ? ` Note: ${item.note}` : ""} Revise it and propose again only if asked.`);
+      return;
+    }
     if (item.kind === "lesson" && item.lesson) {
       this.onLessonDecided(item.lesson.id, decision === "done");
       return;
@@ -232,6 +238,46 @@ export class ActionItems {
     this.save();
     this.hub.emit({ type: "action.updated", item: { ...item } });
     return item;
+  }
+
+  /** An agent's proposed send: the exact call HQ makes through the owner's connection if the owner clicks Send. */
+  addSend(fromId: string, title: string, summary: string, send: { connection: string; tool: string; args: Record<string, unknown> }): ActionItem {
+    const item: ActionItem = {
+      id: `send${Date.now().toString(36)}${++this.seq}`, fromId, taskId: this.planner.currentTask(fromId)?.id ?? null,
+      title: title.trim().replace(/\s+/g, " ").slice(0, 160) || "Proposed send", details: summary.trim().slice(0, 4000), waiting: false, kind: "send", send,
+      status: "open", note: null, at: new Date().toISOString(), closedAt: null,
+    };
+    this.items.unshift(item);
+    this.save();
+    this.hub.emit({ type: "action.updated", item: { ...item } });
+    this.hub.activity("agent.needs-input", fromId, `${this.hub.name(fromId)} proposed a send through ${send.connection}: ${item.title}`);
+    return item;
+  }
+
+  private sending = new Set<string>();
+
+  /** The owner clicked Send: HQ makes the call once. A failure leaves the item open with the error. */
+  async send(id: string, call: (s: NonNullable<ActionItem["send"]>) => Promise<string>) {
+    const item = this.items.find((i) => i.id === id);
+    if (!item || item.kind !== "send" || !item.send || item.status !== "open") throw new Error("That send is no longer open.");
+    if (item.send.sentAt || this.sending.has(id)) throw new Error("It is already sent or being sent.");
+    this.sending.add(id);
+    try {
+      const reply = await call(item.send);
+      if (/^The tool returned an error/.test(reply)) throw new Error(reply.slice(0, 500));
+      item.send.sentAt = new Date().toISOString();
+      delete item.send.error;
+      this.hub.activity("config", null, `Sent through ${item.send.connection}: ${item.title}`);
+      this.resolve(id, "done", reply.slice(0, 1000));
+    } catch (err) {
+      // It may still have gone out (a timeout after the server acted): say so, and leave the decision to retry to the owner.
+      item.send.error = `${err instanceof Error ? err.message : String(err)}`.slice(0, 500) + " It may or may not have gone out; check before sending again.";
+      this.save();
+      this.hub.emit({ type: "action.updated", item: { ...item } });
+      throw err;
+    } finally {
+      this.sending.delete(id);
+    }
   }
 
   /** A spend alert or pause (docs/agent-engine.md section 8), filed once per id (one per cap and period). */

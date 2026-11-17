@@ -36,9 +36,10 @@ export interface NewTask {
   highStakes?: boolean;
   /** Start the task in this stage (its phase), if the gates before it are met; default the first stage. */
   stageId?: string;
+  goalId?: string;
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId" | "specItems" | "highStakes">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "files" | "doneWhen" | "needs" | "status" | "boardId" | "note" | "prNumber" | "deliverablePath" | "cli" | "model" | "stageId" | "specItems" | "highStakes" | "goalId">>;
 
 /** "s4", " S12 " → "S4", "S12"; anything else is dropped. */
 const cleanItems = (items: string[] | undefined) => [...new Set((items ?? []).map((i) => i.trim().toUpperCase()).filter((i) => /^S\d+$/.test(i)))];
@@ -401,7 +402,7 @@ export class Planner {
       id, boardId: board.id, stageId: template.flow.stages[0].id, title: input.title.trim().slice(0, 120), ownerId: null, status: "todo",
       needs: input.needs ?? [], prNumber: null, description: input.description ?? "", files: input.files ?? [], doneWhen: input.doneWhen ?? "", note: null, deliverablePath: null,
       cli: input.cli && isAgentCli(input.cli) ? input.cli : null, model: input.model?.trim().slice(0, 80) || null,
-      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes, templateId: template.id, templateVersion: template.version,
+      specItems: cleanItems(input.specItems), highStakes: !!input.highStakes, templateId: template.id, templateVersion: template.version, goalId: input.goalId || null,
     };
     if (input.stageId && input.stageId !== task.stageId) {
       if (!template.flow.stages.some((st) => st.id === input.stageId)) throw new Error(`No stage "${input.stageId}". Stages: ${template.flow.stages.map((st) => st.id).join(", ")}.`);

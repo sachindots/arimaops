@@ -161,6 +161,8 @@ export interface ProjectConfig {
   charter?: string;
   /** The morning (09:00) and evening (18:00) note to the owner. On unless set to false. */
   standup?: boolean;
+  /** The template's scheduled rituals (default on). */
+  rituals?: boolean;
   officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
@@ -229,6 +231,8 @@ export interface SpendState {
   paused: "day" | "month" | null;
   /** Events on models without a price row (GPT, Gemini): counted as $0. */
   unpriced: number;
+  /** Roles with a daily budget: today's spend and whether its seats are stopped. */
+  roles?: { roleId: string; title: string; usd: number; cap: number; paused: boolean }[];
 }
 
 /** Engagement scope: domains ("example.com", "*.example.com"), IPs or IPv4 CIDRs. Out of scope always wins. */
@@ -351,7 +355,51 @@ export interface Task {
   evidence?: TaskEvidence;
   /** When it entered its current status (ISO), from the task's status events; missing on projects without them. */
   movedAt?: string;
+  /** The goal it moves forward (server/goals.ts). */
+  goalId?: string | null;
 }
+
+/** An outcome the owner wants, with the tasks that roll up to it. done/total/usd are worked out by HQ. */
+export interface Goal {
+  id: string; // "G1"
+  title: string;
+  /** The number that shows it, its target and where it is now: free text ("MRR", "$5k", "$3.2k"). */
+  metric?: string;
+  target?: string;
+  current?: string;
+  status: "active" | "done" | "dropped";
+  done: number;
+  total: number;
+  /** Estimated spend on its tasks (priced models only). */
+  usd: number;
+}
+/** A remote MCP server HQ calls for the agents (server/connections.ts). Never carries the key. */
+export interface ToolConnection {
+  name: string;
+  url: string;
+  /** Roles whose agents may use it; none = nobody. */
+  roles: string[];
+  /** Tools the owner ticked as read-only: the only ones agents can call. */
+  read: string[];
+  /** The tool HQ calls when the owner clicks Send on a proposed send; agents never call it. */
+  send: string | null;
+  /** The server's tools at the last check. */
+  tools: { name: string; description: string }[];
+  probedAt: string | null;
+  hasKey: boolean;
+}
+
+export interface ConnectionInput {
+  name: string;
+  url?: string;
+  roles?: string[];
+  read?: string[];
+  send?: string | null;
+  /** Stored in HQ's vault; "" removes it, left out keeps it. */
+  apiKey?: string;
+}
+
+export type GoalPatch = Partial<Pick<Goal, "title" | "metric" | "target" | "current" | "status">>;
 
 export type ReviewState = "pending" | "reviewing" | "changes-requested" | "passed";
 
@@ -582,6 +630,9 @@ export interface OfficeSnapshot {
   memory?: MemoryState;
   /** What every agent on this machine knows about the company (Settings → Project). */
   company?: string;
+  goals?: Goal[];
+  /** Owner and operators: the machine's tool connections (no keys). */
+  connections?: ToolConnection[];
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
@@ -613,7 +664,9 @@ export interface ActionItem {
   /** plan = an ops task's plan waiting for Approve (done) / Reject (dismissed) before the agent executes.
    *  memory = new memories from one task, waiting to be certified or rejected (from "hq").
    *  approval = the lead passed a person gate while the owner was away: Keep (done) or Undo (dismissed). */
-  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson";
+  kind?: "request" | "plan" | "memory" | "approval" | "spend" | "overflow" | "skills" | "spec" | "gate" | "lesson" | "send";
+  /** kind send: what HQ sends through the owner's connection when the owner clicks Send (Dismiss: nothing is sent). */
+  send?: { connection: string; tool: string; args: Record<string, unknown>; sentAt?: string; error?: string };
   /** kind lesson: a lesson waiting to join the template (Approve = approved, Reject = rejected). */
   lesson?: { id: string; templateId: string; type: string };
   /** kind gate: a task waiting on the owner's approval gate (outbound send, containment, merge). Approve = passed, Send back = failed. */
@@ -656,7 +709,11 @@ export interface WelcomeInput {
 export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account" | "engine">>;
 
 /** Changes to one role of the project's template; every seat of the role picks them up at its next start. */
-export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">>;
+export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">> & {
+  /** null clears it. */
+  capUsd?: number | null;
+  outbound?: Role["outbound"] | null;
+};
 
 export interface WorkflowPatch {
   review?: Partial<WorkflowConfig["review"]>;
@@ -701,6 +758,11 @@ export interface ProjectOverview {
     blocked: number;
     total: number;
   };
+  /** Loaded projects: API-key spend today and this month against its caps. */
+  spend?: SpendState;
+  /** Open Inbox items plus agents waiting on you. */
+  waiting?: number;
+  goals?: Goal[];
 }
 
 

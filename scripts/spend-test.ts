@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "arima-spend-"));
 const { hqDb } = await import("../server/lib/db");
-const { capsOf, periods, SpendGuard, spendPaused, spendState } = await import("../server/spendCaps");
+const { capsOf, periods, rolePaused, SpendGuard, spendPaused, spendState } = await import("../server/spendCaps");
 const { MeteredRunner } = await import("../server/modelRunner");
 
 let fails = 0;
@@ -101,6 +101,30 @@ s = await guard.check(new Date(2026, 10, 14, 2, 0));
 check("over the monthly cap: paused for the month", s.paused === "month" && log.some((l) => l.startsWith("alert spend-pause-2026-11")), JSON.stringify(s));
 s = await guard.check(new Date(2026, 11, 1, 0, 1));
 check("…until the 1st", s.paused === null && spendPaused("shop") === null);
+
+// Role budgets: the role over its daily budget stops; the others keep going.
+{
+  const at = new Date(2026, 11, 3, 10, 0);
+  const row = (agent: string, usd: number) =>
+    db.prepare(`INSERT INTO usage_events (at, project_id, task_id, agent_id, source, account, provider, cli, model, input, cached, output, cost_usd)
+      VALUES (?, 'studio', NULL, ?, 'agent', 'acme-key', 'anthropic', 'claude', 'claude-sonnet-5-5', 1, 0, 1, ?)`).run(at.getTime(), agent, usd);
+  row("mkt1", 1.5); row("mkt2", 0.7); row("eng1", 4);
+  const stoppedIds: string[][] = [];
+  const said: string[] = [];
+  const roles = [{ roleId: "marketer", title: "Marketer", capUsd: 2, agentIds: ["mkt1", "mkt2"] }, { roleId: "engineer", title: "Engineer", capUsd: 20, agentIds: ["eng1"] }];
+  const g = new SpendGuard("studio", db, () => ({ dailyUsd: 100, monthlyUsd: 1000 }), () => ["acme-key"], {
+    stopWorkers: async (ids) => void stoppedIds.push(ids ?? ["ALL"]), tellLead: (t) => said.push(t), alert: (id) => said.push(`alert ${id}`), changed: () => {},
+  }, () => roles);
+  const st = await g.check(at);
+  check("a role over its budget is stopped, only its seats", stoppedIds.length === 1 && stoppedIds[0].join() === "mkt1,mkt2" && rolePaused("studio", "marketer") && !rolePaused("studio", "engineer"), JSON.stringify(stoppedIds));
+  check("the project isn't paused, and the state shows each role", st.paused === null && st.roles?.find((r) => r.roleId === "marketer")?.paused === true && st.roles?.find((r) => r.roleId === "engineer")?.usd === 4, JSON.stringify(st.roles));
+  check("the lead is told once, the owner gets an item", said.filter((t) => /stopped the Marketer/.test(t)).length === 1 && said.includes("alert role-spend-marketer-2026-12-03"));
+  await g.check(at);
+  check("…and only once", said.filter((t) => /stopped the Marketer/.test(t)).length === 1);
+  roles[0].capUsd = 5;
+  await g.check(at);
+  check("a raised budget lifts it", !rolePaused("studio", "marketer") && said.some((t) => /under its daily budget again/.test(t)));
+}
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

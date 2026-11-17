@@ -57,6 +57,8 @@ const rolePatch = z.looseObject({
   skills: z.array(z.string().max(200)).max(200).optional(),
   onDemand: z.boolean().optional(),
   fallback: z.looseObject({ cli, model: z.string().max(200) }).nullable().optional(),
+  capUsd: z.number().min(0).max(100_000).nullable().optional(),
+  outbound: z.enum(["none", "drafts-only"]).nullable().optional(),
 });
 const boardPatch = z.looseObject({
   title: z.string().max(500).optional(),
@@ -100,6 +102,7 @@ const projectPatch = z.looseObject({
   crossProject: z.boolean().optional(),
   charter: z.string().max(20_000).optional(),
   standup: z.boolean().optional(),
+  rituals: z.boolean().optional(),
 });
 
 /** A terminal that isn't a sandboxed or container agent's own is a shell on this machine. */
@@ -150,7 +153,8 @@ export const COMMANDS = {
   }),
   removeAgent: entry({ role: "operator", stepUp: true, args: z.tuple([id, opt(obj)]) }),
   setTeamMode: entry({ role: "operator", stepUp: true, args: z.tuple([mode]), ownerIf: ([m]) => m === "local" }),
-  updateRole: entry({ role: "operator", stepUp: true, args: z.tuple([id, rolePatch]) }),
+  // Loosening who may send (a role off drafts only) is the owner's call; tightening isn't.
+  updateRole: entry({ role: "operator", stepUp: true, args: z.tuple([id, rolePatch]), ownerIf: ([, p]) => p.outbound !== undefined && p.outbound !== "drafts-only" }),
   updateProjectTemplate: entry({ role: "operator", stepUp: true, args: z.tuple([obj]) }),
   resyncTemplate: entry({ role: "operator", stepUp: true, args: z.tuple([]) }),
   exportTemplate: entry({ role: "operator", args: z.tuple([]) }),
@@ -191,6 +195,28 @@ export const COMMANDS = {
   updateWorkflow: entry({ role: "operator", stepUp: true, args: z.tuple([workflowPatch]) }),
   // Machine-wide company context: in every agent's role file, in every project.
   setCompany: entry({ role: "owner", stepUp: true, args: z.tuple([text(20_000)]) }),
+  // Tool connections: HQ calls the owner's services for the agents (server/connections.ts). Owner only.
+  saveConnection: entry({
+    role: "owner",
+    stepUp: true,
+    args: z.tuple([
+      z.looseObject({
+        name: text(40),
+        url: text(2000).optional(),
+        roles: z.array(text(40)).max(40).optional(),
+        read: z.array(text(200)).max(200).optional(),
+        send: text(200).nullable().optional(),
+        apiKey: text(10_000).optional(),
+      }),
+    ]),
+  }),
+  removeConnection: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
+  checkConnection: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
+  // HQ sends one proposed message through the owner's connection: each send is the owner's own click.
+  sendProposal: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
+  addGoal: entry({ role: "operator", args: z.tuple([z.looseObject({ title: text(200), metric: text(100).optional(), target: text(100).optional() })]) }),
+  updateGoal: entry({ role: "operator", args: z.tuple([id, z.looseObject({ title: text(200).optional(), metric: text(100).optional(), target: text(100).optional(), current: text(100).optional(), status: z.enum(["active", "done", "dropped"]).optional() })]) }),
+  setTaskGoal: entry({ role: "operator", args: z.tuple([id, id.nullable()]) }),
   updateProject: entry({ role: "operator", stepUp: true, args: z.tuple([projectPatch]), ownerIf: ([p]) => p.crossProject !== undefined }),
 };
 

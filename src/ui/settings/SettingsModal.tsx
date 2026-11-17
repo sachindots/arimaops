@@ -8,6 +8,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { SandboxSettingsTab } from "./SandboxSettings";
 import { StackSettings } from "./StackSettings";
 import { McpSettings } from "./McpSettings";
+import { ConnectionsSettings } from "./ConnectionsSettings";
 import { TeamSettings } from "./TeamSettings";
 import { WorkflowSettings } from "./WorkflowSettings";
 
@@ -74,7 +75,12 @@ export function SettingsModal() {
             {settings.tab === "users" && <UsersSettings />}
             {settings.tab === "workflow" && <WorkflowSettings />}
             {settings.tab === "stack" && <StackSettings />}
-            {settings.tab === "mcp" && <McpSettings />}
+            {settings.tab === "mcp" && (
+              <>
+                <McpSettings />
+                <ConnectionsSettings />
+              </>
+            )}
             {settings.tab === "sandbox" && <SandboxSettingsTab initialAgentId={settings.agentId} />}
             {settings.tab === "boards" && <BoardsSettings />}
             {settings.tab === "project" && <ProjectSettings />}

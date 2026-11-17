@@ -23,7 +23,7 @@ interface TaskRow {
   id: string; board_id: string; stage_id: string; title: string; owner_id: string | null; status: Task["status"];
   needs: string; files: string; description: string | null; done_when: string | null; note: string | null;
   pr_number: number | null; deliverable_path: string | null; cli: Task["cli"]; model: string | null;
-  spec_items: string; high_stakes: number; template_id: string | null; template_version: number | null;
+  spec_items: string; high_stakes: number; template_id: string | null; template_version: number | null; goal_id: string | null;
 }
 
 /** The project's plan, or null before its first save. */
@@ -56,6 +56,7 @@ export function loadPlanTables(db: DatabaseSync, projectId: string): PlanFile | 
       highStakes: !!r.high_stakes,
       templateId: r.template_id ?? undefined,
       templateVersion: r.template_version ?? undefined,
+      ...(r.goal_id ? { goalId: r.goal_id } : {}),
       ...(scored.has(r.id) ? { scores: scored.get(r.id) } : {}),
       ...(moved.has(r.id) ? { movedAt: moved.get(r.id) } : {}),
     }),
@@ -82,12 +83,12 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
      ON CONFLICT (project_id, id) DO UPDATE SET title = excluded.title, status = excluded.status, ord = excluded.ord`,
   );
   const task = db.prepare(
-    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at, spec_items, high_stakes, template_id, template_version)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tasks (project_id, id, board_id, stage_id, title, owner_id, status, needs, files, description, done_when, note, pr_number, deliverable_path, cli, model, updated_at, spec_items, high_stakes, template_id, template_version, goal_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (project_id, id) DO UPDATE SET board_id = excluded.board_id, stage_id = excluded.stage_id, title = excluded.title, owner_id = excluded.owner_id,
        status = excluded.status, needs = excluded.needs, files = excluded.files, description = excluded.description, done_when = excluded.done_when, note = excluded.note,
        pr_number = excluded.pr_number, deliverable_path = excluded.deliverable_path, cli = excluded.cli, model = excluded.model, updated_at = excluded.updated_at,
-       spec_items = excluded.spec_items, high_stakes = excluded.high_stakes`,
+       spec_items = excluded.spec_items, high_stakes = excluded.high_stakes, goal_id = excluded.goal_id`,
   );
   // The template columns are set once, when the task is first saved: a re-sync changes later tasks only.
   const was = new Map((db.prepare("SELECT id, status, stage_id FROM tasks WHERE project_id = ?").all(projectId) as { id: string; status: string; stage_id: string }[]).map((r) => [r.id, r]));
@@ -99,7 +100,7 @@ export function savePlanTables(db: DatabaseSync, projectId: string, plan: PlanFi
       task.run(
         projectId, t.id, t.boardId, t.stageId ?? firstStage, t.title, t.ownerId, t.status, JSON.stringify(t.needs ?? []), JSON.stringify(t.files ?? []),
         t.description ?? null, t.doneWhen ?? null, t.note ?? null, t.prNumber ?? null, t.deliverablePath ?? null, t.cli ?? null, t.model ?? null, now,
-        JSON.stringify(t.specItems ?? []), t.highStakes ? 1 : 0, t.templateId ?? null, t.templateVersion ?? null,
+        JSON.stringify(t.specItems ?? []), t.highStakes ? 1 : 0, t.templateId ?? null, t.templateVersion ?? null, t.goalId ?? null,
       );
     for (const t of plan.tasks) {
       const stage = t.stageId ?? firstStage;

@@ -119,6 +119,61 @@ function ScopeEditor() {
   );
 }
 
+/** The outcomes this project works toward; the lead links tasks to them and records where each number is. */
+function Goals() {
+  const goals = useOffice((s) => s.snap?.goals) ?? [];
+  const [draft, setDraft] = useState({ title: "", metric: "", target: "" });
+  const add = () => {
+    if (!draft.title.trim()) return;
+    officeActions.addGoal({ title: draft.title.trim(), metric: draft.metric.trim() || undefined, target: draft.target.trim() || undefined });
+    setDraft({ title: "", metric: "", target: "" });
+  };
+  return (
+    <section className="flex flex-col gap-2">
+      <SectionTitle>Goals</SectionTitle>
+      <p className="text-[13px] text-muted">A few outcomes this project works toward. The lead links each task to one and records where the number is now.</p>
+      {goals.length > 0 && (
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+          {goals.map((g) => (
+            <li key={g.id} className={`panel grid grid-cols-[48px_minmax(0,1fr)_auto_auto] items-center gap-2 p-2 text-[13px] ${g.status === "active" ? "" : "opacity-60"}`}>
+              <span className="font-term text-muted">{g.id}</span>
+              <div className="min-w-0">
+                <CommitInput className="field" value={g.title} aria-label={`${g.id} title`} onCommit={(v) => v.trim() && officeActions.updateGoal(g.id, { title: v.trim() })} />
+                <div className="mt-1 text-[12px] text-muted">
+                  {g.metric ? `${g.metric}${g.target ? `: target ${g.target}` : ""}${g.current ? `, now ${g.current}` : ""} · ` : ""}
+                  {g.done} of {g.total} tasks done · ${g.usd.toFixed(2)} spent
+                </div>
+              </div>
+              <div className="h-1.5 w-20 overflow-hidden rounded bg-white/10" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+                <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
+              </div>
+              <select className="field w-auto" value={g.status} aria-label={`${g.id} status`} onChange={(e) => officeActions.updateGoal(g.id, { status: e.target.value as "active" | "done" | "dropped" })}>
+                <option value="active">Active</option>
+                <option value="done">Done</option>
+                <option value="dropped">Dropped</option>
+              </select>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <input className="field" value={draft.title} placeholder="Launch the beta" aria-label="New goal" onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+        <input className="field" value={draft.metric} placeholder="Metric: signups" aria-label="Metric" onChange={(e) => setDraft({ ...draft, metric: e.target.value })} />
+        <input className="field" value={draft.target} placeholder="Target: 200" aria-label="Target" onChange={(e) => setDraft({ ...draft, target: e.target.value })} />
+        <button className="btn" type="submit" disabled={!draft.title.trim()}>
+          Add goal
+        </button>
+      </form>
+    </section>
+  );
+}
+
 export function ProjectSettings() {
   const project = useOffice((s) => s.snap?.config.project);
   const snap = useOffice((s) => s.snap);
@@ -154,6 +209,7 @@ export function ProjectSettings() {
       </section>
       <SpendCaps />
       {snap?.config.rules.findings && <ScopeEditor />}
+      <Goals />
       <section className="flex flex-col gap-3">
         <SectionTitle>How the team works</SectionTitle>
         <Toggle

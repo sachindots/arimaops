@@ -12,9 +12,20 @@ export const DEFAULT_CAPS = { dailyUsd: 5, monthlyUsd: 50 };
 export const ALERT_AT = 0.8;
 
 const paused = new Map<string, "day" | "month">();
+const rolesPaused = new Map<string, Set<string>>();
 
 /** Why this project is paused for spend ("day" / "month"), or null. Read by session starts and model runs. */
 export const spendPaused = (projectId: string) => paused.get(projectId) ?? null;
+/** True when this role's daily budget is used up: its seats don't start until midnight. */
+export const rolePaused = (projectId: string, roleId: string | undefined) => !!roleId && !!rolesPaused.get(projectId)?.has(roleId);
+
+/** A role with a daily budget and the seats it covers. */
+export interface RoleBudget {
+  roleId: string;
+  title: string;
+  capUsd: number;
+  agentIds: string[];
+}
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -27,14 +38,15 @@ export function periods(now: Date) {
 }
 
 /** Estimated USD on these accounts since `since` (ms). */
-export function keyedSpend(db: DatabaseSync, projectId: string, accounts: string[], since: number): { usd: number; unpriced: number } {
-  if (!accounts.length) return { usd: 0, unpriced: 0 };
+export function keyedSpend(db: DatabaseSync, projectId: string, accounts: string[], since: number, agents?: string[]): { usd: number; unpriced: number } {
+  if (!accounts.length || agents?.length === 0) return { usd: 0, unpriced: 0 };
   const r = db
     .prepare(
       `SELECT COALESCE(SUM(cost_usd), 0) AS usd, COUNT(*) - COUNT(cost_usd) AS unpriced FROM usage_events
-       WHERE project_id = ? AND at >= ? AND account IN (SELECT value FROM json_each(?))`,
+       WHERE project_id = ? AND at >= ? AND account IN (SELECT value FROM json_each(?))
+       AND (? IS NULL OR agent_id IN (SELECT value FROM json_each(?)))`,
     )
-    .get(projectId, since, JSON.stringify(accounts)) as { usd: number; unpriced: number };
+    .get(projectId, since, JSON.stringify(accounts), agents ? 1 : null, JSON.stringify(agents ?? [])) as { usd: number; unpriced: number };
   return { usd: r.usd, unpriced: r.unpriced };
 }
 
@@ -47,8 +59,8 @@ export function spendState(db: DatabaseSync, projectId: string, caps: { dailyUsd
 }
 
 export interface SpendHooks {
-  /** Stops the project's running workers (never the lead). */
-  stopWorkers(): Promise<void>;
+  /** Stops the project's running workers (never the lead); with ids, only those. */
+  stopWorkers(ids?: string[]): Promise<void>;
   tellLead(text: string): void;
   /** Files an Action item (and so a push) once per id. */
   alert(id: string, title: string, details: string): void;
@@ -67,6 +79,7 @@ export class SpendGuard {
     /** The API-key accounts: the only ones counted. */
     private keyed: () => string[],
     private hooks: SpendHooks,
+    private roleBudgets: () => RoleBudget[] = () => [],
   ) {}
 
   async check(now = new Date()): Promise<SpendState> {
@@ -93,12 +106,38 @@ export class SpendGuard {
     for (const [name, x, key] of [["daily", s.day, p.dayKey], ["monthly", s.month, p.monthKey]] as const)
       if (x.cap > 0 && x.usd >= ALERT_AT * x.cap && x.usd < x.cap)
         this.hooks.alert(`spend-80-${key}`, `${Math.round((x.usd / x.cap) * 100)}% of the ${name} spend cap used (${usd(x.usd)} of ${usd(x.cap)})`, `At 100% HQ stops this project's workers until the period ends. Raise the cap in Settings → Project if the work needs more.`);
+    s.roles = await this.checkRoles(p);
+    if (!s.roles.length) delete s.roles;
     const json = JSON.stringify(s);
     if (json !== this.last) {
       this.last = json;
       this.hooks.changed(s);
     }
     return s;
+  }
+
+  /** Each role over its daily budget stops its seats until midnight; the others keep working. */
+  private async checkRoles(p: ReturnType<typeof periods>): Promise<NonNullable<SpendState["roles"]>> {
+    const out: NonNullable<SpendState["roles"]> = [];
+    const now = new Set<string>();
+    const was = rolesPaused.get(this.projectId) ?? new Set<string>();
+    for (const r of this.roleBudgets()) {
+      const spent = keyedSpend(this.db, this.projectId, this.keyed(), p.day, r.agentIds).usd;
+      const over = spent >= r.capUsd;
+      out.push({ roleId: r.roleId, title: r.title, usd: spent, cap: r.capUsd, paused: over });
+      if (!over) {
+        if (was.has(r.roleId)) this.hooks.tellLead(`${r.title} is under its daily budget again: its agents may start.`);
+        continue;
+      }
+      now.add(r.roleId);
+      if (!was.has(r.roleId))
+        this.hooks.tellLead(`HQ stopped the ${r.title} agents: the role's daily budget is used (${usd(spent)} of ${usd(r.capUsd)}). They can start again after midnight. Give urgent ${r.title} work to another role or wait.`);
+      this.hooks.alert(`role-spend-${r.roleId}-${p.dayKey}`, `${r.title} stopped: its daily budget is used (${usd(spent)} of ${usd(r.capUsd)})`, `The other roles keep working. Raise the ${r.title} budget in Settings → Team to go on today.`);
+      await this.hooks.stopWorkers(r.agentIds);
+    }
+    if (now.size) rolesPaused.set(this.projectId, now);
+    else rolesPaused.delete(this.projectId);
+    return out;
   }
 }
 

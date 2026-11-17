@@ -3,6 +3,8 @@
 // .mcp.json. The lead manages the plan; everyone can message everyone.
 
 import { seatRecords } from "./metrics";
+import { assertGoal, goalLines, publishGoals, updateGoal } from "./goals";
+import { callConnection, connectionsFor } from "./connections";
 import { hqDb } from "./lib/db";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { spendPaused } from "./spendCaps";
@@ -83,6 +85,15 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   );
 
   server.registerTool(
+    "list_goals",
+    { description: "The owner's goals for this project: each one's metric, target, where it is now, and how many of its tasks are done. Work that moves no goal is worth questioning." },
+    guard(() => {
+      const lines = goalLines(hub.snap.goals ?? []);
+      return ok(lines.length ? lines.join("\n") : "No active goals yet. The owner sets them in Settings → Project.");
+    }),
+  );
+
+  server.registerTool(
     "get_status",
     { description: "Live status of every agent (state, note, current task) plus the active boards with task counts." },
     guard(() =>
@@ -145,11 +156,15 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
           specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
           highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
           stageId: z.string().optional().describe("Start it in this flow stage (its phase, e.g. recon or exploit), if the gates before it are met. Default: the first stage."),
+          goalId: z.string().optional().describe("The owner's goal this task moves forward (list_goals), e.g. G2"),
         },
       },
-      guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string }) => {
+      guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string; goalId?: string }) => {
         leadOnly();
-        return ok(planner.createTask(args, me));
+        if (args.goalId) assertGoal(hqDb(), hub.snap.config.project.id, args.goalId);
+        const task = planner.createTask(args, me);
+        if (args.goalId) publishGoals(hqDb(), hub);
+        return ok(task);
       }),
     );
 
@@ -172,11 +187,29 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
           stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
           specItems: z.array(z.string()).optional().describe("The spec items it covers (replaces the list)"),
           highStakes: z.boolean().optional(),
+          goalId: z.string().nullable().optional().describe("The goal it moves forward (null unlinks it)"),
         },
       },
-      guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean }) => {
+      guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean; goalId?: string | null }) => {
         leadOnly();
-        return ok(planner.updateTask(taskId, patch, me));
+        if (patch.goalId) assertGoal(hqDb(), hub.snap.config.project.id, patch.goalId);
+        const task = planner.updateTask(taskId, patch, me);
+        if (patch.goalId !== undefined || patch.status) publishGoals(hqDb(), hub);
+        return ok(task);
+      }),
+    );
+
+    server.registerTool(
+      "update_goal",
+      {
+        description: "Lead only. Record where a goal's number is now (from a report, a dashboard export or a teammate's finding), or mark the goal done. The owner sets goals.",
+        inputSchema: { goalId: z.string(), current: z.string().max(100).optional().describe("e.g. \"142 signups\""), done: z.boolean().optional() },
+      },
+      guard(({ goalId, current, done }: { goalId: string; current?: string; done?: boolean }) => {
+        leadOnly();
+        updateGoal(hqDb(), hub.snap.config.project.id, goalId, { current, ...(done ? { status: "done" as const } : {}) });
+        publishGoals(hqDb(), hub);
+        return ok(`Goal ${goalId} updated.`);
       }),
     );
 
@@ -323,6 +356,59 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
       return ok(`Added to the user's Action items (${item.id}). ${waiting ? "Wait for HQ's message, or work on something else meanwhile." : "Keep working; HQ will message you when it's done."}`);
     }),
   );
+
+  // ---------------------------------------------------------------- the owner's tool connections (server/connections.ts)
+  const conns = connectionsFor(myCfg?.roleId);
+  if (conns.length) {
+    const named = (n: string) => {
+      const c = connectionsFor(hub.cfg(me)?.roleId).find((x) => x.name === n);
+      if (!c) throw new Error(`No connection "${n}" for your role. Yours: ${connectionsFor(hub.cfg(me)?.roleId).map((x) => x.name).join(", ") || "none"}.`);
+      return c;
+    };
+    server.registerTool(
+      "connection_tools",
+      { description: `The owner's services HQ reaches for you (${conns.map((c) => c.name).join(", ")}): each one's read tools you may call with read_connection, and whether it has a send you may propose with propose_send.` },
+      guard(() =>
+        ok(
+          connectionsFor(hub.cfg(me)?.roleId).map((c) => ({
+            connection: c.name,
+            readTools: c.tools.filter((t) => c.read.includes(t.name)),
+            send: c.send ? { tool: c.send, description: c.tools.find((t) => t.name === c.send)?.description ?? "" } : null,
+          })),
+        ),
+      ),
+    );
+    server.registerTool(
+      "read_connection",
+      {
+        description: "Call one of a connection's read tools (connection_tools lists them). HQ makes the call with the owner's key; results are cut at 20,000 characters, so filter and limit.",
+        inputSchema: { connection: z.string(), tool: z.string(), args: z.record(z.string(), z.unknown()).optional() },
+      },
+      guard(async ({ connection, tool, args }: { connection: string; tool: string; args?: Record<string, unknown> }) =>
+        ok(await callConnection(named(connection).name, tool, args ?? {}, { roleId: hub.cfg(me)?.roleId })),
+      ),
+    );
+    server.registerTool(
+      "propose_send",
+      {
+        description: "Propose one send (an email, a post, a CRM update) through a connection's send tool. Nothing goes out now: it goes to the owner's Inbox with the exact arguments, and HQ sends it only if the owner clicks Send. One proposal per message.",
+        inputSchema: {
+          connection: z.string(),
+          title: z.string().max(160).describe("What it is, e.g. \"Reply to Acme about the invoice\""),
+          summary: z.string().max(4000).describe("Why, and anything the owner should check before sending"),
+          args: z.record(z.string(), z.unknown()).describe("The send tool's arguments, exactly as they should go out"),
+        },
+      },
+      guard(({ connection, title, summary, args }: { connection: string; title: string; summary: string; args: Record<string, unknown> }) => {
+        const c = named(connection);
+        if (!c.send) throw new Error(`${c.name} has no send tool. Deliver the draft as a file instead.`);
+        if (!planner.actions) throw new Error("Action items aren't available.");
+        if (JSON.stringify(args).length > 50_000) throw new Error("That's too big to send in one go.");
+        const item = planner.actions.addSend(me, title, summary, { connection: c.name, tool: c.send, args });
+        return ok(`Proposed (${item.id}). Nothing is sent until the owner clicks Send; HQ tells you either way.`);
+      }),
+    );
+  }
 
   // ---------------------------------------------------------------- Ops: plan approval
   if (hasPlans) {

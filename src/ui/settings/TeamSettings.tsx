@@ -131,6 +131,8 @@ export function TeamSettings() {
 
 function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: number; expanded: boolean; onToggle: () => void }) {
   const customSkills = useOffice((s) => s.snap?.customSkills);
+  const projectOutbound = useOffice((s) => s.snap?.config.template?.rules.outbound ?? "none");
+  const spent = useOffice((s) => s.snap?.spend?.roles?.find((r) => r.roleId === role.id));
   const set = (patch: Parameters<typeof officeActions.updateRole>[1]) => officeActions.updateRole(role.id, patch);
   const toggleSkill = (id: string) => set({ skills: role.skills.includes(id) ? role.skills.filter((s) => s !== id) : [...role.skills, id] });
 
@@ -157,6 +159,37 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
               <input type="checkbox" checked={role.onDemand} onChange={(e) => set({ onDemand: e.target.checked })} />
               On demand: started for a task and stopped after it (from Phase 3)
             </label>
+          )}
+          {!role.isLead && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Daily budget (USD)"
+                hint={spent ? `Today $${spent.usd.toFixed(2)} of $${spent.cap.toFixed(2)}${spent.paused ? ": stopped until midnight" : ""}.` : "Empty: no role budget, only the project's caps. API-key accounts only."}
+              >
+                <CommitInput
+                  className="field"
+                  value={role.capUsd === undefined ? "" : String(role.capUsd)}
+                  placeholder="No budget"
+                  onCommit={(v) => {
+                    const n = Number(v.trim().replace("$", ""));
+                    if (!v.trim()) set({ capUsd: null });
+                    else if (Number.isFinite(n) && n >= 0) set({ capUsd: n });
+                  }}
+                />
+              </Field>
+              <Field label="Sending" hint="Drafts only: this role's agents can't reach mail, social or CRM hosts; you send.">
+                <select
+                  className="field"
+                  value={role.outbound ?? ""}
+                  aria-label={`${role.title} sending`}
+                  onChange={(e) => set({ outbound: e.target.value === "" ? null : (e.target.value as "none" | "drafts-only") })}
+                >
+                  <option value="">As the project ({projectOutbound === "drafts-only" ? "drafts only" : "no limit"})</option>
+                  <option value="drafts-only">Drafts only</option>
+                  <option value="none">No limit</option>
+                </select>
+              </Field>
+            </div>
           )}
           <Field label="Skills" hint="Built-in skill ids, your own skills, or skills.sh specs, comma-separated.">
             <CommitInput

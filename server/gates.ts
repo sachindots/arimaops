@@ -95,6 +95,7 @@ export function gateProblem(gate: Gate, ctx: GateContext): string | null {
       return reviewers.some(fits) ? null : `A ${gate.roleId} must accept this task.`;
     }
     case "owner-approval":
+      if (gate.when === "high-stakes" && !isHighStakes(task)) return null;
       return approved(gate, last) ? null : `Waiting for the owner's approval (${gate.reason}).`;
     case "spec-approved":
       // The board's spec approved as a whole (its current version), or this task's gate passed on its own.
