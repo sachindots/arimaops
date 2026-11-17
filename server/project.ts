@@ -237,6 +237,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   };
   const refreshUsage = () => {
     planner.checkStalls(Date.now());
+    planner.checkQuestions(Date.now());
     void onDemand.tick();
     overflow.tick();
     for (const a of hub.snap.config.team) {

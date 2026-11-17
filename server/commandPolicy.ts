@@ -99,6 +99,7 @@ const projectPatch = z.looseObject({
   exportPlan: z.boolean().optional(),
   crossProject: z.boolean().optional(),
   charter: z.string().max(20_000).optional(),
+  standup: z.boolean().optional(),
 });
 
 /** A terminal that isn't a sandboxed or container agent's own is a shell on this machine. */

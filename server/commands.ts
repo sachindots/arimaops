@@ -658,6 +658,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       if (typeof p.crossProject === "boolean") project.crossProject = p.crossProject;
+      if (typeof p.standup === "boolean") project.standup = p.standup;
       if (typeof p.charter === "string") project.charter = str(p.charter, CHARTER_MAX).trim() || undefined;
       hub.configChanged();
       if (exportOn) {

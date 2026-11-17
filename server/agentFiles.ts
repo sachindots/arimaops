@@ -262,8 +262,8 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   const charter = (cfg.project.charter ?? "").trim().slice(0, CHARTER_MAX);
   const hasEvidence = !isExecOrLead && Boolean(!cfg.template || cfg.template.flow.stages.some((s) => s.gates.some((g) => g.kind === "evidence")));
   const tools = isExecOrLead
-    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, write_spec, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, recall, related, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status, create_project_task, update_project_task" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`
-    : `get_my_task, set_my_status, record_gate${hasEvidence ? ", attach_evidence" : ""}, list_workers, get_status, list_tasks, recall, related, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`;
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, write_spec, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status, create_project_task, update_project_task" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, record_gate${hasEvidence ? ", attach_evidence" : ""}, list_workers, get_status, list_tasks, recall, related, who_knows, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",
@@ -283,7 +283,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "- Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.",
     "",
     "## Working with teammates",
-    "Message a teammate directly (send_message to their name) when your question is about their work or their strengths below; list_workers shows each one's track record and the areas they've worked in, list_tasks who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
+    "Message a teammate directly (send_message to their name) when your question is about their work or their strengths below; list_workers shows each one's track record and the areas they've worked in, list_tasks who built what, who_knows who has worked on a topic. Mark a question with kind \"question\" (the lead hears if nobody answers) and a disagreement with kind \"disagree\" plus your evidence; argue once, then let the lead decide. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
     ...peers,
     "",
     ...(extras.ports

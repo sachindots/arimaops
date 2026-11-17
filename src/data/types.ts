@@ -159,6 +159,8 @@ export interface ProjectConfig {
   crossProject?: boolean;
   /** How this team works together (owns which area, how to disagree, when to bother the owner). In every agent's role file. */
   charter?: string;
+  /** The morning (09:00) and evening (18:00) note to the owner. On unless set to false. */
+  standup?: boolean;
   officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
@@ -401,6 +403,10 @@ export interface AgentMessage {
   delivered?: "typed" | "on-stop" | "queued" | "dropped"; // how HQ handed it over; dropped = a start that no longer applied
   /** A question to the whole team: sent to the lead, who gathers from teammates and answers once. */
   team?: boolean;
+  /** Between agents: a question (goes to the lead if unanswered) or a disagreement (two on one task go to the lead). */
+  kind?: "question" | "disagree";
+  /** The sender's task when it was sent. */
+  taskId?: string;
 }
 
 export type ActivityType =

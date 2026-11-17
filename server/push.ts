@@ -101,7 +101,7 @@ export function pushAlert(hub: Pick<Hub, "slug" | "snap">, event: OfficeEvent): 
     return alert(`action:${event.item.id}`, "Action needed", event.item.title, "actions", true);
   // An agent answered you (a reply, a team answer from the lead): the text, so you can read it without opening HQ.
   if (event.type === "message" && event.message.toId === HUMAN_ID && event.message.fromId !== HUMAN_ID) {
-    const from = hub.snap.config.team.find((a) => a.id === event.message.fromId)?.name ?? event.message.fromId;
+    const from = hub.snap.config.team.find((a) => a.id === event.message.fromId)?.name ?? (event.message.fromId === "hq" ? BRAND.name : event.message.fromId);
     return alert(`message:${event.message.id}`, `${from} wrote`, event.message.text, `agent:${event.message.fromId}`, true);
   }
   if (event.type === "access.updated" && event.request.status === "pending")

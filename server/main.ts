@@ -33,6 +33,7 @@ import { RemoteGuard, startPushNotifier } from "./remote";
 import { scheduleBackups } from "./backups";
 import { memoryWorker } from "./memoryJobs";
 import { daily, DIGEST_HOUR } from "./memoryReview";
+import { STANDUP_HOURS, standupNote } from "./standup";
 import { broadcastMemory } from "./commands";
 
 function arg(name: string): string | undefined {
@@ -152,6 +153,16 @@ async function main() {
       rt.memoryReview.digest();
     }
   });
+  // The team's morning and evening note to you (free: built from HQ's records); a project can turn it off.
+  for (const kind of ["morning", "evening"] as const)
+    daily(STANDUP_HOURS[kind], () => {
+      const since = Date.now() - (kind === "morning" ? 15 : 9) * 3_600_000; // since the last note
+      for (const rt of projects.values()) {
+        if (rt.paused || rt.hub.snap.config.project.standup === false) continue;
+        const note = standupNote(hqDb(), rt.hub.snap, kind, since);
+        if (note) rt.planner.message("hq", "you", note);
+      }
+    });
   await startHttp({
     projects,
     defaultProject,

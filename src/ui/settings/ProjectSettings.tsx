@@ -156,6 +156,11 @@ export function ProjectSettings() {
       {snap?.config.rules.findings && <ScopeEditor />}
       <section className="flex flex-col gap-3">
         <SectionTitle>How the team works</SectionTitle>
+        <Toggle
+          checked={project.standup !== false}
+          onChange={(v) => officeActions.updateProject({ standup: v })}
+          label="Morning (09:00) and evening (18:00) note from the team"
+        />
         <Field
           label="The company"
           hint={`What every agent in every project knows: the product, customers, voice, prices, do and don't. Owner only; up to 3000 characters. Agents get it at their next start.`}

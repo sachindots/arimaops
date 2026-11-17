@@ -20,6 +20,7 @@ import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
 import { buildBrief, memoryForTask, summariseTask, type Brief } from "./brief";
 import { runStallCheck } from "./stalls";
+import { checkQuestions, escalateDisagreement, type ConversationCtx } from "./conversations";
 import type { GateState } from "../src/data/model";
 
 export interface NewTask {
@@ -44,6 +45,9 @@ const cleanItems = (items: string[] | undefined) => [...new Set((items ?? []).ma
 
 const now = () => new Date().toISOString();
 
+/** Messages one agent may send teammates per hour (talking in circles burns money); the owner is never capped. */
+export const CHATTER_PER_HOUR = 30;
+
 export class Planner {
   private seq = 0;
   /** Set by main: the user's action items (Team MCP `ask_user`). */
@@ -56,7 +60,6 @@ export class Planner {
   memory: MemoryStore | null = null;
   /** Set by main: extraction after a task, consolidation after a board (docs/memory-core.md section 5). */
   memoryJobs: { taskFinished(): void; boardDone(projectId: string): void } | null = null;
-
 
   constructor(private hub: Hub, private inbox: Inbox) {}
 
@@ -113,7 +116,12 @@ export class Planner {
       if (n) return 2 + n;
       return this.hub.status(id)?.session.state === "running" ? 0 : 1;
     };
-    return fit.map((a) => ({ id: a.id, r: rank(a.id) })).sort((x, y) => x.r - y.r)[0].id;
+    // Between seats that are equally free, the one that already worked in this task's folders (load always wins first).
+    const dir = (f: string) => f.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+    const want = new Set((task.files ?? []).map(dir));
+    const familiar = (id: string) =>
+      want.size ? this.snap.tasks.filter((t) => t.ownerId === id && t.status === "done" && t.id !== task.id).flatMap((t) => t.files ?? []).filter((f) => want.has(dir(f))).length : 0;
+    return fit.map((a) => ({ id: a.id, r: rank(a.id), f: familiar(a.id) })).sort((x, y) => x.r - y.r || y.f - x.f)[0].id;
   }
 
   defaultBoard(): Board {
@@ -624,22 +632,8 @@ export class Planner {
    * that won't wake it (a background job, a question it never sent). Nudge it once and tell the lead.
    */
   checkStalls(now: number, idleMs = 5 * 60_000, silentMs = 15 * 60_000, unansweredMs = 30 * 60_000) {
-    runStallCheck(
-      {
-        hub: this.hub,
-        inbox: this.inbox,
-        memory: this.memory,
-        stallNudged: this.stallNudged,
-        lastActivityAt: (id) => this.lastActivityAt(id),
-        currentTask: (id) => this.currentTask(id),
-        task: (id) => this.task(id),
-        notify: (id, text) => this.notify(id, text),
-      },
-      now,
-      idleMs,
-      silentMs,
-      unansweredMs,
-    );
+    const ctx = { hub: this.hub, inbox: this.inbox, memory: this.memory, stallNudged: this.stallNudged, lastActivityAt: (id: string) => this.lastActivityAt(id) };
+    runStallCheck({ ...ctx, currentTask: (id) => this.currentTask(id), task: (id) => this.task(id), notify: (id, text) => this.notify(id, text) }, now, idleMs, silentMs, unansweredMs);
   }
 
   /**
@@ -702,26 +696,37 @@ export class Planner {
   // ------------------------------------------------------------ messages
 
   /** Records a message, shows it in the office, and delivers it. */
-  message(fromId: string, toRef: string, text: string) {
+  message(fromId: string, toRef: string, text: string, kind?: "question" | "disagree") {
     const toId = /^(you|user|human)$/i.test(toRef.trim()) ? HUMAN_ID : this.agentId(toRef);
     if (toId === fromId) throw new Error("That's you.");
+    const clean = text.trim().slice(0, 2000);
+    if (!clean) throw new Error("Empty message");
     if (toId === HUMAN_ID) {
-      const clean = text.trim().slice(0, 2000);
-      if (!clean) throw new Error("Empty message");
       this.record(fromId, HUMAN_ID, clean); // shows in that agent's thread; nothing to deliver
       this.hub.activity("message", fromId, `${this.hub.name(fromId)} → You: ${clean.slice(0, 80)}`);
       return toId;
     }
     if (!toId) throw new Error(`No agent "${toRef}". Team: ${this.snap.config.team.map((a) => a.id).join(", ")}`);
-    const clean = text.trim().slice(0, 2000);
-    if (!clean) throw new Error("Empty message");
     const duplicate = this.snap.messages.find((m) => m.fromId === fromId && m.toId === toId && m.text === clean && Date.now() - Date.parse(m.at) < 5 * 60_000);
     if (duplicate) return toId;
-    const msg = this.record(fromId, toId, clean);
+    if (this.hub.cfg(fromId) && this.snap.messages.filter((m) => m.fromId === fromId && this.hub.cfg(m.toId) && Date.now() - Date.parse(m.at) < 3_600_000).length >= CHATTER_PER_HOUR) {
+      this.hub.activity("message", fromId, `${this.hub.name(fromId)} hit ${CHATTER_PER_HOUR} messages to teammates this hour; one to ${this.hub.name(toId)} was not sent: ${clean.slice(0, 60)}`);
+      throw new Error(`Not sent: you have sent ${CHATTER_PER_HOUR} messages to teammates in the last hour. Get on with the work, or write to the owner (to "you") if you are stuck.`);
+    }
+    const between = kind && this.hub.cfg(fromId) ? { kind, taskId: this.currentTask(fromId)?.id } : undefined;
+    const msg = this.record(fromId, toId, clean, false, between);
     this.hub.activity("message", fromId === "you" ? null : fromId, `${this.hub.name(fromId)} → ${this.hub.name(toId)}: ${clean.slice(0, 80)}`);
-    this.inbox.push(toId, { fromId, kind: "message", text: clean, msgId: msg.id });
+    this.inbox.push(toId, { fromId, kind: "message", text: kind === "disagree" ? `(disagrees) ${clean}` : kind === "question" ? `(question) ${clean}` : clean, msgId: msg.id });
+    if (kind === "disagree") escalateDisagreement(this.talk(), fromId, toId, msg.taskId);
     return toId;
   }
+
+  private escalated = new Set<string>(); // message ids or task:pair keys already sent up, so each goes up once
+  private talk(): ConversationCtx {
+    return { snap: this.snap, name: (id) => this.hub.name(id), escalated: this.escalated, notify: (id, t) => this.notify(id, t), toOwner: (t) => this.message("hq", "you", t) };
+  }
+  /** Questions between agents left unanswered go to the lead (server/conversations.ts). */
+  checkQuestions = (now: number) => checkQuestions(this.talk(), now);
 
   /** A question to the whole team: goes to the lead, who asks the teammates who know and answers the human once. */
   askTeam(text: string) {
@@ -742,9 +747,9 @@ export class Planner {
   }
 
   /** Adds to the history (saved) and the UI; to an agent it starts as "queued" until the inbox hands it over. */
-  private record(fromId: string, toId: string, text: string, team = false): AgentMessage {
+  private record(fromId: string, toId: string, text: string, team = false, between?: Pick<AgentMessage, "kind" | "taskId">): AgentMessage {
     this.seq += 1;
-    const msg: AgentMessage = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text, ...(this.hub.cfg(toId) ? { delivered: "queued" as const } : {}), ...(team ? { team } : {}) };
+    const msg: AgentMessage = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text, ...(this.hub.cfg(toId) ? { delivered: "queued" as const } : {}), ...(team ? { team } : {}), ...between };
     this.snap.messages = [msg, ...this.snap.messages].slice(0, HISTORY);
     this.hub.emit({ type: "message", message: msg });
     this.inbox.save();

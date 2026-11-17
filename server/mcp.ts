@@ -501,6 +501,31 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   );
 
   server.registerTool(
+    "who_knows",
+    {
+      description: "Which teammates have worked on a topic in this project (from finished tasks and what they remembered), best match first. Ask them directly instead of going through the lead.",
+      inputSchema: { topic: z.string().min(2).max(300) },
+    },
+    guard(async ({ topic }: { topic: string }) => {
+      const words = topic.toLowerCase().match(/[\p{L}\p{N}_]{3,}/gu) ?? [];
+      const score = new Map<string, { n: number; why: string[] }>();
+      const add = (id: string | null | undefined, why: string, n = 1) => {
+        if (!id || !hub.cfg(id) || id === me) return;
+        const s = score.get(id) ?? { n: 0, why: [] };
+        s.n += n;
+        if (s.why.length < 3) s.why.push(why);
+        score.set(id, s);
+      };
+      for (const t of hub.snap.tasks)
+        if (t.status === "done" && words.some((w) => `${t.title} ${(t.files ?? []).join(" ")}`.toLowerCase().includes(w))) add(t.ownerId, `${t.id} ${t.title}`, 2);
+      for (const m of await memory().recall(projectId, topic, { limit: 20 }))
+        add(m.taskId ? hub.snap.tasks.find((t) => t.id === m.taskId)?.ownerId : m.by, `${m.type}: ${m.text.slice(0, 80)}`);
+      const top = [...score.entries()].sort((x, y) => y[1].n - x[1].n).slice(0, 3);
+      return ok(top.length ? top.map(([id, s]) => ({ id, name: hub.name(id), role: hub.cfg(id)?.role, because: s.why })) : "Nobody on the team has worked on that yet. Ask the lead.");
+    }),
+  );
+
+  server.registerTool(
     "related",
     {
       description: "What the team remembers about one thing: a task (what it decided, learned or hit), a file or component, or another memory (by id). depth 2 also follows one more link.",
@@ -566,10 +591,14 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     "send_message",
     {
       description: "Send a message to another agent (id, name, or \"lead\"), or to \"you\" (the human; use it to answer their direct messages). HQ delivers it: right away if they are idle, otherwise when their current turn ends.",
-      inputSchema: { to: z.string(), text: z.string() },
+      inputSchema: {
+        to: z.string(),
+        text: z.string(),
+        kind: z.enum(["question", "disagree"]).optional().describe("question: you need an answer (the lead is told if none comes in 15 minutes). disagree: you think their approach is wrong; say why with evidence (twice on one task, the lead decides)."),
+      },
     },
-    guard(({ to, text }: { to: string; text: string }) => {
-      const toId = planner.message(me, to, text);
+    guard(({ to, text, kind }: { to: string; text: string; kind?: "question" | "disagree" }) => {
+      const toId = planner.message(me, to, text, kind);
       return ok(`Sent to ${hub.name(toId)}.`);
     }),
   );

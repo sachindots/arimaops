@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { CLI_LABEL, HUMAN_ID } from "../../data/types";
 import { isViewer, officeActions, selectAttention, selectTeam, setupToDo, useOffice } from "../../store/office";
 import { modeOf, type Mode } from "../../data/mode";
+import { mentioned } from "../../data/mentions";
 import { AgentOrbit } from "../hud/AgentOrbit";
 import { ParticleCore } from "../hud/ParticleCore";
 import { projectMode } from "../hud/theme";
@@ -226,9 +227,12 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
   const [draft, setDraft] = useState("");
   const lead = snap.config.team.find((a) => a.isLead);
   const who = (id: string) => (id === HUMAN_ID ? { name: "You", color: "#3fb950" } : snap.config.team.find((a) => a.id === id) ?? { name: "HQ", color: "#00f0ff" });
+  const to = mentioned(snap.config.team, draft);
+  // @Name goes straight to those agents; no mention asks the whole team through the lead.
   const send = () => {
     if (!draft.trim()) return;
-    officeActions.askTeam(draft.trim());
+    if (to.length) for (const id of to) officeActions.sendMessage(id, draft.trim());
+    else officeActions.askTeam(draft.trim());
     setDraft("");
   };
   return (
@@ -269,14 +273,18 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
             send();
           }}
         >
-          <input className="field" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask the team…" aria-label="Ask the team" />
-          <button className="btn" type="submit" disabled={!draft.trim() || !lead}>
-            Ask
+          <input className="field" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask the team, or @Name someone…" aria-label="Ask the team, or mention an agent with @" />
+          <button className="btn" type="submit" disabled={!draft.trim() || (!lead && !to.length)}>
+            {to.length ? `Send to ${to.length}` : "Ask"}
           </button>
         </form>
       )}
       <p className="bg-cream px-2 pb-1.5 text-[11px] text-muted">
-        {lead ? `${lead.name} asks whoever knows, then answers you once here and on your phone.` : "This team has no lead; message an agent directly."}
+        {to.length
+          ? `Goes straight to ${to.map((id) => snap.config.team.find((a) => a.id === id)?.name).join(", ")}.`
+          : lead
+            ? `${lead.name} asks whoever knows, then answers you once here and on your phone. @Name to write to someone directly.`
+            : "This team has no lead; @Name an agent to write to them."}
       </p>
     </div>
   );
