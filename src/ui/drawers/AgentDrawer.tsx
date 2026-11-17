@@ -7,6 +7,7 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { RemoveAgentDialog } from "../settings/RemoveAgentDialog";
 import { ui, type AgentTab } from "../../store/ui";
 import { ago, RoleBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
+import { MessageText, shown, TagChip } from "../chat/MessageBody";
 import { ModelSelect } from "../primitives/ModelSelect";
 import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
@@ -587,20 +588,17 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
           {list.map((m) => {
             const out = m.fromId === agent.id;
             const other = who(out ? m.toId : m.fromId);
+            const view = shown(m, m.fromId !== HUMAN_ID && m.fromId !== "hq");
             return (
               <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.kind === "disagree" ? "border-amber/45 bg-amber/[0.06]" : "border-white/10"} ${out ? "ml-8 bg-white" : "mr-8 bg-cream-2"}`}>
                 <div className="flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
                   {other && <Dot color={other.color} size={8} />}
                   {out ? `To ${other?.name ?? "?"}` : `From ${other?.name ?? "?"}`}
-                  {m.kind && (
-                    <span className="chip text-[11px]" style={{ ["--c" as string]: m.kind === "disagree" ? "var(--color-amber)" : "var(--accent)" }}>
-                      {m.kind === "disagree" ? "disagrees" : "question"}
-                    </span>
-                  )}
-                  {m.taskId && <span className="font-term text-[11px] text-muted">{m.taskId}</span>}
+                  {view.tag && <TagChip tag={view.tag} />}
+                  {m.taskId && <span className="font-term text-[12px] text-muted">{m.taskId}</span>}
                   {!out && m.delivered && (
                     <span
-                      className="font-mono text-[11px]"
+                      className="text-[12px]"
                       style={{ color: m.delivered === "queued" ? "#ffb020" : m.delivered === "dropped" ? "#6b7280" : "#3fb950" }}
                       title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "dropped" ? "Not sent: the task was reassigned or finished while it waited" : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
                     >
@@ -609,7 +607,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
                   )}
                   <span className="ml-auto font-term text-[12px]">{ago(m.at, now)}</span>
                 </div>
-                <div className="text-[15px]">{m.text}</div>
+                <MessageText body={view.body} className="mt-0.5 text-[14px] leading-6" />
               </li>
             );
           })}

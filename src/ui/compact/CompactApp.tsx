@@ -25,6 +25,7 @@ import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
 import { FlowDrawer } from "../drawers/FlowDrawer";
 import { StageStrip } from "../hud/StageStrip";
+import { MessageText, shown, TagChip } from "../chat/MessageBody";
 
 export type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
 
@@ -253,21 +254,18 @@ function TeamThread({ onBack }: { onBack?: () => void }) {
           const from = who(m.fromId);
           const to = who(m.toId);
           const mine = m.fromId === HUMAN_ID;
+          const view = shown(m, !mine && m.fromId !== "hq");
           return (
             <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.kind === "disagree" ? "border-amber/45 bg-amber/[0.06]" : m.team ? "border-accent/40 bg-accent/[0.06]" : "border-white/10"} ${mine ? "ml-10" : "mr-10"}`}>
               <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: from.color }} aria-hidden="true" />
                 <b className="text-ink">{from.name}</b>
                 <span>→ {m.team ? "the team" : to.name}</span>
-                {m.kind && (
-                  <span className="chip text-[11px]" style={{ ["--c" as string]: m.kind === "disagree" ? "var(--color-amber)" : "var(--accent)" }}>
-                    {m.kind === "disagree" ? "disagrees" : "question"}
-                  </span>
-                )}
-                {m.taskId && <span className="font-term text-[11px] text-muted">{m.taskId}</span>}
+                {view.tag && <TagChip tag={view.tag} />}
+                {m.taskId && <span className="font-term text-[12px] text-muted">{m.taskId}</span>}
                 <span className="ml-auto font-term">{ago(m.at, now)}</span>
               </div>
-              <div className="whitespace-pre-wrap text-[14px]">{m.text}</div>
+              <MessageText body={view.body} className="mt-0.5 text-[14px] leading-6" />
             </li>
           );
         })}

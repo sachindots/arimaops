@@ -144,7 +144,19 @@ export class World {
       tasks,
       pullRequests,
       environments: [],
-      messages: [],
+      // Demo: the team's messages, as tagged short notes (and one older chatty one, tidied when shown).
+      messages: (() => {
+        const lead = config.team.find((a) => a.isLead);
+        const [w1, w2] = workers;
+        if (!lead || !w1) return [];
+        const at = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+        return [
+          { id: "m-demo4", at: at(2), fromId: w1.id, toId: lead.id, text: "PR #14 is up for P3-T01. Upload handles PDF and Markdown; `pnpm test upload` passes.", kind: "done" as const, taskId: "P3-T01" },
+          { id: "m-demo3", at: at(9), fromId: (w2 ?? w1).id, toId: lead.id, text: "Need SUPABASE_URL in my App variables to run the chat route locally.", kind: "blocked" as const, taskId: "P3-T02" },
+          { id: "m-demo2", at: at(14), fromId: lead.id, toId: w1.id, text: "Should uploads over 20 MB fail fast, or go to the background queue?", kind: "question" as const, taskId: "P3-T01" },
+          { id: "m-demo1", at: at(31), fromId: w1.id, toId: lead.id, text: "Hi Cipher, great question! I looked into the knowledge upload and here is what I found.\nThe parser lives in src/knowledge/parse.ts and handles PDF via pdfjs.\nMarkdown goes through the same chunker.\nLarge files are read fully into memory, which may be a problem above 50 MB.\nI suggest streaming them:\n```ts\nfor await (const chunk of stream) chunker.push(chunk);\n```\nLet me know if you'd like me to make that change!\n\nBest,\nVortex", taskId: "P3-T01" },
+        ];
+      })(),
       activity: [],
       // Demo: a couple of requests from the first two workers.
       actionItems: preset.config.team

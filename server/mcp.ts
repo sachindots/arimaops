@@ -11,6 +11,7 @@ import { spendPaused } from "./spendCaps";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { isLong, MESSAGE_TAGS, splitTag, type MessageTag } from "../src/data/messageTags";
 import type { Hub } from "./hub";
 import { requestAccess } from "./access";
 import type { Planner } from "./planner";
@@ -676,16 +677,21 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   server.registerTool(
     "send_message",
     {
-      description: "Send a message to another agent (id, name, or \"lead\"), or to \"you\" (the human; use it to answer their direct messages). HQ delivers it: right away if they are idle, otherwise when their current turn ends.",
+      description:
+        "Send a message to another agent (id, name, or \"lead\"), or to \"you\" (the human; use it to answer their direct messages). HQ delivers it: right away if they are idle, otherwise when their current turn ends. Write it like a terse teammate, not an assistant: at most 3 short lines, the fact first (file, command, result, PR), no greeting, no praise, no sign-off, no restating their task. Put long detail (logs, code, plans) in the task notes or a file and name it.",
       inputSchema: {
         to: z.string(),
         text: z.string(),
-        kind: z.enum(["question", "disagree"]).optional().describe("question: you need an answer (the lead is told if none comes in 15 minutes). disagree: you think their approach is wrong; say why with evidence (twice on one task, the lead decides)."),
+        kind: z
+          .enum(MESSAGE_TAGS)
+          .optional()
+          .describe("What it is, shown to the reader first. done: finished something they wait on. blocked: you can't go on (say on what). question: you need an answer (the lead is told if none comes in 15 minutes). fyi: worth knowing, no reply needed. disagree: you think their approach is wrong; say why with evidence (twice on one task, the lead decides)."),
       },
     },
-    guard(({ to, text, kind }: { to: string; text: string; kind?: "question" | "disagree" }) => {
+    guard(({ to, text, kind }: { to: string; text: string; kind?: MessageTag }) => {
       const toId = planner.message(me, to, text, kind);
-      return ok(`Sent to ${hub.name(toId)}.`);
+      const { body } = splitTag(text, kind);
+      return ok(`Sent to ${hub.name(toId)}.${isLong(body) ? " It was long: next time keep it to 3 short lines and put the detail in the task notes or a file." : ""}`);
     }),
   );
 

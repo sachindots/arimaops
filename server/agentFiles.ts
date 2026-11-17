@@ -286,7 +286,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "## Always",
     "- Smallest complete change: reuse what the codebase already has, add no dependency or option nobody asked for, and verify against the real thing (tests, a real run) before set_my_status.",
     "- No AI slop in code or prose: no narrating comments, no filler words, no hype.",
-    "- Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.",
+    "- Messages: at most 3 short lines, the fact first (file, command, result, PR). Set kind: done, blocked, question, fyi or disagree. No greeting, no praise, no sign-off, no restating the task; long detail goes in the task notes or a file. set_my_status already tells the lead; don't repeat it with send_message.",
     "",
     "## Working with teammates",
     "Message a teammate directly (send_message to their name) when your question is about their work or their strengths below; list_workers shows each one's track record and the areas they've worked in, list_tasks who built what, who_knows who has worked on a topic. Mark a question with kind \"question\" (the lead hears if nobody answers) and a disagreement with kind \"disagree\" plus your evidence; argue once, then let the lead decide. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",

@@ -22,6 +22,7 @@ import { buildBrief, memoryForTask, summariseTask, type Brief } from "./brief";
 import { runStallCheck } from "./stalls";
 import { checkQuestions, escalateDisagreement, type ConversationCtx } from "./conversations";
 import type { GateState } from "../src/data/model";
+import { delivered, splitTag, type MessageTag } from "../src/data/messageTags";
 
 export interface NewTask {
   boardId?: string;
@@ -697,13 +698,13 @@ export class Planner {
   // ------------------------------------------------------------ messages
 
   /** Records a message, shows it in the office, and delivers it. */
-  message(fromId: string, toRef: string, text: string, kind?: "question" | "disagree") {
+  message(fromId: string, toRef: string, text: string, kind?: MessageTag) {
     const toId = /^(you|user|human)$/i.test(toRef.trim()) ? HUMAN_ID : this.agentId(toRef);
     if (toId === fromId) throw new Error("That's you.");
-    const clean = text.trim().slice(0, 2000);
+    const { tag, body: clean } = splitTag(text.slice(0, 2000), kind, !!this.hub.cfg(fromId)); // tagged; agents' filler trimmed (src/data/messageTags.ts)
     if (!clean) throw new Error("Empty message");
     if (toId === HUMAN_ID) {
-      this.record(fromId, HUMAN_ID, clean); // shows in that agent's thread; nothing to deliver
+      this.record(fromId, HUMAN_ID, clean, false, tag ? { kind: tag } : undefined); // shows in that agent's thread; nothing to deliver
       this.hub.activity("message", fromId, `${this.hub.name(fromId)} → You: ${clean.slice(0, 80)}`);
       return toId;
     }
@@ -714,11 +715,10 @@ export class Planner {
       this.hub.activity("message", fromId, `${this.hub.name(fromId)} hit ${CHATTER_PER_HOUR} messages to teammates this hour; one to ${this.hub.name(toId)} was not sent: ${clean.slice(0, 60)}`);
       throw new Error(`Not sent: you have sent ${CHATTER_PER_HOUR} messages to teammates in the last hour. Get on with the work, or write to the owner (to "you") if you are stuck.`);
     }
-    const between = kind && this.hub.cfg(fromId) ? { kind, taskId: this.currentTask(fromId)?.id } : undefined;
-    const msg = this.record(fromId, toId, clean, false, between);
+    const msg = this.record(fromId, toId, clean, false, tag && this.hub.cfg(fromId) ? { kind: tag, taskId: this.currentTask(fromId)?.id } : undefined);
     this.hub.activity("message", fromId === "you" ? null : fromId, `${this.hub.name(fromId)} → ${this.hub.name(toId)}: ${clean.slice(0, 80)}`);
-    this.inbox.push(toId, { fromId, kind: "message", text: kind === "disagree" ? `(disagrees) ${clean}` : kind === "question" ? `(question) ${clean}` : clean, msgId: msg.id });
-    if (kind === "disagree") escalateDisagreement(this.talk(), fromId, toId, msg.taskId);
+    this.inbox.push(toId, { fromId, kind: "message", text: delivered(tag, clean), msgId: msg.id });
+    if (tag === "disagree") escalateDisagreement(this.talk(), fromId, toId, msg.taskId);
     return toId;
   }
 
