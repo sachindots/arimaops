@@ -154,6 +154,35 @@ export function ProjectSettings() {
       </section>
       <SpendCaps />
       {snap?.config.rules.findings && <ScopeEditor />}
+      <section className="flex flex-col gap-3">
+        <SectionTitle>How the team works</SectionTitle>
+        <Field
+          label="The company"
+          hint={`What every agent in every project knows: the product, customers, voice, prices, do and don't. Owner only; up to 3000 characters. Agents get it at their next start.`}
+        >
+          <CommitInput
+            multiline
+            className="field h-[140px] text-[13px]"
+            maxLength={3000}
+            value={snap?.company ?? ""}
+            placeholder={"We build Askwell, a support inbox for small shops.\nCustomers: 2-20 person e-commerce teams.\nVoice: plain, friendly, no hype. Never promise dates."}
+            onCommit={(v) => officeActions.setCompany(v)}
+          />
+        </Field>
+        <Field
+          label="Team charter"
+          hint="This project's rules for working together: who owns which area, how to disagree, when to ask you. Up to 1500 characters; agents get it at their next start."
+        >
+          <CommitInput
+            multiline
+            className="field h-[110px] text-[13px]"
+            maxLength={1500}
+            value={project.charter ?? ""}
+            placeholder={"Ghost owns server/, Vortex owns src/ui/.\nDisagree in one message with evidence; the lead decides.\nAsk the owner only for money, accounts and anything sent outside."}
+            onCommit={(v) => officeActions.updateProject({ charter: v })}
+          />
+        </Field>
+      </section>
       <section>
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />

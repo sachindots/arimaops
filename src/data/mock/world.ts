@@ -469,8 +469,8 @@ export class World {
   }
 
   /** A Team MCP message: shows in both terminals, the messages list and the feed. */
-  message(fromId: string, toId: string, text: string) {
-    const msg = { id: this.id("m"), at: now(), fromId, toId, text };
+  message(fromId: string, toId: string, text: string, team = false) {
+    const msg = { id: this.id("m"), at: now(), fromId, toId, text, ...(team ? { team } : {}) };
     this.snap.messages = [msg, ...this.snap.messages].slice(0, 100);
     this.emit({ type: "message", message: msg });
     this.activity("message", fromId === "you" ? null : fromId, `${this.name(fromId)} → ${this.name(toId)}: ${text}`);

@@ -62,12 +62,16 @@ const accountProvider = (id: string): Provider | null => {
   }
 };
 import { workspaceFor } from "./workspace";
+import { isStream, StreamEngine } from "./streamEngine";
+import { companyText } from "./company";
 
 export interface Runtime {
   slug: string;
   root: string;
   hub: Hub;
   inbox: Inbox;
+  /** Hand-off and events for stream-engine agents (their runner's /agent/<id>/… calls). */
+  stream: StreamEngine;
   planner: Planner;
   /** Sees every finished tool call (hook route) to spot an agent stuck in a loop. */
   onToolDone(agentId: string, event: string, body: Record<string, unknown>): void;
@@ -159,7 +163,14 @@ export async function startProject(path: string, port: number, paused: boolean):
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
-  const inbox = new Inbox(hub, { type: (id, text) => sessions.typeInto(id, text), enter: (id) => sessions.pressEnter(id), promptReady: (id) => sessions.promptReady(id) });
+  // Stream-engine agents (docs/design/stream-json.md) take messages through their runner; the rest are typed into.
+  const stream: StreamEngine = new StreamEngine(hub, { up: (id) => inbox.sessionReattached(id) });
+  const streaming = (id: string) => isStream(hub.cfg(id));
+  const inbox = new Inbox(hub, {
+    type: async (id, text) => (streaming(id) ? stream.type(id, text) : sessions.typeInto(id, text)),
+    enter: async (id) => (streaming(id) ? true : sessions.pressEnter(id)),
+    promptReady: async (id) => (streaming(id) ? stream.ready(id) : sessions.promptReady(id)),
+  });
   sessions.onSessionReattached = (id) => inbox.sessionReattached(id);
   sessions.lastHookAt = (id) => inbox.lastHookAt(id);
   const sbx = new Sbx(hub);
@@ -172,6 +183,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   };
   sessions.onSessionDown = (id) => {
     inbox.sessionDown(id);
+    stream.down(id);
     void sbx.refreshPorts(id);
   };
   sessions.onSandboxRemoved = (id) => {
@@ -334,6 +346,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   };
   setMemoryScope(hub.snap.config.project.id, () => hub.snap.config.project.scope);
   hub.snap.memory = projectMemoryState(hub.snap.config.project.id);
+  hub.snap.company = companyText();
   // A usage limit is the account's, not the agent's: every agent on that CLI, in every project, stops too.
   const stopListening = onAccountLimit((cli, until, from) => {
     const marked = markLimited(hub, cli, until, from);
@@ -363,6 +376,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   sessions.startPolling();
 
   const rt: Runtime = {
+    stream,
     onToolDone(agentId, event, body) {
       const ev = toolEvent(event, body);
       const task = planner.currentTask(agentId);

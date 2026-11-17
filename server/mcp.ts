@@ -2,6 +2,8 @@
 // identified by the agent token + X-HQ-Agent header that HQ writes into their
 // .mcp.json. The lead manages the plan; everyone can message everyone.
 
+import { seatRecords } from "./metrics";
+import { hqDb } from "./lib/db";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { spendPaused } from "./spendCaps";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -32,6 +34,20 @@ function guard<A>(fn: (args: A) => Result | Promise<Result>) {
   };
 }
 
+type Handoff = { changed?: string[]; verified?: string; risks?: string; notify?: string[] };
+
+/** The note plus the structured handoff, as the lines the next task's brief shows. */
+export function withHandoff(note: string | undefined, h: Handoff | undefined): string | undefined {
+  if (!h) return note;
+  const lines = [
+    note?.trim(),
+    h.changed?.length ? `Changed: ${h.changed.slice(0, 20).join(", ")}` : "",
+    h.verified?.trim() ? `Verified: ${h.verified.trim()}` : "",
+    h.risks?.trim() ? `Risks: ${h.risks.trim()}` : "",
+  ].filter(Boolean);
+  return lines.length ? lines.join("\n") : note;
+}
+
 export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   const server = new McpServer({ name: "hq", version: "0.1.0" });
   const myCfg = hub.cfg(me);
@@ -46,20 +62,24 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
 
   server.registerTool(
     "list_workers",
-    { description: "The team: each agent's id, name, role, whether they are running, and what they are doing now." },
-    guard(() =>
-      ok(
+    { description: "The team: each agent's id, name, role, skills, track record in this project (tasks done, how many passed review first time, the areas they worked in), whether they are running, and what they are doing now. Use it to pick who to ask or assign." },
+    guard(() => {
+      const records = seatRecords(hqDb(), hub.snap.config.project.id, hub.snap.tasks);
+      return ok(
         hub.snap.config.team.map((a) => {
           const st = hub.status(a.id);
+          const r = records.get(a.id);
           return {
+            skills: a.skills ?? [],
+            record: r ? { done: r.done, passedFirstTime: `${r.firstPass} of ${r.done}`, areas: r.areas } : { done: 0 },
             id: a.id, name: a.name, role: a.role, lead: a.isLead, you: a.id === me, cli: a.cli, model: a.model || "default",
             limitedUntil: st?.limitedUntil && Date.parse(st.limitedUntil) > Date.now() ? st.limitedUntil : null,
             running: st?.session.state === "running", state: st?.state, task: st?.currentTaskId ?? null,
             free: st?.session.state === "running" && !a.isLead && !planner.currentTask(a.id),
           };
         }),
-      ),
-    ),
+      );
+    }),
   );
 
   server.registerTool(
@@ -94,96 +114,103 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     }),
   );
 
-  server.registerTool(
-    "create_board",
-    { description: "Lead only. Create a board (a phase or an area of work).", inputSchema: { title: z.string(), active: z.boolean().optional().describe("Agents only pick tasks from active boards") } },
-    guard(({ title, active }: { title: string; active?: boolean }) => {
-      leadOnly();
-      return ok(planner.createBoard(title, active ? "active" : "planned"));
-    }),
-  );
+  const rules = hub.snap.config.rules;
+  const hasPlans = Boolean(rules?.plans);
+  const hasFindings = Boolean(rules ? rules.findings : planner.findings);
+  const hasEvidence = !isLead && Boolean(!hub.snap.config.template || hub.snap.config.template.flow.stages.some((s) => s.gates.some((g) => g.kind === "evidence")));
 
-  server.registerTool(
-    "create_task",
-    {
-      description: "Lead only. Add a task. Keep tasks small: one task = one branch = one PR.",
-      inputSchema: {
-        title: z.string(),
-        boardId: z.string().optional().describe("Defaults to the first active board"),
-        description: z.string().optional().describe("What to build and why"),
-        files: z.array(z.string()).optional().describe("The only files/folders this task may edit"),
-        doneWhen: z.string().optional().describe("Acceptance criteria"),
-        needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
-        cli: z.enum(AGENT_CLIS).optional().describe("Runs on: only an agent with this CLI may take it (pick per task by strength and by who is under their usage limit)"),
-        model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
-        specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
-        highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
-        stageId: z.string().optional().describe("Start it in this flow stage (its phase, e.g. recon or exploit), if the gates before it are met. Default: the first stage."),
+  if (isLead) {
+    server.registerTool(
+      "create_board",
+      { description: "Lead only. Create a board (a phase or an area of work).", inputSchema: { title: z.string(), active: z.boolean().optional().describe("Agents only pick tasks from active boards") } },
+      guard(({ title, active }: { title: string; active?: boolean }) => {
+        leadOnly();
+        return ok(planner.createBoard(title, active ? "active" : "planned"));
+      }),
+    );
+
+    server.registerTool(
+      "create_task",
+      {
+        description: "Lead only. Add a task. Keep tasks small: one task = one branch = one PR.",
+        inputSchema: {
+          title: z.string(),
+          boardId: z.string().optional().describe("Defaults to the first active board"),
+          description: z.string().optional().describe("What to build and why"),
+          files: z.array(z.string()).optional().describe("The only files/folders this task may edit"),
+          doneWhen: z.string().optional().describe("Acceptance criteria"),
+          needs: z.array(z.string()).optional().describe("Task ids that must be done first"),
+          cli: z.enum(AGENT_CLIS).optional().describe("Runs on: only an agent with this CLI may take it (pick per task by strength and by who is under their usage limit)"),
+          model: z.string().optional().describe("Preferred model for the task, e.g. opus or gpt-6.1-sol"),
+          specItems: z.array(z.string()).optional().describe("The board spec's items this task covers, e.g. [\"S1\", \"S4\"]. The analyze gate needs every item covered."),
+          highStakes: z.boolean().optional().describe("A wrong change here is costly (auth, money, data loss): requires a second opinion from another provider. Sensitive files make a task high-stakes anyway."),
+          stageId: z.string().optional().describe("Start it in this flow stage (its phase, e.g. recon or exploit), if the gates before it are met. Default: the first stage."),
+        },
       },
-    },
-    guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string }) => {
-      leadOnly();
-      return ok(planner.createTask(args, me));
-    }),
-  );
+      guard((args: { title: string; boardId?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; cli?: AgentCli; model?: string; specItems?: string[]; highStakes?: boolean; stageId?: string }) => {
+        leadOnly();
+        return ok(planner.createTask(args, me));
+      }),
+    );
 
-  server.registerTool(
-    "update_task",
-    {
-      description: "Lead only. Edit a task's details or status.",
-      inputSchema: {
-        taskId: z.string(),
-        title: z.string().optional(),
-        description: z.string().optional(),
-        files: z.array(z.string()).optional(),
-        doneWhen: z.string().optional(),
-        needs: z.array(z.string()).optional(),
-        status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
-        cli: z.enum(AGENT_CLIS).nullable().optional().describe("Runs on (null clears it)"),
-        model: z.string().nullable().optional(),
-        note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
-        deliverablePath: z.string().max(300).optional(),
-        stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
-        specItems: z.array(z.string()).optional().describe("The spec items it covers (replaces the list)"),
-        highStakes: z.boolean().optional(),
+    server.registerTool(
+      "update_task",
+      {
+        description: "Lead only. Edit a task's details or status.",
+        inputSchema: {
+          taskId: z.string(),
+          title: z.string().optional(),
+          description: z.string().optional(),
+          files: z.array(z.string()).optional(),
+          doneWhen: z.string().optional(),
+          needs: z.array(z.string()).optional(),
+          status: z.enum(["todo", "in-progress", "in-review", "done", "blocked"]).optional(),
+          cli: z.enum(AGENT_CLIS).nullable().optional().describe("Runs on (null clears it)"),
+          model: z.string().nullable().optional(),
+          note: z.string().max(300).optional().describe("Verification results against acceptance criteria"),
+          deliverablePath: z.string().max(300).optional(),
+          stageId: z.string().optional().describe("Move the task to this flow stage. Moving forward needs the gates of the stages it leaves."),
+          specItems: z.array(z.string()).optional().describe("The spec items it covers (replaces the list)"),
+          highStakes: z.boolean().optional(),
+        },
       },
-    },
-    guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean }) => {
-      leadOnly();
-      return ok(planner.updateTask(taskId, patch, me));
-    }),
-  );
+      guard(({ taskId, ...patch }: { taskId: string; title?: string; description?: string; files?: string[]; doneWhen?: string; needs?: string[]; status?: "todo" | "in-progress" | "in-review" | "done" | "blocked"; cli?: AgentCli | null; model?: string | null; note?: string; deliverablePath?: string; stageId?: string; specItems?: string[]; highStakes?: boolean }) => {
+        leadOnly();
+        return ok(planner.updateTask(taskId, patch, me));
+      }),
+    );
 
-  server.registerTool(
-    "write_spec",
-    {
-      description:
-        "Lead only. Write or rewrite a board's spec in markdown. Number each requirement on its own line: `S1. …`, `S2. …`. Then give every item a task (create_task specItems): the analyze gate checks that. A new version resets the owner's spec approval for the board's open tasks.",
-      inputSchema: { boardId: z.string().optional().describe("Defaults to the first active board"), text: z.string().max(20_000) },
-    },
-    guard(({ boardId, text }: { boardId?: string; text: string }) => {
-      leadOnly();
-      const spec = planner.writeSpec(boardId, text, me);
-      const uncovered = spec.items.filter((i) => !hub.snap.tasks.some((t) => t.boardId === spec.boardId && t.specItems?.includes(i)));
-      return ok(`Spec v${spec.version} for ${spec.boardId}: ${spec.items.length} items (${spec.items.join(", ") || "none: number them S1., S2."}).${uncovered.length ? ` Not covered by a task yet: ${uncovered.join(", ")}.` : " Every item has a task."}`);
-    }),
-  );
+    server.registerTool(
+      "write_spec",
+      {
+        description:
+          "Lead only. Write or rewrite a board's spec in markdown. Number each requirement on its own line: `S1. …`, `S2. …`. Then give every item a task (create_task specItems): the analyze gate checks that. A new version resets the owner's spec approval for the board's open tasks.",
+        inputSchema: { boardId: z.string().optional().describe("Defaults to the first active board"), text: z.string().max(20_000) },
+      },
+      guard(({ boardId, text }: { boardId?: string; text: string }) => {
+        leadOnly();
+        const spec = planner.writeSpec(boardId, text, me);
+        const uncovered = spec.items.filter((i) => !hub.snap.tasks.some((t) => t.boardId === spec.boardId && t.specItems?.includes(i)));
+        return ok(`Spec v${spec.version} for ${spec.boardId}: ${spec.items.length} items (${spec.items.join(", ") || "none: number them S1., S2."}).${uncovered.length ? ` Not covered by a task yet: ${uncovered.join(", ")}.` : " Every item has a task."}`);
+      }),
+    );
 
-  server.registerTool(
-    "assign_task",
-    {
-      description: "Lead only. Give a task to an agent, or to a role and HQ picks the seat (free first, skipping seats at their usage limit). The task's stage decides which roles may take it. HQ tells the agent to pull main and start it (right away if idle, otherwise when their current turn ends).",
-      inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name, or a role id (developer, reviewer...)") },
-    },
-    guard(({ taskId, agent }: { taskId: string; agent: string }) => {
-      leadOnly();
-      const t = planner.assign(taskId, agent, me);
-      const waiting = planner.waitingOn(t);
-      const paused = spendPaused(hub.slug);
-      if (waiting.length) return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. It waits on ${waiting.join(", ")}; HQ tells them to start once that's done.`);
-      return ok(paused ? `Assigned ${t.id} to ${hub.name(t.ownerId)}. The project is paused at its ${paused === "day" ? "daily" : "monthly"} spend cap, so they start when it lifts.` : `Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
-    }),
-  );
+    server.registerTool(
+      "assign_task",
+      {
+        description: "Lead only. Give a task to an agent, or to a role and HQ picks the seat (free first, skipping seats at their usage limit). The task's stage decides which roles may take it. HQ tells the agent to pull main and start it (right away if idle, otherwise when their current turn ends).",
+        inputSchema: { taskId: z.string(), agent: z.string().describe("Agent id or name, or a role id (developer, reviewer...)") },
+      },
+      guard(({ taskId, agent }: { taskId: string; agent: string }) => {
+        leadOnly();
+        const t = planner.assign(taskId, agent, me);
+        const waiting = planner.waitingOn(t);
+        const paused = spendPaused(hub.slug);
+        if (waiting.length) return ok(`Assigned ${t.id} to ${hub.name(t.ownerId)}. It waits on ${waiting.join(", ")}; HQ tells them to start once that's done.`);
+        return ok(paused ? `Assigned ${t.id} to ${hub.name(t.ownerId)}. The project is paused at its ${paused === "day" ? "daily" : "monthly"} spend cap, so they start when it lifts.` : `Assigned ${t.id} to ${hub.name(t.ownerId)}. They have been told to start.`);
+      }),
+    );
+  }
 
   server.registerTool(
     "get_my_task",
@@ -222,23 +249,25 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
     }),
   );
 
-  server.registerTool(
-    "attach_evidence",
-    {
-      description:
-        "Verifier: attach screenshots (or a short recording) of the running app for a task's PR, at the commit you checked out. HQ copies the files from your workspace (PNG, JPEG, WebP, WebM or MP4, at most 12, 15 MB each), keeps them on the HQ machine (never in the repo), shows them on the task and comments on the PR. The evidence gate passes when this commit is still the PR's head; a new push needs new evidence.",
-      inputSchema: {
-        taskId: z.string(),
-        sha: z.string().describe("The full commit you checked out and ran (git rev-parse HEAD)"),
-        steps: z.array(z.string().max(300)).max(20).describe("What you did and saw, one step per line: the page opened, what you clicked, what looked wrong"),
-        files: z.array(z.object({ path: z.string().max(300).describe("Path in your workspace"), label: z.string().max(80).describe("What it shows: 'Settings, tablet'") })).min(1).max(12),
+  if (hasEvidence) {
+    server.registerTool(
+      "attach_evidence",
+      {
+        description:
+          "Verifier: attach screenshots (or a short recording) of the running app for a task's PR, at the commit you checked out. HQ copies the files from your workspace (PNG, JPEG, WebP, WebM or MP4, at most 12, 15 MB each), keeps them on the HQ machine (never in the repo), shows them on the task and comments on the PR. The evidence gate passes when this commit is still the PR's head; a new push needs new evidence.",
+        inputSchema: {
+          taskId: z.string(),
+          sha: z.string().describe("The full commit you checked out and ran (git rev-parse HEAD)"),
+          steps: z.array(z.string().max(300)).max(20).describe("What you did and saw, one step per line: the page opened, what you clicked, what looked wrong"),
+          files: z.array(z.object({ path: z.string().max(300).describe("Path in your workspace"), label: z.string().max(80).describe("What it shows: 'Settings, tablet'") })).min(1).max(12),
+        },
       },
-    },
-    guard(({ taskId, sha, steps, files }: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }) => {
-      const ev = planner.attachEvidence(me, { taskId, sha: sha.trim().toLowerCase(), steps, files });
-      return ok(`Attached ${ev.shots.length} file${ev.shots.length === 1 ? "" : "s"} to ${taskId} at ${ev.sha.slice(0, 7)}. The reviewer and the owner see them on the task; the PR gets a comment.`);
-    }),
-  );
+      guard(({ taskId, sha, steps, files }: { taskId: string; sha: string; steps: string[]; files: { path: string; label: string }[] }) => {
+        const ev = planner.attachEvidence(me, { taskId, sha: sha.trim().toLowerCase(), steps, files });
+        return ok(`Attached ${ev.shots.length} file${ev.shots.length === 1 ? "" : "s"} to ${taskId} at ${ev.sha.slice(0, 7)}. The reviewer and the owner see them on the task; the PR gets a comment.`);
+      }),
+    );
+  }
 
   server.registerTool(
     "set_my_status",
@@ -249,11 +278,30 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
         note: z.string().optional().describe("Why you are blocked, or a short summary of your deliverable/changes"),
         prNumber: z.number().int().optional(),
         deliverablePath: z.string().optional().describe("Path to the deliverable file/artifact produced (in deliverables mode)"),
+        handoff: z
+          .object({
+            changed: z.array(z.string()).optional().describe("Paths or things you changed"),
+            verified: z.string().optional().describe("How you checked it: commands run, results"),
+            risks: z.string().optional().describe("What could still be wrong, or what's left"),
+            notify: z.array(z.string()).optional().describe("Teammates (names) whose work this touches; each gets a short note"),
+          })
+          .optional()
+          .describe("When you finish (in-review or done): the handoff the tasks that build on yours will read"),
       },
     },
-    guard(({ status, note, prNumber, deliverablePath }: { status: "in-progress" | "blocked" | "in-review" | "done"; note?: string; prNumber?: number; deliverablePath?: string }) => {
-      const t = planner.setStatus(me, status, note, prNumber, deliverablePath);
-      return ok(`${t.id} is now ${t.status}.`);
+    guard(({ status, note, prNumber, deliverablePath, handoff }: { status: "in-progress" | "blocked" | "in-review" | "done"; note?: string; prNumber?: number; deliverablePath?: string; handoff?: Handoff }) => {
+      const t = planner.setStatus(me, status, withHandoff(note, handoff), prNumber, deliverablePath);
+      const told: string[] = [];
+      if (handoff?.notify?.length && (status === "in-review" || status === "done"))
+        for (const who of [...new Set(handoff.notify)].slice(0, 5)) {
+          try {
+            planner.message(me, who, `Handoff from ${t.id} (${t.title}): ${withHandoff(note, { ...handoff, notify: [] })}`.slice(0, 1500));
+            told.push(who);
+          } catch {
+            /* an unknown name: the note still reaches the tasks that build on this one */
+          }
+        }
+      return ok(`${t.id} is now ${t.status}.${told.length ? ` Told ${told.join(", ")}.` : ""}`);
     }),
   );
 
@@ -277,96 +325,100 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   );
 
   // ---------------------------------------------------------------- Ops: plan approval
-  server.registerTool(
-    "submit_plan",
-    {
-      description:
-        "Ops / infra projects: before changing any system, submit your plan (what you'll run, on which hosts, how to roll back). It goes to the user as Approve / Reject. Don't execute anything until HQ tells you it was approved.",
-      inputSchema: {
-        title: z.string().describe("The change, in a few words"),
-        plan: z.string().describe("Exact steps and commands, the hosts they touch, expected impact, and the rollback"),
+  if (hasPlans) {
+    server.registerTool(
+      "submit_plan",
+      {
+        description:
+          "Ops / infra projects: before changing any system, submit your plan (what you'll run, on which hosts, how to roll back). It goes to the user as Approve / Reject. Don't execute anything until HQ tells you it was approved.",
+        inputSchema: {
+          title: z.string().describe("The change, in a few words"),
+          plan: z.string().describe("Exact steps and commands, the hosts they touch, expected impact, and the rollback"),
+        },
       },
-    },
-    guard(({ title, plan }: { title: string; plan: string }) => {
-      if (!planner.actions) throw new Error("Action items aren't available.");
-      if (!plan.trim()) throw new Error("Write the plan: steps, commands, hosts and rollback.");
-      const item = planner.actions.add(me, title, plan, true, "plan");
-      return ok(`Plan sent to the user for approval (${item.id}). Wait for HQ's message before executing anything; prepare (read-only) meanwhile.`);
-    }),
-  );
+      guard(({ title, plan }: { title: string; plan: string }) => {
+        if (!planner.actions) throw new Error("Action items aren't available.");
+        if (!plan.trim()) throw new Error("Write the plan: steps, commands, hosts and rollback.");
+        const item = planner.actions.add(me, title, plan, true, "plan");
+        return ok(`Plan sent to the user for approval (${item.id}). Wait for HQ's message before executing anything; prepare (read-only) meanwhile.`);
+      }),
+    );
+  }
 
   // ---------------------------------------------------------------- Security: findings
-  server.registerTool(
-    "report_finding",
-    {
-      description:
-        "Security work: record a vulnerability. Network assets (url, host, ip) must be in scope; HQ refuses the rest. Give a CVSS 4.0 vector when you can: HQ computes the score and severity from it. Include reproducible evidence but never real secrets or personal data; redact them. Check list_findings first to avoid duplicates.",
-      inputSchema: {
-        title: z.string(),
-        asset: z.object({ kind: z.enum(ASSET_KINDS), value: z.string().describe("The URL, host, IP, repo, cloud resource or app") }),
-        location: z.object({ file: z.string(), startLine: z.number().int().optional(), endLine: z.number().int().optional() }).optional().describe("Code findings: the file and lines"),
-        cvss: z.string().optional().describe("CVSS 4.0 base vector, e.g. CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"),
-        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional().describe("Only when there is no CVSS vector"),
-        ssvc: z
-          .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
-          .optional(),
-        cwe: z.array(z.string()).optional().describe("e.g. CWE-89"),
-        attack: z.array(z.string()).optional().describe("MITRE ATT&CK technique ids, e.g. T1190"),
-        d3fend: z.array(z.string()).optional().describe("MITRE D3FEND ids, e.g. D3-IAA"),
-        wstg: z.string().optional().describe("OWASP WSTG test id, e.g. WSTG-INPV-05"),
-        description: z.string().describe("What's wrong"),
-        impact: z.string().describe("What an attacker gains"),
-        evidence: z.array(z.object({ kind: z.enum(EVIDENCE_KINDS), content: z.string() })).describe("Requests, responses, commands and output that reproduce it (redacted)"),
-        remediation: z.string().describe("How to fix it at the root"),
+  if (hasFindings) {
+    server.registerTool(
+      "report_finding",
+      {
+        description:
+          "Security work: record a vulnerability. Network assets (url, host, ip) must be in scope; HQ refuses the rest. Give a CVSS 4.0 vector when you can: HQ computes the score and severity from it. Include reproducible evidence but never real secrets or personal data; redact them. Check list_findings first to avoid duplicates.",
+        inputSchema: {
+          title: z.string(),
+          asset: z.object({ kind: z.enum(ASSET_KINDS), value: z.string().describe("The URL, host, IP, repo, cloud resource or app") }),
+          location: z.object({ file: z.string(), startLine: z.number().int().optional(), endLine: z.number().int().optional() }).optional().describe("Code findings: the file and lines"),
+          cvss: z.string().optional().describe("CVSS 4.0 base vector, e.g. CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"),
+          severity: z.enum(["critical", "high", "medium", "low", "info"]).optional().describe("Only when there is no CVSS vector"),
+          ssvc: z
+            .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
+            .optional(),
+          cwe: z.array(z.string()).optional().describe("e.g. CWE-89"),
+          attack: z.array(z.string()).optional().describe("MITRE ATT&CK technique ids, e.g. T1190"),
+          d3fend: z.array(z.string()).optional().describe("MITRE D3FEND ids, e.g. D3-IAA"),
+          wstg: z.string().optional().describe("OWASP WSTG test id, e.g. WSTG-INPV-05"),
+          description: z.string().describe("What's wrong"),
+          impact: z.string().describe("What an attacker gains"),
+          evidence: z.array(z.object({ kind: z.enum(EVIDENCE_KINDS), content: z.string() })).describe("Requests, responses, commands and output that reproduce it (redacted)"),
+          remediation: z.string().describe("How to fix it at the root"),
+        },
       },
-    },
-    guard((args: Record<string, unknown>) => {
-      if (!planner.findings) throw new Error("Findings aren't available.");
-      const f = planner.findings.report(me, planner.currentTask(me)?.id ?? null, args);
-      return ok(`Recorded ${f.id} (${f.severity}${f.cvss ? `, CVSS ${f.cvss.score}` : ""}). It's in deliverables/security-report.md.`);
-    }),
-  );
-
-  server.registerTool(
-    "list_findings",
-    { description: "Security work: the findings so far (id, severity, status, asset, title), so you don't report duplicates. Also returns the scope and rules of engagement." },
-    guard(() =>
-      ok({
-        scope: hub.snap.config.project.scope ?? null,
-        findings: (hub.snap.findings ?? []).map((f) => ({ id: f.id, severity: f.severity, cvss: f.cvss?.score ?? null, status: f.status, verified: f.verified, asset: f.asset.value, title: f.title })),
+      guard((args: Record<string, unknown>) => {
+        if (!planner.findings) throw new Error("Findings aren't available.");
+        const f = planner.findings.report(me, planner.currentTask(me)?.id ?? null, args);
+        return ok(`Recorded ${f.id} (${f.severity}${f.cvss ? `, CVSS ${f.cvss.score}` : ""}). It's in deliverables/security-report.md.`);
       }),
-    ),
-  );
+    );
 
-  server.registerTool(
-    "update_finding",
-    {
-      description: "Triage a finding (lead): status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation. Other agents may only set verified, on a finding someone else reported, after reproducing it.",
-      inputSchema: {
-        id: z.string(),
-        status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
-        verified: z.boolean().optional(),
-        cvss: z.string().optional(),
-        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
-        ssvc: z
-          .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
-          .optional(),
-        impact: z.string().optional(),
-        remediation: z.string().optional(),
+    server.registerTool(
+      "list_findings",
+      { description: "Security work: the findings so far (id, severity, status, asset, title), so you don't report duplicates. Also returns the scope and rules of engagement." },
+      guard(() =>
+        ok({
+          scope: hub.snap.config.project.scope ?? null,
+          findings: (hub.snap.findings ?? []).map((f) => ({ id: f.id, severity: f.severity, cvss: f.cvss?.score ?? null, status: f.status, verified: f.verified, asset: f.asset.value, title: f.title })),
+        }),
+      ),
+    );
+
+    server.registerTool(
+      "update_finding",
+      {
+        description: "Triage a finding (lead): status, verified (you reproduced it), CVSS 4.0 vector (rescores it), severity (unscored findings only), SSVC, impact or remediation. Other agents may only set verified, on a finding someone else reported, after reproducing it.",
+        inputSchema: {
+          id: z.string(),
+          status: z.enum(["open", "confirmed", "fixed", "accepted", "false-positive"]).optional(),
+          verified: z.boolean().optional(),
+          cvss: z.string().optional(),
+          severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+          ssvc: z
+            .object({ exploitation: z.enum(["none", "poc", "active"]), automatable: z.boolean(), technicalImpact: z.enum(["partial", "total"]), decision: z.enum(["track", "track*", "attend", "act"]) })
+            .optional(),
+          impact: z.string().optional(),
+          remediation: z.string().optional(),
+        },
       },
-    },
-    guard(({ id, ...patch }: { id: string } & Record<string, unknown>) => {
-      if (!planner.findings) throw new Error("Findings aren't available.");
-      if (!isLead) {
-        // A second look from another seat (the report gate wants critical and high findings verified by a person or a
-        // model from another maker): any agent may set verified, and only that, on a finding someone else reported.
-        const fields = Object.keys(patch).filter((k) => patch[k] !== undefined);
-        if (fields.some((k) => k !== "verified") || !fields.length) throw new Error("Only the lead triages findings. You may set verified (and only that) on a finding someone else reported, after reproducing it.");
-        if (planner.findings.reporterOf(id) === me) throw new Error("You reported this finding: someone else has to verify it.");
-      }
-      return ok(planner.findings.update(id, patch, me));
-    }),
-  );
+      guard(({ id, ...patch }: { id: string } & Record<string, unknown>) => {
+        if (!planner.findings) throw new Error("Findings aren't available.");
+        if (!isLead) {
+          // A second look from another seat (the report gate wants critical and high findings verified by a person or a
+          // model from another maker): any agent may set verified, and only that, on a finding someone else reported.
+          const fields = Object.keys(patch).filter((k) => patch[k] !== undefined);
+          if (fields.some((k) => k !== "verified") || !fields.length) throw new Error("Only the lead triages findings. You may set verified (and only that) on a finding someone else reported, after reproducing it.");
+          if (planner.findings.reporterOf(id) === me) throw new Error("You reported this finding: someone else has to verify it.");
+        }
+        return ok(planner.findings.update(id, patch, me));
+      }),
+    );
+  }
 
   // ---------------------------------------------------------------- Lead: task ledger
   const memory = () => {
@@ -375,55 +427,57 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   };
   const projectId = hub.snap.config.project.id;
 
-  server.registerTool(
-    "ledger_add",
-    {
-      description:
-        "Lead only. Write to your task ledger: a fact you verified, a guess you haven't, a step of the plan, or a note. Tie it to a task, or leave taskId out for the whole project. The ledger outlives your context; read it back with read_ledger.",
-      inputSchema: {
-        kind: z.enum(LEAD_KINDS),
-        text: z.string().max(2000),
-        taskId: z.string().optional(),
+  if (isLead) {
+    server.registerTool(
+      "ledger_add",
+      {
+        description:
+          "Lead only. Write to your task ledger: a fact you verified, a guess you haven't, a step of the plan, or a note. Tie it to a task, or leave taskId out for the whole project. The ledger outlives your context; read it back with read_ledger.",
+        inputSchema: {
+          kind: z.enum(LEAD_KINDS),
+          text: z.string().max(2000),
+          taskId: z.string().optional(),
+        },
       },
-    },
-    guard(({ kind, text, taskId }: { kind: (typeof LEAD_KINDS)[number]; text: string; taskId?: string }) => {
-      leadOnly();
-      if (taskId && !planner.task(taskId)) throw new Error(`No task ${taskId}.`);
-      const e = memory().addLedger({ projectId, taskId: taskId ?? null, ledger: "task", kind, text, by: me });
-      return ok(`Ledger entry ${e.id} (${e.kind}) added.`);
-    }),
-  );
+      guard(({ kind, text, taskId }: { kind: (typeof LEAD_KINDS)[number]; text: string; taskId?: string }) => {
+        leadOnly();
+        if (taskId && !planner.task(taskId)) throw new Error(`No task ${taskId}.`);
+        const e = memory().addLedger({ projectId, taskId: taskId ?? null, ledger: "task", kind, text, by: me });
+        return ok(`Ledger entry ${e.id} (${e.kind}) added.`);
+      }),
+    );
 
-  server.registerTool(
-    "ledger_revise",
-    {
-      description: "Lead only. Replace a task-ledger entry's text (a guess you confirmed or disproved, a changed plan). The old entry is kept as history.",
-      inputSchema: { id: z.number().int(), text: z.string().max(2000) },
-    },
-    guard(({ id, text }: { id: number; text: string }) => {
-      leadOnly();
-      const old = memory().ledger(projectId, { ledger: "task" }).find((e) => e.id === id);
-      if (!old) throw new Error(`No current task-ledger entry ${id}.`);
-      const e = memory().reviseLedger(projectId, id, text, me);
-      return ok(`Entry ${id} revised as ${e.id}.`);
-    }),
-  );
+    server.registerTool(
+      "ledger_revise",
+      {
+        description: "Lead only. Replace a task-ledger entry's text (a guess you confirmed or disproved, a changed plan). The old entry is kept as history.",
+        inputSchema: { id: z.number().int(), text: z.string().max(2000) },
+      },
+      guard(({ id, text }: { id: number; text: string }) => {
+        leadOnly();
+        const old = memory().ledger(projectId, { ledger: "task" }).find((e) => e.id === id);
+        if (!old) throw new Error(`No current task-ledger entry ${id}.`);
+        const e = memory().reviseLedger(projectId, id, text, me);
+        return ok(`Entry ${id} revised as ${e.id}.`);
+      }),
+    );
 
-  server.registerTool(
-    "read_ledger",
-    {
-      description: "Lead only. Your task ledger (facts, guesses, plan, notes) and HQ's progress ledger (stalls it saw), current entries only. Filter by task.",
-      inputSchema: { taskId: z.string().optional() },
-    },
-    guard(({ taskId }: { taskId?: string }) => {
-      leadOnly();
-      const view = (e: LedgerEntry) => ({ id: e.id, task: e.taskId, kind: e.kind, text: e.text, by: e.by, at: e.at });
-      return ok({
-        task: memory().ledger(projectId, { ledger: "task", taskId }).map(view),
-        progress: memory().ledger(projectId, { ledger: "progress", taskId }).slice(-20).map(view),
-      });
-    }),
-  );
+    server.registerTool(
+      "read_ledger",
+      {
+        description: "Lead only. Your task ledger (facts, guesses, plan, notes) and HQ's progress ledger (stalls it saw), current entries only. Filter by task.",
+        inputSchema: { taskId: z.string().optional() },
+      },
+      guard(({ taskId }: { taskId?: string }) => {
+        leadOnly();
+        const view = (e: LedgerEntry) => ({ id: e.id, task: e.taskId, kind: e.kind, text: e.text, by: e.by, at: e.at });
+        return ok({
+          task: memory().ledger(projectId, { ledger: "task", taskId }).map(view),
+          progress: memory().ledger(projectId, { ledger: "progress", taskId }).slice(-20).map(view),
+        });
+      }),
+    );
+  }
 
   // ---------------------------------------------------------------- Everyone: the team's memory (docs/memory-core.md section 7)
   const types = [...CORE_MEMORY_TYPES, ...(hub.snap.config.template?.memoryTypes ?? [])];
@@ -521,12 +575,12 @@ export function buildServer(hub: Hub, planner: Planner, me: string): McpServer {
   );
 
   // ---------------------------------------------------------------- Cross-project tools (owner opt-in)
-  if (hub.snap.config.project.crossProject) registerCrossProjectTools(server, hub, me, leadOnly);
+  if (hub.snap.config.project.crossProject) registerCrossProjectTools(server, hub, me, isLead, leadOnly);
 
   return server;
 }
 
-function registerCrossProjectTools(server: McpServer, hub: Hub, me: string, leadOnly: () => void) {
+function registerCrossProjectTools(server: McpServer, hub: Hub, me: string, isLead: boolean, leadOnly: () => void) {
   server.registerTool(
     "list_projects",
     {
@@ -565,6 +619,8 @@ function registerCrossProjectTools(server: McpServer, hub: Hub, me: string, lead
       return ok(found);
     }),
   );
+
+  if (!isLead) return;
 
   server.registerTool(
     "create_project_task",

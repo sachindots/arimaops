@@ -5,7 +5,10 @@
 // Over budget, it cuts in this order: older handoffs, older ledger entries, memory, older repo
 // facts, the spec, then the task description; and it says what it left out.
 
-import { BRIEF_BUDGET, type BriefInput } from "../src/data/model";
+import { BRIEF_BUDGET, type BriefInput, type Memory } from "../src/data/model";
+import type { Task } from "../src/data/types";
+import type { MemoryStore } from "./memory";
+import { log } from "./lib/log";
 
 /** About four characters per token: close enough for a budget, and free. */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 4);
@@ -80,4 +83,61 @@ export function buildBrief(input: BriefInput, budget = BRIEF_BUDGET): Brief {
   // The fixed parts alone (a huge title or file list) can still be over: cut the text itself.
   if (estimateTokens(text) > budget) text = cut(text, budget * 4);
   return { text, tokens: estimateTokens(text), trimmed: [...Object.entries(dropped).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`), ...shortened] };
+}
+
+/**
+ * The brief's memory section: what the tasks it builds on produced, what is known about its files, and what
+ * matches its words. Certified first. Memory store failure never blocks a brief: the section says so instead.
+ */
+export async function memoryForTask(memory: MemoryStore | null, projectId: string, task: Task): Promise<string> {
+  if (!memory) return "";
+  try {
+    const lists = await Promise.all([
+      ...task.needs.slice(-8).map((id) => memory.related(projectId, { taskId: id }, { depth: 1, limit: 6 })),
+      ...(task.files ?? []).slice(0, 10).map((f) => memory.related(projectId, { path: f }, { depth: 1, limit: 6 })),
+      memory.recall(projectId, `${task.title} ${task.description ?? ""}`, { limit: 6 }),
+    ]);
+    const seen = new Map<string, Memory>();
+    for (const m of lists.flat()) if (!seen.has(m.id)) seen.set(m.id, m);
+    // Certified first; then dead ends (the brief says not to repeat them), decisions, and the rest.
+    const rank = (m: Memory) => (m.type === "DeadEnd" ? 0 : m.type === "Decision" ? 1 : 2);
+    const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified) || rank(a) - rank(b)).slice(0, 12);
+    return picked
+      .map((m) => `- ${m.type}${m.certified ? " (certified)" : ""}${m.taskId ? `, from ${m.taskId}` : ""}: ${m.text}${m.about.length ? ` [${m.about.join(", ")}]` : ""} (${m.id})`)
+      .join("\n");
+  } catch (err) {
+    return `Memory is offline right now (${err instanceof Error ? err.message : err}). Ask the lead if you need what the team learned before.`;
+  }
+}
+
+/** What a finished task leaves behind for the team's memory (docs/memory-core.md section 4). */
+export function summariseTask(
+  memory: MemoryStore | null,
+  memoryJobs: { taskFinished(): void } | null,
+  projectId: string,
+  task: Task,
+) {
+  if (!memory) return;
+  try {
+    memory.summarise({
+      projectId,
+      taskId: task.id,
+      title: task.title,
+      description: task.description?.trim() || null,
+      doneWhen: task.doneWhen?.trim() || null,
+      stageId: task.stageId ?? null,
+      ownerId: task.ownerId,
+      needs: task.needs,
+      files: task.files ?? [],
+      prNumber: task.prNumber,
+      deliverablePath: task.deliverablePath ?? null,
+      note: task.note ?? null,
+      ledger: memory.ledger(projectId, { ledger: "task", taskId: task.id }).map((e) => ({ kind: e.kind, text: e.text })),
+      usage: task.usage ?? null,
+      finishedAt: new Date().toISOString(),
+    });
+    memoryJobs?.taskFinished();
+  } catch (err) {
+    log.warn(`couldn't keep the summary of ${task.id}: ${err instanceof Error ? err.message : err}`); // never a reason to refuse finishing
+  }
 }

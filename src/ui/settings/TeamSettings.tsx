@@ -1,7 +1,7 @@
 import { BRAND } from "../../data/brand";
 import { TemplateImport } from "../setup/TemplateImport";
 import { useState } from "react";
-import type { Role } from "../../data/model";
+import type { AgentEngine, Role } from "../../data/model";
 import { nextAgentName } from "../../data/names";
 import { BUILTIN_SKILLS } from "../../data/skillCatalog";
 import { AGENT_CLIS, CLI_MODELS, type AgentCli, type AgentConfig, type AgentMode, cliPickerLabel } from "../../data/types";
@@ -255,6 +255,14 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
               onCommit={(v) => set({ workspacePath: v.trim() || null })}
             />
           </Field>
+          {agent.cli === "claude" && (agent.nextMode ?? agent.mode) !== "local" && (
+            <Field label="Engine" hint="Stream (beta): Claude Code runs headless, takes messages only between turns, and its terminal shows a log. Applies at its next start.">
+              <select className="field" value={agent.engine ?? "terminal"} aria-label={`${agent.name} engine`} onChange={(e) => set({ engine: e.target.value as AgentEngine })}>
+                <option value="terminal">Terminal</option>
+                <option value="stream">Stream (beta)</option>
+              </select>
+            </Field>
+          )}
         </div>
       )}
     </div>

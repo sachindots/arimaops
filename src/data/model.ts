@@ -84,7 +84,11 @@ export interface Seat {
   workspacePath: string | null; // null = HQ-managed clone
   sandbox: SandboxSettings;
   mcp: string[];
+  /** How a Claude Code seat runs: its terminal UI (default) or headless stream-json (docs/design/stream-json.md). */
+  engine?: AgentEngine;
 }
+
+export type AgentEngine = "terminal" | "stream";
 
 // ── Flow and gates (1.2) ──
 

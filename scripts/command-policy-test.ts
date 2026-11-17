@@ -16,12 +16,12 @@ const byRole = (role: Role) => Object.entries(COMMANDS).filter(([, e]) => e.role
 
 check(
   "viewers can only chat and refresh",
-  JSON.stringify(byRole("viewer")) === JSON.stringify(["recheckSetup", "refreshMcp", "refreshSbx", "sendMessage"]),
+  JSON.stringify(byRole("viewer")) === JSON.stringify(["askTeam", "recheckSetup", "refreshMcp", "refreshSbx", "sendMessage"]),
   JSON.stringify(byRole("viewer")),
 );
 const OWNER = [
   "addMcp", "addToSuite", "finishGithubApp", "importTemplate", "openHostShell", "openShell", "promoteLessons",
-  "removeAccount", "removeLesson", "runSetupFix", "saveAccount", "setLabMode", "setLessonPromotion",
+  "removeAccount", "removeLesson", "runSetupFix", "saveAccount", "setCompany", "setLabMode", "setLessonPromotion",
   "setMemoryExtraction", "setProxy", "setSpendCaps",
 ].sort();
 check("owner-only commands are exactly these", JSON.stringify(byRole("owner")) === JSON.stringify(OWNER), JSON.stringify(byRole("owner")));

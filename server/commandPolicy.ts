@@ -32,8 +32,74 @@ const flag = z.boolean();
 const obj = z.record(z.string(), z.unknown());
 const opt = <T extends z.ZodType>(t: T) => t.nullish(); // JSON turns a missing trailing arg into null
 const mode = z.enum(["local", "sandbox", "container"]);
-const agentPatch = z.looseObject({ mode: z.unknown().optional(), workspacePath: z.unknown().optional() });
-const projectPatch = z.looseObject({ crossProject: z.unknown().optional() });
+const cli = z.enum(["claude", "codex", "agy", "opencode", "gemini", "copilot"]);
+const engine = z.enum(["terminal", "stream"]);
+const newAgentInput = z.looseObject({
+  name: z.string().max(200).optional(),
+  roleId: z.string().max(200).optional(),
+  mode: mode.optional(),
+});
+const agentPatch = z.looseObject({
+  name: z.string().max(200).optional(),
+  color: z.string().max(40).optional(),
+  mode: mode.optional(),
+  roleId: z.string().max(200).optional(),
+  account: z.string().max(200).optional(),
+  workspacePath: z.string().max(1000).nullable().optional(),
+  engine: engine.optional(),
+});
+const rolePatch = z.looseObject({
+  title: z.string().max(200).optional(),
+  cli: cli.optional(),
+  model: z.string().max(200).optional(),
+  roleMd: z.string().max(20_000).optional(),
+  color: z.string().max(40).optional(),
+  skills: z.array(z.string().max(200)).max(200).optional(),
+  onDemand: z.boolean().optional(),
+  fallback: z.looseObject({ cli, model: z.string().max(200) }).nullable().optional(),
+});
+const boardPatch = z.looseObject({
+  title: z.string().max(500).optional(),
+  status: z.enum(["active", "planned", "done"]).optional(),
+});
+const sandboxPatch = z.looseObject({
+  allow: z.array(z.string().max(500)).max(500).optional(),
+  deny: z.array(z.string().max(500)).max(500).optional(),
+  resources: z.looseObject({
+    cpus: z.number().finite().nullable().optional(),
+    memoryGb: z.number().finite().nullable().optional(),
+  }).optional(),
+});
+const newMcpServer = z.looseObject({
+  name: z.string().max(200).optional(),
+  url: z.string().max(2000).optional(),
+  command: z.string().max(1000).optional(),
+  args: z.array(z.string().max(500)).max(50).optional(),
+  apiKey: z.string().max(10_000).optional(),
+});
+const extractionInput = z.looseObject({
+  enabled: z.boolean().optional(),
+  account: z.string().max(200).optional(),
+});
+const workflowPatch = z.looseObject({
+  review: obj.optional(),
+  merge: z.looseObject({ by: z.enum(["human", "lead"]).optional() }).optional(),
+  deploy: obj.optional(),
+  lean: z.looseObject({ clearBetweenTasks: z.boolean().optional() }).optional(),
+});
+const projectPatch = z.looseObject({
+  name: z.string().max(200).optional(),
+  repo: z.string().max(500).optional(),
+  officeName: z.string().max(200).optional(),
+  scope: z.looseObject({
+    inScope: z.array(z.unknown()).max(1000).optional(),
+    outOfScope: z.array(z.unknown()).max(1000).optional(),
+    rules: z.string().max(10_000).optional(),
+  }).optional(),
+  exportPlan: z.boolean().optional(),
+  crossProject: z.boolean().optional(),
+  charter: z.string().max(20_000).optional(),
+});
 
 /** A terminal that isn't a sandboxed or container agent's own is a shell on this machine. */
 const hostTerminal = (term: string, ctx: PolicyContext) => {
@@ -65,13 +131,15 @@ export const COMMANDS = {
   recordGate: entry({ role: "operator", stepUp: true, args: z.tuple([id, id, text(20), opt(text(4000))]) }),
   setTaskRunsOn: entry({ role: "operator", args: z.tuple([id, opt(text(40)), opt(text(200))]) }),
   sendMessage: entry({ role: "viewer", args: z.tuple([id, text(100_000)]) }),
+  // A question to the whole team: the lead gathers from teammates and answers once.
+  askTeam: entry({ role: "viewer", args: z.tuple([text(100_000)]) }),
   createBoard: entry({ role: "operator", args: z.tuple([text(500)]) }),
-  updateBoard: entry({ role: "operator", args: z.tuple([id, obj]) }),
+  updateBoard: entry({ role: "operator", args: z.tuple([id, boardPatch]) }),
   resolveActionItem: entry({ role: "operator", stepUp: true, args: z.tuple([id, text(20), opt(text(10_000))]) }),
   addToSuite: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
 
   // Team and template
-  addAgent: entry({ role: "operator", args: z.tuple([obj]), ownerIf: ([input]) => input.mode === "local" }),
+  addAgent: entry({ role: "operator", args: z.tuple([newAgentInput]), ownerIf: ([input]) => input.mode === "local" }),
   updateAgent: entry({
     role: "operator",
     stepUp: true,
@@ -81,7 +149,7 @@ export const COMMANDS = {
   }),
   removeAgent: entry({ role: "operator", stepUp: true, args: z.tuple([id, opt(obj)]) }),
   setTeamMode: entry({ role: "operator", stepUp: true, args: z.tuple([mode]), ownerIf: ([m]) => m === "local" }),
-  updateRole: entry({ role: "operator", stepUp: true, args: z.tuple([id, obj]) }),
+  updateRole: entry({ role: "operator", stepUp: true, args: z.tuple([id, rolePatch]) }),
   updateProjectTemplate: entry({ role: "operator", stepUp: true, args: z.tuple([obj]) }),
   resyncTemplate: entry({ role: "operator", stepUp: true, args: z.tuple([]) }),
   exportTemplate: entry({ role: "operator", args: z.tuple([]) }),
@@ -93,7 +161,7 @@ export const COMMANDS = {
   completeWelcome: entry({ role: "operator", args: z.tuple([obj]) }),
 
   // Sandboxes, keys and tools
-  updateSandbox: entry({ role: "operator", stepUp: true, args: z.tuple([id, obj]) }),
+  updateSandbox: entry({ role: "operator", stepUp: true, args: z.tuple([id, sandboxPatch]) }),
   setSecret: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(40), text(20_000)]) }),
   removeSecret: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(40)]) }),
   setProxy: entry({ role: "owner", stepUp: true, args: z.tuple([z.string().max(2000).nullable()]) }),
@@ -102,7 +170,7 @@ export const COMMANDS = {
   answerApproval: entry({ role: "operator", stepUp: true, args: z.tuple([id, id, text(20)]) }),
   resolveAccess: entry({ role: "operator", stepUp: true, args: z.tuple([id, text(20)]) }),
   refreshMcp: entry({ role: "viewer", args: z.tuple([]) }),
-  addMcp: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
+  addMcp: entry({ role: "owner", stepUp: true, args: z.tuple([newMcpServer]) }),
   authMcp: entry({ role: "operator", stepUp: true, args: z.tuple([id]) }),
   removeMcp: entry({ role: "operator", stepUp: true, args: z.tuple([id]) }),
   setAgentMcp: entry({ role: "operator", args: z.tuple([id, z.array(text(200)).max(200)]) }),
@@ -111,7 +179,7 @@ export const COMMANDS = {
   // Machine-wide: accounts, memory, money, GitHub
   saveAccount: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
   removeAccount: entry({ role: "owner", stepUp: true, args: z.tuple([id]) }),
-  setMemoryExtraction: entry({ role: "owner", stepUp: true, args: z.tuple([obj]) }),
+  setMemoryExtraction: entry({ role: "owner", stepUp: true, args: z.tuple([extractionInput]) }),
   decideMemories: entry({ role: "operator", stepUp: true, args: z.tuple([id, obj]) }),
   keepOutOfMemory: entry({ role: "operator", args: z.tuple([text(1000)]) }),
   setLabMode: entry({ role: "owner", stepUp: true, args: z.tuple([flag]) }),
@@ -119,7 +187,9 @@ export const COMMANDS = {
   finishGithubApp: entry({ role: "owner", stepUp: true, args: z.tuple([text(200)]) }),
 
   // Project settings
-  updateWorkflow: entry({ role: "operator", stepUp: true, args: z.tuple([obj]) }),
+  updateWorkflow: entry({ role: "operator", stepUp: true, args: z.tuple([workflowPatch]) }),
+  // Machine-wide company context: in every agent's role file, in every project.
+  setCompany: entry({ role: "owner", stepUp: true, args: z.tuple([text(20_000)]) }),
   updateProject: entry({ role: "operator", stepUp: true, args: z.tuple([projectPatch]), ownerIf: ([p]) => p.crossProject !== undefined }),
 };
 

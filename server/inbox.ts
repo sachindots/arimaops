@@ -19,6 +19,8 @@ export interface InboxItem {
   msgId?: string;
   /** For "assign": the task it starts, so a start that waited past a reassignment isn't delivered. */
   taskId?: string;
+  /** A question to the whole team (to the lead): gather from teammates, answer the human once. */
+  team?: boolean;
 }
 
 export const HISTORY = 300; // messages kept (and sent to the UI)
@@ -257,11 +259,15 @@ export class Inbox {
 
   private format(items: InboxItem[]): string {
     const lines = items.map((i) =>
-      i.kind === "message" ? `[HQ] Message from ${this.hub.name(i.fromId)}: ${i.text}` : `[HQ] ${i.text}`,
+      i.team ? `[HQ] Question for the whole team from the human: ${i.text}`
+      : i.kind === "message" ? `[HQ] Message from ${this.hub.name(i.fromId)}: ${i.text}` : `[HQ] ${i.text}`,
     );
+    const teamAsk = items.some((i) => i.team);
     const fromAgent = items.some((i) => i.kind === "message" && i.fromId !== "you");
     const fromYou = items.some((i) => i.kind === "message" && i.fromId === "you");
-    const hint = fromYou
+    const hint = teamAsk
+      ? '  (Ask only the teammates whose work or strengths it touches, with send_message, then answer the human once with send_message to "you": one combined answer that says who it came from. Answer it yourself if nobody else is needed.)'
+      : fromYou
       ? '  (Answer the human with the hq send_message tool, to "you".)'
       : fromAgent ? "  (Reply with the hq send_message tool only if a reply is needed.)" : "";
     // Claude Code submits on newline, so everything goes on one line.

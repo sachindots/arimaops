@@ -18,9 +18,9 @@ import { ownerAway } from "./presence";
 import { isHighStakes, PERSON_GATES, stagesLeft, uiFilesOf, unmetGates, type UnmetGate } from "./gates";
 import { hqDb } from "./lib/db";
 import type { MemoryStore } from "./memory";
-import { buildBrief, type Brief } from "./brief";
-import type { GateState, Memory } from "../src/data/model";
-import { log } from "./lib/log";
+import { buildBrief, memoryForTask, summariseTask, type Brief } from "./brief";
+import { runStallCheck } from "./stalls";
+import type { GateState } from "../src/data/model";
 
 export interface NewTask {
   boardId?: string;
@@ -529,7 +529,7 @@ export class Planner {
     }
     if (status === "in-progress" && this.waitingOn(task).length) throw new Error(`Wait for ${this.waitingOn(task).join(", ")} before starting this task.`);
     task.status = status;
-    task.note = note?.slice(0, 300) || (status === "done" ? task.note ?? null : null);
+    task.note = note?.slice(0, 1200) || (status === "done" ? task.note ?? null : null); // room for a structured handoff
     if (prNumber) task.prNumber = prNumber;
     if (deliverablePath) task.deliverablePath = deliverablePath.slice(0, 300);
     if (status === "done") this.meterEnd(task);
@@ -577,7 +577,7 @@ export class Planner {
   onFinished: (task: Task) => void = () => {};
 
   private afterDone(done: Task) {
-    this.summarise(done);
+    summariseTask(this.memory, this.memoryJobs, this.snap.config.project.id, done);
     // Deliverables are copied in first, so the scorers read what the agent delivered.
     void this.syncTaskDeliverables(done).catch(() => {}).then(() => this.onFinished(done));
     if (!this.lean()) return;
@@ -591,61 +591,6 @@ export class Planner {
     this.inbox.push(id, { fromId: "hq", kind: "reset", text: cmd });
   }
 
-  /**
-   * The brief's memory section: what the tasks it builds on produced, what is known about its files, and what
-   * matches its words. Certified first. Neo4j down never blocks a brief: the section says so instead.
-   */
-  private async memoryFor(task: Task): Promise<string> {
-    const memory = this.memory;
-    if (!memory) return "";
-    const p = this.snap.config.project.id;
-    try {
-      const lists = await Promise.all([
-        ...task.needs.slice(-8).map((id) => memory.related(p, { taskId: id }, { depth: 1, limit: 6 })),
-        ...(task.files ?? []).slice(0, 10).map((f) => memory.related(p, { path: f }, { depth: 1, limit: 6 })),
-        memory.recall(p, `${task.title} ${task.description ?? ""}`, { limit: 6 }),
-      ]);
-      const seen = new Map<string, Memory>();
-      for (const m of lists.flat()) if (!seen.has(m.id)) seen.set(m.id, m);
-      // Certified first; then dead ends (the brief says not to repeat them), decisions, and the rest.
-      const rank = (m: Memory) => (m.type === "DeadEnd" ? 0 : m.type === "Decision" ? 1 : 2);
-      const picked = [...seen.values()].sort((a, b) => Number(b.certified) - Number(a.certified) || rank(a) - rank(b)).slice(0, 12);
-      return picked
-        .map((m) => `- ${m.type}${m.certified ? " (certified)" : ""}${m.taskId ? `, from ${m.taskId}` : ""}: ${m.text}${m.about.length ? ` [${m.about.join(", ")}]` : ""} (${m.id})`)
-        .join("\n");
-    } catch (err) {
-      return `Memory is offline right now (${err instanceof Error ? err.message : err}). Ask the lead if you need what the team learned before.`;
-    }
-  }
-
-  /** What a finished task leaves behind for the team's memory (docs/memory-core.md section 4). */
-  private summarise(task: Task) {
-    if (!this.memory) return;
-    const projectId = this.snap.config.project.id;
-    try {
-      this.memory.summarise({
-        projectId,
-        taskId: task.id,
-        title: task.title,
-        description: task.description?.trim() || null,
-        doneWhen: task.doneWhen?.trim() || null,
-        stageId: task.stageId ?? null,
-        ownerId: task.ownerId,
-        needs: task.needs,
-        files: task.files ?? [],
-        prNumber: task.prNumber,
-        deliverablePath: task.deliverablePath ?? null,
-        note: task.note ?? null,
-        ledger: this.memory.ledger(projectId, { ledger: "task", taskId: task.id }).map((e) => ({ kind: e.kind, text: e.text })),
-        usage: task.usage ?? null,
-        finishedAt: new Date().toISOString(),
-      });
-      this.memoryJobs?.taskFinished();
-    } catch (err) {
-      log.warn(`couldn't keep the summary of ${task.id}: ${err instanceof Error ? err.message : err}`); // never a reason to refuse finishing
-    }
-  }
-
   /** What an agent needs to start a task without re-exploring: the handoffs it builds on, its own last note, the repo facts. */
   async brief(agentId: string, task: Task): Promise<Brief> {
     // Least relevant first: the brief drops from the front when it is over budget.
@@ -654,15 +599,16 @@ export class Planner {
     const handoffs = [...(mine ? [{ ...mine, ownerId: "you" }] : []), ...deps].map((d) => ({
       taskId: d.id,
       by: d.ownerId === "you" ? "your last task" : d.ownerId ? this.hub.name(d.ownerId) : null,
-      note: d.note!.slice(0, 600),
+      note: d.note!.slice(0, 1200),
     }));
-    const ledger = (this.memory?.ledger(this.snap.config.project.id, { ledger: "task" }) ?? []).filter((e) => e.taskId === task.id || e.taskId === null);
+    const projectId = this.snap.config.project.id;
+    const ledger = (this.memory?.ledger(projectId, { ledger: "task" }) ?? []).filter((e) => e.taskId === task.id || e.taskId === null);
     return buildBrief({
       task,
       spec: this.specFor(task),
       handoffs,
       ledger,
-      memory: [await this.memoryFor(task), lessonsForBrief(hqDb(), templateIdOf(hqDb(), this.snap.config.project.id))].filter(Boolean).join("\n\n"),
+      memory: [await memoryForTask(this.memory, projectId, task), lessonsForBrief(hqDb(), templateIdOf(hqDb(), projectId))].filter(Boolean).join("\n\n"),
       facts: readFacts(this.hub.repo.root),
       skills: this.hub.cfg(agentId)?.skills ?? [],
       gates: this.openGates(task, agentId).map((g) => ({ id: g.gate.id, kind: g.gate.kind, needs: g.why })),
@@ -678,66 +624,22 @@ export class Planner {
    * that won't wake it (a background job, a question it never sent). Nudge it once and tell the lead.
    */
   checkStalls(now: number, idleMs = 5 * 60_000, silentMs = 15 * 60_000, unansweredMs = 30 * 60_000) {
-    const lead = this.snap.config.team.find((a) => a.isLead);
-    // The user is away: hand questions they haven't answered to the lead (plans still wait for the user).
-    for (const item of this.snap.actionItems ?? []) {
-      if (!lead || item.status !== "open" || item.kind === "plan" || now - Date.parse(item.at) < unansweredMs) continue;
-      const key = `ask:${item.id}`;
-      if (this.stallNudged.has(key)) continue;
-      this.stallNudged.add(key);
-      const who = item.fromId === lead.id ? "You" : this.hub.name(item.fromId);
-      this.notify(lead.id, `The user hasn't answered "${item.title}" (from ${who}) for ${Math.round((now - Date.parse(item.at)) / 60_000)} min. If it's a reversible decision, make it, tell ${item.fromId === lead.id ? "the team" : who}, and tell the user what you decided. If only the user can do it, keep the team on other work.`);
-    }
-    for (const a of this.snap.config.team) {
-      const st = this.hub.status(a.id);
-      const task = this.currentTask(a.id);
-      if (a.isLead || !st || !task || task.status !== "in-progress" || st.session.state !== "running") continue;
-      if (st.limitedUntil && Date.parse(st.limitedUntil) > now) continue; // the usage-limit notice covers this
-      const key = `${a.id}:${task.id}`;
-      // "Working" but no hook for a long time: frozen, or one command hanging. Typing into it would interrupt, so tell the lead.
-      const quietMs = now - Math.max(this.lastActivityAt(a.id), Date.parse(st.stateSince));
-      if (this.stallNudged.has(key)) {
-        if (st.state === "working" && quietMs < silentMs) this.stallNudged.delete(key); // moving again: a later stall counts anew
-        continue;
-      }
-      if (st.state === "working" && quietMs >= silentMs) {
-        this.stallNudged.add(key);
-        const mins = Math.round(quietMs / 60_000);
-        if (lead) this.notify(lead.id, `${a.name} shows Working on ${task.id} but has done nothing visible for ${mins} min (a command may be hanging). Check its terminal in HQ, or ask the user to.`);
-        this.progress(task.id, `${a.name} silent ${mins} min while working`);
-        this.hub.activity("agent.needs-input", a.id, `${a.name} silent for ${mins} min while working on ${task.id}`);
-        continue;
-      }
-      if (st.state !== "idle" || now - Date.parse(st.stateSince) < idleMs || this.inbox.pending(a.id) > 0) continue;
-      this.stallNudged.add(key);
-      const mins = Math.round((now - Date.parse(st.stateSince)) / 60_000);
-      this.notify(a.id, `HQ: you've been idle ${mins} min but ${task.id} is still in progress. If you were waiting on a background command or job, it won't wake you: check it now and continue in the foreground. If you're blocked, call set_my_status blocked with the reason.`);
-      if (lead) this.notify(lead.id, `${a.name} has been idle ${mins} min with ${task.id} still in progress. HQ nudged it; check on it if it doesn't move.`);
-      this.progress(task.id, `${a.name} idle ${mins} min with the task in progress; nudged`);
-      this.hub.activity("agent.needs-input", a.id, `${a.name} stalled on ${task.id} (idle ${mins} min)`);
-    }
-  }
-
-  /**
-   * HQ's progress ledger: each stall it saw. The second stall on a task asks the lead to replan it; from the third
-   * the owner is pushed (docs/agent-engine.md section 4).
-   */
-  private progress(taskId: string, text: string) {
-    const projectId = this.snap.config.project.id;
-    try {
-      this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "stall", text, by: "hq" });
-      const stalls = this.memory?.ledger(projectId, { taskId, ledger: "progress" }).filter((e) => e.kind === "stall" && !e.supersededBy).length ?? 0;
-      const lead = this.snap.config.team.find((a) => a.isLead);
-      const task = this.task(taskId);
-      if (stalls === 2 && lead) {
-        this.memory?.addLedger({ projectId, taskId, ledger: "progress", kind: "replan", text: `Stalled twice; asked ${lead.name} to replan`, by: "hq" });
-        this.notify(lead.id, `${taskId}${task ? ` (${task.title})` : ""} has stalled twice (latest: ${text}). Replan it: split it, reassign it, or drop it, and record the new plan with ledger_add kind plan.`);
-      } else if (stalls >= 3) {
-        this.hub.activity("agent.needs-input", lead?.id ?? null, `${taskId} has stalled ${stalls} times, after the lead's replan. It needs you.`);
-      }
-    } catch {
-      /* the ledger is a record, never a reason to stop a stall check */
-    }
+    runStallCheck(
+      {
+        hub: this.hub,
+        inbox: this.inbox,
+        memory: this.memory,
+        stallNudged: this.stallNudged,
+        lastActivityAt: (id) => this.lastActivityAt(id),
+        currentTask: (id) => this.currentTask(id),
+        task: (id) => this.task(id),
+        notify: (id, text) => this.notify(id, text),
+      },
+      now,
+      idleMs,
+      silentMs,
+      unansweredMs,
+    );
   }
 
   /**
@@ -821,6 +723,17 @@ export class Planner {
     return toId;
   }
 
+  /** A question to the whole team: goes to the lead, who asks the teammates who know and answers the human once. */
+  askTeam(text: string) {
+    const lead = this.snap.config.team.find((a) => a.isLead);
+    if (!lead) throw new Error("This team has no lead to gather an answer. Message an agent directly.");
+    const clean = text.trim().slice(0, 2000);
+    if (!clean) throw new Error("Empty message");
+    const msg = this.record(HUMAN_ID, lead.id, clean, true);
+    this.hub.activity("message", null, `You → the team (via ${lead.name}): ${clean.slice(0, 80)}`);
+    this.inbox.push(lead.id, { fromId: HUMAN_ID, kind: "message", text: clean, msgId: msg.id, team: true });
+  }
+
   /** A notice from HQ itself (review results, merges) to one agent. */
   notify(agentId: string, text: string) {
     if (!this.hub.cfg(agentId)) return;
@@ -829,9 +742,9 @@ export class Planner {
   }
 
   /** Adds to the history (saved) and the UI; to an agent it starts as "queued" until the inbox hands it over. */
-  private record(fromId: string, toId: string, text: string): AgentMessage {
+  private record(fromId: string, toId: string, text: string, team = false): AgentMessage {
     this.seq += 1;
-    const msg: AgentMessage = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text, ...(this.hub.cfg(toId) ? { delivered: "queued" as const } : {}) };
+    const msg: AgentMessage = { id: `m${Date.now().toString(36)}${this.seq}`, at: now(), fromId, toId, text, ...(this.hub.cfg(toId) ? { delivered: "queued" as const } : {}), ...(team ? { team } : {}) };
     this.snap.messages = [msg, ...this.snap.messages].slice(0, HISTORY);
     this.hub.emit({ type: "message", message: msg });
     this.inbox.save();

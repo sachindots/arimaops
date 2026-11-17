@@ -149,7 +149,7 @@ export function roleOf(t: TeamTemplate, seat: Pick<Seat, "roleId">): Role {
   return r;
 }
 
-const SEAT_KEYS = ["id", "name", "roleId", "color", "mode", "nextMode", "account", "workspacePath", "sandbox", "mcp"] as const;
+const SEAT_KEYS = ["id", "name", "roleId", "color", "mode", "nextMode", "account", "workspacePath", "sandbox", "mcp", "engine"] as const;
 
 /** What config.json keeps of an agent in a template project. */
 export function seatOf(a: AgentConfig): Seat {

@@ -10,7 +10,7 @@ export interface TaskEvidence {
   /** Files under ~/.arima/<project>/evidence/<task>/<sha>/, served by HQ. */
   shots: { file: string; label: string }[];
 }
-import type { Finding, Role, TeamTemplate, ToolRules } from "./model";
+import type { AgentEngine, Finding, Role, TeamTemplate, ToolRules } from "./model";
 
 export type { Finding };
 import type { StackConfig } from "./stack";
@@ -103,6 +103,8 @@ export interface AgentConfig {
   account?: string;
   /** MCP servers (names in sbx's registry) this agent's sandbox gets. */
   mcp?: string[];
+  /** Claude Code in Sandbox or Container mode only: "stream" runs it headless (docs/design/stream-json.md). */
+  engine?: AgentEngine;
 }
 
 /** An MCP server registered with Docker Sandboxes (`sbx mcp ls`). */
@@ -155,6 +157,8 @@ export interface ProjectConfig {
   exportPlan?: boolean; // also write the plan to docs/plan.md
   /** The lead may list other projects on this machine and create or update their tasks. Off unless the owner turns it on. */
   crossProject?: boolean;
+  /** How this team works together (owns which area, how to disagree, when to bother the owner). In every agent's role file. */
+  charter?: string;
   officeName?: string; // the sign on the office wall; empty = the brand sign (DEFAULT_OFFICE_NAME)
   /** Security engagements: what agents may touch. */
   scope?: Scope;
@@ -395,6 +399,8 @@ export interface AgentMessage {
   toId: string;
   text: string;
   delivered?: "typed" | "on-stop" | "queued" | "dropped"; // how HQ handed it over; dropped = a start that no longer applied
+  /** A question to the whole team: sent to the lead, who gathers from teammates and answers once. */
+  team?: boolean;
 }
 
 export type ActivityType =
@@ -568,6 +574,8 @@ export interface OfficeSnapshot {
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
   memory?: MemoryState;
+  /** What every agent on this machine knows about the company (Settings → Project). */
+  company?: string;
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
@@ -639,7 +647,7 @@ export interface WelcomeInput {
 }
 
 /** Changes to one seat. CLI, model, skills and role text belong to the role (RolePatch). */
-export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account">>;
+export type AgentPatch = Partial<Pick<AgentConfig, "name" | "roleId" | "mode" | "color" | "workspacePath" | "account" | "engine">>;
 
 /** Changes to one role of the project's template; every seat of the role picks them up at its next start. */
 export type RolePatch = Partial<Pick<Role, "title" | "cli" | "model" | "fallback" | "skills" | "roleMd" | "onDemand" | "color">>;

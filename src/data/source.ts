@@ -64,6 +64,7 @@ export type OfficeEvent =
   | { type: "mcp.updated"; mcp: McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
   | { type: "memory.updated"; memory: MemoryState }
+  | { type: "company.updated"; company: string }
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
@@ -109,6 +110,10 @@ export interface OfficeDataSource {
   updateFinding(id: string, patch: { status?: FindingStatus; severity?: Severity; verified?: boolean; cvss?: string }): void;
   /** You → an agent, delivered like any Team MCP message. */
   sendMessage(toId: string, text: string): void;
+  /** A question to the whole team: the lead gathers from teammates and answers once. */
+  askTeam(text: string): void;
+  /** Owner only: what every agent knows about the company. */
+  setCompany(text: string): void;
 
   // agent sessions
   startAgent(id: string): void;

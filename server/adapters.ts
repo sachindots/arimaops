@@ -22,6 +22,8 @@ import {
   writeOpenCodeFiles,
 } from "./agentFiles";
 import { run } from "./lib/exec";
+import { isStream } from "./streamEngine";
+import { writeRunner } from "./streamRunner";
 
 export interface Launch {
   /** Agent template name for `sbx run` ("claude" | "codex" | "gemini" | "copilot" | "shell"). */
@@ -62,6 +64,7 @@ const claude: CliAdapter = {
   async writeFiles(dir, agent, cfg, token, extras = {}) {
     const ownRole = await adoptRoleFile(dir);
     writeClaudeFiles(dir, agent, cfg, token, { ...extras, ownRole });
+    if (isStream(agent)) writeRunner(dir);
   },
   launch(agent) {
     // "Opus" / "Sonnet" / "Haiku" → Claude Code's aliases; anything else is passed as a full model id.

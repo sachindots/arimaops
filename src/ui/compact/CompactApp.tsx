@@ -150,8 +150,31 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
   const snap = useOffice((s) => s.snap)!;
   const now = useNow(10_000);
   const team = [...snap.config.team].sort((a, b) => Number(b.isLead) - Number(a.isLead));
+  const lead = team.find((a) => a.isLead);
+  const lastAny = snap.messages[0];
   return (
     <ul className="scroll-thin m-0 flex min-h-0 flex-1 list-none flex-col gap-1.5 overflow-y-auto p-2">
+      {lead && (
+        <li>
+          <button
+            className={`hud-scan flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected === TEAM_THREAD ? "hud-corners border-accent/50 bg-accent/[0.08]" : "border-white/[0.06] hover:border-white/20 hover:bg-white/[0.03]"}`}
+            aria-current={selected === TEAM_THREAD ? "true" : undefined}
+            onClick={() => onOpen(TEAM_THREAD)}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent/10 text-[13px] font-semibold text-accent" aria-hidden="true">
+              {team.length}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <b className="font-display text-[15px] font-semibold">Team</b>
+                <span className="truncate text-[12px] text-muted">everyone · ask once, {lead.name} gathers</span>
+                {lastAny && <span className="ml-auto shrink-0 font-term text-[14px] text-muted">{ago(lastAny.at, now)}</span>}
+              </div>
+              <div className="truncate text-[13px] text-muted">{lastAny ? `${lastAny.fromId === HUMAN_ID ? "You" : (snap.config.team.find((x) => x.id === lastAny.fromId)?.name ?? "HQ")}: ${lastAny.text}` : "No messages yet"}</div>
+            </div>
+          </button>
+        </li>
+      )}
       {team.map((a) => {
         const msgs = snap.messages.filter((m) => m.fromId === a.id || m.toId === a.id);
         const last = msgs[0];
@@ -184,8 +207,82 @@ export function ChatList({ onOpen, selected }: { onOpen: (agentId: string) => vo
   );
 }
 
+/** The Team thread's id in the chat list (no agent has it: agent ids are slugs of names). */
+export const TEAM_THREAD = "@team";
+
 /** `onBack` only where the thread replaces the list (phones); beside the list there is nothing to go back to. */
 export function Thread({ agentId, onBack }: { agentId: string; onBack?: () => void }) {
+  if (agentId === TEAM_THREAD) return <TeamThread onBack={onBack} />;
+  return <AgentThread agentId={agentId} onBack={onBack} />;
+}
+
+/**
+ * Everyone's messages in one place (you, the lead, and agents talking to each other), and a box that asks the whole
+ * team: the question goes to the lead, who asks the teammates who know and answers you once.
+ */
+function TeamThread({ onBack }: { onBack?: () => void }) {
+  const snap = useOffice((s) => s.snap)!;
+  const now = useNow(5000);
+  const [draft, setDraft] = useState("");
+  const lead = snap.config.team.find((a) => a.isLead);
+  const who = (id: string) => (id === HUMAN_ID ? { name: "You", color: "#3fb950" } : snap.config.team.find((a) => a.id === id) ?? { name: "HQ", color: "#00f0ff" });
+  const send = () => {
+    if (!draft.trim()) return;
+    officeActions.askTeam(draft.trim());
+    setDraft("");
+  };
+  return (
+    <div className="panel flex min-h-0 flex-1 flex-col !border-0">
+      <div className="flex items-center gap-2.5 border-b border-white/[0.08] px-4 py-2.5">
+        {onBack && (
+          <button className="btn px-2.5" aria-label="Back to chats" onClick={onBack}>
+            ‹
+          </button>
+        )}
+        <b className="font-display text-[17px] font-semibold">Team</b>
+        <span className="text-[13px] text-muted">{snap.config.team.length} agents · every message, agent to agent too</span>
+      </div>
+      <ul className="scroll-thin m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto p-4" aria-live="polite">
+        {snap.messages.length === 0 && <li className="text-[15px] text-muted">No messages yet. Ask the team something below.</li>}
+        {snap.messages.map((m) => {
+          const from = who(m.fromId);
+          const to = who(m.toId);
+          const mine = m.fromId === HUMAN_ID;
+          return (
+            <li key={m.id} className={`rounded-lg border px-2.5 py-1.5 ${m.team ? "border-accent/40 bg-accent/[0.06]" : "border-white/10"} ${mine ? "ml-10" : "mr-10"}`}>
+              <div className="flex items-center gap-1.5 text-[12px] text-muted">
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: from.color }} aria-hidden="true" />
+                <b className="text-ink">{from.name}</b>
+                <span>→ {m.team ? "the team" : to.name}</span>
+                <span className="ml-auto font-term">{ago(m.at, now)}</span>
+              </div>
+              <div className="whitespace-pre-wrap text-[14px]">{m.text}</div>
+            </li>
+          );
+        })}
+      </ul>
+      {!isViewer && (
+        <form
+          className="flex gap-2 border-t border-white/[0.08] bg-cream p-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+        >
+          <input className="field" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ask the team…" aria-label="Ask the team" />
+          <button className="btn" type="submit" disabled={!draft.trim() || !lead}>
+            Ask
+          </button>
+        </form>
+      )}
+      <p className="bg-cream px-2 pb-1.5 text-[11px] text-muted">
+        {lead ? `${lead.name} asks whoever knows, then answers you once here and on your phone.` : "This team has no lead; message an agent directly."}
+      </p>
+    </div>
+  );
+}
+
+function AgentThread({ agentId, onBack }: { agentId: string; onBack?: () => void }) {
   const snap = useOffice((s) => s.snap)!;
   const agent = snap.config.team.find((a) => a.id === agentId);
   if (!agent) return null;

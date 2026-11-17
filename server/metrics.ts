@@ -160,3 +160,36 @@ export function metricsReport(db: DatabaseSync, projectId: string, days: number,
     at,
   };
 }
+
+export interface SeatRecord {
+  /** Tasks this seat owns that are done. */
+  done: number;
+  /** Of those, how many passed every gate the first time (no failed gate event). */
+  firstPass: number;
+  /** Folders its finished tasks touched most, most first (at most 3). */
+  areas: string[];
+}
+
+/** Each seat's track record in this project, for the lead picking who to ask or assign (list_workers). */
+export function seatRecords(db: DatabaseSync, projectId: string, tasks: { id: string; ownerId: string | null; status: string; files?: string[] }[]): Map<string, SeatRecord> {
+  const failed = new Set(
+    (db.prepare("SELECT DISTINCT task_id AS id FROM gate_events WHERE project_id = ? AND state = 'failed'").all(projectId) as { id: string }[]).map((r) => r.id),
+  );
+  const out = new Map<string, SeatRecord>();
+  const dirs = new Map<string, Map<string, number>>();
+  for (const t of tasks) {
+    if (!t.ownerId || t.status !== "done") continue;
+    const r = out.get(t.ownerId) ?? { done: 0, firstPass: 0, areas: [] };
+    r.done++;
+    if (!failed.has(t.id)) r.firstPass++;
+    out.set(t.ownerId, r);
+    const d = dirs.get(t.ownerId) ?? new Map<string, number>();
+    for (const f of t.files ?? []) {
+      const dir = f.replace(/\\/g, "/").split("/").slice(0, -1).slice(0, 2).join("/") || "(root)";
+      d.set(dir, (d.get(dir) ?? 0) + 1);
+    }
+    dirs.set(t.ownerId, d);
+  }
+  for (const [seat, r] of out) r.areas = [...(dirs.get(seat) ?? new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([d]) => d);
+  return out;
+}

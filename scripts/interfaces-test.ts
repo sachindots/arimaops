@@ -73,10 +73,22 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
     await client.close();
     return { error: !!r.isError, text: r.content.map((c) => c.text).join("") };
   };
+  const toolsFor = async (me: string) => {
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await buildServer(hub as never, planner, me).connect(a);
+    const client = new Client({ name: "test", version: "1" });
+    await client.connect(b);
+    const { tools } = await client.listTools();
+    await client.close();
+    return tools.map((t) => t.name);
+  };
+  const leadTools = await toolsFor("cipher");
+  const workerTools = await toolsFor("ghost");
+  check("workers only get worker tools (no lead, security or ops schemas)", !workerTools.includes("create_task") && !workerTools.includes("ledger_add") && !workerTools.includes("submit_plan") && !workerTools.includes("report_finding") && leadTools.includes("create_task") && leadTools.includes("ledger_add"));
   const added = await call("cipher", "ledger_add", { kind: "guess", text: "The flaky test is a race", taskId: "B1-T01" });
   check("the lead can add to the task ledger", !added.error && memory.ledger("mcp", { ledger: "task" }).length === 1, added.text);
   const refused = await call("ghost", "ledger_add", { kind: "fact", text: "I'm the lead now" });
-  check("a non-lead's ledger_add is refused", refused.error && /Only the Lead/.test(refused.text) && memory.ledger("mcp").length === 1, refused.text);
+  check("a non-lead's ledger_add is refused", refused.error && /Only the Lead|not found/.test(refused.text) && memory.ledger("mcp").length === 1, refused.text);
   check("a non-lead can't read the ledger either", (await call("ghost", "read_ledger", {})).error);
 
   // Verifying a finding: any agent may set verified on someone else's finding (the second look the report gate wants); triage stays the lead's.

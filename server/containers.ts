@@ -121,6 +121,8 @@ export function agentIp(containerName: string): string {
 export function runArgs(
   agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number, env: Record<string, string> = {},
   secrets: { envFile: string; mounts: [string, string][] } | null = null,
+  /** What runs in the container: the CLI, or (stream engine) its runner. */
+  command: string[] = [agent.cli, ...cliArgs],
 ): string[] {
   const authDir = AUTH_DIR[agent.cli];
   if (!authDir) throw new Error(`${agent.cli} can't run in Container mode yet. Use Sandbox or Local mode for this agent.`);
@@ -150,8 +152,7 @@ export function runArgs(
     ...authEnvArgs(agent.cli),
     ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
     imageFor(agent),
-    agent.cli,
-    ...cliArgs,
+    ...command,
   ];
 }
 
@@ -218,6 +219,7 @@ export function startEgressProxy(projects: Map<string, Runtime>, hqPort: number)
   };
   const decide = async (req: IncomingMessage, host: string, port: number) => {
     const ip = (req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
+    if (!/^172\.30\.0\.\d+$/.test(ip) || ip === GATEWAY) return { ok: false, why: "unknown container" };
     const name = await identify(ip);
     // A sign-in container (loginCommand) only needs the CLIs' own sites.
     if (name?.startsWith(LOGIN_PREFIX)) return hostAllowed(BASE_ALLOW, host, port) ? { ok: true, why: "" } : { ok: false, why: "sign-in container" };

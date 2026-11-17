@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { BRAND } from "../src/data/brand";
 import type { OfficeEvent } from "../src/data/source";
+import { HUMAN_ID } from "../src/data/types";
 import type { Hub } from "./hub";
 import type { UserRole } from "./users";
 import { credentialsVault, redactor } from "./credentials/registry";
@@ -98,6 +99,11 @@ export function pushAlert(hub: Pick<Hub, "slug" | "snap">, event: OfficeEvent): 
   // Memories to check are pushed as a daily digest (memory.digest), not one by one.
   if (event.type === "action.updated" && event.item.status === "open" && event.item.kind !== "memory")
     return alert(`action:${event.item.id}`, "Action needed", event.item.title, "actions", true);
+  // An agent answered you (a reply, a team answer from the lead): the text, so you can read it without opening HQ.
+  if (event.type === "message" && event.message.toId === HUMAN_ID && event.message.fromId !== HUMAN_ID) {
+    const from = hub.snap.config.team.find((a) => a.id === event.message.fromId)?.name ?? event.message.fromId;
+    return alert(`message:${event.message.id}`, `${from} wrote`, event.message.text, `agent:${event.message.fromId}`, true);
+  }
   if (event.type === "access.updated" && event.request.status === "pending")
     return alert(`access:${event.request.id}`, "Access requested", event.request.reason || event.request.domain, `agent:${event.request.agentId}`, true);
   if (event.type === "finding.updated" && ["critical", "high"].includes(event.finding.severity) && ["open", "confirmed"].includes(event.finding.status))
@@ -183,6 +189,12 @@ export class PushDevices {
       if (agent) {
         if (Date.now() - (attention.get(agent) ?? 0) < 60_000) return;
         attention.set(agent, Date.now());
+      }
+      // An agent writing several short messages in a row pings once; the rest are in its thread.
+      if (event.type === "message") {
+        const key = `msg:${event.message.fromId}`;
+        if (Date.now() - (attention.get(key) ?? 0) < 20_000) return;
+        attention.set(key, Date.now());
       }
       const oldest = seen.values().next().value;
       if (seen.size > 2000 && oldest) seen.delete(oldest);

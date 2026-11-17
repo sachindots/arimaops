@@ -190,6 +190,8 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, accounts: e.accounts };
     case "memory.updated":
       return { ...snap, memory: e.memory };
+    case "company.updated":
+      return { ...snap, company: e.company };
     case "spend.updated":
       return { ...snap, spend: e.spend };
     case "githubApp.updated":
@@ -281,6 +283,8 @@ export const officeActions = {
   setTaskRunsOn: (taskId: string, cli: AgentCli | null, model: string | null) => source.setTaskRunsOn(taskId, cli, model),
   updateFinding: (id: string, patch: Parameters<typeof source.updateFinding>[1]) => source.updateFinding(id, patch),
   sendMessage: (toId: string, text: string) => source.sendMessage(toId, text),
+  askTeam: (text: string) => source.askTeam(text),
+  setCompany: (text: string) => source.setCompany(text),
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),
   updateRole: source.updateRole.bind(source),

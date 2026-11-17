@@ -7,6 +7,7 @@ import { accounts, accountsState, redactor } from "./credentials/registry";
 import { PROVIDER_SPECS } from "../src/data/providers";
 import type { AccountInput, MemoryState } from "../src/data/types";
 import { liveHubs } from "./projectsRegistry";
+import { CHARTER_MAX, saveCompany } from "./company";
 import { memoryState, memoryStore, saveExtractionSettings } from "./memory";
 import { memoryWorker } from "./memoryJobs";
 
@@ -160,6 +161,21 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
     setTaskRunsOn: (taskId, cli, model) =>
       planner.updateTask(str(taskId, 40), { cli: isAgentCli(cli) ? cli : null, model: typeof model === "string" && model.trim() ? str(model, 80) : null }),
     sendMessage: (toId, text) => planner.message("you", str(toId, 80), str(text, 2000)),
+    askTeam: (text) => {
+      try {
+        planner.askTeam(str(text, 2000));
+      } catch (e) {
+        hub.activity("config", null, e instanceof Error ? e.message : String(e));
+      }
+    },
+    setCompany: (text) => {
+      const company = saveCompany(text);
+      for (const h of liveHubs()) {
+        h.snap.company = company;
+        h.emit({ type: "company.updated", company });
+      }
+      hub.activity("config", null, "Company context saved. Agents get it at their next start.");
+    },
 
     addAgent: (raw) => {
       const t = hub.snap.config.template;
@@ -209,6 +225,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
         seat.account = acct && acct !== "default" ? acct : "";
       }
       if (p.workspacePath !== undefined) seat.workspacePath = p.workspacePath ? str(p.workspacePath, 500).trim() || null : null;
+      // Takes effect at the next start; isStream() keeps it to Claude Code outside Local mode.
+      if (p.engine === "stream" || p.engine === "terminal") seat.engine = p.engine === "stream" ? "stream" : undefined;
       Object.assign(agent, resolveSeat(t, seat));
       if (!seat.nextMode) delete agent.nextMode;
       if (!agent.account) delete agent.account;
@@ -640,6 +658,7 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       const exportOn = typeof p.exportPlan === "boolean" && p.exportPlan && !project.exportPlan;
       if (typeof p.exportPlan === "boolean") project.exportPlan = p.exportPlan;
       if (typeof p.crossProject === "boolean") project.crossProject = p.crossProject;
+      if (typeof p.charter === "string") project.charter = str(p.charter, CHARTER_MAX).trim() || undefined;
       hub.configChanged();
       if (exportOn) {
         hub.planChanged();

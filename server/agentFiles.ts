@@ -1,6 +1,7 @@
 // The files HQ writes into each agent's folder. All of them are listed in the
 // clone's .git/info/exclude, so they are never committed.
 
+import { CHARTER_MAX, companyText } from "./company";
 import { GATEWAY as CONTAINER_GATEWAY } from "./containers";
 import { lstatSync } from "node:fs";
 import { agentRead, agentRemove, agentWrite } from "./lib/agentFs";
@@ -178,6 +179,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   const isDeliverables = cfg.workflow.mode === "deliverables";
   const isExecOrLead = agent.isLead;
 
+  const cross = !!cfg.project.crossProject;
   const rules = isExecOrLead
     ? isDeliverables
       ? [
@@ -185,7 +187,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
           "Break goals into clear boards and scoped tasks (`create_board`, `create_task`). Give each task explicit deliverable/file paths (`files`, e.g. `deliverables/T01-report.md`) and verifiable acceptance criteria (`doneWhen`).",
           "Assign only to agents that are running and free (check `list_workers`).",
           "When a worker marks a task `in-review`, inspect the deliverable against doneWhen. Accept with `update_task` done and a concrete verification note, or send revision feedback. Never accept your own work when review is enabled.",
-          "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+          ...(cross ? ["Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`."] : []),
         ]
       : [
           "You plan the work and assign it to the team. You never write app code.",
@@ -195,7 +197,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
             ? "You merge PRs once they pass review (`gh pr merge <number> --squash --delete-branch`), one at a time, in an order that avoids conflicts. HQ tells you when each one passes."
             : "The user merges PRs; never merge one yourself. Decide the order they should land in, and tell the user if one blocks another.",
           "If the user changes who merges, HQ tells you. Follow the latest message.",
-          "Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`.",
+          ...(cross ? ["Multi-Project CTO Overwatch: You can also inspect and update all other registered ArimaOps projects on this machine using `list_projects`, `get_project_status`, `create_project_task`, and `update_project_task`."] : []),
         ]
     : isDeliverables
       ? [
@@ -231,7 +233,9 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
   );
   // Tool rules: what this engagement allows and how work is approved.
   const project = cfg.project;
-  const security = cfg.rules.findings;
+  const tplRules = cfg.rules ?? cfg.template?.rules;
+  const security = Boolean(tplRules?.findings);
+  const hasPlans = Boolean(tplRules?.plans);
   if (security) {
     const sc = project.scope;
     rules.push(
@@ -241,29 +245,35 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
       "Record each vulnerability with report_finding (severity, in-scope target, reproducible evidence, remediation). Check list_findings first to avoid duplicates. HQ writes deliverables/security-report.md from them.",
     );
   }
-  if (cfg.rules.plans) {
+  if (hasPlans) {
     rules.push(
       "Before changing any system, call submit_plan with the exact commands, hosts, impact and rollback, then WAIT. Execute only after HQ tells you the user approved it; if rejected, revise and resubmit. Read-only investigation is fine meanwhile.",
     );
   }
-  rules.push("Keep context small: read the task brief first, search before reading whole files, and limit tool output to the relevant lines. Handoff only changed paths, verification results, and blockers. Do not repeat status messages or send acknowledgements. After three identical failures, stop retrying that approach and report the blocker. Use another agent only for a distinct task; do not have the whole team reread the same context.");
+  rules.push("Keep context small: read the task brief first, search before reading whole files, and limit tool output to the relevant lines. When you finish (in-review or done), pass `handoff` to set_my_status: what changed, how you verified it, the risks left, and which teammates it touches (they get a note); the tasks that build on yours read it. Do not repeat status messages or send acknowledgements. After three identical failures, stop retrying that approach and report the blocker. Use another agent only for a distinct task; do not have the whole team reread the same context.");
   // Sandboxes block most sites; the agent asks instead of working around it.
   if (agent.mode !== "local")
     rules.push(
       "Your sandbox blocks most websites and APIs. If a request you need is blocked (a docs page or an API: usually a 403 saying 'Approval required for <host>'), call request_access with the domain and why, then continue with other work until HQ tells you it was answered. Never work around the block.",
     );
-  const peers = cfg.team.filter((a) => a.id !== agent.id).map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""})`);
+  // What each teammate is good at, so the right one gets asked (list_workers adds their track record).
+  const peers = cfg.team.filter((a) => a.id !== agent.id).map((a) => `- ${a.name} (${a.role}${a.isLead ? ", lead" : ""})${(a.skills ?? []).length ? `: ${a.skills.slice(0, 8).join(", ")}` : ""}`);
+  const company = companyText().trim();
+  const charter = (cfg.project.charter ?? "").trim().slice(0, CHARTER_MAX);
+  const hasEvidence = !isExecOrLead && Boolean(!cfg.template || cfg.template.flow.stages.some((s) => s.gates.some((g) => g.kind === "evidence")));
   const tools = isExecOrLead
-    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, list_projects, get_project_status, create_project_task, update_project_task, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`
-    : `get_my_task, set_my_status, record_gate, list_workers, get_status, list_tasks, list_projects, get_project_status, send_message, ask_user, request_access${security ? ", list_findings, report_finding" : ""}${cfg.rules.plans ? ", submit_plan" : ""}`;
+    ? `list_workers, get_status, list_tasks, create_board, create_task, update_task, write_spec, assign_task, record_gate, ledger_add, ledger_revise, read_ledger, recall, related, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status, create_project_task, update_project_task" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`
+    : `get_my_task, set_my_status, record_gate${hasEvidence ? ", attach_evidence" : ""}, list_workers, get_status, list_tasks, recall, related, remember, keep_out_of_memory${cross ? ", list_projects, get_project_status" : ""}, send_message, ask_user, request_access${security ? ", list_findings, report_finding, update_finding" : ""}${hasPlans ? ", submit_plan" : ""}`;
   return [
     `# ${agent.name} — ${agent.role}`,
     "",
-    agent.roleMd.trim(),
+    (agent.roleMd ?? "").trim(),
     "",
     "## Team",
     team,
     "",
+    ...(company ? ["## The company", company, ""] : []),
+    ...(charter ? ["## Team charter (the owner's rules for working together)", charter, ""] : []),
     `## Workflow Mode: ${isDeliverables ? "Deliverables (Universal Mission Mode — no GitHub PR required)" : "GitHub Pull Requests (1 task = 1 branch = 1 PR)"}`,
     ...rules.map((r) => `- ${r}`),
     "",
@@ -273,7 +283,7 @@ export function roleMd(agent: AgentConfig, cfg: HqConfig, extras: RoleExtras = {
     "- Keep messages short (1-3 sentences) and concrete: files, commands, results. Full sentences, no jargon dumps. set_my_status already tells the lead; don't repeat it with send_message.",
     "",
     "## Working with teammates",
-    "Message a teammate directly (send_message to their name) when your question is about their work; list_tasks shows who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
+    "Message a teammate directly (send_message to their name) when your question is about their work or their strengths below; list_workers shows each one's track record and the areas they've worked in, list_tasks who built what. Go to the lead for scope, priorities, who owns which files, and anything blocking you.",
     ...peers,
     "",
     ...(extras.ports
@@ -398,9 +408,8 @@ export function writeGeminiSettings(dir: string, agent: AgentConfig, port: numbe
     const kept = (hooks[event] ?? [])
       .map((e) => ({ ...e, hooks: e.hooks.filter((h) => !isOurs(h.command)) }))
       .filter((e) => e.hooks.length);
+    // contextFileName loads ROLE_FILE into the context window directly; printing it in SessionStart would double it.
     const ours: HookEntry["hooks"] = [{ type: "command", command: hookCommand(url, token, agent.id, event, script), timeout: 5 }];
-    if (event === "SessionStart")
-      ours.unshift({ type: "command", command: script ? `node "${script}" --print-role ${MARK_ARG}` : `cat "${ROLE_FILE}" 2>/dev/null || true ${MARK}` });
     const needsMatcher = event === "PreToolUse" || event === "PostToolUse" || event === "BeforeTool" || event === "AfterTool";
     hooks[event] = [...kept, needsMatcher ? { matcher: "*", hooks: ours } : { hooks: ours }];
   }
@@ -432,8 +441,8 @@ export function writeGeminiSettings(dir: string, agent: AgentConfig, port: numbe
 
 /**
  * Antigravity CLI (`agy`) files:
- * - `.hq-role.md`
- * - `.agent/rules/hq-role.md` (native Antigravity always-on rule)
+ * - `.arima-role.md`
+ * - `.agents/rules/hq-role.md` (single native Antigravity always-on rule; duplicates removed)
  * - `.gemini/settings.json` (MCP server `hq` + hooks)
  * - `.claude/settings.local.json` + `.claude/hq-mcp.json` (for `--claude-config` compatibility)
  */
@@ -441,7 +450,7 @@ export function writeAgyFiles(dir: string, agent: AgentConfig, cfg: HqConfig, to
   const roleContent = roleMd(agent, cfg, extras);
   const ruleWithFrontmatter = `---\ntrigger: always_on\ndescription: "${BRAND.name} role, team roster, and Team MCP instructions"\n---\n\n${roleContent}`;
   agentWrite(dir, ROLE_FILE, roleContent);
-  agentWrite(dir, AGY_RULE_FILE, ruleWithFrontmatter);
+  agentRemove(dir, AGY_RULE_FILE);
   agentWrite(dir, AGYS_RULE_FILE, ruleWithFrontmatter);
 
   const url = hqUrl(agent, cfg.project.hqPort);
@@ -480,12 +489,11 @@ export function writeAgyFiles(dir: string, agent: AgentConfig, cfg: HqConfig, to
     ) + "\n";
 
   agentWrite(dir, AGY_HOOKS_FILE, agyHooksJson, { mode: 0o600 });
-  for (const pluginDir of [AGY_PLUGIN_DIR, ".agent/plugins/hq"]) {
-    agentWrite(dir, `${pluginDir}/plugin.json`, JSON.stringify({ name: "hq" }, null, 2) + "\n");
-    agentWrite(dir, `${pluginDir}/mcp_config.json`, agyMcpJson, { mode: 0o600 });
-    agentWrite(dir, `${pluginDir}/hooks.json`, agyHooksJson, { mode: 0o600 });
-    agentWrite(dir, `${pluginDir}/rules/AGENTS.md`, roleContent);
-  }
+  agentRemove(dir, ".agent/plugins/hq");
+  agentRemove(dir, `${AGY_PLUGIN_DIR}/rules/AGENTS.md`);
+  agentWrite(dir, `${AGY_PLUGIN_DIR}/plugin.json`, JSON.stringify({ name: "hq" }, null, 2) + "\n");
+  agentWrite(dir, `${AGY_PLUGIN_DIR}/mcp_config.json`, agyMcpJson, { mode: 0o600 });
+  agentWrite(dir, `${AGY_PLUGIN_DIR}/hooks.json`, agyHooksJson, { mode: 0o600 });
 
   writeGeminiSettings(dir, agent, cfg.project.hqPort, token);
   writeSettings(dir, agent, cfg.project.hqPort, token);

@@ -159,6 +159,22 @@ export function createMockSource(): OfficeDataSource {
       world.after(1.2, () => world.write(toId, T.cannedReply(!!world.cfg(toId)?.isLead, text.length)));
     },
 
+    askTeam(text) {
+      const lead = world.snap.config.team.find((a) => a.isLead);
+      if (!lead || !text.trim()) return;
+      world.message("you", lead.id, text.trim(), true);
+      const helper = world.snap.config.team.find((a) => !a.isLead);
+      // The lead asks one teammate, then answers once with what it heard (the shape the real lead is told to follow).
+      if (helper) world.after(1, () => world.message(lead.id, helper.id, `Quick one from the owner: ${text.trim().slice(0, 120)}. What do you know?`));
+      if (helper) world.after(2.2, () => world.message(helper.id, lead.id, "From my side: it's covered in the task I just finished; one risk left, noted in my handoff."));
+      world.after(3.4, () => world.message(lead.id, "you", `Team answer: ${helper ? `${helper.name} says it's covered, with one risk in their handoff. ` : ""}I'll keep an eye on it.`));
+    },
+
+    setCompany(text) {
+      world.snap.company = text.trim().slice(0, 3000);
+      world.emit({ type: "company.updated", company: world.snap.company });
+    },
+
     resizeTerminal() {
       // The mock streams plain lines, so size doesn't matter.
     },
