@@ -1,37 +1,56 @@
 # ArimaOps · அரிமா
 
-### Lead the pride.
+### An AI team for every project. You stay in charge.
 
-**Website: [sachindots.github.io/arimaops](https://sachindots.github.io/arimaops/)** · [Pipewell case study](https://sachindots.github.io/arimaops/pipewell.html)
+**Website: [arimaops.tech](https://arimaops.tech/)** · [Features](https://arimaops.tech/features.html) · [Security teams](https://arimaops.tech/security.html) · [Pipewell case study](https://arimaops.tech/pipewell.html)
 
-**Build an AI team for any job (dev, security, research or marketing) from a template, and run it from your phone.**
+[![ArimaOps Home: the team around a live core, what needs you on the left, today's activity on the right](site/assets/shots/home.webp)](https://arimaops.tech/)
 
-[![ArimaOps in action: agents walk from the HQ hall to their project's wing and get to work](docs/media/arimaops-teaser.gif)](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4)
+▶ **Watch the demos:** [dev team, 37 s](https://arimaops.tech/assets/video/demo.mp4) · [red team, 27 s](https://arimaops.tech/assets/video/demo-red.mp4) (sample projects from the built-in demo).
 
-▶ **Watch the 40-second showcase:** [16:9](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase.mp4) · [vertical](https://github.com/sachindots/arimaops/releases/download/media-showcase/arimaops-showcase-vertical.mp4). Real teams, real work: 45 minutes in a time-lapse, and a security engagement on a deliberately vulnerable lab app.
+ArimaOps (அரிமா, "lion") runs a team of AI agents on your own machine. A **lead** plans the work and hands out tasks. Each **worker** builds in its own copy of the repo, in its own folder, container or Docker Sandbox, then opens a pull request or delivers a file. A **reviewer** and a **second model** from another maker check each other, and **gates** decide when a task is really done. You watch, steer and approve from your desk or your phone. HQ never merges or sends for you.
 
-ArimaOps (அரிமா, "lion") runs a team of AI agents for every project on your machine. A **lead** agent plans the work and hands out tasks. Each **worker** gets its own copy of the repo and, if you like, its own sandbox or container, then opens a pull request or delivers a file. Security teams work inside an engagement scope and end with a findings report.
+Free and open source. Agents run **Claude Code**, **Codex**, **Antigravity**, **OpenCode**, **Gemini CLI** or **GitHub Copilot**, on the subscriptions you already have, API keys you add, or free models.
 
-Every team starts from a **template**: its roles, its **flow** (the stages a task goes through and the gates between them), a starter board and its tool rules. Built in: Dev; Security Red, Blue and Purple; Research; Marketing and Sales (drafts only). Change any of it per project, or save your own.
+## Who it's for
 
-You run it from a HUD:
+| You are | What you get | Templates |
+| --- | --- | --- |
+| **A solo developer** | Brief the lead in a sentence; it writes a spec you approve and splits it into small tasks (one task, one branch, one PR). A reviewer runs every branch, another maker's model gives a second opinion, and tests with green CI are a gate. Approve from your phone. | Dev, Blank |
+| **A small team or startup** | A team per job, planned against your goals: a chief of staff with design, marketing, sales, support and ops makers, a Monday plan, a Friday retro and a monthly numbers review. Daily and monthly spend caps, a budget per role, standup notes. Emails and posts stay drafts until you press Send. Owner, operator and viewer sign-ins. | Startup, Marketing, Sales |
+| **A security tester** | Authorised testing with a gate on every step: no work until you set the scope, out-of-scope targets refused by HQ, anything that changes the target waits for you. Findings carry evidence, CVSS 4.0, CWE, ATT&CK and WSTG, are checked by a second model, and export to Markdown, JSON, SARIF, HackerOne or Bugcrowd. | Security · Red, Purple, Blue |
+| **A researcher or writer** | Sources logged first, claims that cite them (arXiv, OpenAlex and Crossref built in), a fact-checker on a different model, and a third model to sign off the report. Work lands as files, accepted by someone other than the author. | Research |
 
-- **Home:** the team in orbit around a live core, each agent with its state, its task and the tokens it spent today; the flow's stages along the bottom.
-- **Command center:** every agent of every project, needs-you first, with a live terminal for the one you pick.
-- **Board, Inbox, Flow, PRs, Findings, Usage:** the tasks, what's waiting on you, the flow canvas, pull requests, security findings, and tokens and cost per agent.
+Every template sets the roles, the **flow** (the stages a task goes through and the gates between them), a starter board and the tool rules. Change any of it per project, or save your own.
 
-Agents run **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, **Copilot** or **Antigravity**, on your CLI subscriptions or on API keys you add. Everything runs on your machine.
+## What's in the app
 
-## Why use it
+- **Home:** the team around a live core, with what needs you on the left and today's activity on the right.
+- **Chat:** a team channel and a thread per agent. Agents write short messages tagged Done, Blocked, Question, FYI or Disagrees; task IDs are links; type @ to address an agent.
+- **Board:** tasks by status, filtered by agent, goal or stage. A task opens beside the board with its spec items, gates, checks and history.
+- **Inbox:** everything waiting on you (specs, plans, sends, limits, memories, access requests, PRs ready to merge), marked *cannot undo* where it's final. `j` `k` to move, `a` to approve, `r` to send back.
+- **Agents and Grid:** who runs on what (with a *free* tag), status, task and today's cost; every project's agents beside a live terminal.
+- **Goals:** a metric and target per goal, with linked tasks and spend.
+- **Flow:** the stages, who works each one and the 11 kinds of gate. Drag to reorder, click to edit.
+- **Pull requests:** review state, checks, conflicts and a file summary for each PR.
+- **Usage:** tokens and estimated cost by agent, the share on free models and the budget left today.
+- **Findings:** security findings by severity with the scope beside them and the report in six formats.
+- **Settings:** project, team, workflow, sandbox, accounts and people, integrations and memory, each in its own section.
 
-- **A real team, not one chat.** The lead splits the work into small tasks (one task, one branch, one PR) and assigns them. Agents message each other through HQ.
-- **Many projects, one HQ.** Create, pause, archive and delete projects from **Projects**.
-- **Gates, not hope.** A task leaves a stage only when its gates pass: tests and green CI, a reviewer, a second opinion from another maker's model, your approval, screenshots of the running app for UI changes.
-- **Software and security.** Dev teams ship PRs. Security teams work inside an engagement scope: out-of-scope targets are refused, findings carry CVSS 4.0 scores, and the report is written for you.
-- **Know what it costs.** Tokens and estimated cost per agent, per task and per day, with spend caps per project.
-- **Safe by default.** Agents work in their own folder, container or Docker Sandbox. API keys are encrypted on disk, sent only to the agent that uses them, and masked if anything prints them.
-- **A small team, with roles.** Owner, operator and viewer sign-ins with an authenticator code. Risky actions from a phone or tablet need the code.
-- **You stay in charge.** Anything an agent needs from you shows up in the **Inbox**. HQ never merges for you.
+The [features page](https://arimaops.tech/features.html) shows each screen.
+
+## Models: paid and free
+
+- **Your CLIs and subscriptions,** signed in with your own accounts, or API keys you add. Keys are encrypted on disk, sent only to the agent that uses them, and masked if anything prints them.
+- **Free models:** OpenCode Zen with no key, plus OpenRouter, NVIDIA NIM and AMD Token Lab with a free key. HQ re-reads the free list every day and moves a role to the closest free model when its model stops being free.
+- **One-step setup** proposes a model for every role from what your machine has (below).
+
+## Safe by default
+
+- Each agent works in its own folder, container or Docker Sandbox (a small VM, 2 GB by default). HQ starts an agent only while there's RAM to spare and queues the rest.
+- Containers reach the internet only through HQ's proxy and an allow-list per agent.
+- Owner, operator and viewer sign-ins with an authenticator code; risky actions from a phone or tablet need the code. A log records who approved what.
+- HQ never merges a pull request or sends a message for you.
 
 ## Quick start
 
@@ -74,11 +93,20 @@ arimaops --repo <path>   the repo to manage (default: current folder)
 
 Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
 
+### Set up models in one step
+
+```bash
+arimaops setup           # check this machine and propose a model for every role
+arimaops setup --apply   # use that proposal for every new project (--off to undo)
+```
+
+Paid models go to the lead and the builders, free ones to review, QA and docs, and a free fallback takes over when a paid account hits its limit (it still asks first). The same wizard is in **Settings → Team**.
+
 ## Requirements
 
 | What | Why |
 | --- | --- |
-| Node.js 22+ | Runs HQ |
+| Node.js 22.13+ | Runs HQ |
 | git | Each agent works on its own copy of the repo |
 | tmux (macOS, Linux) | Agents keep running if you close HQ |
 | GitHub CLI (`gh`), optional | Pull requests and reviews |
@@ -89,7 +117,7 @@ HQ checks for each one and shows the exact command to install it.
 
 ## On a tablet or phone
 
-Run HQ with `--remote` and open the link it prints. Below 1000 px wide, HQ switches to the compact layout: Home, Board, Inbox, Agents, Chat and More, with the same HUD home. The flow canvas is view-only on phones; edit it on a tablet or computer. Every control is sized for touch.
+Run HQ with `--remote` and open the link it prints. Below 1000 px wide, HQ switches to the compact layout: Home, Board, Inbox, Agents, Chat and More, with the same data and actions. The flow canvas is view-only on phones; edit it on a tablet or computer. Every control is sized for touch.
 
 ### Build the Android app
 
@@ -141,16 +169,6 @@ Folders from older versions (`.hq`, `~/.hq`) are moved on first start. A `.hq` f
 - [Architecture](docs/architecture.md): the code layout, the security boundaries, and the plan
 - [Security](SECURITY.md): report a vulnerability
 - [Contributing](CONTRIBUTING.md)
-
-## Credits
-
-Ideas and tools that shaped it:
-
-- **TokenEconomizer** (Microsoft): lean-mode ideas for spending fewer tokens.
-- **stageshow** by benjitaylor: inspiration for the demo recordings.
-- **ponytail**, **pstack** and **caveman**: the working style used to build it.
-
-See [NOTICE](NOTICE) for the license notices.
 
 ## License
 
