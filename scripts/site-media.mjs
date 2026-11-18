@@ -1,6 +1,6 @@
 // Records the product site's screenshots and demo videos from the built-in demo (sample data, nothing real runs).
 // Needs: the demo UI running (`HQ_PORT=59999 pnpm exec vite --port 5178 --strictPort`), google-chrome and ffmpeg.
-// Run: node scripts/site-media.mjs [--only shots|videos] [--url http://localhost:5178/?mock=1]
+// Run: node scripts/site-media.mjs [--only shots|videos|phone] [--url http://localhost:5178/?mock=1]
 // Writes site/assets/shots/*.webp and site/assets/video/{demo,demo-red}.{mp4,webm} plus posters.
 
 import { spawn, execFileSync } from "node:child_process";
@@ -202,6 +202,10 @@ async function shots() {
   await click(rail("Board"), { pause: 1400 });
   await shot("red-board");
 
+  await phone();
+}
+
+async function phone() {
   await js("localStorage.clear(); sessionStorage.clear()"); // the Grid view is remembered; the phone shot starts at Home
   await viewport(390, 844, true);
   await load();
@@ -264,6 +268,7 @@ async function videos() {
 try {
   if (ONLY === "all" || ONLY === "shots") await shots();
   if (ONLY === "all" || ONLY === "videos") await videos();
+  if (ONLY === "phone") await phone();
 } finally {
   ws.close();
   chrome.kill();

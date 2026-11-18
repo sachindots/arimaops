@@ -6,7 +6,6 @@ import { CLI_LABEL, HUMAN_ID } from "../../data/types";
 import { isViewer, officeActions, selectAttention, selectTeam, setupToDo, useOffice } from "../../store/office";
 import { modeOf, type Mode } from "../../data/mode";
 import { mentioned } from "../../data/mentions";
-import { AgentOrbit } from "../hud/AgentOrbit";
 import { ParticleCore } from "../hud/ParticleCore";
 import { projectTheme } from "../theme/projectTheme";
 import { ui, useUi } from "../../store/ui";
@@ -24,6 +23,7 @@ import { TerminalDrawer } from "../drawers/TerminalDrawer";
 import { FindingsDrawer } from "../drawers/FindingsDrawer";
 import { FlowDrawer } from "../drawers/FlowDrawer";
 import { StageStrip } from "../hud/StageStrip";
+import { ActivityPanel, NeedsYouPanel } from "../deck/HomePanels";
 import { MessageText, shown, TagChip } from "../chat/MessageBody";
 
 export type Tab = "home" | "board" | "inbox" | "agents" | "chat" | "more";
@@ -457,20 +457,85 @@ export function More() {
   );
 }
 
-/** Phones and tablets: the same HUD as the desktop, sized to the page between the header and the tabs. */
+/** Phones and tablets: the live core with the team's summary, the flow's stages, then what needs you, the team
+ *  (one tappable row per agent) and today's activity, in one scrolling page. */
 function HudHome() {
   const snap = useOffice((s) => s.snap)!;
+  const now = useNow(10_000);
+  const usage = useAgentUsage(1);
   const team = selectTeam(snap);
-  const working = team.filter((a) => modeOf(a.status) === "working").length;
+  const working = team.filter((a) => modeOf(a.status, now) === "working").length;
+  const attention = selectAttention(snap).total;
   const inFlight = snap.tasks.filter((t) => t.status === "in-progress" || t.status === "in-review" || t.status === "blocked").length;
-  const caption = team.length
-    ? `${team.length} agent${team.length === 1 ? "" : "s"} · ${working} working${inFlight ? ` · ${inFlight} task${inFlight === 1 ? "" : "s"} in flight` : ""}`
-    : snap.config.template ? "No agents yet. Add a team in Settings → Team." : "No agents in this project.";
+  const strip = (snap.config.template?.flow.stages.length ?? 0) > 1;
   return (
-    <div className="hud-void relative min-h-0 flex-1 overflow-hidden" aria-label="Team">
-      <ParticleCore compact workingCount={working} attentionCount={selectAttention(snap).total} palette={projectTheme(snap).orb} />
-      <StageStrip compact snap={snap} />
-      <AgentOrbit compact team={team} tasks={snap.tasks} activeAgentId={null} caption={caption} lift={!snap.welcome && !snap.config.template} />
+    <div className="scroll-thin min-h-0 flex-1 overflow-y-auto" aria-label="Home">
+      <section className="hud-void relative h-[160px] overflow-hidden border-b border-[var(--border-hairline)]" aria-label="Team summary">
+        <ParticleCore compact workingCount={working} attentionCount={attention} palette={projectTheme(snap).orb} />
+        <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2 px-4 text-[12px]">
+          {[
+            [team.length, team.length === 1 ? "agent" : "agents"],
+            [working, "working"],
+            [inFlight, inFlight === 1 ? "task in flight" : "tasks in flight"],
+          ].map(([n, label]) => (
+            <span key={label} className="hud-glass rounded-full px-2.5 py-1 text-muted">
+              <b className="font-semibold text-ink">{n}</b> {label}
+            </span>
+          ))}
+        </div>
+      </section>
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3 p-4">
+        {strip && (
+          <div className="relative h-[52px]">
+            <StageStrip compact snap={snap} />
+          </div>
+        )}
+        <section className="flex flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)]" aria-label="Team">
+          <h2 className="m-0 flex items-center gap-2 px-4 pt-3.5 pb-1 text-[13px] font-semibold text-ink">
+            Team <span className="text-[12px] font-normal text-muted">{team.length}</span>
+          </h2>
+          {team.length === 0 && <p className="m-0 px-4 pb-3 text-[13px] text-muted">{snap.config.template ? "No agents yet. Add a team in Settings → Team." : "No agents in this project."}</p>}
+          <ul className="m-0 list-none p-0 pb-1">
+            {team.map(({ config: a, status }) => {
+              const mode = modeOf(status, now);
+              const use = usage.byId.get(a.id);
+              const task = status.currentTaskId ? snap.tasks.find((t) => t.id === status.currentTaskId) : undefined;
+              return (
+                <li key={a.id}>
+                  <button type="button" onClick={() => ui.openAgent(a.id)} className="flex min-h-[56px] w-full cursor-pointer items-center gap-3 border-t border-[var(--border-hairline)] px-4 py-2.5 text-left first:border-t-0 hover:bg-cream-2">
+                    <span className="relative shrink-0">
+                      <Portrait name={a.name} color={a.color} lead={a.isLead} size={36} />
+                      <i className={`absolute -right-0.5 -bottom-0.5 h-3 w-3 rounded-full border-2 border-[var(--surface-card)] ${mode === "working" || mode === "needs-input" ? "animate-pulse" : ""}`} style={{ background: MODE_COLOR[mode] }} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2">
+                        <b className="truncate text-[15px] font-semibold text-ink">{a.name}</b>
+                        <span className="truncate text-[12px] text-muted">{a.role}</span>
+                      </span>
+                      <span className="block truncate text-[13px]">
+                        {task ? (
+                          <>
+                            <span className="mr-1.5 text-accent">{task.id}</span>
+                            <span className="text-ink">{task.title}</span>
+                          </>
+                        ) : (
+                          <span className="text-muted">{status.note ?? "No task"}</span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-[13px] font-medium text-ink">{fmtTokens(use ? usage.total(use) : 0)}</span>
+                      <span className="block text-[12px] text-muted">{fmtUsd(use?.costUsd ?? 0)}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+        <NeedsYouPanel inline snap={snap} onGoals={() => ui.openActions()} />
+        <ActivityPanel inline snap={snap} />
+      </div>
     </div>
   );
 }

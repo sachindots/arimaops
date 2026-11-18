@@ -8,6 +8,8 @@ import { DECK, HOME_SIDE } from "./frame";
 import { Icon } from "./Icon";
 
 const column = "deck-panel pointer-events-auto fixed z-20 flex flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)]";
+// On a phone the same panels sit in the Home page's flow instead of beside the orbit.
+const inlineCard = "flex flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] shadow-[var(--card-shadow)]";
 const place = (side: "left" | "right") => ({
   top: DECK.header + 16,
   bottom: DECK.footer + 16,
@@ -24,7 +26,7 @@ function Heading({ children, count }: { children: string; count?: number }) {
   );
 }
 
-export function NeedsYouPanel({ snap, onGoals }: { snap: OfficeSnapshot; onGoals: () => void }) {
+export function NeedsYouPanel({ snap, onGoals, inline = false }: { snap: OfficeSnapshot; onGoals: () => void; inline?: boolean }) {
   const a = selectAttention(snap);
   const name = (id: string) => snap.config.team.find((x) => x.id === id)?.name ?? (id === "hq" ? "HQ" : id);
   const rows = [
@@ -36,11 +38,11 @@ export function NeedsYouPanel({ snap, onGoals }: { snap: OfficeSnapshot; onGoals
   ];
   const goals = (snap.goals ?? []).filter((g) => g.status === "active");
   return (
-    <aside className={column} style={place("left")} aria-label="Needs you and goals">
+    <aside className={inline ? inlineCard : column} style={inline ? undefined : place("left")} aria-label="Needs you and goals">
       <Heading count={rows.length}>Needs you</Heading>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className={inline ? "px-2 pb-2" : "scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-2"}>
         {rows.length === 0 && <p className="m-0 px-2 py-1 text-[13px] text-muted">Nothing waits on you.</p>}
-        {rows.map((r) => (
+        {(inline ? rows.slice(0, 4) : rows).map((r) => (
           <button key={r.key} type="button" onClick={r.go} className="flex w-full cursor-pointer items-start gap-2.5 rounded-lg px-2 py-2 text-left hover:bg-cream-2">
             <Icon name={r.icon} size={18} className="mt-px text-amber" />
             <span className="min-w-0 flex-1">
@@ -49,8 +51,13 @@ export function NeedsYouPanel({ snap, onGoals }: { snap: OfficeSnapshot; onGoals
             </span>
           </button>
         ))}
+        {inline && rows.length > 4 && (
+          <button type="button" onClick={() => ui.openActions()} className="w-full cursor-pointer rounded-lg px-2 py-2 text-left text-[13px] font-medium text-accent hover:bg-cream-2">
+            See all {rows.length} in the Inbox
+          </button>
+        )}
       </div>
-      {goals.length > 0 && (
+      {!inline && goals.length > 0 && (
         <div className="border-t border-[var(--border-hairline)] pb-3">
           <Heading count={goals.length}>Goals</Heading>
           <div className="flex flex-col gap-2.5 px-4">
@@ -74,15 +81,15 @@ export function NeedsYouPanel({ snap, onGoals }: { snap: OfficeSnapshot; onGoals
   );
 }
 
-export function ActivityPanel({ snap }: { snap: OfficeSnapshot }) {
+export function ActivityPanel({ snap, inline = false }: { snap: OfficeSnapshot; inline?: boolean }) {
   const now = useNow(30_000);
   const today = new Date().toDateString();
-  const events = snap.activity.filter((e) => new Date(e.at).toDateString() === today).slice(0, 30);
+  const events = snap.activity.filter((e) => new Date(e.at).toDateString() === today).slice(0, inline ? 8 : 30);
   const agent = (id: string | null) => (id ? snap.config.team.find((a) => a.id === id) : undefined);
   return (
-    <aside className={column} style={place("right")} aria-label="Today's activity">
+    <aside className={inline ? inlineCard : column} style={inline ? undefined : place("right")} aria-label="Today's activity">
       <Heading count={events.length}>Today</Heading>
-      <ol className="scroll-thin m-0 min-h-0 flex-1 list-none overflow-y-auto px-4 pb-3">
+      <ol className={inline ? "m-0 list-none px-4 pb-3" : "scroll-thin m-0 min-h-0 flex-1 list-none overflow-y-auto px-4 pb-3"}>
         {events.length === 0 && <li className="text-[13px] text-muted">No activity yet today.</li>}
         {events.map((e) => {
           const a = agent(e.agentId);
