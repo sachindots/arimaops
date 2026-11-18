@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Case studies · ArimaOps</title>
+<meta name="description" content="Real ArimaOps runs: a Purple team on a vulnerable API, and a blog built and reviewed by agents.">
+<meta property="og:title" content="Case study: a Purple team on a vulnerable API · ArimaOps">
+<meta property="og:description" content="A seven-agent ArimaOps Purple team on VAmPI, a deliberately vulnerable API in our own lab: scope enforced, 15 endpoints mapped, two exposures confirmed read-only, and exploitation paused for provider verification.">
+<meta property="og:image" content="https://arimaops.tech/assets/shots/case/sec-board.webp">
+<meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/lion.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem("arimaops-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.750 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.250 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.820 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.020-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.250l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.050-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg> ArimaOps</a>
+    <nav class="nav" aria-label="Site">
+      <a class="hide-sm" href="features.html">Features</a><a class="hide-sm" href="case-studies.html" aria-current="page">Case studies</a><a class="hide-sm" href="index.html#start">Install</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+    </nav>
+    <button type="button" class="theme-toggle" aria-label="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    <a class="btn primary sm" href="index.html#start">Get started</a>
+  </div>
+</header>
+<main id="main">
+<section class="band first" style="padding-bottom:0">
+  <div class="wrap">
+    <span class="eyebrow">Case studies</span>
+    <h1 style="margin-top:14px;font-size:clamp(32px,4.4vw,48px)">Real runs, as they happened</h1>
+    <p class="lede">Two projects run with ArimaOps on our own machine, recorded with the app's screenshots. Each says what the team did, what the reviewer caught, and where a person stepped in.</p>
+    <nav class="toc" aria-label="On this page" style="margin-top:20px"><a href="#vampi">A Purple team on a vulnerable API</a><a href="#blog">A blog built by agents</a></nav>
+  </div>
+</section>
+
+
+<section class="hero" id="vampi">
+  <div class="wrap">
+    <span class="eyebrow">Case study · Security · Purple · 18 November 2026</span>
+    <h2 class="h1" style="margin-top:14px;font-size:clamp(32px,4.6vw,50px)">A Purple team<br><em>on a vulnerable API</em></h2>
+    <p class="lede">VAmPI is a deliberately vulnerable REST API built for practising API security. We ran it in our own lab and pointed a seven-agent Security · Purple team at it, in scope and on our machine. This is what the team did, what it found, and where it stopped.</p>
+    <div class="stats">
+      <div class="stat"><b>15</b><span>endpoints mapped from the API's own spec</span></div>
+      <div class="stat"><b>12</b><span>leads ranked against the OWASP API Top 10</span></div>
+      <div class="stat"><b>2</b><span>exposures confirmed by reading only</span></div>
+      <div class="stat"><b>0</b><span>requests outside scope</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Setup</span><h2>Scope first, enforced by HQ</h2><p>The lab ran VAmPI in a container on the agents' network. The scope named one address; HQ and the other lab app were set out of scope. We checked the gate from inside an agent's container before any work began.</p></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>From an agent's container</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>VAmPI, <code>172.30.0.3:5000</code> (in scope)</td><td>200: reached through HQ's proxy</td></tr>
+        <tr><td>Another lab app, <code>172.30.0.2</code> (out of scope)</td><td>403: refused by HQ's proxy</td></tr>
+        <tr><td>Any other site</td><td>Blocked: no route without the proxy</td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid g2" style="margin-top:28px">
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-agents.webp" alt="The seven agents" loading="lazy" width="1600" height="1000"></div><p class="cap">Seven agents: lead, recon, two exploit, defender, reporter and a second opinion on a free model</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-flow.webp" alt="The Purple flow" loading="lazy" width="1600" height="1000"></div><p class="cap">The Purple flow: Scope, Recon, Threat model, Vulnerability analysis, Exploitation, Detect, Post-exploitation, Report</p></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Recon</span><h2>The whole surface, from read-only requests</h2><p>Recon pulled the OpenAPI spec, mapped 15 endpoints and the JWT sign-in, and noted what each one exposes. One step changed the lab (seeding its database), so recon asked first: the plan, its impact and its rollback went to the owner's Inbox and ran only after approval.</p></div>
+    <div class="grid g2">
+      <div class="card"><span class="sev high">Confirmed · read only</span><h3>Every password, no sign-in needed</h3><p><code>GET /users/v1/_debug</code> returns all users, including the admin, with their passwords in plain text. Recon recorded the shape and redacted the values.</p><span class="where">OWASP API8, API3 · CWE-200</span></div>
+      <div class="card"><span class="sev high">Confirmed · read only</span><h3>An exposed debugger</h3><p>Flask runs with the Werkzeug debugger on. Error pages leak source paths, table columns and a SQL query built by pasting in the username; <code>/console</code> is reachable behind a PIN.</p><span class="where">OWASP API8 · CWE-489, CWE-209</span></div>
+    </div>
+    <p class="note">The leaked source shows <code>f"SELECT * FROM users WHERE username = '{username}'"</code>, a SQL injection the team ranked for exploitation. It was not exercised, and the console PIN was never tried: both needed an approved plan first.</p>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Threat model</span><h2>Every OWASP API risk, with a task to prove it</h2><p>The lead mapped the surface to the OWASP API Security Top 10 (2023), turned each risk into a hypothesis and a task, and ranked them. Exploits that change state each need a plan the owner approves.</p></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Priority</th><th>Task</th><th>What to prove</th></tr></thead>
+      <tbody>
+        <tr><td>P0</td><td>Exposed debugger</td><td>Tracebacks leak source; a PIN bypass would give remote code execution (plan required)</td></tr>
+        <tr><td>P1</td><td>Excessive data exposure</td><td>An unauthenticated dump of every user, with passwords</td></tr>
+        <tr><td>P1</td><td>Object-level authorisation</td><td>User A reads or edits user B's books, email or password</td></tr>
+        <tr><td>P1</td><td>Mass assignment</td><td>Registering with an admin flag grants the admin role</td></tr>
+        <tr><td>P1</td><td>SQL injection</td><td>Sign-in bypass or data extraction through the username</td></tr>
+        <tr><td>P2</td><td>Weak JWT handling</td><td>HS256 secret strength, algorithm handling and expiry</td></tr>
+        <tr><td>P2</td><td>User enumeration</td><td>Valid usernames from list endpoints and sign-in errors</td></tr>
+        <tr><td>P3</td><td>No rate limiting</td><td>A small, capped burst only, under the rules of engagement</td></tr>
+      </tbody>
+    </table></div>
+    <div class="grid g2" style="margin-top:28px">
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-board.webp" alt="The engagement board" loading="lazy" width="1600" height="1000"></div><p class="cap">The board: recon and the threat model in review, eight exploit tasks waiting on them</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-chat.webp" alt="The engagement chat" loading="lazy" width="1600" height="1000"></div><p class="cap">Chat: the recon handoff reaching every agent, and an exploit agent asking for work</p></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Where it stopped</span><h2>Exploitation is paused, on purpose</h2><p>When the team moved to exploitation, the model provider's own safety system flagged the work as offensive security and stopped the lead. An earlier recon attempt on a different provider was refused by its filter in the same way. That is the providers doing their job: offensive testing needs the provider's verification for authorised security work, which this run did not have.</p></div>
+    <ul class="card" style="box-shadow:none">
+      <li>We did not try to word around the safeguards. The engagement is paused until verification is in place.</li>
+      <li>HQ's own gates held throughout: scope enforced at the proxy, one lab change run only after approval, secrets redacted in every deliverable.</li>
+      <li>No finding was filed: a finding counts only once it is confirmed, scored with CVSS 4.0 and checked by a second model.</li>
+    </ul>
+  </div>
+</section>
+
+
+<section class="band alt" id="blog">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Case study · Dev template</span><h2>A blog, built and reviewed by agents</h2><p>In progress: an Opus lead and Gemini 3.8 Flash developers are building an animated personal blog in Astro. This section fills in when it ships.</p></div>
+  </div>
+</section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <span class="brand" style="font-size:13px"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.750 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.250 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.820 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.020-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.250l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.050-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg> ArimaOps · free and open source</span>
+    <nav aria-label="Footer">
+      <a href="features.html">Features</a>
+      <a href="case-studies.html">Case studies</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/docs/getting-started.md">Docs</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/SECURITY.md">Security policy</a>
+    </nav>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>
