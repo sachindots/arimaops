@@ -2,6 +2,7 @@
 // Linux), a live terminal view of each for the browser, and the setup
 // checklist's "Run in terminal" helper.
 
+import { freeSourceOf } from "../src/data/freeModels";
 import { spawn as spawnPty, type IPty } from "@lydell/node-pty";
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -135,7 +136,9 @@ export class Sessions {
     }
     if (!keyed && agent.mode === "container" && account !== "default" && !(await containerLoginSaved(agent.cli, account, hub.snap.config.project.hqPort)))
       return fail(`${CLI_LABEL[agent.cli]} isn't signed in for the "${account}" account in containers yet. Run this once in a terminal: ${loginCommand(agent.cli, hub.snap.config.project.hqPort, account)}`);
-    if (!keyed && agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
+    // OpenCode Zen's free models need no account, so there is nothing to sign in to.
+    const keyless = agent.cli === "opencode" && freeSourceOf(agent.model ?? "") === "opencode";
+    if (!keyed && !keyless && agent.mode === "container" && account === "default" && check(`login-${agent.cli}`) !== "ok") return fail(`${CLI_LABEL[agent.cli]} isn't signed in for containers yet. Setup checklist → "${agent.cli} sign-in for containers" → Run in terminal.`);
     if (agent.mode === "local" && check(agent.cli) && check(agent.cli) !== "ok")
       return fail(`${CLI_LABEL[agent.cli]} isn't installed on this machine. See the setup checklist, or run this agent in a sandbox.`);
     if (agent.mode === "sandbox" && agent.cli === "codex" && check("openai-secret") !== "ok")
