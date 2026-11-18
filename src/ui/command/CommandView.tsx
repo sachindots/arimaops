@@ -182,7 +182,7 @@ export function CommandView() {
       <FactoryCard projects={projects.filter((p) => !projectsOff.has(p.id))} live={live} defaultOpen={false} />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-y-auto rounded-2xl p-3 max-[1099px]:max-h-[50vh]" aria-label="Agents">
+        <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-auto rounded-2xl p-3 max-[1099px]:max-h-[50vh]" aria-label="Agents">
           {shown.length === 0 ? (
             <p className="m-0 px-2 py-6 text-center text-[13px] text-muted">{all.length ? "No agents match this filter." : "No agents yet. Add a team in Settings → Team."}</p>
           ) : (

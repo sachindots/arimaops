@@ -16,7 +16,7 @@ export function AgentsPage() {
   const stopped = rows.filter((r) => r.status?.session.state === "stopped" || r.status?.session.state === "failed");
   const working = rows.filter((r) => r.mode === "working").length;
   return (
-    <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5">
+    <div className="scroll-thin min-h-0 flex-1 overflow-auto px-6 py-5">
       <header className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="m-0 text-[20px] font-semibold tracking-tight text-ink">Agents</h1>
         <span className="text-[13px] text-muted">
