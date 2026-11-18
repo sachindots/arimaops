@@ -2,7 +2,7 @@
 
 ### An AI team for every project. You stay in charge.
 
-**Website: [arimaops.tech](https://arimaops.tech/)** · [Features](https://arimaops.tech/features.html) · [Security teams](https://arimaops.tech/security.html) · [Pipewell case study](https://arimaops.tech/pipewell.html)
+**Website: [arimaops.tech](https://arimaops.tech/)** · [Features](https://arimaops.tech/features.html) · [Security teams](https://arimaops.tech/security.html) · [Case studies: a blog](https://arimaops.tech/case-blog.html), [a security engagement](https://arimaops.tech/case-vampi.html)
 
 [![ArimaOps Home: the team around a live core, what needs you on the left, today's activity on the right](site/assets/shots/home.webp)](https://arimaops.tech/)
 

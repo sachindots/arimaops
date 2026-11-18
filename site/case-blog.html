@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Case study: a blog built by three agents · ArimaOps</title>
+<meta name="description" content="A three-agent ArimaOps Dev team built, reviewed and deployed a personal blog: six pull requests, 48 tests and eight review catches, for about $7.89.">
+<meta property="og:title" content="Case study: a blog built by three agents · ArimaOps">
+<meta property="og:description" content="A three-agent ArimaOps Dev team built, reviewed and deployed a personal blog: six pull requests, 48 tests and eight review catches, for about $7.89.">
+<meta property="og:image" content="https://arimaops.tech/assets/shots/case/blog-board.webp">
+<meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/lion.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<script>try{var t=localStorage.getItem("arimaops-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.750 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.250 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.820 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.020-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.250l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.050-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg> ArimaOps</a>
+    <nav class="nav" aria-label="Site">
+      <a class="hide-sm" href="features.html">Features</a><a class="hide-sm" href="index.html#who">Who it's for</a><a class="hide-sm" href="security.html">Security</a><a class="hide-sm" href="case-blog.html" aria-current="page">Case studies</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+    </nav>
+    <button type="button" class="theme-toggle" aria-label="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    <a class="btn primary sm" href="index.html#start">Get started</a>
+  </div>
+</header>
+<main id="main">
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Case study · Dev template · 18 November 2026</span>
+    <h1 style="margin-top:14px;font-size:clamp(32px,4.6vw,50px)">A personal blog,<br><em>built and reviewed by three agents</em></h1>
+    <p class="lede">The owner asked for a personal blog and writing site: Astro and Markdown, posts with tags and RSS, a projects page, an about page, search, light and dark themes, three draft posts, and a deploy to GitHub Pages. A three-agent Dev team planned it, built it in six pull requests, reviewed every one and fixed what review found. It is live at <a href="https://sachinselvaraju.tech/myblogs/">sachinselvaraju.tech/myblogs</a>.</p>
+    <div class="btns"><a class="btn primary" href="https://sachinselvaraju.tech/myblogs/">Open the live blog</a><a class="btn" href="https://github.com/sachindots/myblogs/pulls?q=is%3Apr">Read the six pull requests</a></div>
+    <div class="stats">
+      <div class="stat"><b>6</b><span>pull requests, all reviewed and merged</span></div>
+      <div class="stat"><b>48</b><span>tests passing in CI</span></div>
+      <div class="stat"><b>8</b><span>bugs and gaps caught in review</span></div>
+      <div class="stat"><b>~$7.89</b><span>estimated model cost at list prices</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">What it built</span><h2>The live site</h2><p>Screenshots of the deployed blog. The three posts are drafts, so they stay out of the build until the owner edits and publishes them.</p></div>
+    <div class="grid g2">
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/live-home.webp" alt="The blog's home page" loading="lazy" width="1600" height="1000"></div><p class="cap">Home</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/live-projects.webp" alt="The projects page" loading="lazy" width="1600" height="1000"></div><p class="cap">Projects</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/live-search.webp" alt="The search page" loading="lazy" width="1600" height="1000"></div><p class="cap">Search: a build-time index searched in the browser</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/live-about.webp" alt="The about page" loading="lazy" width="1600" height="1000"></div><p class="cap">About, with placeholders the owner fills in</p></figure>
+    </div>
+    <div class="phone-row" style="margin-top:32px">
+      <ul class="card" style="box-shadow:none">
+        <li>Astro, static output, served under <code>/myblogs/</code> with every link built through one helper.</li>
+        <li>Light and dark themes that follow the system, with a toggle that remembers the choice.</li>
+        <li>Tags with safe URLs (<code>C#</code> becomes <code>c-sharp</code>), an RSS feed, reading time and search.</li>
+        <li>CI on every pull request and a Pages deploy on <code>main</code>, with every action pinned to a commit.</li>
+      </ul>
+      <div class="phone"><img src="assets/shots/case/live-phone.webp" alt="The blog on a phone" loading="lazy" width="780" height="1688"></div>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">The team</span><h2>Three agents, each in its own container</h2></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Agent</th><th>Role</th><th>Model</th><th class="num">Tokens</th><th class="num">Est. cost</th></tr></thead>
+      <tbody>
+        <tr><td>Cipher</td><td>Lead: wrote the 17-item spec, split it into six tasks, routed reviews and fixes</td><td>Claude Opus</td><td class="num">10.7M</td><td class="num">$4.40</td></tr>
+        <tr><td>Ghost</td><td>Developer: built all six tasks and every review fix</td><td>Claude Sonnet</td><td class="num">8.3M</td><td class="num">$1.76</td></tr>
+        <tr><td>Nyx</td><td>Reviewer: built and tested each branch, fact-checked the posts</td><td>Claude Opus</td><td class="num">4.0M</td><td class="num">$1.73</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="3">Total</td><td class="num">22.9M</td><td class="num">$7.89</td></tr></tfoot>
+    </table></div>
+    <p class="cap">Estimates at list prices. The agents ran on a Claude subscription, so there was no separate bill; 97% of the tokens were cache reads.</p>
+    <div class="grid g2" style="margin-top:28px">
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-board.webp" alt="The board with all six tasks" loading="lazy" width="1600" height="1000"></div><p class="cap">The board: six tasks, each one branch and one pull request</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-prs-merged.webp" alt="Six merged pull requests" loading="lazy" width="1600" height="1000"></div><p class="cap">Pull requests: all six merged, each linked to its task</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-chat.webp" alt="The team channel" loading="lazy" width="1600" height="1000"></div><p class="cap">Chat: short tagged messages between the lead, the developer and the reviewer</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-flow.webp" alt="The Dev flow" loading="lazy" width="1600" height="1000"></div><p class="cap">Flow: Spec, Plan, Build, Review, Merge, with the gates between them</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-usage.webp" alt="Usage by agent" loading="lazy" width="1600" height="1000"></div><p class="cap">Usage: tokens and estimated cost by agent</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/blog-home.webp" alt="Home with the team" loading="lazy" width="1600" height="1000"></div><p class="cap">Home: what needs the owner, and what the team just did</p></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Review</span><h2>What the reviewer caught</h2><p>Nyx didn't skim diffs. It checked out each branch, built it, ran the tests and read the output. Each of these went back to the developer as a fix, and was checked again before the merge.</p></div>
+    <div class="grid g2">
+      <div class="card"><span class="where">PR #1 · foundation</span><h3>Canonical URL without its slash</h3><p>The home page's canonical and <code>og:url</code> came out without a trailing slash, and the Home link never showed as current. Fixed with <code>trailingSlash: 'always'</code> and a test.</p></div>
+      <div class="card"><span class="where">PR #1 · foundation</span><h3>An RSS link to nothing</h3><p>The layout linked <code>rss.xml</code> before the feed existed. The link came out until the blog pages added the feed.</p></div>
+      <div class="card"><span class="where">PR #2 · blog pages</span><h3>Tags that broke their own pages</h3><p>A tag like <code>C#</code> linked to a 404, and <code>Astro</code> and <code>astro</code> became two pages. Tags now get safe, case-insensitive slugs.</p></div>
+      <div class="card"><span class="where">PR #2 · blog pages</span><h3>Empty tag links</h3><p>A tag made only of symbols became an empty slug and linked to <code>/tags//</code>. Such tags are now skipped, with a test.</p></div>
+      <div class="card"><span class="where">PR #5 · search</span><h3>Results shown twice</h3><p>Typing while the search index loaded rendered results twice. Search now loads the index once and shows only the latest input.</p></div>
+      <div class="card"><span class="where">PR #6 · deploy</span><h3>Unpinned actions</h3><p>The spec asked for pinned actions; both workflows used version tags. They now use full commit SHAs, and each SHA was checked against its tag.</p></div>
+    </div>
+    <p class="note">Two smaller fixes came from the same reviews: the test build had dropped the setting that turns Astro's telemetry off, and a fixture test still expected the old tags after the tag fix. Nyx also fact-checked the three draft posts against public sources and found nothing invented.</p>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Timeline · UTC</span><h2>Built in under an hour, finished by lunch</h2><p>The build itself was quick. The rest of the morning went to review rounds, a pause at the Claude plan's usage limit, and the owner's pushes and merges.</p></div>
+    <ol class="timeline">
+      <li><b>05:13</b>Repository created; brief sent to the lead.</li>
+      <li><b>05:16</b>The lead's 17-item spec; the owner approves it.</li>
+      <li><b>05:38</b>Pull request #1, the foundation, opens. Review sends it back with two fixes.</li>
+      <li><b>06:05</b>All six pull requests open.</li>
+      <li><b>06:10</b>Reviews done: four pass, two need fixes. The Claude plan hits its five-hour limit.</li>
+      <li><b>11:15</b>The limit resets and the team resumes on Claude.</li>
+      <li><b>11:34–11:39</b>All six pull requests merged, each after its fixes passed review and CI.</li>
+      <li><b>11:40</b>The deploy workflow publishes the site.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="band alt">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">What the owner did</span><h2>Four decisions, and the pushes</h2></div>
+    <ul class="card" style="box-shadow:none">
+      <li>Answered the setup questions: repo name, stack, pages, look, team size and deploy.</li>
+      <li>Approved the spec, and chose placeholders for the bio and email instead of letting agents guess.</li>
+      <li>Pushed each branch and opened the pull requests: the agents' containers had no GitHub token for this repo, by choice.</li>
+      <li>Checked the 360 px layout and the theme toggle in a browser, then merged. HQ never merges on its own.</li>
+    </ul>
+    <p class="note">Not everything went smoothly. A try at running the team on free models during the usage limit stalled (one model had been withdrawn, another was over its free quota), so the team waited for Claude instead. Earlier dev run: <a href="pipewell.html">Pipewell, a data pipeline</a>.</p>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="head"><h2>Run your own team</h2><p>Start HQ in any git repo, pick a template and brief the lead.</p></div>
+    <div class="btns" style="margin-top:0"><a class="btn primary" href="index.html#start">Get started</a><div class="cmd"><code id="cmd-c">npx arimaops@latest</code><button type="button" data-copy="cmd-c">Copy</button></div></div>
+    <p class="note">Also: <a href="case-vampi.html">the security case study, a Purple team on a vulnerable API</a>.</p>
+  </div>
+</section>
+
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <span class="brand" style="font-size:13px"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.750 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.250 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.820 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.020-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.250l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.050-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg> ArimaOps · free and open source</span>
+    <nav aria-label="Footer">
+      <a href="features.html">Features</a>
+      <a href="security.html">Security</a>
+      <a href="case-blog.html">Dev case study</a>
+      <a href="case-vampi.html">Security case study</a>
+      <a href="https://github.com/sachindots/arimaops">GitHub</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/docs/getting-started.md">Docs</a>
+      <a href="https://github.com/sachindots/arimaops/blob/main/SECURITY.md">Security policy</a>
+    </nav>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>
