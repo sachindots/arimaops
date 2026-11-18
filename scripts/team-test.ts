@@ -67,7 +67,7 @@ check("no company text, no section", !roleMd(lead, cfg).includes("## The company
   const status = new Map(team.map((a) => [a.id, { agentId: a.id, state: "idle", currentTaskId: null, session: { state: "running" } }]));
   const snap = { config: { team, project: { id: "p" } }, boards: [], tasks: [], messages: [] as { team?: boolean; toId: string; fromId: string }[], agents: [...status.values()] };
   const hub = { slug: "t", repo: { root: "/x" }, snap, cfg: (id: string) => team.find((a) => a.id === id), name: (id: string) => team.find((a) => a.id === id)?.name ?? "You",
-    status: (id: string) => status.get(id), setStatus: () => {}, emit: () => {}, planChanged: () => {}, activity: () => {} };
+    status: (id: string) => status.get(id), workState: (id: string) => status.get(id)?.state, setStatus: () => {}, emit: () => {}, planChanged: () => {}, activity: () => {} };
   const typed: string[] = [];
   const inbox = new Inbox(hub as never, { type: async (_id, text) => (typed.push(text), true), enter: async () => true });
   const planner = new Planner(hub as never, inbox);

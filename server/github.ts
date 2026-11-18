@@ -112,6 +112,19 @@ export async function fetchPrs(repo: string): Promise<{ open: GhPr[]; merged: Gh
   };
 }
 
+/** One PR with its files and checks: for a PR merged while HQ wasn't watching, whose gates still need them. */
+export async function fetchPr(repo: string, number: number): Promise<GhPr | null> {
+  const [owner, name] = repo.split("/");
+  const query = `query($owner: String!, $name: String!, $n: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $n) { ${BASE_FIELDS} ${REVIEW_FIELDS} } } }`;
+  const r = await run("gh", ["api", "graphql", "-f", `query=${query}`, "-F", `owner=${owner}`, "-F", `name=${name}`, "-F", `n=${number}`], { timeoutMs: 30_000 });
+  if (!r.ok) return null;
+  try {
+    return (JSON.parse(r.stdout) as { data?: { repository?: { pullRequest?: GhPr } } }).data?.repository?.pullRequest ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- review state
 
 /** Each review tool's bot logins and status/check name. */

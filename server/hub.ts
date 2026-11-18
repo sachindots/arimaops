@@ -81,6 +81,12 @@ export class Hub {
     if (s && !this.held.has(agentId) && s.state !== "needs-input") this.held.set(agentId, { state: s.state, note: s.note });
   }
 
+  /** What the agent is really doing, under the "needs you" an open access request shows. */
+  workState(agentId: string): AgentStatus["state"] | undefined {
+    const s = this.status(agentId);
+    return s?.state === "needs-input" && this.pendingAccess(agentId) ? (this.held.get(agentId)?.state ?? s.state) : s?.state;
+  }
+
   pendingAccess(agentId: string) {
     return this.snap.accessRequests?.find((r) => r.agentId === agentId && r.status === "pending");
   }

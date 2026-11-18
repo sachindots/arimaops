@@ -3,6 +3,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { arch, cpus, platform, release, totalmem } from "node:os";
 import { lookup } from "node:dns/promises";
+import { join } from "node:path";
+import { projectHome } from "./paths";
 import type { AgentConfig, ProjectConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
 import { firewallCommands, scopeDomains, scopeNetworks } from "./scope";
 import { usesTmux } from "./backends";
@@ -272,6 +274,31 @@ async function checkVerifierImage(agentImageOk: boolean): Promise<Check> {
   return { ...base, status: "warning", detail: "Not built yet: the verifier takes screenshots of UI changes with Playwright and Chromium, which only this image carries.", fix: fix(buildVerifierCommand(), true, null) };
 }
 
+/**
+ * Container agents push branches and open PRs with a GH_TOKEN app variable; without one, every push fails and the
+ * owner pushes by hand. Only for projects with a GitHub remote.
+ */
+export function checkContainerGithub(repo: Pick<RepoInfo, "github">, slug: string, team: AgentConfig[]): Check | null {
+  const agents = team.filter((a) => a.mode === "container" && !a.isLead);
+  if (!repo.github || !agents.length) return null;
+  const base = { id: "github-container" as const, label: "GitHub access for container agents", neededFor: "container" as const };
+  const has = (id: string) => {
+    try {
+      return /^GH_TOKEN=\S/m.test(readFileSync(join(projectHome(slug), `${id}.env`), "utf8"));
+    } catch {
+      return false;
+    }
+  };
+  const missing = agents.filter((a) => !has(a.id));
+  if (!missing.length) return { ...base, status: "ok", detail: "Every agent has a GH_TOKEN app variable.", fix: null };
+  return {
+    ...base,
+    status: "warning",
+    detail: `${missing.map((a) => a.name).join(", ")} can't push or open pull requests: add GH_TOKEN to their App variables (Settings → Sandbox → App variables), then restart them. Make a fine-grained token for ${repo.github} only, with Contents and Pull requests set to read and write.`,
+    fix: fix(`https://github.com/settings/personal-access-tokens/new`, false, "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"),
+  };
+}
+
 /** A container on hq-agents tries to reach the internet without the proxy; it must fail. */
 async function checkEgressLock(imageOk: boolean): Promise<Check> {
   const base = { id: "egress-lock" as const, label: "Containers can only go through HQ's proxy", neededFor: "container" as const };
@@ -420,6 +447,8 @@ export async function runSetupChecks(repo: RepoInfo, team: AgentConfig[] = [], h
     if (team.some((a) => a.roleId === "verifier")) checks.push(await checkVerifierImage(imageOk));
     const scopeFw = project ? await checkScopeFirewall(project, team) : null;
     if (scopeFw) checks.push(scopeFw);
+    const gh = project ? checkContainerGithub(repo, project.id, team) : null;
+    if (gh) checks.push(gh);
     containerReady = docker.status === "ok" && imageOk && lock.status === "ok" && reach.status === "ok" && tmux.status === "ok";
   }
 

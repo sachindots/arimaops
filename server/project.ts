@@ -64,11 +64,13 @@ const accountProvider = (id: string): Provider | null => {
 import { workspaceFor } from "./workspace";
 import { isStream, StreamEngine } from "./streamEngine";
 import { companyText } from "./company";
-import { freeModelsState, onFreeModels, swapGoneModels, usableSources } from "./freeModels";
+import { freeModelsState, onFreeModels, swapGoneModels, usableSources, withdrawFreeModel } from "./freeModels";
+import { freeSourceOf } from "../src/data/freeModels";
 import { bestFree } from "../src/data/freeModels";
 import { publishGoals } from "./goals";
 import { ritualWhen, tickRituals } from "./rituals";
 import { listConnections } from "./connections";
+import { resumeAgents } from "./resumeAgents";
 
 export interface Runtime {
   slug: string;
@@ -395,6 +397,18 @@ export async function startProject(path: string, port: number, paused: boolean):
     if (lead && !marked.includes(lead.name))
       planner.notify(lead.id, `The ${acct} subscription hit its usage limit until ${at}, so ${marked.join(", ")} can't work until then. Move urgent tasks to agents on another CLI, or wait.`);
   });
+  // A refusal doesn't lift with time: say so on the agent, and have the lead move the work.
+  sessions.onRefused = (id, why, withdrawn) => {
+    const agent = hub.cfg(id);
+    if (!agent) return;
+    if (withdrawn && freeSourceOf(agent.model ?? "")) withdrawFreeModel(agent.model);
+    hub.setStatus(id, { state: "needs-input", note: `Stopped: ${why}` });
+    hub.activity("agent.needs-input", id, `${agent.name} is stuck: ${why}. Change its model in Settings → Team, or move its task.`);
+    const lead = hub.snap.config.team.find((a) => a.isLead);
+    if (!lead || lead.id === id) return;
+    const task = planner.currentTask(id);
+    planner.notify(lead.id, `${agent.name} (${agent.cli} · ${agent.model || "default model"}) is stuck: ${why}. ${task ? `Reassign ${task.id} to an agent on another CLI or model, or ask the owner to change ${agent.name}'s model.` : `Don't assign ${agent.name} work until its model changes.`}`);
+  };
   sessions.onLimit = (id, until) => {
     const agentCfg = hub.cfg(id);
     if (agentCfg) shareLimit(agentCfg.cli, until, { project: slug, agentId: id, name: agentCfg.name, account: accountOf(agentCfg) });
@@ -411,6 +425,8 @@ export async function startProject(path: string, port: number, paused: boolean):
   const github = new GitHubSync(hub, planner, repo.github);
   // Terminal polling always runs: agents left in tmux must keep reporting. Pause stops GitHub and sbx approval polling.
   sessions.startPolling();
+  // A paused project keeps its agents down until the owner resumes it.
+  const stopResume = paused ? () => {} : resumeAgents(hub, (id) => sessions.start(id));
 
   const commands = makeCommands(hub, sessions, planner, inbox, sbx, mcp);
   const rt: Runtime = {
@@ -453,6 +469,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       stopListening();
       stopFree();
       memoryReview.stop();
+      stopResume();
       sessions.shutdown();
     },
   };

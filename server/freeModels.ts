@@ -44,6 +44,18 @@ export async function refreshFreeModels(fetcher: typeof fetch = fetch): Promise<
   return state;
 }
 
+/**
+ * A provider withdrew a model before models.dev caught up (an agent's CLI said so): drop it now, so every role on it
+ * moves to the closest free model, without waiting for the next daily read.
+ */
+export function withdrawFreeModel(id: string) {
+  if (!state.models.some((m) => m.id === id)) return;
+  state = { ...state, models: state.models.filter((m) => m.id !== id) };
+  writeDoc(file(), state);
+  log.info(`free models: ${id} was withdrawn by its provider; dropped from the list`);
+  for (const fn of listeners) fn(state);
+}
+
 /** Sources this machine can use now: Zen needs no key; the others need an account with a saved key. */
 export function usableSources(): (s: FreeSource) => boolean {
   const withKey = new Set(accounts().views().filter((v) => v.secret).map((v) => v.provider));

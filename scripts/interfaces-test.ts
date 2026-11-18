@@ -151,6 +151,43 @@ check("forgetting a project removes its ledger and nothing else", memory.ledger(
   check("nudges and stop go to the source", nudged === 1 && stopped);
 }
 
+// ---------------------------------------------------------------- a PR merged while HQ wasn't watching
+{
+  const { log } = await import("../server/lib/log");
+  const warned: string[] = [];
+  const realWarn = log.warn;
+  log.warn = (m: string) => void warned.push(m);
+  const merged = { number: 9, title: "[B1-T02] Tags", headRefName: "ghost/B1-T02", url: "https://x/9", state: "MERGED", mergedAt: "2026-11-12T00:00:00Z", isDraft: false, reviewDecision: null, mergeable: "UNKNOWN", createdAt: "2026-11-12T00:00:00Z", headRefOid: "abc" };
+  const bare = { ...merged, reviews: { nodes: [] }, reviewThreads: { nodes: [] }, commits: { nodes: [] } } as unknown as GhPr;
+  const full = { ...bare, files: { nodes: [{ path: "src/tags.ts" }, { path: "tests/tags.test.ts" }] }, commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ __typename: "CheckRun", name: "ci", status: "COMPLETED", conclusion: "SUCCESS" }] } } } }] } } as unknown as GhPr;
+  let onEvent: ((e: unknown) => void) | null = null;
+  const source = { watch: (_r: string, on: (e: unknown) => void) => ((onEvent = on), { nudge: () => {}, stop: () => {} }) };
+  const status = { v: "in-review" };
+  const hub = { snap: { config: { team: [{ id: "ghost" }], workflow: { review: { tool: "human", enabled: false }, merge: { by: "human" } }, template: DEV_TEMPLATE }, pullRequests: [] as { number: number; testsChanged?: boolean }[], tasks: [], setup: { checks: [] } }, subscribe: () => () => {}, emit: () => {}, activity: () => {}, name: (id: string) => id };
+  const planner = {
+    askVerifier: () => {},
+    notify: () => {},
+    task: () => ({ id: "B1-T02", ownerId: "ghost", status: status.v }),
+    updateTask: (_id: string, p: { status?: string }) => {
+      // Like the tests-ci gate: done only once the PR's files and checks are known.
+      if (p.status === "done" && hub.snap.pullRequests.find((x) => x.number === 9)?.testsChanged === undefined) throw new Error("Waiting for GitHub to report the PR's files and checks.");
+      if (p.status) status.v = p.status;
+    },
+  };
+  const fetched: number[] = [];
+  const sync = new GitHubSync(hub as never, planner as never, "me/repo", source as never, async (_repo: string, n: number) => (fetched.push(n), full));
+  sync.start();
+  for (let i = 0; i < 3; i++) onEvent!({ type: "prs", open: [], merged: [bare], closed: [] });
+  await new Promise((r) => setTimeout(r, 20));
+  check("its files and checks are fetched once", fetched.length === 1 && fetched[0] === 9, JSON.stringify(fetched));
+  check("the same waiting error is logged once, not every poll", warned.filter((w) => w.includes("B1-T02")).length === 1, JSON.stringify(warned));
+  onEvent!({ type: "prs", open: [], merged: [bare], closed: [] });
+  check("with them, the task is done", status.v === "done");
+  check("the PR now shows the tests it changed", hub.snap.pullRequests.find((x) => x.number === 9)?.testsChanged === true);
+  log.warn = realWarn;
+  sync.stop();
+}
+
 // ---------------------------------------------------------------- model runs
 {
   const ran: { cmd: string; args: string[]; input?: string; env?: Record<string, string> }[] = [];

@@ -23,6 +23,7 @@ function fakeHub() {
     snap: { messages: [] as Msg[] },
     cfg: (id: string) => (id === "dwight" ? { id } : undefined),
     status: (id: string) => (id === "dwight" ? status : undefined),
+    workState: (id: string) => (id === "dwight" ? status.state : undefined),
     name: (id: string) => id,
     emit: (e: { message: Msg }) => events.push(e.message),
     statusRef: status,
@@ -103,7 +104,7 @@ inbox4.stop();
   const { Inbox } = await import("../server/inbox");
   let ready = false;
   const typed2: string[] = [];
-  const hub2 = { slug: "screen-test", snap: { messages: [], config: { team: [] } }, status: () => ({ session: { state: "running" }, state: "idle" }), emit: () => {}, activity: () => {}, name: (id: string) => id } as never;
+  const hub2 = { slug: "screen-test", snap: { messages: [], config: { team: [] } }, status: () => ({ session: { state: "running" }, state: "idle" }), workState: () => "idle", emit: () => {}, activity: () => {}, name: (id: string) => id } as never;
   const inbox2 = new Inbox(hub2, { type: async (_id, t) => (typed2.push(t), true), enter: async () => true, promptReady: async () => ready });
   inbox2.sessionReattached("cipher");
   inbox2.push("cipher", { fromId: "you", kind: "message", text: "Plan v1.1" });
@@ -121,7 +122,7 @@ inbox4.stop();
 {
   const { Inbox } = await import("../server/inbox");
   const typed3: string[] = [];
-  const hub3 = { slug: "hold-test", snap: { messages: [], config: { team: [] } }, status: () => ({ session: { state: "running" }, state: "idle" }), emit: () => {}, activity: () => {}, name: (id: string) => id } as never;
+  const hub3 = { slug: "hold-test", snap: { messages: [], config: { team: [] } }, status: () => ({ session: { state: "running" }, state: "idle" }), workState: () => "idle", emit: () => {}, activity: () => {}, name: (id: string) => id } as never;
   const inbox3 = new Inbox(hub3, { type: async (_id, t) => (typed3.push(t), true), enter: async () => true });
   inbox3.holds = (_a, item) => item.kind === "message" && item.fromId === "dev2";
   inbox3.sessionReattached("dev1");
@@ -238,6 +239,32 @@ inbox4.stop();
   let threw = false;
   await first.catch(() => (threw = true));
   check("a delivery attempt that finds the queue emptied meanwhile doesn't throw (it used to stop HQ)", !threw);
+  inbox.stop();
+}
+
+// An agent with an unanswered access request shows "needs you", but its queued messages still go in once it's idle.
+{
+  const { Hub } = await import("../server/hub");
+  const team = [{ id: "dwight", name: "Dwight", role: "Developer", cli: "claude" }];
+  const hub = new Hub({ root: process.env.HOME } as never, "accesstest", { project: { id: "accesstest", name: "a" }, team } as never, { boards: [], tasks: [] } as never, {} as never);
+  hub.setSession("dwight", { state: "running" });
+  hub.setStatus("dwight", { state: "working", note: "Building" });
+  hub.snap.accessRequests = [{ id: "ar1", agentId: "dwight", domain: "telemetry.example.com", status: "pending" }] as never;
+  hub.holdForAccess("dwight");
+  hub.setStatus("dwight", { state: "needs-input", note: "Asking: access to telemetry.example.com" });
+  hub.setStatus("dwight", { state: "idle", note: "Finished" }); // the turn ends while the request is still open
+  check("the UI still shows the open access request", hub.status("dwight")?.state === "needs-input");
+  check("workState sees the agent is really idle", hub.workState("dwight") === "idle", String(hub.workState("dwight")));
+  const got: string[] = [];
+  const inbox = new Inbox(hub, { type: async (_id, text) => (got.push(text), true), enter: async () => true });
+  inbox.sessionReattached("dwight");
+  inbox.push("dwight", { fromId: "you", kind: "message", text: "Review PR 2" });
+  await wait(1100);
+  await inbox.tryType("dwight");
+  check("a queued message is typed despite the open access request", got.some((t) => t.includes("Review PR 2")), JSON.stringify(got));
+  hub.setStatus("dwight", { state: "needs-input", note: "Asking: Allow edit?" }); // a real question with no access request open
+  hub.snap.accessRequests = [];
+  check("a real question still counts as needs you", hub.workState("dwight") === "needs-input");
   inbox.stop();
 }
 

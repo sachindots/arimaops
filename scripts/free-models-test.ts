@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 process.env.HOME = mkdtempSync(join(tmpdir(), "arima-free-"));
 const { parseFreeModels, closestFree, bestFree, freeSourceOf } = await import("../src/data/freeModels");
-const { swapGoneModels, refreshFreeModels, freeModelsState } = await import("../server/freeModels");
+const { swapGoneModels, refreshFreeModels, freeModelsState, withdrawFreeModel, onFreeModels } = await import("../server/freeModels");
 const { Overflow } = await import("../server/overflow");
 
 let fails = 0;
@@ -96,10 +96,30 @@ check("builder: paid with a free fallback", by("developer").model === "claude-so
 check("light roles: free (Zen, no key), agy as their fallback", by("reviewer").free && by("reviewer").model.startsWith("opencode/") && by("docs").fallback?.cli === "agy");
 check("installs opencode when missing; lists keys to add", p1.install.length === 1 && p1.keysToAdd.map((k) => k.source).join() === "openrouter,nvidia,amd");
 check("sandbox 2 GB, 2 CPUs; agents that fit in 22 GB", p1.sandbox.memoryGb === 2 && p1.sandbox.cpus === 2 && p1.maxAgents === 9);
+check("two light roles get free models from different families", by("reviewer").model !== by("docs").model, `${by("reviewer").model} / ${by("docs").model}`);
 const p2 = proposeSetup(roster, { ramGb: 8, cpus: 4, clis: ["opencode"], keys: ["nvidia"], free: list.filter((x) => x.source === "nvidia") });
 check("no paid CLI and only a NIM key: everyone on NIM free", p2.roles.every((r) => r.cli === "opencode" && r.model.startsWith("nvidia/")) && !p2.install.length);
 const p3 = proposeSetup(roster, { ramGb: 8, cpus: 4, clis: [], keys: [], free: [] });
 check("nothing usable: roles kept as they are", p3.roles.every((r) => r.cli === "claude" && /kept/.test(r.why)));
+
+// A provider withdraws a model before models.dev notices: it leaves the list now and listeners swap its roles.
+{
+  await refreshFreeModels((async () => new Response(JSON.stringify(catalog))) as typeof fetch);
+  let heard: string[] | null = null;
+  const off = onFreeModels((st) => void (heard = st.models.map((x) => x.id)));
+  withdrawFreeModel("opencode/glm-5.3-flash-free");
+  off();
+  check("a withdrawn model leaves the free list", !freeModelsState().models.some((x) => x.id === "opencode/glm-5.3-flash-free"));
+  check("listeners hear the new list (so seats swap)", !!heard && !(heard as string[]).includes("opencode/glm-5.3-flash-free"));
+  const roleOn = { snap: { config: { team: [], template: { roles: [{ id: "dev", title: "Developer", cli: "opencode", model: "opencode/glm-5.3-flash-free" }] } } }, configChanged() {}, activity() {} };
+  const swaps = swapGoneModels(roleOn as never, freeModelsState().models, () => {}, () => true);
+  check("the role on it moves to another free model", swaps.length === 1 && swaps[0].to !== "opencode/glm-5.3-flash-free", JSON.stringify(swaps));
+  let again = false;
+  const off2 = onFreeModels(() => void (again = true));
+  withdrawFreeModel("opencode/glm-5.3-flash-free");
+  off2();
+  check("withdrawing it twice changes nothing", !again);
+}
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");
 process.exit(fails ? 1 : 0);

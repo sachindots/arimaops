@@ -14,7 +14,7 @@ import { adapters, containerArgs, localBinary } from "./adapters";
 import { isStream } from "./streamEngine";
 import { streamCommand } from "./streamRunner";
 import { ensureNetwork, gitIdentityEnv, runArgs } from "./containers";
-import { detectLimit } from "./limits";
+import { detectLimit, detectRefusal } from "./limits";
 import type { Hub } from "./hub";
 import { accountEnv, accountHome, accountOf, agentMb, fitsInRam, maxAgents, mirrorHome, ownsHome } from "./accounts";
 import { accounts } from "./credentials/registry";
@@ -82,6 +82,7 @@ export class Sessions {
   lastHookAt: (agentId: string) => number = () => 0;
   /** An agent's CLI printed a usage-limit message (set by project.ts: tells the lead). */
   onLimit: (agentId: string, until: Date) => void = () => {};
+  onRefused: (agentId: string, why: string, withdrawn: boolean) => void = () => {};
   private limitLines = new Map<string, string>(); // last limit message seen per agent
   private limitTick = 0;
   private polling: NodeJS.Timeout | null = null;
@@ -555,7 +556,10 @@ export class Sessions {
 
   /** Every ~15 s: a new usage-limit message on screen marks the agent limited until its reset time. */
   private async watchLimits(agentId: string, name: string) {
-    const hit = detectLimit(await this.backend.screenText(name, 12));
+    const screen = await this.backend.screenText(name, 12);
+    const refused = detectRefusal(screen);
+    if (refused && this.limitLines.get(agentId) !== refused.line) (this.limitLines.set(agentId, refused.line), this.onRefused(agentId, refused.why, refused.withdrawn));
+    const hit = detectLimit(screen);
     if (!hit || this.limitLines.get(agentId) === hit.line) return; // the same message still on screen
     this.limitLines.set(agentId, hit.line);
     const until = hit.until.toISOString();

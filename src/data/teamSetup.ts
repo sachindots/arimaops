@@ -58,17 +58,23 @@ export function proposeSetup(roles: Role[], f: SetupFacts): SetupProposal {
     const need = FREE_SOURCE_INFO[s].account;
     return !need || f.keys.includes(need);
   };
+  // The best usable free model of each family. Light roles take them in turn, so a reviewer and a second opinion
+  // land on different models: a check by the same model as the work it checks catches little.
+  const families = f.free.filter((m, i, all) => usable(m.source) && all.findIndex((x) => usable(x.source) && (x.family || x.id) === (m.family || m.id)) === i);
   const free = bestFree(f.free, usable);
   // OpenCode installs itself in sandboxes; on the host the owner installs it once.
   const freePick = free ? { cli: "opencode" as const, model: free.id } : has("agy") ? { cli: "agy" as const, model: AGY_FREE } : null;
+  let turn = 0;
+  const lightPick = () => (families.length ? { cli: "opencode" as const, model: families[turn++ % families.length].id } : freePick);
   const paidCli = (["claude", "codex", "agy"] as const).find((c) => has(c));
 
   const picks = roles.map((r): RolePick => {
     const light = !r.isLead && LIGHT.test(`${r.id} ${r.title}`);
     const paid = paidCli && PAID[paidCli] ? { cli: paidCli, model: PAID[paidCli]![r.isLead ? 0 : 1] } : null;
-    const main = light ? (freePick ?? paid) : (paid ?? freePick);
+    const lightFree = light ? lightPick() : null;
+    const main = light ? (lightFree ?? paid) : (paid ?? freePick);
     if (!main) return { roleId: r.id, title: r.title, cli: r.cli, model: r.model, fallback: r.fallback, free: false, why: "No CLI found: kept as it is." };
-    const isFree = main === freePick;
+    const isFree = main === freePick || main === lightFree;
     const second = has("agy") && main.cli !== "agy" ? { cli: "agy" as const, model: AGY_FREE } : null;
     const fallback = isFree ? second : freePick;
     return {

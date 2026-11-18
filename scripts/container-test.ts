@@ -40,6 +40,28 @@ const agyArgs = runArgs({ ...agent, cli: "agy" } as never, "x", "/tmp", [], null
 check("Antigravity has its own persistent auth volume", agyArgs.includes("hq-auth-agy:/home/agent/.gemini") && agyArgs.at(-1) === "agy");
 
 // ---------------------------------------------------------------- live proxy
+// ---------------------------------------------------------------- GitHub access for container agents
+{
+  const { checkContainerGithub } = await import("../server/setup");
+  const { projectHome } = await import("../server/paths");
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const team = [
+    { id: "lead", name: "Cipher", mode: "container", isLead: true },
+    { id: "dev", name: "Ghost", mode: "container" },
+    { id: "rev", name: "Nyx", mode: "container" },
+  ] as never;
+  check("no GitHub remote: no check", checkContainerGithub({ github: null }, "ghtest", team) === null);
+  const none = checkContainerGithub({ github: "me/blog" }, "ghtest", team);
+  check("no token: a warning naming the agents, not the lead", none?.status === "warning" && /Ghost, Nyx/.test(none.detail) && !/Cipher/.test(none.detail), none?.detail);
+  mkdirSync(projectHome("ghtest"), { recursive: true });
+  writeFileSync(join(projectHome("ghtest"), "dev.env"), "FOO=1\nGH_TOKEN=github_pat_x\n");
+  writeFileSync(join(projectHome("ghtest"), "rev.env"), "GH_TOKEN=\n");
+  const some = checkContainerGithub({ github: "me/blog" }, "ghtest", team);
+  check("an empty GH_TOKEN still counts as missing", some?.status === "warning" && /^Nyx can't/.test(some.detail), some?.detail);
+  writeFileSync(join(projectHome("ghtest"), "rev.env"), "GH_TOKEN=github_pat_y\n");
+  check("every agent has a token: ok", checkContainerGithub({ github: "me/blog" }, "ghtest", team)?.status === "ok");
+}
+
 const docker = (await run("docker", ["image", "inspect", IMAGE], { timeoutMs: 8000 })).ok && (await ensureNetwork());
 if (!docker) console.log("- skipped live proxy test (needs Docker and the arimaops-agent image)");
 else {

@@ -530,6 +530,7 @@ export type SetupCheckId =
   | "egress-lock"
   | "hq-reach"
   | "scope-firewall"
+  | "github-container"
   | `login-${AgentCli}`
   | `login-${AgentCli}@${string}`;
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";

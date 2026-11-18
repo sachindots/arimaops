@@ -3,7 +3,7 @@
 
 /** Phrases the CLIs print on a usage/rate limit (not bare "rate limit", which shows up in code the agent writes). */
 const LIMIT =
-  /(?:usage|rate|5-hour|weekly|session|daily|monthly|premium request)[\w ’'-]{0,24}limit (?:reached|exceeded|hit)|hit (?:your|the) (?:usage |rate )?limit|reached your [\w ]{0,24}limit|quota exceeded|RESOURCE_EXHAUSTED|limit will reset/i;
+  /(?:usage|rate|5-hour|weekly|session|daily|monthly|premium request)[\w ’'-]{0,24}limit (?:reached|exceeded|hit)|hit (?:your|the) (?:usage |rate )?limit|reached your [\w ]{0,24}limit|quota exceeded|free usage exceeded|RESOURCE_EXHAUSTED|limit will reset/i;
 
 const DEFAULT_MS = 30 * 60 * 1000; // no reset time printed: check again in 30 minutes
 
@@ -44,4 +44,30 @@ export function detectLimit(screen: string, now = new Date()): LimitHit | null {
   const clock = text.match(/\b(?:resets?|again)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
   if (clock) return { line, until: nextClock(now, Number(clock[1]), Number(clock[2] ?? 0), clock[3]), exact: true };
   return { line, until: new Date(now.getTime() + DEFAULT_MS), exact: false };
+}
+
+/** A provider refused the work or dropped the model: waiting won't help, so the lead has to move the task. */
+const REFUSALS: [RegExp, (m: RegExpMatchArray) => string, boolean?][] = [
+  [/blocked by Gemini's filters/i, () => "Gemini's safety filter refused the request"],
+  [/safeguards (?:flagged|stopped)/i, () => "Claude's safeguards flagged the work"],
+  [/model [\w./-]+ has been deprecated\. Use ([\w./-]+) instead/i, (m) => `the model was withdrawn (the provider suggests ${m[1]})`, true],
+];
+
+export interface Refusal {
+  /** The line that matched (used to ignore the same message on later polls). */
+  line: string;
+  why: string;
+  /** The provider dropped the model itself (not a refusal of this work). */
+  withdrawn: boolean;
+}
+
+/** The last refusal on the screen; null if none. */
+export function detectRefusal(screen: string): Refusal | null {
+  const lines = screen.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--)
+    for (const [re, why, withdrawn] of REFUSALS) {
+      const m = lines[i].match(re);
+      if (m) return { line: lines[i].trim(), why: why(m), withdrawn: !!withdrawn };
+    }
+  return null;
 }

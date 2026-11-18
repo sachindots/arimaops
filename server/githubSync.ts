@@ -2,7 +2,7 @@
 // comments → tell the author; passed → tell the lead; merged → task done.
 
 import type { PullRequest } from "../src/data/types";
-import { branchAgent, fetchPrs, OPEN_LIMIT, taskIdOf, toPullRequest } from "./github";
+import { branchAgent, fetchPr, fetchPrs, OPEN_LIMIT, taskIdOf, toPullRequest, type GhPr } from "./github";
 import { GhPolling, type GitHubEvent, type GitHubEvents, type GitHubWatch } from "./githubEvents";
 import { GitHubAppWebhooks, webhooksHealthy } from "./githubApp";
 import type { Hub } from "./hub";
@@ -47,12 +47,17 @@ export class GitHubSync {
   private watch: GitHubWatch | null = null;
   private subscribed = false;
   private lastError: string | null = null;
+  /** Full details of merged PRs HQ never saw open (null while being fetched, or when the fetch failed). */
+  private mergedDetail = new Map<number, GhPr | null>();
+  /** The last task-sync error per task, so a gate that keeps failing is logged once, not every poll. */
+  private syncErrors = new Map<string, string>();
 
   constructor(
     private hub: Hub,
     private planner: Planner,
     private repo: string | null,
     private events: GitHubEvents = new GitHubAppWebhooks(new GhPolling(() => !!hub.snap.setup.checks.find((c) => c.id === "gh" && c.status === "ok"), fetchPrs, webhooksHealthy)),
+    private fetchOne = fetchPr,
   ) {}
 
   start() {
@@ -116,11 +121,14 @@ export class GitHubSync {
       const task = taskId ? this.planner.task(taskId) : undefined;
       const fromBranch = branchAgent(gh.headRefName);
       const authorId = task?.ownerId ?? (fromBranch && team.has(fromBranch) ? fromBranch : "");
-      const pr = toPullRequest(gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
-      // Merged PRs come without files and checks: keep what was seen while it was open (the tests-ci gate reads it).
-      // shortcut: a PR merged while HQ was down has no files seen; the owner waives tests-ci then. Fetch its files if that gets common.
+      const full = gh.mergedAt ? this.mergedDetail.get(gh.number) : undefined;
+      const pr = toPullRequest(full ?? gh, wf.review.tool, wf.review.enabled, task?.id ?? taskId ?? "", authorId);
+      // Merged PRs come without files and checks: keep what was seen while it was open (the tests-ci gate reads it),
+      // or fetch them once for a PR merged while HQ wasn't watching.
       const was = this.prev.get(pr.number);
-      return pr.testsChanged === undefined && was?.testsChanged !== undefined ? { ...pr, testsChanged: was.testsChanged, ciGreen: was.ciGreen, files: was.files } : pr;
+      if (pr.testsChanged === undefined && was?.testsChanged !== undefined) return { ...pr, testsChanged: was.testsChanged, ciGreen: was.ciGreen, files: was.files };
+      if (pr.merged && pr.testsChanged === undefined && task && task.status !== "done" && !this.mergedDetail.has(pr.number)) this.fetchMerged(pr.number);
+      return pr;
     });
     // PRs we showed as open that are now neither open nor recently merged were closed. A full page of
     // open PRs may have left older ones out, so then only the recently-closed list proves it.
@@ -138,12 +146,27 @@ export class GitHubSync {
       if (!this.first) this.react(old, pr);
       try {
         this.syncTask(pr);
+        this.syncErrors.delete(pr.taskId);
       } catch (err) {
-        log.warn(`GitHub: couldn't update ${pr.taskId}: ${err instanceof Error ? err.message : err}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (this.syncErrors.get(pr.taskId) !== msg) log.warn(`GitHub: couldn't update ${pr.taskId}: ${msg}`);
+        this.syncErrors.set(pr.taskId, msg);
       }
     }
     this.prev = new Map(next.map((p) => [p.number, p]));
     this.first = false;
+  }
+
+  /** Fetches a merged PR's files and checks once; the next poll uses them. */
+  private fetchMerged(number: number) {
+    if (!this.repo) return;
+    this.mergedDetail.set(number, null);
+    void this.fetchOne(this.repo, number)
+      .then((gh) => {
+        this.mergedDetail.set(number, gh);
+        if (gh) this.nudge(500);
+      })
+      .catch(() => {});
   }
 
   /** Keep the task board in line with its PR. */

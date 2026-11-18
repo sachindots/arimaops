@@ -185,7 +185,8 @@ export class Inbox {
       !!st &&
       this.sessionUp.has(agentId) &&
       st.session.state === "running" &&
-      st.state === "idle" &&
+      // An unanswered access request must not hold every message: the request waits in the Inbox on its own.
+      this.hub.workState(agentId) === "idle" &&
       !this.typing.has(agentId) &&
       Date.now() - (this.lastHook.get(agentId) ?? 0) >= QUIET_MS
     );
@@ -232,7 +233,7 @@ export class Inbox {
       this.delivered(items, "typed");
       // If the prompt didn't submit (Enter swallowed), press it once more.
       await new Promise((r) => setTimeout(r, SUBMIT_CHECK_MS));
-      if ((this.lastSubmit.get(agentId) ?? 0) < typedAt && this.hub.status(agentId)?.state === "idle" && (!this.keys.promptReady || (await this.keys.promptReady(agentId)))) {
+      if ((this.lastSubmit.get(agentId) ?? 0) < typedAt && this.hub.workState(agentId) === "idle" && (!this.keys.promptReady || (await this.keys.promptReady(agentId)))) {
         log.warn(`${agentId}: no prompt submit after typing; pressing Enter again`);
         await this.keys.enter(agentId);
       }
