@@ -119,7 +119,7 @@ export function agentIp(containerName: string): string {
 
 /** `docker run` arguments for an agent (run in tmux like the other modes; --rm: state lives in the folder and login volume). */
 export function runArgs(
-  agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | null, hqPort: number, env: Record<string, string> = {},
+  agent: AgentConfig, name: string, dir: string, cliArgs: string[], envFile: string | string[] | null, hqPort: number, env: Record<string, string> = {},
   secrets: { envFile: string; mounts: [string, string][] } | null = null,
   /** What runs in the container: the CLI, or (stream engine) its runner. */
   command: string[] = [agent.cli, ...cliArgs],
@@ -133,6 +133,7 @@ export function runArgs(
   const logSubdir = agent.cli === "claude" ? "projects" : agent.cli === "codex" ? "sessions" : null;
   const logDir = logSubdir ? join(containerLogHome(name), logSubdir) : null;
   if (logDir) mkdirSync(logDir, { recursive: true, mode: 0o700 });
+  const envFiles = !envFile ? [] : Array.isArray(envFile) ? envFile : [envFile];
   return [
     "run", "-it", "--rm", "--init", "--name", name, "--hostname", agent.id,
     "--network", NETWORK, "--ip", agentIp(name),
@@ -144,7 +145,7 @@ export function runArgs(
     "-v", `${authVolume(agent.cli, agent.account || "default")}:${authDir}`,
     ...(logDir ? ["-v", `${logDir}:${authDir}/${logSubdir}`] : []),
     "-w", WORKDIR,
-    ...(envFile ? ["--env-file", envFile] : []),
+    ...envFiles.flatMap((f) => ["--env-file", f]),
     // Account secrets: read by docker at start (the file is deleted right after), files mounted read-only.
     ...(secrets ? ["--env-file", secrets.envFile, ...secrets.mounts.flatMap(([host, inside]) => ["-v", `${host}:${inside}:ro`])] : []),
     ...["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].flatMap((k) => ["-e", `${k}=${proxy}`]),

@@ -307,6 +307,8 @@ export const officeActions = {
   updateSandbox: source.updateSandbox.bind(source),
   setSecret: (agentId: string | null, service: string, value: string) => source.setSecret(agentId, service, value),
   removeSecret: (agentId: string | null, service: string) => source.removeSecret(agentId, service),
+  setEnvVar: (agentId: string | null, name: string, value: string) => source.setEnvVar(agentId, name, value),
+  removeEnvVar: (agentId: string | null, name: string) => source.removeEnvVar(agentId, name),
   setProxy: (url: string | null) => source.setProxy(url),
   openEnvFile: (id: string) => source.openEnvFile(id),
   refreshSbx: () => source.refreshSbx(),

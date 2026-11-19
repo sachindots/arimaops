@@ -70,7 +70,8 @@ import { bestFree } from "../src/data/freeModels";
 import { publishGoals } from "./goals";
 import { ritualWhen, tickRituals } from "./rituals";
 import { listConnections } from "./connections";
-import { resumeAgents } from "./resumeAgents";
+import { envFilesForAgent } from "./envFiles";
+import { resumeAgents, type ResumeTracker } from "./resumeAgents";
 
 export interface Runtime {
   slug: string;
@@ -170,6 +171,23 @@ export async function startProject(path: string, port: number, paused: boolean):
   hub.snap.welcome = isNew;
   hub.snap.customSkills = [...resolveUserSkillFolders(repo.root, ["*"]).keys()].sort();
   const sessions = new Sessions(hub, secret);
+  let resume: ResumeTracker | null = null;
+  const origStart = sessions.start.bind(sessions);
+  sessions.start = async (id) => {
+    await origStart(id);
+    const st = hub.status(id)?.session.state;
+    if (st === "running" || st === "starting") resume?.markStarted(id);
+  };
+  const origStop = sessions.stop.bind(sessions);
+  sessions.stop = async (id) => {
+    resume?.markStopped(id);
+    await origStop(id);
+  };
+  const origRemove = sessions.removeResources.bind(sessions);
+  sessions.removeResources = async (id, opts) => {
+    resume?.markStopped(id);
+    return origRemove(id, opts);
+  };
   // Stream-engine agents (docs/design/stream-json.md) take messages through their runner; the rest are typed into.
   const stream: StreamEngine = new StreamEngine(hub, { up: (id) => inbox.sessionReattached(id) });
   const streaming = (id: string) => isStream(hub.cfg(id));
@@ -181,7 +199,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   sessions.onSessionReattached = (id) => inbox.sessionReattached(id);
   sessions.lastHookAt = (id) => inbox.lastHookAt(id);
   const sbx = new Sbx(hub);
-  sessions.envFileFor = (id) => (existsSync(sbx.envFile(id)) ? sbx.envFile(id) : null);
+  sessions.envFilesFor = (id) => envFilesForAgent(slug, id);
   const mcp = new SbxMcp(hub, (id, file, args, onExit) => sessions.runTerminal(id, file, args, onExit));
   sessions.onSandboxReady = (id) => {
     void sbx.syncRules(id);
@@ -426,7 +444,7 @@ export async function startProject(path: string, port: number, paused: boolean):
   // Terminal polling always runs: agents left in tmux must keep reporting. Pause stops GitHub and sbx approval polling.
   sessions.startPolling();
   // A paused project keeps its agents down until the owner resumes it.
-  const stopResume = paused ? () => {} : resumeAgents(hub, (id) => sessions.start(id));
+  resume = resumeAgents(hub, (id) => sessions.start(id), { autoStart: !paused });
 
   const commands = makeCommands(hub, sessions, planner, inbox, sbx, mcp);
   const rt: Runtime = {
@@ -469,7 +487,7 @@ export async function startProject(path: string, port: number, paused: boolean):
       stopListening();
       stopFree();
       memoryReview.stop();
-      stopResume();
+      resume?.stop();
       sessions.shutdown();
     },
   };

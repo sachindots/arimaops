@@ -12,6 +12,7 @@ import { parseCliJson, sandboxList } from "./lib/json";
 import { run } from "./lib/exec";
 import { log } from "./lib/log";
 import { projectHome, sessionName } from "./paths";
+import { agentEnvPath, listEnvKeys, projectEnvPath, removeEnvVar, setEnvVar } from "./envFiles";
 import { policyVerdict } from "./setup";
 import { outOfScopeDomains, scopeDomains } from "./scope";
 
@@ -46,7 +47,7 @@ export class Sbx {
   constructor(private hub: Hub) {
     this.ownedFile = join(projectHome(hub.slug), "sbx-owned.json");
     this.owned = (existsSync(this.ownedFile) && parseCliJson<Record<string, string[]>>(readFileSync(this.ownedFile, "utf8"))) || {};
-    this.state = { basePolicy: "unknown", proxy: null, globalKeys: [], agents: {}, checkedAt: new Date().toISOString() };
+    this.state = { basePolicy: "unknown", proxy: null, globalKeys: [], projectEnv: this.projectEnvState(), agents: {}, checkedAt: new Date().toISOString() };
   }
 
   private saveOwned() {
@@ -57,8 +58,22 @@ export class Sbx {
     return sessionName(this.hub.slug, agentId);
   }
 
+  projectEnvFile() {
+    return projectEnvPath(this.hub.slug);
+  }
+
   envFile(agentId: string) {
-    return join(projectHome(this.hub.slug), `${agentId}.env`);
+    return agentEnvPath(this.hub.slug, agentId);
+  }
+
+  private projectEnvState() {
+    const path = this.projectEnvFile();
+    return { path, exists: existsSync(path), keys: listEnvKeys(path) };
+  }
+
+  private agentEnvState(agentId: string) {
+    const path = this.envFile(agentId);
+    return { path, exists: existsSync(path), keys: listEnvKeys(path) };
   }
 
   private publish() {
@@ -88,6 +103,7 @@ export class Sbx {
 
   /** Re-reads everything from sbx and publishes it. */
   async refresh() {
+    this.state.projectEnv = this.projectEnvState();
     if (!this.hub.snap.setup.sandboxReady) {
       this.state.agents = Object.fromEntries(this.hub.snap.config.team.map((a) => [a.id, this.emptyAgent(a.id)]));
       return this.publish();
@@ -124,7 +140,7 @@ export class Sbx {
         rules: sandboxRules,
         // sbx reports a sandbox scope as the bare sandbox name.
         keys: secrets.filter((s) => s.type === "service" && (s.scope === name || s.scope === `sandbox:${name}`)).map((s) => s.name),
-        envFile: { path: this.envFile(a.id), exists: existsSync(this.envFile(a.id)) },
+        envFile: this.agentEnvState(a.id),
         syncError: prevErrors[a.id]?.syncError ?? null,
         approvals: prevErrors[a.id]?.approvals ?? [],
         ports: prevErrors[a.id]?.ports ?? [],
@@ -135,7 +151,7 @@ export class Sbx {
   }
 
   private emptyAgent(agentId: string): SbxAgentState {
-    return { rules: [], keys: [], envFile: { path: this.envFile(agentId), exists: existsSync(this.envFile(agentId)) }, syncError: null, approvals: [], ports: [] };
+    return { rules: [], keys: [], envFile: this.agentEnvState(agentId), syncError: null, approvals: [], ports: [] };
   }
 
   // ------------------------------------------------------------ ports
@@ -480,6 +496,19 @@ export class Sbx {
       ? await run("sbx", ["settings", "set", "proxy.sandbox", url], { timeoutMs: 15_000 })
       : await run("sbx", ["settings", "unset", "proxy.sandbox"], { timeoutMs: 15_000 });
     if (!r.ok) throw new Error(r.stderr.trim().split("\n")[0] || "sbx settings failed");
+    await this.refresh();
+  }
+
+  async setEnvVar(agentId: string | null, name: string, value: string) {
+    const file = agentId ? this.envFile(agentId) : this.projectEnvFile();
+    const scope = agentId ? this.hub.name(agentId) : "all agents";
+    const header = `# App variables for ${scope} (${this.hub.snap.config.project.name}).\n# One KEY=value per line. Restart running agents after editing.\n`;
+    setEnvVar(file, name, value, header);
+    await this.refresh();
+  }
+
+  async removeEnvVar(agentId: string | null, name: string) {
+    removeEnvVar(agentId ? this.envFile(agentId) : this.projectEnvFile(), name);
     await this.refresh();
   }
 

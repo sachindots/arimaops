@@ -70,11 +70,19 @@ export const CLI_MODELS: Record<AgentCli, string[]> = {
   claude: ["claude-opus-5-5", "claude-sonnet-5-5", "opus", "sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-6"],
   codex: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-terra", "gpt-5.6-sol"],
   agy: [
+    "gemini-4-neon-high",
+    "gemini-4-neon-xhigh",
+    "gemini-4-neon-medium",
     "gemini-4-argon-high",
     "gemini-4-argon-medium",
+    "gemini-4-hydrogen-high",
+    "gemini-pro-orchestrator-neon",
     "gemini-3.8-flash-high",
+    "gemini-3.8-flash-medium",
     "claude-opus-5-5-high",
+    "claude-opus-5-5-medium",
     "claude-sonnet-5-5-high",
+    "claude-sonnet-5-5-medium",
     "gpt-oss-120b-medium",
   ],
   opencode: ["anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6", "openai/gpt-5.4", "google/gemini-3.1-pro", "openrouter/deepseek/deepseek-r1", "ollama/qwen3-coder"],
@@ -561,7 +569,7 @@ export interface SbxRule {
 export interface SbxAgentState {
   rules: SbxRule[]; // empty until the sandbox exists
   keys: string[]; // service keys scoped to this sandbox
-  envFile: { path: string; exists: boolean };
+  envFile: { path: string; exists: boolean; keys?: string[] };
   syncError: string | null;
   /** Requests the sandbox blocked, waiting in sbx's approval queue (`sbx policy approval ls`). */
   approvals: SbxApproval[];
@@ -594,6 +602,7 @@ export interface SbxState {
   basePolicy: BasePolicy;
   proxy: string | null;
   globalKeys: string[]; // service keys available to every sandbox
+  projectEnv?: { path: string; exists: boolean; keys: string[] };
   agents: Record<string, SbxAgentState>;
   checkedAt: string;
 }

@@ -59,8 +59,14 @@ export function createMockSource(): OfficeDataSource {
     const old = world.snap.sbx;
     const next = mockSbx(world.snap.config.team, world.snap.config.project.name);
     next.globalKeys = old.globalKeys;
+    next.projectEnv = old.projectEnv;
     next.proxy = old.proxy;
-    for (const id of Object.keys(next.agents)) if (old.agents[id]) (next.agents[id].keys = old.agents[id].keys), (next.agents[id].approvals = old.agents[id].approvals);
+    for (const id of Object.keys(next.agents))
+      if (old.agents[id]) {
+        next.agents[id].keys = old.agents[id].keys;
+        next.agents[id].envFile = old.agents[id].envFile;
+        next.agents[id].approvals = old.agents[id].approvals;
+      }
     world.snap.sbx = next;
     world.emit({ type: "sbx.updated", sbx: structuredClone(next) });
   }
@@ -410,6 +416,34 @@ export function createMockSource(): OfficeDataSource {
       const sbx = world.snap.sbx;
       if (agentId === null) sbx.globalKeys = sbx.globalKeys.filter((k) => k !== service);
       else if (sbx.agents[agentId]) sbx.agents[agentId].keys = sbx.agents[agentId].keys.filter((k) => k !== service);
+      world.emit({ type: "sbx.updated", sbx: structuredClone(sbx) });
+    },
+
+    setEnvVar(agentId, name, value) {
+      void value; // Never persisted in mock state; write-only like real HQ.
+      const key = name.trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || !value.trim()) return;
+      const sbx = world.snap.sbx;
+      if (agentId === null) {
+        const cur = sbx.projectEnv ?? { path: "~/.arima/demo/project.env", exists: true, keys: [] };
+        sbx.projectEnv = { ...cur, exists: true, keys: [...new Set([...cur.keys, key])].sort() };
+      } else if (sbx.agents[agentId]) {
+        const cur = sbx.agents[agentId].envFile;
+        sbx.agents[agentId].envFile = { ...cur, exists: true, keys: [...new Set([...(cur.keys ?? []), key])].sort() };
+      }
+      world.emit({ type: "sbx.updated", sbx: structuredClone(sbx) });
+      world.activity("config", agentId, `Saved ${key} in App variables (${agentId ? world.name(agentId) : "all agents"}) (mock)`);
+    },
+
+    removeEnvVar(agentId, name) {
+      const key = name.trim();
+      const sbx = world.snap.sbx;
+      if (agentId === null && sbx.projectEnv) {
+        sbx.projectEnv.keys = sbx.projectEnv.keys.filter((k) => k !== key);
+      } else if (agentId && sbx.agents[agentId]) {
+        const cur = sbx.agents[agentId].envFile;
+        cur.keys = (cur.keys ?? []).filter((k) => k !== key);
+      }
       world.emit({ type: "sbx.updated", sbx: structuredClone(sbx) });
     },
 

@@ -3,8 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { arch, cpus, platform, release, totalmem } from "node:os";
 import { lookup } from "node:dns/promises";
-import { join } from "node:path";
-import { projectHome } from "./paths";
+import { agentEnvPath, hasEnvKey, projectEnvPath } from "./envFiles";
 import type { AgentConfig, ProjectConfig, SetupCheck, SetupFix, SetupState } from "../src/data/types";
 import { firewallCommands, scopeDomains, scopeNetworks } from "./scope";
 import { usesTmux } from "./backends";
@@ -282,19 +281,14 @@ export function checkContainerGithub(repo: Pick<RepoInfo, "github">, slug: strin
   const agents = team.filter((a) => a.mode === "container" && !a.isLead);
   if (!repo.github || !agents.length) return null;
   const base = { id: "github-container" as const, label: "GitHub access for container agents", neededFor: "container" as const };
-  const has = (id: string) => {
-    try {
-      return /^GH_TOKEN=\S/m.test(readFileSync(join(projectHome(slug), `${id}.env`), "utf8"));
-    } catch {
-      return false;
-    }
-  };
+  const shared = hasEnvKey(projectEnvPath(slug), "GH_TOKEN");
+  const has = (id: string) => shared || hasEnvKey(agentEnvPath(slug, id), "GH_TOKEN");
   const missing = agents.filter((a) => !has(a.id));
   if (!missing.length) return { ...base, status: "ok", detail: "Every agent has a GH_TOKEN app variable.", fix: null };
   return {
     ...base,
     status: "warning",
-    detail: `${missing.map((a) => a.name).join(", ")} can't push or open pull requests: add GH_TOKEN to their App variables (Settings → Sandbox → App variables), then restart them. Make a fine-grained token for ${repo.github} only, with Contents and Pull requests set to read and write.`,
+    detail: `${missing.map((a) => a.name).join(", ")} can't push or open pull requests: add GH_TOKEN under Settings → Sandbox → App variables (All agents in this project), then restart them. Make a fine-grained token for ${repo.github} only, with Contents and Pull requests set to read and write.`,
     fix: fix(`https://github.com/settings/personal-access-tokens/new`, false, "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens"),
   };
 }

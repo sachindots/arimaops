@@ -26,7 +26,8 @@ export const loadEnvFile = (quotedPath: string) =>
 
 /** The shell line tmux runs. Local mode loads the env file into that shell. */
 export function shellCommand(spec: LaunchSpec): string {
-  const load = spec.envFile ? `${loadEnvFile(shq(spec.envFile))} && ` : "";
+  const files = [...(spec.envFiles ?? []), ...(spec.envFile ? [spec.envFile] : [])];
+  const load = files.map((f) => `${loadEnvFile(shq(f))} && `).join("");
   // After the env file, so HQ's values (the agent's port block) win over a stale PORT there.
   const vars = Object.entries(spec.env ?? {})
     .filter(([k]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k))

@@ -73,7 +73,7 @@ export function mockSbx(team: AgentConfig[], project: string): SbxState {
         ...a.sandbox.deny.map((r) => rule("deny", r)),
       ],
       keys: a.isLead ? [] : ["openai"],
-      envFile: { path: `~/.arima/${slug(project)}/${a.id}.env`, exists: !a.isLead },
+      envFile: { path: `~/.arima/${slug(project)}/${a.id}.env`, exists: !a.isLead, keys: a.isLead ? [] : ["DATABASE_URL"] },
       syncError: null,
       // Demo: the first worker's sandbox blocked a few things (claude.ai connectors and a docs site).
       approvals: !a.isLead && team.filter((t) => !t.isLead)[0]?.id === a.id
@@ -81,7 +81,7 @@ export function mockSbx(team: AgentConfig[], project: string): SbxState {
         : [],
     };
   }
-  return { basePolicy: "balanced", proxy: null, globalKeys: ["anthropic", "github"], agents, checkedAt: now() };
+  return { basePolicy: "balanced", proxy: null, globalKeys: ["anthropic", "github"], projectEnv: { path: `~/.arima/${slug(project)}/project.env`, exists: true, keys: ["GH_TOKEN"] }, agents, checkedAt: now() };
 }
 
 export function mockSession(project: string, agentId: string): SessionInfo {

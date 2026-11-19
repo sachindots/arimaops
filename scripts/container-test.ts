@@ -39,6 +39,46 @@ check("runs the CLI with its args", args.slice(-4).join(" ") === `${IMAGE} claud
 const agyArgs = runArgs({ ...agent, cli: "agy" } as never, "x", "/tmp", [], null, 7420);
 check("Antigravity has its own persistent auth volume", agyArgs.includes("hq-auth-agy:/home/agent/.gemini") && agyArgs.at(-1) === "agy");
 
+const multiEnvArgs = runArgs(agent as never, "x", "/tmp", [], ["/p/project.env", "/p/dev.env"], 7420);
+const pEnvIdx = multiEnvArgs.indexOf("/p/project.env");
+const aEnvIdx = multiEnvArgs.indexOf("/p/dev.env");
+check("multiple --env-file flags preserve project-then-agent order", pEnvIdx > 0 && aEnvIdx > pEnvIdx && multiEnvArgs[pEnvIdx - 1] === "--env-file" && multiEnvArgs[aEnvIdx - 1] === "--env-file");
+
+// ---------------------------------------------------------------- app variables (envFiles) & tmux order
+{
+  const { setEnvVar, removeEnvVar, listEnvKeys, hasEnvKey, envFilesForAgent, projectEnvPath, agentEnvPath } = await import("../server/envFiles");
+  const { shellCommand } = await import("../server/backends/tmux");
+  const { readFileSync, statSync } = await import("node:fs");
+  const pFile = projectEnvPath("envtest");
+  const aFile = agentEnvPath("envtest", "dev");
+  setEnvVar(pFile, "GH_TOKEN", "ghp_secret_1", "# project header");
+  setEnvVar(pFile, "FOO", "bar");
+  setEnvVar(pFile, "GH_TOKEN", "ghp_secret_2"); // update in place
+  setEnvVar(aFile, "DATABASE_URL", "postgres://localhost/db");
+  const content = readFileSync(pFile, "utf8");
+  check("env file created with mode 0600", (statSync(pFile).mode & 0o777) === 0o600);
+  check("env var updates in place without quotes and keeps comments", content.includes("# project header") && content.includes("GH_TOKEN=ghp_secret_2") && !content.includes("ghp_secret_1"));
+  check("listEnvKeys returns sorted key names only", JSON.stringify(listEnvKeys(pFile)) === JSON.stringify(["FOO", "GH_TOKEN"]) && hasEnvKey(pFile, "GH_TOKEN"));
+  let badKeyRejected = false;
+  try {
+    setEnvVar(pFile, "1BAD", "x");
+  } catch {
+    badKeyRejected = true;
+  }
+  let multilineRejected = false;
+  try {
+    setEnvVar(pFile, "GOOD", "line1\nline2");
+  } catch {
+    multilineRejected = true;
+  }
+  check("env var helper rejects invalid names and multiline values", badKeyRejected && multilineRejected);
+  removeEnvVar(pFile, "FOO");
+  check("removeEnvVar drops only the requested key", JSON.stringify(listEnvKeys(pFile)) === JSON.stringify(["GH_TOKEN"]));
+  check("envFilesForAgent returns project.env then agent.env", JSON.stringify(envFilesForAgent("envtest", "dev")) === JSON.stringify([pFile, aFile]));
+  const tmuxCmd = shellCommand({ file: "claude", args: [], envFile: null, envFiles: [pFile, aFile] });
+  check("tmux shellCommand loads project.env before agent.env", tmuxCmd.includes(pFile) && tmuxCmd.indexOf(pFile) < tmuxCmd.indexOf(aFile));
+}
+
 // ---------------------------------------------------------------- live proxy
 // ---------------------------------------------------------------- GitHub access for container agents
 {
@@ -60,6 +100,13 @@ check("Antigravity has its own persistent auth volume", agyArgs.includes("hq-aut
   check("an empty GH_TOKEN still counts as missing", some?.status === "warning" && /^Nyx can't/.test(some.detail), some?.detail);
   writeFileSync(join(projectHome("ghtest"), "rev.env"), "GH_TOKEN=github_pat_y\n");
   check("every agent has a token: ok", checkContainerGithub({ github: "me/blog" }, "ghtest", team)?.status === "ok");
+
+  // Shared project.env satisfies all container agents without per-agent env files.
+  mkdirSync(projectHome("ghshared"), { recursive: true });
+  writeFileSync(join(projectHome("ghshared"), "project.env"), "GH_TOKEN=\n");
+  check("empty GH_TOKEN in project.env still warns", checkContainerGithub({ github: "me/blog" }, "ghshared", team)?.status === "warning");
+  writeFileSync(join(projectHome("ghshared"), "project.env"), "GH_TOKEN=github_pat_all\n");
+  check("shared GH_TOKEN in project.env satisfies every container agent", checkContainerGithub({ github: "me/blog" }, "ghshared", team)?.status === "ok");
 }
 
 const docker = (await run("docker", ["image", "inspect", IMAGE], { timeoutMs: 8000 })).ok && (await ensureNetwork());

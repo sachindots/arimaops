@@ -74,8 +74,8 @@ export class Sessions {
   onSandboxReady: (agentId: string) => void = () => {};
   /** Called when an agent's sandbox is removed or recreated (what was attached to it is gone). */
   onSandboxRemoved: (agentId: string) => void = () => {};
-  /** The agent's env file, if it has one (passed with --env-file / sourced). */
-  envFileFor: (agentId: string) => string | null = () => null;
+  /** The agent's env files (project-wide then per-agent), passed with --env-file / sourced. */
+  envFilesFor: (agentId: string) => string[] = () => [];
   /** Called when HQ reattaches to a session that was already running (e.g. after an HQ restart). */
   onSessionReattached: (agentId: string) => void = () => {};
   /** When the agent's last hook arrived (from the inbox). */
@@ -164,7 +164,7 @@ export class Sessions {
       const dir = await ensureWorkspace(agent, hub.slug, hub.repo);
       const adapter = adapters[agent.cli];
       // App variables reach the agent in sandbox mode and in Local mode with tmux (not Local on Windows).
-      const hasEnvFile = !!this.envFileFor(id) && (agent.mode !== "local" || this.backend.persistent);
+      const hasEnvFile = this.envFilesFor(id).length > 0 && (agent.mode !== "local" || this.backend.persistent);
       const ports = agent.mode === "local" ? portBlockFor(hub.slug, agent.id) : undefined;
       await adapter.writeFiles(dir, agent, hub.snap.config, agentTokenFor(this.agentToken, agent.id), { hasEnvFile, ports });
       const specs = stackSkills(hub.snap.config.stack);
@@ -177,7 +177,7 @@ export class Sessions {
       }
       if (!(await this.backend.exists(name))) {
         const launch = adapter.launch(agent);
-        const envFile = this.envFileFor(id);
+        const envFiles = this.envFilesFor(id);
         // Local mode: the agent gets the env file's variables (tmux only: there's no shell to load them into otherwise).
         // Another account: its own config folder (sign in once in this agent's terminal; HQ shows the login prompt as "needs you").
         const acctEnv = accountEnv(agent.cli, account);
@@ -189,11 +189,11 @@ export class Sessions {
         removeSecrets(hub.slug, id);
         const secrets = keyed && agent.mode !== "sandbox" ? prepareSecrets(hub.slug, id, keyed, agent.mode === "container" ? "container" : "local") : null;
         let spec: LaunchSpec = {
-          file: localBinary[agent.cli], args: launch.args, envFile,
+          file: localBinary[agent.cli], args: launch.args, envFile: null, envFiles,
           env: { ...(ports ? portEnv(ports) : {}), ...(agent.mode === "local" ? acctEnv : {}) },
           ...(secrets && agent.mode === "local" ? { secretEnvFile: secrets.envFile } : {}),
         };
-        if (agent.mode === "local" && envFile && !this.backend.persistent)
+        if (agent.mode === "local" && envFiles.length && !this.backend.persistent)
           hub.activity("session", id, `${agent.name}'s env file isn't loaded in Local mode on Windows. Use Sandbox mode for app variables.`);
         if (agent.mode === "sandbox") {
           hub.setSession(id, { detail: "Allowing the sandbox to reach HQ…" });
@@ -205,7 +205,7 @@ export class Sessions {
           const memoryGb = agent.sandbox.resources.memoryGb ?? SANDBOX_DEFAULT.memoryGb;
           const isNew = !(await this.sandboxExists(name));
           const size = !isNew ? [] : ["--cpus", String(cpus), "--memory", `${Math.round(memoryGb * 1024)}m`];
-          const env = [...(envFile ? ["--env-file", envFile] : []), "-e", `BROWSER=${SANDBOX_BROWSER}`];
+          const env = [...envFiles.flatMap((f) => ["--env-file", f]), "-e", `BROWSER=${SANDBOX_BROWSER}`];
           const sbxArgs = launch.sbxArgs ?? launch.args;
           const args = sbxArgs.length ? ["--", ...sbxArgs] : [];
           spec = { file: "sbx", args: ["run", "--name", name, ...size, ...env, launch.sbxAgent, dir, ...args], envFile: null };
@@ -225,7 +225,7 @@ export class Sessions {
           const gitEnv = await gitIdentityEnv(hub.repo.root);
           const cliArgs = containerArgs(agent.cli, launch);
           const command = isStream(agent) ? streamCommand(cliArgs) : undefined;
-          spec = { file: "docker", args: runArgs(agent, name, dir, cliArgs, envFile, hub.snap.config.project.hqPort, gitEnv, secrets, command), envFile: null };
+          spec = { file: "docker", args: runArgs(agent, name, dir, cliArgs, envFiles, hub.snap.config.project.hqPort, gitEnv, secrets, command), envFile: null };
         }
         await this.backend.create(name, dir, spec, { cols: 200, rows: 50 });
       }
@@ -736,8 +736,8 @@ export class Sessions {
         const name = this.name(agentId);
         // bash when the image has it, else sh; start in the agent's folder (same path inside the sandbox).
         // The agent's app variables too, so what you check here matches what the agent sees.
-        const env = this.envFileFor(agentId);
-        ({ file, args } = await resolveCommand("sbx", ["exec", "-it", ...(env ? ["--env-file", env] : []), ...(win ? [] : ["-w", dir]), name, "sh", "-c", SANDBOX_SHELL]));
+        const env = this.envFilesFor(agentId).flatMap((f) => ["--env-file", f]);
+        ({ file, args } = await resolveCommand("sbx", ["exec", "-it", ...env, ...(win ? [] : ["-w", dir]), name, "sh", "-c", SANDBOX_SHELL]));
         banner = `sbx exec -it ${name} bash`;
       } else if (agent.mode === "container") {
         const name = this.name(agentId);
@@ -745,10 +745,10 @@ export class Sessions {
         banner = `docker exec -it ${name} bash`;
       } else {
         const sh = process.env.SHELL || "/bin/sh";
-        const env = win ? null : this.envFileFor(agentId);
-        file = win ? "powershell.exe" : env ? "/bin/sh" : sh;
-        // Load the env file into the shell (HQ itself never reads it), then hand over to your shell.
-        args = win ? ["-NoLogo"] : env ? ["-c", `${loadEnvFile('"$1"')}; exec "$2" -l`, "sh", env, sh] : ["-l"];
+        const envs = win ? [] : this.envFilesFor(agentId);
+        file = win ? "powershell.exe" : envs.length ? "/bin/sh" : sh;
+        // Load the env files into the shell (HQ itself never reads them), then hand over to your shell.
+        args = win ? ["-NoLogo"] : envs.length ? ["-c", `${envs.map((_, i) => loadEnvFile(`"$${i + 1}"`)).join("; ")}; exec "$${envs.length + 1}" -l`, "sh", ...envs, sh] : ["-l"];
         banner = `${sh} in ${dir}`;
       }
       if (this.shellGen.get(id) !== gen || this.shells.has(id) || this.hub.status(agentId)?.session.state !== "running") return;

@@ -7,6 +7,8 @@ export interface LaunchSpec {
   args: string[];
   /** Local mode only: an env file whose variables the agent gets. HQ never reads it. */
   envFile: string | null;
+  /** Optional ordered list of env files to load (e.g. project-wide then per-agent override). */
+  envFiles?: string[];
   /** Extra variables for the agent's process (e.g. its port block). Not secret: tmux puts them on its command line. */
   env?: Record<string, string>;
   /** Secrets: a 0600 KEY=value file the launch shell loads and then deletes (never on a command line). */

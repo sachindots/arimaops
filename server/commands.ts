@@ -463,6 +463,32 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (!(SERVICE_KEYS as readonly string[]).includes(svc)) return;
       return attempt(agentId, `Removed the ${svc} key ${agentId ? `from ${hub.name(agentId)}'s sandbox` : "from every sandbox"}`, () => sbx.removeKey(agentId, svc));
     },
+    setEnvVar: async (id, name, value) => {
+      const agentId = id === null ? null : str(id, 80);
+      if (agentId !== null && !hub.cfg(agentId)) return;
+      const key = str(name, 120).trim();
+      const scope = agentId ? hub.name(agentId) : "all agents";
+      try {
+        await sbx.setEnvVar(agentId, key, str(value, 20_000));
+        hub.activity("config", agentId, `Saved ${key} in App variables (${scope}). Restart running agents to apply.`);
+        if (key === "GH_TOKEN") void sessions.recheckSetup();
+      } catch (err) {
+        hub.activity("config", agentId, `Couldn't save ${key || "app variable"} in App variables (${scope}): ${err instanceof Error ? err.message : err}`);
+      }
+    },
+    removeEnvVar: async (id, name) => {
+      const agentId = id === null ? null : str(id, 80);
+      if (agentId !== null && !hub.cfg(agentId)) return;
+      const key = str(name, 120).trim();
+      const scope = agentId ? hub.name(agentId) : "all agents";
+      try {
+        await sbx.removeEnvVar(agentId, key);
+        hub.activity("config", agentId, `Removed ${key} from App variables (${scope}).`);
+        if (key === "GH_TOKEN") void sessions.recheckSetup();
+      } catch (err) {
+        hub.activity("config", agentId, `Couldn't remove ${key || "app variable"} from App variables (${scope}): ${err instanceof Error ? err.message : err}`);
+      }
+    },
     setProxy: (url) => {
       const u = typeof url === "string" && url.trim() ? str(url, 300).trim() : null;
       if (u && !/^https?:\/\/[^\s]+$/i.test(u)) return hub.activity("config", null, "Proxy must be an http(s):// URL");
@@ -473,7 +499,8 @@ export function makeCommands(hub: Hub, sessions: Sessions, planner: Planner, inb
       if (!agent) return;
       const file = sbx.ensureEnvFile(agent.id);
       const [cmd, args] = process.platform === "darwin" ? ["open", ["-t", file]] : process.platform === "win32" ? ["notepad", [file]] : ["xdg-open", [file]];
-      await run(cmd, args, { timeoutMs: 5000 });
+      const r = await run(cmd, args, { timeoutMs: 5000 });
+      if (!r.ok) hub.activity("config", agent.id, `Couldn't open an editor on this machine — add variables in Settings → Sandbox → App variables, or edit ${file}.`);
       await sbx.refresh();
     },
     refreshSbx: () => sbx.refresh(),

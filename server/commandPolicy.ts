@@ -169,6 +169,8 @@ export const COMMANDS = {
   updateSandbox: entry({ role: "operator", stepUp: true, args: z.tuple([id, sandboxPatch]) }),
   setSecret: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(40), text(20_000)]) }),
   removeSecret: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(40)]) }),
+  setEnvVar: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(120), text(20_000)]) }),
+  removeEnvVar: entry({ role: "operator", stepUp: true, args: z.tuple([z.string().max(200).nullable(), text(120)]) }),
   setProxy: entry({ role: "owner", stepUp: true, args: z.tuple([z.string().max(2000).nullable()]) }),
   openEnvFile: entry({ role: "operator", stepUp: true, args: z.tuple([id]) }),
   refreshSbx: entry({ role: "viewer", args: z.tuple([]) }),

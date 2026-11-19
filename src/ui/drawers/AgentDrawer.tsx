@@ -545,7 +545,14 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
             </span>
           )),
         )}
-        {row("App variables", snap.sbx.agents[agent.id]?.envFile.exists ? "env file set" : "—")}
+        {row(
+          "App variables",
+          (() => {
+            const envFile = snap.sbx.agents[agent.id]?.envFile;
+            const keys = new Set([...(snap.sbx.projectEnv?.keys ?? []), ...(envFile?.keys ?? [])]);
+            return keys.size ? `${keys.size} set` : envFile?.exists ? "env file set" : "—";
+          })(),
+        )}
         {row("Skills", agent.skills.join(", ") || "—")}
       </div>
       {env && (

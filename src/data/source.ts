@@ -167,6 +167,9 @@ export interface OfficeDataSource {
   /** A service key for one agent's sandbox, or every sandbox (agentId null). The value goes to sbx via stdin; HQ never keeps it. */
   setSecret(agentId: string | null, service: string, value: string): void;
   removeSecret(agentId: string | null, service: string): void;
+  /** Write-only app variables (.env) for all agents (agentId null) or one agent. HQ never echoes values back. */
+  setEnvVar(agentId: string | null, name: string, value: string): void;
+  removeEnvVar(agentId: string | null, name: string): void;
   /** Machine-wide upstream proxy for sandbox traffic (null clears it). */
   setProxy(url: string | null): void;
   /** Creates the agent's env file if needed and opens it in the default editor. */
