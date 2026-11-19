@@ -71,7 +71,7 @@ const guard = new RemoteGuard(join(HOME, "guard"));
 const users = new Users(join(HOME, "users.json"));
 const calls: string[] = [];
 const hub = { snap: { config: { team: [] }, agents: [], environments: [] }, subscribe: () => () => {}, cfg: (id: string) => (id === "worker" ? { mode: "sandbox" } : id === "localbot" ? { mode: "local" } : undefined) };
-const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), removeAccount: async () => void calls.push("removeAccount"), setProxy: async () => void calls.push("setProxy"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent"), openHostShell: async () => void calls.push("openHostShell"), updateAgent: async () => void calls.push("updateAgent"), updateProject: async () => void calls.push("updateProject"), sendTerminalInput: async () => void calls.push("sendTerminalInput"), addAgent: async () => void calls.push("addAgent"), setTeamMode: async () => void calls.push("setTeamMode") } };
+const rt = { slug: "alpha", hub, commands: { saveAccount: async () => void calls.push("saveAccount"), removeAccount: async () => void calls.push("removeAccount"), setProxy: async () => void calls.push("setProxy"), setEnvVar: async () => void calls.push("setEnvVar"), saveConnection: async () => void calls.push("saveConnection"), addMcp: async () => void calls.push("addMcp"), finishGithubApp: async () => void calls.push("finishGithubApp"), sendMessage: async () => void calls.push("sendMessage"), startAgent: async () => void calls.push("startAgent"), openHostShell: async () => void calls.push("openHostShell"), updateAgent: async () => void calls.push("updateAgent"), updateProject: async () => void calls.push("updateProject"), sendTerminalInput: async () => void calls.push("sendTerminalInput"), addAgent: async () => void calls.push("addAgent"), setTeamMode: async () => void calls.push("setTeamMode") } };
 const server = await startHttp({
   projects: new Map([["alpha", rt as never]]), defaultProject: () => "alpha", loadProject: async () => {}, unloadProject: async () => {},
   port: PORT, browserToken: "link-token-123", viewerToken: "viewer-token-456", host: "127.0.0.1",
@@ -137,6 +137,18 @@ check("an operator can't add a project folder", r.status === 403, String(r.statu
 calls.length = 0;
 await ws(sam.cookie, ["saveAccount"]);
 check("the owner can change API keys", JSON.stringify(calls) === JSON.stringify(["saveAccount"]));
+calls.length = 0;
+await ws(sam.cookie, [
+  ["setEnvVar", "lead", "GH_TOKEN", "env_secret_token_123"],
+  ["saveConnection", { name: "hook", url: "https://hook.example", apiKey: "conn_api_secret_456" }],
+  ["addMcp", { name: "mcp1", url: "https://mcp.example", apiKey: "mcp_api_secret_789" }],
+  ["finishGithubApp", "gh_oauth_code_000"],
+]);
+check(
+  "secret-bearing commands execute for the owner",
+  JSON.stringify(calls) === JSON.stringify(["setEnvVar", "saveConnection", "addMcp", "finishGithubApp"]),
+  JSON.stringify(calls),
+);
 // Each pending command must pass the same authorization as a direct command.
 for (const pending of ["saveAccount", "removeAccount", "setProxy"]) {
   const person = users.create({ name: `Operator-${pending}`, role: "operator", password: "operator-test-password" }).user;
@@ -214,6 +226,14 @@ check("guessing a current password is throttled", (await change(changedCookie, "
 
 const log = readLines(join(HOME, "guard", "audit.log")).join("\n");
 check("the audit log names the person and never holds a password", /\tSam\/owner\t/.test(log) && /bad-password/.test(log) && !/sams-password|anas-password|wrong-password|old-mobile-password|new-mobile-password/.test(log), log.slice(-400));
+const logLines = log.split("\n");
+const redactedCmds = ["setEnvVar", "saveConnection", "addMcp", "finishGithubApp"];
+check(
+  "the audit log redacts arguments for env vars, connections, MCP servers, and GitHub app finishes",
+  redactedCmds.every((cmd) => logLines.some((line) => line.includes(`\t${cmd}\t["[redacted]"]`))) &&
+    !/env_secret_token_123|conn_api_secret_456|mcp_api_secret_789|gh_oauth_code_000/.test(log),
+  log.slice(-600),
+);
 
 server.close();
 console.log(fails ? `\n${fails} failed` : "\nall passed");
