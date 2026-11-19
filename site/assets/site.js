@@ -1,5 +1,5 @@
-// Product site behaviour: theme toggle (follows the system until you pick), copy buttons, the demo video tabs,
-// and a lightbox for screenshots. Everything works without it; nothing autoplays under reduced motion.
+// Product site behaviour: theme toggle (follows the system until you pick), copy buttons, demo video tabs,
+// accessible stage/gallery tab groups, and a captioned lightbox for screenshots. Works cleanly without JS too.
 (function () {
   var root = document.documentElement;
   var store = {
@@ -50,16 +50,62 @@
     });
   });
 
-  // Click a screenshot to see it full size; Esc or a click closes it.
-  document.querySelectorAll(".shot img").forEach(function (img) {
+  // Generic accessible tab groups (5-stage gate explorer & Verifier screenshot gallery).
+  document.querySelectorAll("[data-tabgroup]").forEach(function (group) {
+    var tabs = Array.prototype.slice.call(group.querySelectorAll('[role="tablist"] [role="tab"]'));
+    var activate = function (tab, focus) {
+      var targetId = tab.getAttribute("aria-controls");
+      tabs.forEach(function (t) {
+        var active = t === tab;
+        t.setAttribute("aria-selected", String(active));
+        t.setAttribute("tabindex", active ? "0" : "-1");
+        var id = t.getAttribute("aria-controls");
+        if (id) {
+          var panel = document.getElementById(id);
+          if (panel) panel.hidden = !active;
+        }
+      });
+      if (targetId) {
+        var activePanel = document.getElementById(targetId);
+        if (activePanel) activePanel.hidden = false;
+      }
+      if (focus) tab.focus();
+    };
+    tabs.forEach(function (tab, idx) {
+      tab.setAttribute("tabindex", tab.getAttribute("aria-selected") === "true" ? "0" : "-1");
+      tab.addEventListener("click", function () { activate(tab, false); });
+      tab.addEventListener("keydown", function (e) {
+        var next = null;
+        if (e.key === "ArrowRight") next = tabs[(idx + 1) % tabs.length];
+        else if (e.key === "ArrowLeft") next = tabs[(idx - 1 + tabs.length) % tabs.length];
+        else if (e.key === "Home") next = tabs[0];
+        else if (e.key === "End") next = tabs[tabs.length - 1];
+        if (next) {
+          e.preventDefault();
+          activate(next, true);
+        }
+      });
+    });
+  });
+
+  // Click a screenshot to see it full size with an optional caption; Esc or a click closes it.
+  document.querySelectorAll(".shot img, [data-zoom]").forEach(function (img) {
     img.addEventListener("click", function () {
-      var box = document.createElement("div");
+      var box = document.createElement("figure");
       box.className = "lightbox";
+      box.style.margin = "0";
       box.setAttribute("role", "dialog");
       box.setAttribute("aria-label", img.alt);
-      box.innerHTML = '<img alt="">';
-      box.firstChild.src = img.src;
-      box.firstChild.alt = img.alt;
+      var pic = document.createElement("img");
+      pic.src = img.src;
+      pic.alt = img.alt;
+      box.appendChild(pic);
+      var capText = img.getAttribute("data-caption") || img.alt;
+      if (capText) {
+        var capEl = document.createElement("figcaption");
+        capEl.textContent = capText;
+        box.appendChild(capEl);
+      }
       var close = function () { box.remove(); document.removeEventListener("keydown", onKey); };
       var onKey = function (e) { if (e.key === "Escape") close(); };
       box.addEventListener("click", close);

@@ -6,7 +6,7 @@
 <title>ArimaOps · an AI team for every project, with you in charge</title>
 <meta name="description" content="ArimaOps runs a team of AI agents on your machine: a lead that plans, workers in their own sandboxes, reviewers that check each other and gates that decide when work is done. For solo developers, small teams, security testers and researchers. Free and open source.">
 <meta property="og:title" content="ArimaOps · an AI team for every project, with you in charge">
-<meta property="og:description" content="ArimaOps runs a team of AI agents on your machine: a lead that plans, workers in their own sandboxes, reviewers that check each other and gates that decide when work is done. For solo developers, small teams, security testers and researchers. Free and open source.">
+<meta property="og:description" content="ArimaOps runs a team of AI agents on your machine: a lead that plans, workers in their own sandboxes, reviewers that check each other and gates that decide when work is done. Free and open source.">
 <meta property="og:image" content="https://arimaops.tech/assets/shots/home.webp">
 <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -38,7 +38,7 @@
     <p class="lede">ArimaOps runs a team of AI agents on your own machine. A lead plans the work, workers build in their own sandboxes, a reviewer and a second model check each other, and gates decide when a task is really done. You watch, steer and approve from your desk or your phone.</p>
     <div class="btns">
       <a class="btn primary" href="#start">Get started</a>
-      <a class="btn" href="features.html">See every feature</a>
+      <a class="btn" href="case-studies.html#rolefit">Read RoleFit case study</a>
       <div class="cmd"><code id="cmd-hero">npx arimaops@latest</code><button type="button" data-copy="cmd-hero">Copy</button></div>
     </div>
     <div class="facts">
@@ -47,6 +47,12 @@
       <span><b>6</b> agent CLIs, on your subscriptions or API keys</span>
       <span>Free models from <b>4</b> sources</span>
     </div>
+    <a class="proof-bar" href="case-studies.html#rolefit">
+      <span class="live-dot" aria-hidden="true"></span>
+      <span class="proof-label">Latest verified run · RoleFit</span>
+      <span class="proof-meta">6 merged PRs · 202 tests · 30 Verifier shots · live app</span>
+      <span class="proof-go">Read case study →</span>
+    </a>
     <div class="demo">
       <div class="demo-tabs" role="tablist" aria-label="Demo" data-demo-tabs="demo" data-caption="demo-cap">
         <button type="button" role="tab" aria-selected="true" data-video="demo" data-caption="A dev team on a sample project: chat with an @mention, the board, approving from the Inbox, pull requests and usage.">Dev team</button>
@@ -71,7 +77,7 @@
         <p>Hand off the backlog and keep the judgement.</p>
         <ul><li>Brief the lead in a sentence. It writes a spec you approve, then splits it into small tasks: one task, one branch, one pull request.</li><li>Each worker builds in its own copy of the repo. A reviewer runs the branch, a model from another maker gives a second opinion, and tests with green CI are a gate.</li><li>Runs on the CLI subscriptions you already have, with free models for review, QA and docs.</li></ul>
         <div class="uses"><span class="chip">Dev template</span><span class="chip">Blank template</span></div>
-        
+        <a class="more" href="case-studies.html#rolefit">See a 6-agent Dev team ship RoleFit →</a>
       </article>
       <article class="card audience">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.6A5 5 0 0 1 21.5 19"/></svg></span>
@@ -103,13 +109,85 @@
 
 <section class="band" id="how">
   <div class="wrap">
-    <div class="head"><span class="eyebrow">How it works</span><h2>A team with roles, a flow with gates</h2><p>A task moves through the template's stages and leaves each one only when its gates pass. These are the Dev team's.</p></div>
-    <div class="flow">
-      <div><b>Spec</b><span>You approve the spec</span></div>
-      <div><b>Plan</b><span>Tasks cover every spec item</span></div>
-      <div><b>Build</b><span>Tests and green CI</span></div>
-      <div><b>Review</b><span>Reviewer, second opinion, screenshots</span></div>
-      <div><b>Merge</b><span>Pull request merged, by you</span></div>
+    <div class="head"><span class="eyebrow">How it works</span><h2>A team with roles, a flow with gates</h2><p>A task moves through the template's stages and leaves each one only when its gates pass. Click any stage of the Dev team's flow to inspect its rule and proof from the live RoleFit run.</p></div>
+    <div class="flow-explorer" data-tabgroup="dev-flow">
+      <div class="flow-tabs" role="tablist" aria-label="Dev pipeline gates">
+        <button type="button" class="flow-tab" role="tab" id="tab-spec" aria-selected="true" aria-controls="stage-spec">
+          <span class="flow-tab-num">01 · GATE</span>
+          <b>Spec</b>
+          <span>You approve the spec</span>
+        </button>
+        <button type="button" class="flow-tab" role="tab" id="tab-plan" aria-selected="false" aria-controls="stage-plan">
+          <span class="flow-tab-num">02 · GATE</span>
+          <b>Plan</b>
+          <span>Tasks cover every spec item</span>
+        </button>
+        <button type="button" class="flow-tab" role="tab" id="tab-build" aria-selected="false" aria-controls="stage-build">
+          <span class="flow-tab-num">03 · GATE</span>
+          <b>Build</b>
+          <span>Tests and green CI</span>
+        </button>
+        <button type="button" class="flow-tab" role="tab" id="tab-review" aria-selected="false" aria-controls="stage-review">
+          <span class="flow-tab-num">04 · GATE</span>
+          <b>Review &amp; Verify</b>
+          <span>Reviewer, second model, screenshots</span>
+        </button>
+        <button type="button" class="flow-tab" role="tab" id="tab-merge" aria-selected="false" aria-controls="stage-merge">
+          <span class="flow-tab-num">05 · GATE</span>
+          <b>Merge</b>
+          <span>Pull request merged, by you</span>
+        </button>
+      </div>
+      <div class="flow-panel" role="tabpanel" id="stage-spec" aria-labelledby="tab-spec">
+        <div>
+          <h3>Spec · You approve the requirements before any code</h3>
+          <p>The lead turns your prompt into numbered acceptance criteria (<code>S1–S12</code>) and parks it in your Inbox. Builders stay blocked until you click Approve or send edits back.</p>
+        </div>
+        <div class="flow-meta">
+          <span><strong>Enforced by:</strong> Lead + Owner Inbox gate</span>
+          <span><strong>RoleFit proof:</strong> Cipher wrote Spec v1 covering <code>S1–S12</code>; owner approved at 06:28Z before Wave 1 began. <a href="case-studies.html#rolefit">See run →</a></span>
+        </div>
+      </div>
+      <div class="flow-panel" role="tabpanel" id="stage-plan" aria-labelledby="tab-plan" hidden>
+        <div>
+          <h3>Plan · Tasks cover every spec item without overlap</h3>
+          <p>The lead breaks the spec into bounded tasks—one task, one branch, one PR—while HQ's factory scorers verify each PR touches only its assigned scope and ships real test assertions.</p>
+        </div>
+        <div class="flow-meta">
+          <span><strong>Enforced by:</strong> Lead + HQ factory scorers</span>
+          <span><strong>RoleFit proof:</strong> <code>RSV-T01</code> to <code>RSV-T06</code> covered all 12 spec items; <strong>12/12</strong> factory scorer checks passed (<code>files-outside-task</code> &amp; <code>tests-only-added</code>). <a href="case-studies.html#rolefit-prs">See PR table →</a></span>
+        </div>
+      </div>
+      <div class="flow-panel" role="tabpanel" id="stage-build" aria-labelledby="tab-build" hidden>
+        <div>
+          <h3>Build · Isolated containers, Vitest, and green CI</h3>
+          <p>Developers work in parallel inside their own Docker containers behind HQ's egress proxy. No PR enters review until its unit tests and GitHub Actions workflow pass.</p>
+        </div>
+        <div class="flow-meta">
+          <span><strong>Enforced by:</strong> Isolated container + GitHub Actions CI</span>
+          <span><strong>RoleFit proof:</strong> Grew from 1 smoke test to <strong>202/202</strong> Vitest tests across 10 files (4,651 insertions / 16 deletions); CI green on every PR. <a href="case-studies.html#rolefit-team">See isolation setup →</a></span>
+        </div>
+      </div>
+      <div class="flow-panel" role="tabpanel" id="stage-review" aria-labelledby="tab-review" hidden>
+        <div>
+          <h3>Review &amp; Verify · Code review, adversarial model, and live browser evidence</h3>
+          <p>A reviewer inspects the PR, high-stakes tasks hit a second model from another provider/tier, and a Playwright Verifier screenshots the running app. Pushing a fix commit automatically invalidates stale screenshots and triggers a fresh capture.</p>
+        </div>
+        <div class="flow-meta">
+          <span><strong>Enforced by:</strong> Reviewer (Nyx), Second opinion (Pulse) &amp; Verifier (Zero)</span>
+          <span><strong>RoleFit proof:</strong> Pulse caught a 6.2 s O(N²) ReDoS payload on PR #3; pushing fix <code>6cbaff3</code> on PR #4 invalidated 10 stale shots and re-ran Playwright automatically. <a href="case-studies.html#rolefit-catches">See catches →</a></span>
+        </div>
+      </div>
+      <div class="flow-panel" role="tabpanel" id="stage-merge" aria-labelledby="tab-merge" hidden>
+        <div>
+          <h3>Merge · Final authority stays human</h3>
+          <p>HQ never merges pull requests on your behalf. Once every gate passes, the merge card waits cleanly in your Inbox alongside its PR summary, test count, and Verifier screenshots.</p>
+        </div>
+        <div class="flow-meta">
+          <span><strong>Enforced by:</strong> Owner Inbox approval · 0 agent merges</span>
+          <span><strong>RoleFit proof:</strong> 5 Inbox checkpoints (1 spec + 4 wave merges) across 4h 56m total wall-clock; PR #6 deployed live 12s after owner merge. <a href="case-studies.html#rolefit-timeline">See timeline →</a></span>
+        </div>
+      </div>
     </div>
     <div class="steps">
       <div class="step"><h3>Pick a template, brief the lead</h3><p>Name the project, choose Dev, Security, Research, Marketing, Sales or Startup, and tell the lead what you want in plain words.</p></div>
@@ -121,9 +199,34 @@
 
 <section class="band alt" id="runs">
   <div class="wrap">
-    <div class="head"><span class="eyebrow">Real runs</span><h2>What a team did with it</h2><p>Recorded from real projects, with the app's own screenshots: what worked, and where people had to step in.</p></div>
+    <div class="head"><span class="eyebrow">Real runs</span><h2>What a team did with it</h2><p>Recorded from real projects on our own machine, with real commits, app screenshots, what the reviewers caught, and where people had to step in.</p></div>
     <div class="grid g2">
-      <a class="card" href="case-studies.html#vampi"><span class="where">Security · Purple</span><h3>A Purple team on a vulnerable API</h3><p>Scope enforced at the proxy, 15 endpoints mapped, two exposures confirmed read-only, an OWASP API threat model, and why exploitation is paused.</p><span class="more">Read the case study →</span></a>
+      <a class="run-card" href="case-studies.html#rolefit">
+        <div class="run-thumb"><img src="assets/shots/case/rolefit-studio.webp" alt="RoleFit split-pane ATS resume studio shipped by a 6-agent ArimaOps Dev team" loading="lazy" width="1280" height="800"></div>
+        <div class="run-card-head"><span class="where">Dev · 6 Antigravity agents · Live app</span><span class="chip free">Live demo</span></div>
+        <h3>RoleFit: a private ATS resume studio, shipped live</h3>
+        <p>Six containerised agents took a one-line prompt to a live React app in four waves—catching a keyword-stemming bug, an O(N²) ReDoS regex, and stale editor state before merge.</p>
+        <div class="run-metrics">
+          <span class="chip">6 merged PRs</span>
+          <span class="chip">202 tests</span>
+          <span class="chip">30 Verifier shots</span>
+          <span class="chip neutral">~70 min active</span>
+        </div>
+        <span class="more">Read case study &amp; inspect PRs →</span>
+      </a>
+      <a class="run-card" href="case-studies.html#vampi">
+        <div class="run-thumb"><img src="assets/shots/case/sec-board.webp" alt="VAmPI Purple team engagement board in ArimaOps showing recon and threat model in review" loading="lazy" width="1600" height="1000"></div>
+        <div class="run-card-head"><span class="where">Security · Purple · 7 agents</span><span class="chip neutral">Paused at exploit gate</span></div>
+        <h3>VAmPI: a Purple team on a vulnerable API</h3>
+        <p>Scope enforced at the proxy, 15 endpoints mapped from OpenAPI, two exposures confirmed read-only, an OWASP API threat model ranked P0–P3, and why exploitation stopped.</p>
+        <div class="run-metrics">
+          <span class="chip">15 endpoints</span>
+          <span class="chip">12 OWASP leads</span>
+          <span class="chip">0 out-of-scope</span>
+          <span class="chip neutral">Read-only verified</span>
+        </div>
+        <span class="more">Read security case study →</span>
+      </a>
     </div>
   </div>
 </section>

@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Case studies · ArimaOps</title>
-<meta name="description" content="A real ArimaOps run: a Purple team on a vulnerable API.">
-<meta property="og:title" content="Case study: a Purple team on a vulnerable API · ArimaOps">
-<meta property="og:description" content="A seven-agent ArimaOps Purple team on VAmPI, a deliberately vulnerable API in our own lab: scope enforced, 15 endpoints mapped, two exposures confirmed read-only, and exploitation paused for provider verification.">
-<meta property="og:image" content="https://arimaops.tech/assets/shots/case/sec-board.webp">
+<meta name="description" content="Real ArimaOps runs: a 6-agent Antigravity Dev team shipping RoleFit live (6 PRs, 202 tests, 30 Playwright Verifier screenshots), and a 7-agent Purple security team on VAmPI.">
+<meta property="og:title" content="Case studies: RoleFit Dev team & VAmPI Purple team · ArimaOps">
+<meta property="og:description" content="Recorded from real ArimaOps projects: real PRs, model catches, Playwright verification screenshots, honest friction, and human checkpoints.">
+<meta property="og:image" content="https://arimaops.tech/assets/shots/case/rolefit-studio.webp">
 <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="assets/lion.svg" type="image/svg+xml">
@@ -31,17 +31,244 @@
   </div>
 </header>
 <main id="main">
-<section class="band first" style="padding-bottom:0">
+<section class="band first" style="padding-bottom:44px">
   <div class="wrap">
     <span class="eyebrow">Case studies</span>
     <h1 style="margin-top:14px;font-size:clamp(32px,4.4vw,48px)">Real runs, as they happened</h1>
-    <p class="lede">A project run with ArimaOps on our own machine, recorded with the app's screenshots. Each says what the team did, what the reviewer caught, and where a person stepped in.</p>
-    <nav class="toc" aria-label="On this page" style="margin-top:20px"><a href="#vampi">A Purple team on a vulnerable API</a></nav>
+    <p class="lede">Projects run end-to-end with ArimaOps on our own machine, recorded from the real database, GitHub pull requests, and Verifier screenshots. Each says what the team built, what reviewers caught, and where a human stepped in.</p>
+    <nav class="toc" aria-label="On this page" style="margin-top:20px">
+      <a href="#rolefit">RoleFit: a 6-agent Dev team shipping a live app</a>
+      <a href="#vampi">VAmPI: a Purple team on a vulnerable API</a>
+    </nav>
   </div>
 </section>
 
+<!-- ================================================================ ROLEFIT DEV CASE STUDY -->
+<section class="hero band" id="rolefit">
+  <div class="wrap">
+    <span class="eyebrow">Case study · Dev · 6 agents · 19 November 2026</span>
+    <h2 class="h1" style="margin-top:14px;font-size:clamp(32px,4.6vw,50px)">RoleFit:<br><em>a 6-agent Dev team shipped live</em></h2>
+    <p class="lede">RoleFit is a private, client-side ATS resume studio and job-description matcher with zero backend or tracking. We connected an empty Vite/React repo to ArimaOps, staffed a six-agent Antigravity (<code>agy</code>) team in Docker containers across Claude and Gemini models, and ran every HQ gate—from spec approval through 202 automated tests, cross-model adversarial review, Playwright evidence, and four human Inbox merges.</p>
+    <div class="case-actions">
+      <a class="btn primary" href="https://sachinselvaraju.tech/rolefit/" target="_blank" rel="noopener noreferrer">Try RoleFit live ↗</a>
+      <a class="btn" href="https://github.com/sachindots/rolefit/pulls?q=is%3Apr+is%3Amerged" target="_blank" rel="noopener noreferrer">Inspect all 6 PRs on GitHub ↗</a>
+      <a class="btn" href="https://github.com/sachindots/rolefit" target="_blank" rel="noopener noreferrer">Source repo ↗</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>6</b><span>merged PRs (#1–#6) · 4,651 insertions / 16 deletions across 30 files · 0 agent merges</span></div>
+      <div class="stat"><b>202</b><span>Vitest tests passing across 10 test files · 100% green CI &amp; GitHub Pages deploy</span></div>
+      <div class="stat"><b>30</b><span>Verifier screenshots on merged head commits (40 total incl. 1 automatic re-run)</span></div>
+      <div class="stat"><b>~70 min</b><span>active agent work (4h 56m wall-clock incl. ~3h 35m parked waiting on human merges)</span></div>
+    </div>
+  </div>
+</section>
 
-<section class="hero" id="vampi">
+<section class="band alt" id="rolefit-gallery">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Playwright Verifier (Zero)</span><h2>Tested across light, dark, print, and tablet before merge</h2><p>Every UI PR (#4–#6) booted the live Vite build inside HQ's <code>arimaops-verifier</code> container. Zero confirmed zero horizontal overflow (<code>scrollWidth === clientWidth</code>) at <code>1280×800</code> desktop and <code>820×1180</code> tablet, crisp white paper preserved in dark mode, all three ATS-safe templates, Letter/A4 paging, and <code>@media print</code> output. Click any tab or click the image to zoom.</p></div>
+    <div data-tabgroup="rolefit-shots">
+      <div class="gallery-tabs" role="tablist" aria-label="RoleFit Verifier screenshots">
+        <button type="button" role="tab" id="rf-tab-1" aria-selected="true" aria-controls="rf-shot-1">Split Studio</button>
+        <button type="button" role="tab" id="rf-tab-2" aria-selected="false" aria-controls="rf-shot-2">JD Match 67%</button>
+        <button type="button" role="tab" id="rf-tab-3" aria-selected="false" aria-controls="rf-shot-3">Dark Mode</button>
+        <button type="button" role="tab" id="rf-tab-4" aria-selected="false" aria-controls="rf-shot-4">Modern Minimal</button>
+        <button type="button" role="tab" id="rf-tab-5" aria-selected="false" aria-controls="rf-shot-5">Print PDF</button>
+        <button type="button" role="tab" id="rf-tab-6" aria-selected="false" aria-controls="rf-shot-6">Tablet Audit</button>
+      </div>
+      <div class="gallery-stage">
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-1" aria-labelledby="rf-tab-1">
+          <div class="gallery-media"><img src="assets/shots/case/rolefit-studio.webp" alt="RoleFit desktop split-pane editor alongside live Classic Executive resume preview" data-zoom data-caption="RSV-T06 · Commit 5a328fa · Desktop 1280×800 light studio header, form editor, and Classic Executive preview" width="1280" height="800"></div>
+          <div class="gallery-caption"><span><b>Split-pane studio</b> — structured resume editor alongside live Classic Executive sheet</span><span class="gallery-tags"><span class="chip">PR #6 · 5a328fa</span><span class="chip neutral">1280×800</span></span></div>
+        </div>
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-2" aria-labelledby="rf-tab-2" hidden>
+          <div class="gallery-media"><img src="assets/shots/case/rolefit-jd-match.webp" alt="RoleFit JD Match panel showing 67% keyword match and technical chips including C++ and CI/CD" loading="lazy" data-zoom data-caption="RSV-T06 · Commit 5a328fa · Deterministic client-side JD Match scoring 67% with matched/missing keyword chips" width="1280" height="800"></div>
+          <div class="gallery-caption"><span><b>JD Keyword Match</b> — live 67% score preserving punctuation tokens (<code>C++</code>, <code>CI/CD</code>, <code>Node.js</code>)</span><span class="gallery-tags"><span class="chip">PR #6 · 5a328fa</span><span class="chip neutral">1280×800</span></span></div>
+        </div>
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-3" aria-labelledby="rf-tab-3" hidden>
+          <div class="gallery-media"><img src="assets/shots/case/rolefit-dark.webp" alt="RoleFit dark mode chrome keeping the resume paper white for accurate print preview" loading="lazy" data-zoom data-caption="RSV-T06 · Commit 5a328fa · Dark studio chrome around a crisp white ATS paper sheet" width="1280" height="800"></div>
+          <div class="gallery-caption"><span><b>Dark studio mode</b> — low-glare workspace chrome keeping the resume sheet crisp white</span><span class="gallery-tags"><span class="chip">PR #6 · 5a328fa</span><span class="chip neutral">1280×800</span></span></div>
+        </div>
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-4" aria-labelledby="rf-tab-4" hidden>
+          <div class="gallery-media"><img src="assets/shots/case/rolefit-modern.webp" alt="RoleFit Modern Minimal resume template on Letter page size" loading="lazy" data-zoom data-caption="RSV-T05 · Commit 9b8025f · Modern Minimal template with live Letter/A4 switcher" width="1280" height="800"></div>
+          <div class="gallery-caption"><span><b>Modern Minimal</b> — second of three ATS-safe single-column templates with Letter/A4 paper modes</span><span class="gallery-tags"><span class="chip">PR #5 · 9b8025f</span><span class="chip neutral">1280×800</span></span></div>
+        </div>
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-5" aria-labelledby="rf-tab-5" hidden>
+          <div class="gallery-media"><img src="assets/shots/case/rolefit-print.webp" alt="RoleFit emulated @media print output showing clean PDF layout without editor chrome" loading="lazy" data-zoom data-caption="RSV-T05 · Commit 9b8025f · Emulated @media print hiding all app chrome for clean selectable PDF text" width="1280" height="800"></div>
+          <div class="gallery-caption"><span><b><code>@media print</code> PDF output</b> — app chrome stripped automatically for selectable ATS text export</span><span class="gallery-tags"><span class="chip">PR #5 · 9b8025f</span><span class="chip neutral">Print simulation</span></span></div>
+        </div>
+        <div class="gallery-panel" role="tabpanel" id="rf-shot-6" aria-labelledby="rf-tab-6" hidden>
+          <div class="gallery-media shot-portrait"><img src="assets/shots/case/rolefit-tablet-audit.webp" alt="RoleFit tablet layout at 820x1180 showing Bullet-Impact and ATS Audit warnings" loading="lazy" data-zoom data-caption="RSV-T06 · Commit 5a328fa · Tablet 820×1180 tabbed studio surfacing passive bullets and missing metrics" width="820" height="1180"></div>
+          <div class="gallery-caption"><span><b>Tablet Bullet-Impact &amp; ATS Audit</b> — flags weak verbs (<code>"Responsible for"</code>) and bullets lacking metrics</span><span class="gallery-tags"><span class="chip">PR #6 · 5a328fa</span><span class="chip neutral">820×1180 tablet</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="rolefit-team">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Team &amp; isolation</span><h2>Six Antigravity agents, multi-provider by design</h2><p>All six roles ran inside isolated Docker containers on <code>agy</code>. Each container could reach GitHub, npm, and its model endpoints only through HQ's egress proxy, with <code>GH_TOKEN</code> injected via HQ's write-only project environment.</p></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Agent</th><th>Role</th><th>CLI &amp; Model</th><th>Container &amp; scope</th></tr></thead>
+      <tbody>
+        <tr><td><b>Cipher</b></td><td>Lead</td><td><code>agy · gemini-4-neon-high</code></td><td>Wrote Spec v1 (<code>S1–S12</code>), broke down 6 tasks, triaged catches, gatekept waves</td></tr>
+        <tr><td><b>Ghost</b></td><td>Developer</td><td><code>agy · claude-sonnet-5-5-medium</code> (Waves 1–2)<br>→ <code>gemini-4-argon-high</code> (Waves 3–4)</td><td>Built PR #1 (<code>RSV-T01</code>) and PR #3 (<code>RSV-T03</code>); hit Claude 3h 15m quota wall at 08:20Z</td></tr>
+        <tr><td><b>Vortex</b></td><td>Developer</td><td><code>agy · claude-sonnet-5-5-medium</code> (Waves 1–2)<br>→ <code>gemini-4-argon-high</code> (Waves 3–4)</td><td>Built PRs #2, #4, #5, #6 and fixed stemming &amp; editor draft-sync bugs</td></tr>
+        <tr><td><b>Nyx</b></td><td>Reviewer</td><td><code>agy · gemini-4-argon-medium</code><br>→ <code>claude-sonnet-5-5-medium</code> → <code>gemini-4-neon-medium</code></td><td>Reviewed PRs; flagged duplicate-ID risk on PR #1; swapped after silent stalls</td></tr>
+        <tr><td><b>Pulse</b></td><td>Second opinion</td><td><code>agy · gemini-4-hydrogen-high</code></td><td>Adversarial cross-model audit on high-stakes PR #3 (<code>backup.ts</code>)</td></tr>
+        <tr><td><b>Zero</b></td><td>Verifier</td><td><code>agy · gemini-3.8-flash-high</code></td><td><code>arimaops-verifier</code> headless Chromium · 30 final screenshots (40 incl. auto re-run)</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section class="band alt" id="rolefit-prs">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Pull requests &amp; factory gates</span><h2>One task, one branch, one tested PR</h2><p>Every PR started from a bounded task mapped to <code>S1–S12</code>, passed Vitest and GitHub Actions CI, and cleared HQ's automatic factory scorers before reaching the owner's Inbox.</p></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>PR</th><th>Task</th><th>What it shipped</th><th>Spec items</th><th>Diff</th><th class="num">Tests</th><th class="num">Verifier shots</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/1" target="_blank" rel="noopener noreferrer">#1</a></td>
+          <td><code>RSV-T01</code></td>
+          <td>Resume schema, strict validation, localStorage persistence &amp; sample data</td>
+          <td><code>S1, S2, S10, S12</code></td>
+          <td>+710 · 6 files</td>
+          <td class="num">46</td>
+          <td class="num">—</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/2" target="_blank" rel="noopener noreferrer">#2</a></td>
+          <td><code>RSV-T02</code></td>
+          <td>Client-side JD Match &amp; ATS bullet-impact engine (<code>C++</code>, <code>C#</code>, <code>.NET</code>, <code>CI/CD</code>)</td>
+          <td><code>S6, S7, S12</code></td>
+          <td>+698 · 4 files</td>
+          <td class="num">60</td>
+          <td class="num">—</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/3" target="_blank" rel="noopener noreferrer">#3</a></td>
+          <td><code>RSV-T03</code> <span class="chip neutral">high-stakes</span></td>
+          <td>Hardened JSON backup export/import &amp; XSS sanitization</td>
+          <td><code>S8, S12</code></td>
+          <td>+431 · 2 files</td>
+          <td class="num">62 new (167 total)</td>
+          <td class="num">—</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/4" target="_blank" rel="noopener noreferrer">#4</a></td>
+          <td><code>RSV-T04</code></td>
+          <td>Structured resume editor UI &amp; persistent workspace shell</td>
+          <td><code>S1, S2, S3, S11, S12</code></td>
+          <td>+660 · 8 files</td>
+          <td class="num">118</td>
+          <td class="num">10 × 2 commits</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/5" target="_blank" rel="noopener noreferrer">#5</a></td>
+          <td><code>RSV-T05</code></td>
+          <td>Live split-pane preview, 3 ATS-safe templates &amp; <code>@media print</code> PDF export</td>
+          <td><code>S4, S5, S11, S12</code></td>
+          <td>+953 · 6 files</td>
+          <td class="num">188</td>
+          <td class="num">9</td>
+        </tr>
+        <tr>
+          <td><a href="https://github.com/sachindots/rolefit/pull/6" target="_blank" rel="noopener noreferrer">#6</a></td>
+          <td><code>RSV-T06</code></td>
+          <td>JD Match UI, backup controls, dark/light mode, ConfirmDialog &amp; README</td>
+          <td><code>S1, S6–S12</code></td>
+          <td>+1,312 / -109 · 14 files</td>
+          <td class="num">202</td>
+          <td class="num">11</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">Net shipped on <code>main</code> (<code>ac319c6..46c0356</code>) · 12/12 factory scorers passed (<code>files-outside-task</code> 6/6, <code>tests-only-added</code> 6/6)</td>
+          <td>+4,651 / -16 · 30 files</td>
+          <td class="num">202 (10 files)</td>
+          <td class="num">30 final (40 total)</td>
+        </tr>
+      </tfoot>
+    </table></div>
+    <p class="note">PR #3 merged into Wave 2 at 167 combined repo tests alongside PR #2; test counts reflect the repository total passing at each PR head commit up to 202/202 on <code>main</code>.</p>
+  </div>
+</section>
+
+<section class="band" id="rolefit-catches">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Review &amp; adversarial gates</span><h2>Real bugs caught before merge</h2><p>Layered gates caught subtle logic, security, and React state bugs before a human clicked Merge—and automatically wiped stale Playwright proof whenever a fix landed.</p></div>
+    <div class="grid g3">
+      <article class="bug-card">
+        <div class="bug-head"><span class="badge caught">Lead review · PR #2</span><span class="where">1a8e48e</span></div>
+        <h3>Over-aggressive plural stemming corrupted tech terms</h3>
+        <p><code>Cipher</code> caught <code>normalizeToken()</code> stripping trailing <code>s</code> before checking <code>TECH_TERMS</code> and <code>FLUFF</code>—mangling <code>Redis</code>, <code>DevOps</code>, <code>Microservices</code>, <code>Jenkins</code>, <code>Prometheus</code>, <code>Rails</code>, <code>Pandas</code>, and <code>NestJS</code> and leaking filler nouns like <code>requirements</code> and <code>benefits</code>.</p>
+        <div class="bug-outcome"><strong>Fix verified:</strong> <code>Vortex</code> reordered lookup before stemming and added 11 regression tests (49 → 60 passing).</div>
+      </article>
+      <article class="bug-card">
+        <div class="bug-head"><span class="badge security">Second opinion fail · PR #3</span><span class="where">fef8dff</span></div>
+        <h3>Adversarial O(N²) ReDoS (6.2 s) &amp; sanitizer edge cases</h3>
+        <p><code>Pulse</code> (<code>gemini-4-hydrogen-high</code>) failed the <code>second-opinion</code> gate on <code>backup.ts</code>: <code>BLOCK_TAGS</code> regex took <strong>6.2 s</strong> on a 480 KB <code>"&lt;script&gt;"×60000</code> payload in an unvalidated key, <code>STRAY_OPEN</code> left <code>&lt;</code> in <code>&lt;&lt;img src=x</code>, plus outer-envelope <code>__proto__</code> / <code>schemaVersion</code> mismatch.</p>
+        <div class="bug-outcome"><strong>Transparent outcome:</strong> PR #3 remained on <code>fef8dff</code>; <code>Cipher</code> verified outer-envelope <code>__proto__</code> is safely ignored on JSON parse, passed the cross-model gate, and logged ReDoS/<code>STRAY_OPEN</code> hardening for follow-up.</div>
+      </article>
+      <article class="bug-card">
+        <div class="bug-head"><span class="badge auto-rerun">Lead catch + Auto re-run · PR #4</span><span class="where">9bdfccd → 6cbaff3</span></div>
+        <h3>Stale React draft state in SectionCard + evidence invalidation</h3>
+        <p><code>Cipher</code> caught <code>UrlField</code> and <code>ListField</code> holding stale local <code>draft</code> state when parent props changed—which would break <em>Load sample</em>, <em>Start blank</em>, and <em>Import JSON</em>.</p>
+        <div class="bug-outcome"><strong>Auto re-verify:</strong> <code>Vortex</code> pushed fix <code>6cbaff3</code> (116 → 118 tests). HQ invalidated <code>Zero</code>'s 10 shots at <code>9bdfccd</code> and automatically re-ran Playwright on <code>6cbaff3</code>.</div>
+      </article>
+    </div>
+    <p class="note"><strong>Non-blocking catch on PR #1 (<code>RSV-T01</code>):</strong> <code>Nyx</code> also flagged duplicate item IDs in sample fixtures that risked React key collisions before schema serialization hardened.</p>
+  </div>
+</section>
+
+<section class="band alt" id="rolefit-hq">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Inside ArimaOps HQ</span><h2>What the operator saw while the team shipped</h2><p>Four direct viewer screenshots captured from the live <code>Rolefit</code> project in ArimaOps HQ: every task card with passed gates and attached evidence, all six synced PRs, the real Team channel escalations, and the six-agent roster.</p></div>
+    <div class="grid g2">
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/rolefit-hq-board.webp" alt="ArimaOps Board for Rolefit showing all six v1 tasks in Done with passed gates and screenshot counts" loading="lazy" width="1600" height="1000"></div><p class="cap">Board: RoleFit Studio v1 with 6/6 Done cards, gate checks passed (✓ 2), and attached Verifier screenshots (9–11 per UI PR)</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/rolefit-hq-prs.webp" alt="ArimaOps Pull requests screen showing all six merged RoleFit PRs and changed files on PR #6" loading="lazy" width="1600" height="1000"></div><p class="cap">Pull requests: PRs #1–#6 synced live in HQ with Merged state and PR #6's 14-file change summary beside it</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/rolefit-hq-chat.webp" alt="ArimaOps Chat showing Zero attaching 11 screenshots, HQ's 15-minute escalation on Nyx, Cipher's completion report, and human PR #6 merge" loading="lazy" width="1600" height="1000"></div><p class="cap">Chat: Zero attaching 11 screenshots at <code>5a328fa</code>, HQ's 15-min escalation on Nyx, Cipher's completion summary, and human PR #6 merge</p></figure>
+      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/rolefit-hq-agents.webp" alt="ArimaOps Agents table showing all six Rolefit Antigravity agents across Gemini models in container mode" loading="lazy" width="1600" height="1000"></div><p class="cap">Agents: the 6-agent Antigravity roster running across Gemini models inside isolated Docker containers</p></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="rolefit-timeline">
+  <div class="wrap">
+    <div class="head"><span class="eyebrow">Timeline &amp; honest friction</span><h2>Wave-by-wave log, and where a person stepped in</h2><p>Active agent build time totaled ~70 minutes (~80 min including the Claude quota swap). The remaining ~3h 35m of the 4h 56m wall-clock was clean waiting time parked in the owner's Inbox between waves.</p></div>
+    <ul class="timeline">
+      <li><b>06:28Z · Spec approved</b><code>Cipher</code> authored Spec v1 (<code>S1–S12</code>); owner approved in the Inbox.</li>
+      <li><b>06:34Z – 06:42Z · Wave 1</b><span class="wave-meta"><span class="chip">~8.5 min active</span><span class="chip neutral">~41m merge wait</span></span> <code>RSV-T01</code> (PR #1, <code>Ghost</code>) and <code>RSV-T02</code> (PR #2, <code>Vortex</code>) ran in parallel on <code>claude-sonnet-5-5-medium</code>; <code>1a8e48e</code> stemming fix merged cleanly at 07:23Z.</li>
+      <li><b>07:24Z – 07:37Z · Wave 2</b><span class="wave-meta"><span class="chip">~14 min active</span><span class="chip neutral">~34m merge wait</span></span> <code>RSV-T03</code> (PR #3 high-stakes, <code>Ghost</code>) hit <code>Pulse</code>'s adversarial ReDoS check; <code>RSV-T04</code> (PR #4, <code>Vortex</code>) fixed stale <code>SectionCard</code> drafts (<code>6cbaff3</code>) and auto-re-ran <code>Zero</code>; merged at 08:12Z.</li>
+      <li><b>08:12Z – 08:42Z · Wave 3</b><span class="wave-meta"><span class="chip">~19 min build</span><span class="chip neutral">30m w/ swap · 1h 47m wait</span></span> <code>Ghost</code> hit Claude's 3h 15m quota wall at 08:20Z on <code>RSV-T05</code>; owner swapped Developer to <code>gemini-4-argon-high</code> at 08:22Z, routed to <code>Vortex</code> at 08:23Z, verified split preview + 3 templates + print CSS at 08:42Z; merged at 10:29Z.</li>
+      <li><b>10:30Z – 11:24Z · Wave 4 &amp; deploy</b><span class="wave-meta"><span class="chip">~22 min active</span><span class="chip free">Live 11:24:34Z</span></span> <code>RSV-T06</code> built JD Match UI, dark/light mode, ConfirmDialog, and README on <code>gemini-4-argon-high</code> with 11 Verifier shots (<code>5a328fa</code>); owner merged PR #6 at 11:24:22Z and GitHub Pages went live 12 seconds later.</li>
+    </ul>
+
+    <div class="honest-grid" style="margin-top:28px">
+      <div class="honest-item">
+        <h3>1. Mid-run Claude quota wall</h3>
+        <p>After Waves 1–2, <code>Ghost</code> hit a 3h 15m limit on <code>claude-sonnet-5-5-medium</code> at 08:20Z. Switching the Developer role to <code>gemini-4-argon-high</code> in Settings let <code>Vortex</code> pick up <code>RSV-T05</code> inside two minutes without losing container state.</p>
+      </div>
+      <div class="honest-item">
+        <h3>2. Reviewer stalls &amp; 15-min escalation</h3>
+        <p><code>Nyx</code> missed early review pings on PRs #1, #5, and #6. HQ's 15-minute unanswered-question watchdog escalated straight to <code>Cipher</code>, prompting restarts and model swaps (<code>gemini-4-argon-medium</code> → <code>claude-sonnet-5-5-medium</code> → <code>gemini-4-neon-medium</code>).</p>
+      </div>
+      <div class="honest-item">
+        <h3>3. PR #3 owner-as-reviewer gate quirk</h3>
+        <p>Temporarily assigning <code>RSV-T03</code> to <code>Nyx</code> caused HQ's reviewer gate to reject <code>Nyx</code>'s own <code>record_gate</code> call (an agent cannot approve a task it owns). <code>Cipher</code> kept <code>Vortex</code> as owner on <code>RSV-T04+</code> cleanly.</p>
+      </div>
+      <div class="honest-item">
+        <h3>4. Antigravity metering gap &amp; 5 human gates</h3>
+        <p>HQ's usage table recorded <code>0</code> metered events for <code>agy</code> (metering currently parses <code>claude</code> and <code>codex</code> session logs only), so we report exact counts instead of estimating tokens. Merging stayed 100% human across all 5 Inbox checkpoints.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ VAMPI SECURITY CASE STUDY -->
+<section class="hero band alt" id="vampi">
   <div class="wrap">
     <span class="eyebrow">Case study · Security · Purple · 18 November 2026</span>
     <h2 class="h1" style="margin-top:14px;font-size:clamp(32px,4.6vw,50px)">A Purple team<br><em>on a vulnerable API</em></h2>
@@ -55,7 +282,7 @@
   </div>
 </section>
 
-<section class="band alt">
+<section class="band">
   <div class="wrap">
     <div class="head"><span class="eyebrow">Setup</span><h2>Scope first, enforced by HQ</h2><p>The lab ran VAmPI in a container on the agents' network. The scope named one address; HQ and the other lab app were set out of scope. We checked the gate from inside an agent's container before any work began.</p></div>
     <div class="table-wrap"><table>
@@ -73,7 +300,7 @@
   </div>
 </section>
 
-<section class="band">
+<section class="band alt">
   <div class="wrap">
     <div class="head"><span class="eyebrow">Recon</span><h2>The whole surface, from read-only requests</h2><p>Recon pulled the OpenAPI spec, mapped 15 endpoints and the JWT sign-in, and noted what each one exposes. One step changed the lab (seeding its database), so recon asked first: the plan, its impact and its rollback went to the owner's Inbox and ran only after approval.</p></div>
     <div class="grid g2">
@@ -84,7 +311,7 @@
   </div>
 </section>
 
-<section class="band alt">
+<section class="band">
   <div class="wrap">
     <div class="head"><span class="eyebrow">Threat model</span><h2>Every OWASP API risk, with a task to prove it</h2><p>The lead mapped the surface to the OWASP API Security Top 10 (2023), turned each risk into a hypothesis and a task, and ranked them. Exploits that change state each need a plan the owner approves.</p></div>
     <div class="table-wrap"><table>
@@ -107,7 +334,7 @@
   </div>
 </section>
 
-<section class="band">
+<section class="band alt">
   <div class="wrap">
     <div class="head"><span class="eyebrow">Where it stopped</span><h2>Exploitation is paused, on purpose</h2><p>When the team moved to exploitation, the model provider's own safety system flagged the work as offensive security and stopped the lead. An earlier recon attempt on a different provider was refused by its filter in the same way. That is the providers doing their job: offensive testing needs the provider's verification for authorised security work, which this run did not have.</p></div>
     <ul class="card" style="box-shadow:none">
@@ -117,7 +344,6 @@
     </ul>
   </div>
 </section>
-
 
 </main>
 <footer class="foot">
