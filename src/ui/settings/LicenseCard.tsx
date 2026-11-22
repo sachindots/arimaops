@@ -113,10 +113,10 @@ export function LicenseCard() {
         setLicenseKey("");
         setNotice("Ed25519 license verified and activated.");
       } else {
-        // Offline ?mock=1 format check: require canonical "ARIMA2.<payload>.<sig>" format
+        // Offline ?mock=1 format check: require canonical "ARIMA1.<payload>.<sig>" format
         const parts = raw.split(".");
-        if (parts.length !== 3 || parts[0] !== "ARIMA2" || parts[1].length < 8 || parts[2].length < 16) {
-          throw new Error("Invalid Ed25519 license key format. Expected signed ARIMA2.<payload>.<signature> token.");
+        if (parts.length !== 3 || parts[0] !== "ARIMA1" || parts[1].length < 8 || parts[2].length < 16) {
+          throw new Error("Invalid Ed25519 license key format. Expected signed ARIMA1.<payload>.<signature> token.");
         }
         setLicense({
           tier: "enterprise",
@@ -223,7 +223,7 @@ export function LicenseCard() {
               className="field min-h-[84px] py-2 font-term text-[12px]"
               value={licenseKey}
               onChange={(e) => setLicenseKey(e.target.value)}
-              placeholder="ARIMA2.<base64url-payload>.<ed25519-signature>"
+              placeholder="ARIMA1.<base64url-payload>.<ed25519-signature>"
               aria-label="Ed25519 license key"
             />
 

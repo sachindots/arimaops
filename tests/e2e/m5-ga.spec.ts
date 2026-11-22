@@ -154,7 +154,7 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
     await expect(licenseRegion.getByRole("alert")).toContainText(/Invalid Ed25519 license key format/i);
 
     // Valid canonical token activates Enterprise tier in mock mode
-    await keyInput.fill("ARIMA2.eyJ0aWVyIjoiZW50ZXJwcmlzZSJ9.c2lnbmF0dXJlLW1vY2stdmFsaWQtZWRkMjU1MTk");
+    await keyInput.fill("ARIMA1.eyJ0aWVyIjoiZW50ZXJwcmlzZSJ9.c2lnbmF0dXJlLW1vY2stdmFsaWQtZWRkMjU1MTk");
     await activateBtn.click();
     await expect(licenseRegion.getByRole("status")).toContainText(/Enterprise Ed25519 license verified/i);
     await expect(licenseRegion.getByText("enterprise", { exact: true }).first()).toBeVisible();
