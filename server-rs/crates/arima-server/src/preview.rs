@@ -539,6 +539,7 @@ pub fn create_and_route_feedback(
                     &outbox_payload,
                 )
                 .map_err(|e| e.to_string())?;
+            crate::delivery::kick(state, project_id, to_agent_id);
         }
     }
 

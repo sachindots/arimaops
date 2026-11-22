@@ -63,10 +63,20 @@ struct Session {
     workspace: String,
 }
 
+/// What the last Docker check found; the setup checklist reads this instead of probing on every snapshot.
+#[derive(Clone, Default)]
+pub struct RuntimeStatus {
+    pub docker_ok: bool,
+    pub docker_detail: String,
+    pub image_ok: bool,
+    pub image_detail: String,
+}
+
 pub struct AgentRuntime {
     pub config: RuntimeConfig,
     engine: DockerEngine,
     sessions: Mutex<HashMap<(String, String), Arc<Session>>>,
+    status: Mutex<RuntimeStatus>,
 }
 
 fn clean_model(model: &Value) -> Option<String> {
@@ -117,7 +127,7 @@ pub fn provider_env(cli: &str, provider: &str) -> &'static [&'static str] {
 impl AgentRuntime {
     #[must_use]
     pub fn new(config: RuntimeConfig) -> Self {
-        Self { config, engine: DockerEngine::from_env(), sessions: Mutex::new(HashMap::new()) }
+        Self { config, engine: DockerEngine::from_env(), sessions: Mutex::new(HashMap::new()), status: Mutex::new(RuntimeStatus::default()) }
     }
 
     fn key(project_id: &str, agent_id: &str) -> (String, String) {
@@ -153,6 +163,38 @@ impl AgentRuntime {
                 (!bytes.is_empty()).then(|| (agent.clone(), String::from_utf8_lossy(&bytes).into_owned()))
             })
             .collect()
+    }
+
+    #[must_use]
+    pub fn status(&self) -> RuntimeStatus {
+        self.status.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Probes Docker and the agent image and remembers the answer for the setup checklist.
+    pub async fn refresh(&self) {
+        let next = if !self.config.enabled {
+            RuntimeStatus {
+                docker_detail: "HQ can't reach Docker. Mount /var/run/docker.sock into the HQ container (compose.runtime.yaml) and restart it.".into(),
+                image_detail: "Needs Docker first.".into(),
+                ..RuntimeStatus::default()
+            }
+        } else {
+            match self.engine.ping().await {
+                Err(e) => RuntimeStatus { docker_detail: format!("Docker didn't answer: {e}"), image_detail: "Needs Docker first.".into(), ..RuntimeStatus::default() },
+                Ok(()) => {
+                    let image = self.engine.image_present(&self.config.image).await.unwrap_or(false);
+                    RuntimeStatus {
+                        docker_ok: true,
+                        docker_detail: "Docker is reachable.".into(),
+                        image_ok: image,
+                        image_detail: if image { format!("{} is on this machine.", self.config.image) } else { format!("{} is pulled on the first Start (a few hundred MB).", self.config.image) },
+                    }
+                }
+            }
+        };
+        if let Ok(mut st) = self.status.lock() {
+            *st = next;
+        }
     }
 
     pub async fn send_input(&self, project_id: &str, agent_id: &str, data: &str) -> Result<(), String> {
@@ -220,8 +262,8 @@ impl AgentRuntime {
                         sb.drain(..over);
                     }
                 }
-                let event = json!({ "type": "terminal.output", "agentId": agent, "data": String::from_utf8_lossy(&buf[..n]) });
-                state.inner.ws_hub.broadcast_raw_json(&event.to_string());
+                let event = json!({ "type": "terminal.output", "projectId": project, "agentId": agent, "data": String::from_utf8_lossy(&buf[..n]) });
+                state.inner.ws_hub.broadcast_project_streams(&project, &event.to_string());
             }
             state.inner.runtime.finished(&state, &project, &agent, &session).await;
         });
@@ -242,11 +284,11 @@ impl AgentRuntime {
             let _ = self.engine.remove(&session.container).await;
             let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
             let note = if exit == 0 { "Session ended".to_owned() } else { format!("Session ended with exit code {exit}") };
-            let event = json!({ "type": "agent-status", "agentId": agent_id, "state": "idle", "note": note });
-            state.inner.ws_hub.broadcast_raw_json(&event.to_string());
+            let event = json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "idle", "note": note });
+            state.inner.ws_hub.broadcast_project(project_id, &event.to_string());
         }
         let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-        state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+        state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
     }
 
     fn plan(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<Plan, String> {

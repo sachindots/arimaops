@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -20,7 +20,12 @@ use crate::Result;
 #[derive(Debug, Default, Clone)]
 pub struct UsageTailer {
     offsets: HashMap<PathBuf, u64>,
+    /// `message.id:requestId` of assistant lines already counted: Claude Code writes the same message once per content
+    /// block, each with the full usage, so counting every line would multiply the bill.
+    seen: HashSet<String>,
 }
+
+const MAX_SEEN: usize = 50_000;
 
 impl UsageTailer {
     #[must_use]
@@ -79,6 +84,14 @@ impl UsageTailer {
             if trimmed.is_empty() {
                 continue;
             }
+            if let Some(key) = message_key(trimmed) {
+                if self.seen.len() >= MAX_SEEN {
+                    self.seen.clear();
+                }
+                if !self.seen.insert(key) {
+                    continue;
+                }
+            }
             if let Some(ev) =
                 parse_usage_jsonl_line(trimmed, default_project_id, default_agent_id)
             {
@@ -103,6 +116,12 @@ impl UsageTailer {
         }
         Ok(events.len())
     }
+}
+
+fn message_key(line: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(line).ok()?;
+    let id = v.get("message")?.get("id")?.as_str()?;
+    Some(format!("{id}:{}", v.get("requestId").and_then(Value::as_str).unwrap_or("")))
 }
 
 /// Parses a single JSONL line from an agent transcript or usage log into [`UsageEventInput`].
@@ -233,4 +252,23 @@ pub fn parse_usage_jsonl_line(
         cost_usd,
         at_ms: Some(at_ms),
     })
+}
+
+#[cfg(test)]
+mod dedupe_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn a_message_written_once_per_content_block_is_counted_once() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("t.jsonl");
+        let line = r#"{"type":"assistant","requestId":"r1","message":{"id":"m1","model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}"#;
+        let other = r#"{"type":"assistant","requestId":"r2","message":{"id":"m2","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}"#;
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, "{line}\n{line}\n{other}").unwrap();
+        let events = UsageTailer::new().poll_file(&path, "p", "a").unwrap();
+        assert_eq!(events.len(), 2, "m1 appears twice but is billed once");
+        assert_eq!(events.iter().map(|e| e.input_tokens).sum::<i64>(), 110);
+    }
 }

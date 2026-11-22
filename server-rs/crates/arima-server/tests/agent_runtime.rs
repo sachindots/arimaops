@@ -71,6 +71,18 @@ async fn an_agent_runs_in_a_container_and_its_terminal_round_trips() {
     assert!(seen.contains("echo-me-42"), "the typed line came back through the terminal: {seen:?}");
     state.inner.runtime.resize(&pid, "cipher", 100, 30).await.unwrap();
 
+    arima_server::delivery::send_from_owner(&state, &pid, "lead", "please review the plan").await.unwrap();
+    let mut seen = String::new();
+    for _ in 0..40 {
+        seen = state.inner.runtime.scrollbacks(&pid).into_iter().map(|(_, d)| d).collect();
+        if seen.contains("Message from the owner: please review the plan") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(seen.contains("Message from the owner: please review the plan"), "the owner's chat message is typed into the running agent: {seen:?}");
+    assert_eq!(state.inner.supervisor.poll_next_outbox(&pid, "cipher", 0, 0).unwrap().map(|m| m.seq), None, "a typed message is acknowledged");
+
     let snap = arima_server::ws::build_initial_snapshot(&state, Some(&pid));
     let cipher = snap["snapshot"]["agents"].as_array().unwrap().iter().find(|a| a["agentId"] == "cipher").unwrap();
     assert_eq!(cipher["session"]["state"], "running");

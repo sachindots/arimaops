@@ -21,7 +21,7 @@ fn text(v: &Value, max: usize) -> String {
 
 fn broadcast(state: &AppState, project_id: &str) {
     let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+    state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
 }
 
 fn db_err(e: impl std::fmt::Display) -> String {
@@ -84,7 +84,7 @@ pub fn unsupported(cmd: &str) -> Option<&'static str> {
 
 // ---------------------------------------------------------------- sandbox and lab mode
 
-fn host_resources() -> (u32, f64) {
+pub fn host_resources() -> (u32, f64) {
     let cpus = std::thread::available_parallelism().map_or(2, |n| u32::try_from(n.get()).unwrap_or(2));
     let mem_gb = std::fs::read_to_string("/proc/meminfo")
         .ok()
@@ -393,7 +393,7 @@ pub fn template_library(state: &AppState) -> Vec<Value> {
 pub fn export_template(state: &AppState, project_id: &str) -> Result<(), String> {
     let model = crate::team::load(state, project_id).ok_or("This project has no team yet, so there is no template to save.")?;
     let file = json!({ "format": TEMPLATE_FORMAT, "v": 1, "exportedAt": Utc::now().to_rfc3339(), "template": model.template, "packs": {} });
-    state.inner.ws_hub.broadcast_raw_json(&json!({ "type": "template.file", "file": file }).to_string());
+    state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "template.file", "file": file }).to_string());
     Ok(())
 }
 
@@ -403,7 +403,7 @@ pub fn import_template(state: &AppState, project_id: &str, args: &[Value]) -> Re
         Ok(id) => json!({ "type": "template.imported", "ok": true, "message": format!("Imported template {id}."), "id": id }),
         Err(message) => json!({ "type": "template.imported", "ok": false, "message": message }),
     };
-    state.inner.ws_hub.broadcast_raw_json(&event.to_string());
+    state.inner.ws_hub.broadcast_project(project_id, &event.to_string());
     if result.is_ok() {
         broadcast(state, project_id);
     }
@@ -433,6 +433,34 @@ fn import_template_inner(state: &AppState, raw: &str) -> Result<String, String> 
     all.push(template);
     save_setting(state, "customTemplates", &json!(all))?;
     Ok(id)
+}
+
+// ---------------------------------------------------------------- setup checklist
+
+/// The setup checklist from what HQ can really observe: this machine's size and the last Docker check.
+/// Every agent CLI ships in the agent image, so a CLI is "ready" exactly when the runtime is.
+pub fn setup_state(state: &AppState, now: &str) -> Value {
+    let (cpus, mem_gb) = host_resources();
+    let st = state.inner.runtime.status();
+    let fix = |command: &str| json!({ "command": command, "runnable": false, "docs": null });
+    let mut checks = vec![
+        json!({ "id": "docker", "label": "Docker", "status": if st.docker_ok { "ok" } else { "missing" }, "detail": st.docker_detail, "neededFor": "container",
+            "fix": if st.docker_ok { Value::Null } else { fix("- /var/run/docker.sock:/var/run/docker.sock  (add under HQ's volumes, then restart)") } }),
+        json!({ "id": "agent-image", "label": "Agent image", "status": if st.image_ok { "ok" } else if st.docker_ok { "warning" } else { "missing" }, "detail": st.image_detail, "neededFor": "container",
+            "fix": if st.image_ok || !st.docker_ok { Value::Null } else { fix(&format!("docker pull {}", state.inner.runtime.config.image)) } }),
+    ];
+    for (id, label) in [("claude", "Claude Code"), ("codex", "Codex"), ("opencode", "OpenCode"), ("gemini", "Gemini CLI"), ("copilot", "Copilot CLI"), ("agy", "Antigravity")] {
+        checks.push(json!({ "id": id, "label": label, "status": if st.docker_ok { "ok" } else { "missing" },
+            "detail": if st.docker_ok { "Included in the agent image. Sign in from the agent's terminal on first Start." } else { "Needs Docker." }, "neededFor": "container", "fix": Value::Null }));
+    }
+    json!({
+        "machine": { "cpus": cpus, "memoryGb": (mem_gb * 10.0).round() / 10.0, "persistentAgents": true },
+        "checks": checks,
+        "sandboxReady": false,
+        "localReady": false,
+        "containerReady": st.docker_ok,
+        "checkedAt": now
+    })
 }
 
 #[cfg(test)]

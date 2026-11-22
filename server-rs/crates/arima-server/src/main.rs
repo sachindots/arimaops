@@ -191,6 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState::new(db, vault, config);
     state.configure_cloud_proxy(public_origin.clone(), preview_domain.clone());
+    state.inner.runtime.refresh().await;
     {
         let rt = &state.inner.runtime.config;
         if rt.enabled {

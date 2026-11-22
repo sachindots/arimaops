@@ -2196,7 +2196,7 @@ fn process_github_webhook(
             "type": "pr.updated",
             "pr": pr
         });
-        state.inner.ws_hub.broadcast_raw_json(&frame.to_string());
+        state.inner.ws_hub.broadcast_project(project_id, &frame.to_string());
     }
 
     let _ = record_audit(

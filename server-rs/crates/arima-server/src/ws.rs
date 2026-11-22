@@ -42,6 +42,10 @@ pub enum WsOutbound {
 struct ClientEntry {
     conn_id: u64,
     tx: mpsc::Sender<WsOutbound>,
+    /// Canonical id of the project this socket shows; project frames only go to matching sockets.
+    project: String,
+    /// False for viewers: they get snapshots but not live terminal bytes, which can hold secrets.
+    streams: bool,
 }
 
 /// Manages active WebSocket subscribers keyed by `device_id` with bounded backpressure queues
@@ -58,13 +62,13 @@ impl WsHub {
         Self::default()
     }
 
-    fn register(&self, device_id: &str, tx: mpsc::Sender<WsOutbound>) -> u64 {
+    fn register(&self, device_id: &str, tx: mpsc::Sender<WsOutbound>, project: &str, streams: bool) -> u64 {
         let conn_id = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
         if let Ok(mut guard) = self.clients.lock() {
             guard
                 .entry(device_id.to_owned())
                 .or_default()
-                .push(ClientEntry { conn_id, tx });
+                .push(ClientEntry { conn_id, tx, project: project.to_owned(), streams });
         }
         conn_id
     }
@@ -105,7 +109,29 @@ impl WsHub {
         self.broadcast_raw_json(&payload);
     }
 
-    /// Broadcasts an arbitrary pre-serialized JSON frame to every active subscriber.
+    /// Sends a frame only to sockets showing `project_id`.
+    pub fn broadcast_project(&self, project_id: &str, payload: &str) {
+        self.send_where(payload, |e| e.project == project_id);
+    }
+
+    /// Like `broadcast_project`, but skips viewers: for live terminal output.
+    pub fn broadcast_project_streams(&self, project_id: &str, payload: &str) {
+        self.send_where(payload, |e| e.project == project_id && e.streams);
+    }
+
+    fn send_where(&self, payload: &str, keep: impl Fn(&ClientEntry) -> bool) {
+        let Ok(guard) = self.clients.lock() else {
+            return;
+        };
+        for entries in guard.values() {
+            for entry in entries.iter().filter(|e| keep(e)) {
+                let _ = entry.tx.try_send(WsOutbound::Text(payload.to_owned()));
+            }
+        }
+    }
+
+    /// Broadcasts an arbitrary pre-serialized JSON frame to every active subscriber, in every project.
+    /// Only for frames that belong to no project (decisions and meetings carry their own ids).
     pub fn broadcast_raw_json(&self, payload: &str) {
         let Ok(guard) = self.clients.lock() else {
             return;
@@ -211,7 +237,21 @@ async fn handle_socket(
 ) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<WsOutbound>(CLIENT_QUEUE_CAP);
-    let conn_id = state.inner.ws_hub.register(&device_id, tx.clone());
+
+    // Send initial OfficeSnapshot including visualDecisions, meetings, meetingTurns, pullRequests.
+    let init_snap = build_initial_snapshot(&state, requested_project.as_deref());
+    let project = init_snap["snapshot"]["config"]["project"]["id"].as_str().unwrap_or("").to_owned();
+    let streams = state
+        .inner
+        .auth
+        .verify_session(&session_token, false)
+        .ok()
+        .flatten()
+        .is_some_and(|v| {
+            let project_role = v.user.as_ref().and_then(|u| state.inner.auth.get_project_role(&project, &u.id).ok().flatten());
+            !matches!(effective_role(v.role, project_role), ServerRole::Viewer)
+        });
+    let conn_id = state.inner.ws_hub.register(&device_id, tx.clone(), &project, streams);
 
     let writer = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
@@ -235,12 +275,10 @@ async fn handle_socket(
         }
     });
 
-    // Send initial OfficeSnapshot including visualDecisions, meetings, meetingTurns, pullRequests.
-    let init_snap = build_initial_snapshot(&state, requested_project.as_deref());
     let _ = tx.try_send(WsOutbound::Text(init_snap.to_string()));
-    if let Some(project) = init_snap["snapshot"]["config"]["project"]["id"].as_str() {
-        for (agent, data) in state.inner.runtime.scrollbacks(project) {
-            let event = json!({ "type": "terminal.output", "agentId": agent, "data": data });
+    if streams {
+        for (agent, data) in state.inner.runtime.scrollbacks(&project) {
+            let event = json!({ "type": "terminal.output", "projectId": project, "agentId": agent, "data": data });
             let _ = tx.try_send(WsOutbound::Text(event.to_string()));
         }
     }
@@ -544,7 +582,13 @@ async fn execute_ws_command(
     args: &[Value],
 ) -> Result<(), String> {
     match cmd {
-        "ping" | "recheckSetup" | "refreshSbx" | "refreshMcp" => Ok(()),
+        "recheckSetup" => {
+            state.inner.runtime.refresh().await;
+            let snapshot = build_initial_snapshot(state, Some(project_id));
+            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+            Ok(())
+        }
+        "ping" | "refreshSbx" | "refreshMcp" => Ok(()),
         "completeWelcome" => crate::team::complete_welcome(state, project_id, args),
         "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
         "addAgent" => crate::team_edit::add_agent(state, project_id, args),
@@ -604,6 +648,9 @@ async fn execute_ws_command(
                 .first()
                 .and_then(Value::as_str)
                 .ok_or_else(|| "missing agentId".to_owned())?;
+            if let Some(blocked) = crate::usage_watch::cap_message(state, project_id) {
+                return Err(blocked);
+            }
             state
                 .inner
                 .supervisor
@@ -614,16 +661,11 @@ async fn execute_ws_command(
                 let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
                 return Err(e);
             }
-            state
-                .inner
-                .ws_hub
-                .broadcast_event(&WsServerEvent::AgentStatus {
-                    agent_id: agent_id.to_owned(),
-                    state: "running".into(),
-                    note: None,
-                });
+            state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "running", "note": null }).to_string());
             let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+            crate::delivery::kick_after_start(state, project_id, agent_id);
+            crate::usage_watch::watch(state, project_id, agent_id);
             Ok(())
         }
         "sendTerminalInput" => {
@@ -648,16 +690,9 @@ async fn execute_ws_command(
                 .await
                 .map_err(|e| e.to_string())?;
             let stopped = state.inner.runtime.stop(state, project_id, agent_id).await;
-            state
-                .inner
-                .ws_hub
-                .broadcast_event(&WsServerEvent::AgentStatus {
-                    agent_id: agent_id.to_owned(),
-                    state: "stopped".into(),
-                    note: None,
-                });
+            state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "stopped", "note": null }).to_string());
             let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
             stopped
         }
         "createBoard" => {
@@ -685,38 +720,11 @@ async fn execute_ws_command(
         }
         "sendMessage" | "askTeam" => {
             let (to_id, text) = if cmd == "askTeam" {
-                (
-                    "lead",
-                    args.first().and_then(Value::as_str).unwrap_or(""),
-                )
+                ("lead", args.first().and_then(Value::as_str).unwrap_or(""))
             } else {
-                (
-                    args.first().and_then(Value::as_str).unwrap_or("lead"),
-                    args.get(1).and_then(Value::as_str).unwrap_or(""),
-                )
+                (args.first().and_then(Value::as_str).unwrap_or("lead"), args.get(1).and_then(Value::as_str).unwrap_or(""))
             };
-            let msg_id = format!("msg-{}", uuid::Uuid::new_v4().simple());
-            let now_ms = Utc::now().timestamp_millis();
-            state
-                .inner
-                .db
-                .transaction(|conn| {
-                    conn.execute(
-                        "INSERT INTO messages (id, project_id, from_id, to_id, body, created_at)
-                         VALUES (?1, ?2, 'you', ?3, ?4, ?5)",
-                        rusqlite::params![msg_id, project_id, to_id, text, now_ms],
-                    )?;
-                    Ok::<_, DbError>(())
-                })
-                .map_err(|e| e.to_string())?;
-            let payload = json!({ "from": "you", "text": text }).to_string();
-            let _ = state.inner.supervisor.enqueue_outbox(
-                project_id,
-                to_id,
-                OutboxMessageKind::Text,
-                &payload,
-            );
-            Ok(())
+            crate::delivery::send_from_owner(state, project_id, to_id, text).await
         }
         other => Err(crate::integrations::unsupported(other).map_or_else(|| format!("Unknown command '{other}'."), str::to_owned)),
     }
@@ -883,6 +891,7 @@ pub fn exec_answer_decision(
         OutboxMessageKind::DecisionAnswer,
         &answer_payload,
     );
+    crate::delivery::kick(state, &resolved.project_id, &resolved.from_id);
 
     state
         .inner
@@ -1429,14 +1438,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "templateLibrary": crate::integrations::template_library(state),
             "mcp": crate::integrations::mcp_state(state, &team, &now),
             "connections": crate::integrations::connections_state(state),
-            "setup": {
-                "machine": { "cpus": 8, "memoryGb": 16, "persistentAgents": true },
-                "checks": [],
-                "sandboxReady": false,
-                "localReady": true,
-                "containerReady": false,
-                "checkedAt": now
-            },
+            "setup": crate::integrations::setup_state(state, &now),
             "sbx": crate::secrets::sbx_state(state, project_id, &agent_ids, &now),
             "accounts": crate::secrets::accounts_state(state),
             "config": {
@@ -1455,7 +1457,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "tasks": tasks,
             "pullRequests": github_sync.pull_requests,
             "environments": [],
-            "messages": [],
+            "messages": crate::delivery::messages_for(state, &proj.0),
             "activity": [],
             "findings": findings,
             "memory": {

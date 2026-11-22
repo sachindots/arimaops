@@ -82,7 +82,7 @@ pub(crate) fn mutate(
             other => other.to_string(),
         })?;
     let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+    state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
     Ok(())
 }
 
