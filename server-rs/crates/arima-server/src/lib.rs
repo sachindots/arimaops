@@ -9,6 +9,7 @@ pub mod license;
 pub mod mcp;
 pub mod meetings;
 pub mod memory;
+pub mod planning;
 pub mod preview;
 pub mod routes;
 pub(crate) mod routes_m4;

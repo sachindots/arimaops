@@ -64,7 +64,7 @@ fn rebuild(model: &mut TeamModel, idx: usize, seat: &Value) {
 }
 
 /// Loads, edits, saves and broadcasts. `f` may also run SQL on `conn`, inside the same transaction.
-fn mutate(
+pub(crate) fn mutate(
     state: &AppState,
     project_id: &str,
     f: impl FnOnce(&mut TeamModel, &rusqlite::Connection) -> Result<(), String>,
@@ -200,6 +200,102 @@ pub fn set_team_mode(state: &AppState, project_id: &str, args: &[Value]) -> Resu
             rebuild(model, idx, &seat);
         }
         Ok(())
+    })
+}
+
+
+const AGENT_CLIS: [&str; 6] = ["claude", "codex", "agy", "opencode", "gemini", "copilot"];
+
+fn is_cli(v: &Value) -> bool {
+    v.as_str().is_some_and(|c| AGENT_CLIS.contains(&c))
+}
+
+/// Replaces the project's template and re-resolves every seat from it. A seat whose role is gone blocks the change.
+fn set_template(model: &mut TeamModel, template: Value) -> Result<(), String> {
+    let roles = template["roles"].as_array().ok_or("A template needs roles.")?;
+    if roles.iter().filter(|r| r["isLead"] == true).count() != 1 {
+        return Err("A template needs exactly one lead role.".into());
+    }
+    let mut ids: Vec<&str> = roles.iter().filter_map(|r| r["id"].as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.len() != roles.len() {
+        return Err("Role ids must be unique.".into());
+    }
+    if let Some(bad) = roles.iter().find(|r| !is_cli(&r["cli"])) {
+        return Err(format!("Role \"{}\" has no valid CLI.", bad["id"].as_str().unwrap_or("?")));
+    }
+    if !template["flow"]["stages"].is_array() {
+        return Err("A template needs a flow with stages.".into());
+    }
+    if let Some(orphan) = model.team.iter().find(|a| a["roleId"].as_str().is_some_and(|r| !ids.contains(&r))) {
+        return Err(format!("{} still sits in a role this template removes.", orphan["name"].as_str().unwrap_or("An agent")));
+    }
+    model.rules = template["rules"].clone();
+    model.workflow["mode"] = json!(crate::team::flow_mode(&template));
+    model.template = template;
+    for idx in 0..model.team.len() {
+        let seat = seat_of(&model.team[idx]);
+        rebuild(model, idx, &seat);
+    }
+    Ok(())
+}
+
+pub fn update_project_template(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    let mut next = args.first().cloned().unwrap_or(Value::Null);
+    mutate(state, project_id, |model, _| {
+        next["id"] = model.template["id"].clone();
+        next["version"] = model.template["version"].clone();
+        set_template(model, next)
+    })
+}
+
+pub fn update_role(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    let role_id = text(args.first().unwrap_or(&Value::Null), 40);
+    let patch = args.get(1).cloned().unwrap_or(Value::Null);
+    mutate(state, project_id, |model, _| {
+        let mut template = model.template.clone();
+        let role = template["roles"]
+            .as_array_mut()
+            .and_then(|rs| rs.iter_mut().find(|r| r["id"] == role_id))
+            .ok_or_else(|| format!("No role \"{role_id}\"."))?;
+        for key in ["title", "model", "roleMd", "color"] {
+            if let Some(s) = patch[key].as_str() {
+                role[key] = json!(s.chars().take(8000).collect::<String>());
+            }
+        }
+        if is_cli(&patch["cli"]) && patch["cli"] != role["cli"] {
+            role["cli"] = patch["cli"].clone();
+            if !patch["model"].is_string() {
+                role["model"] = json!("");
+            }
+        }
+        if let Some(skills) = patch["skills"].as_array() {
+            role["skills"] = json!(skills.iter().map(|s| text(s, 80)).filter(|s| !s.is_empty()).collect::<Vec<_>>());
+        }
+        if let Some(on_demand) = patch["onDemand"].as_bool() {
+            role["onDemand"] = json!(on_demand);
+        }
+        match &patch["capUsd"] {
+            Value::Null if patch.get("capUsd").is_some() => {
+                role.as_object_mut().map(|o| o.remove("capUsd"));
+            }
+            v if v.as_f64().is_some_and(|n| n >= 0.0) => role["capUsd"] = v.clone(),
+            _ => {}
+        }
+        match patch["outbound"].as_str() {
+            Some(o @ ("none" | "drafts-only")) => role["outbound"] = json!(o),
+            _ if patch.get("outbound").is_some_and(Value::is_null) => {
+                role.as_object_mut().map(|o| o.remove("outbound"));
+            }
+            _ => {}
+        }
+        if patch.get("fallback").is_some_and(Value::is_null) {
+            role["fallback"] = Value::Null;
+        } else if is_cli(&patch["fallback"]["cli"]) {
+            role["fallback"] = json!({ "cli": patch["fallback"]["cli"], "model": text(&patch["fallback"]["model"], 80) });
+        }
+        set_template(model, template)
     })
 }
 

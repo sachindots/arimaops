@@ -538,6 +538,16 @@ async fn execute_ws_command(
         "updateWorkflow" => crate::team_edit::update_workflow(state, project_id, args),
         "updateProject" => crate::team_edit::update_project(state, project_id, args),
         "assignTask" => crate::team_edit::assign_task(state, project_id, args),
+        "updateRole" => crate::team_edit::update_role(state, project_id, args),
+        "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args),
+        "addGoal" => crate::planning::add_goal(state, project_id, args),
+        "updateGoal" => crate::planning::update_goal(state, project_id, args),
+        "setTaskGoal" => crate::planning::set_task_goal(state, project_id, args),
+        "updateBoard" => crate::planning::update_board(state, project_id, args),
+        "setTaskRunsOn" => crate::planning::set_task_runs_on(state, project_id, args),
+        "setSpendCaps" => crate::planning::set_spend_caps(state, project_id, args),
+        "setCompany" => crate::planning::set_company(state, project_id, args),
+        "updateStack" => crate::planning::update_stack(state, project_id, args),
         "answerDecision" | "resolveDecision" | "resolveActionItem" => {
             exec_answer_decision(state, args, actor_role)
         }
@@ -1370,6 +1380,9 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
                 "stack": team_model.as_ref().and_then(|m| m.stack.clone())
             },
             "agents": agents,
+            "goals": crate::planning::goals_for(state, project_id),
+            "spend": crate::planning::spend_state(state, project_id, project.get("spendCaps")),
+            "company": crate::planning::company(state),
             "boards": boards,
             "tasks": tasks,
             "pullRequests": github_sync.pull_requests,

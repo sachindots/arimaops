@@ -39,7 +39,18 @@ const MIGRATIONS: &[Migration] = &[
         name: "005_m5_ga_schema",
         sql: M5_GA_V2_SCHEMA,
     },
+    Migration {
+        version: 6,
+        name: "006_goal_text",
+        sql: GOAL_TEXT_SCHEMA,
+    },
 ];
+
+/// Goals carry free-text target and current values ("$5k"), not just numbers.
+const GOAL_TEXT_SCHEMA: &str = r#"
+ALTER TABLE goals ADD COLUMN target_text TEXT NOT NULL DEFAULT '';
+ALTER TABLE goals ADD COLUMN current_text TEXT NOT NULL DEFAULT '';
+"#;
 
 const INITIAL_V2_SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS users (

@@ -128,7 +128,7 @@ pub fn resolve_seat(template: &Value, seat: &Value) -> Value {
     Value::Object(out)
 }
 
-fn flow_mode(template: &Value) -> &'static str {
+pub(crate) fn flow_mode(template: &Value) -> &'static str {
     let waits_for_merge = template["flow"]["stages"].as_array().is_some_and(|stages| {
         stages.iter().any(|s| s["gates"].as_array().is_some_and(|g| g.iter().any(|g| g["kind"] == "pr-merged")))
     });
@@ -203,13 +203,22 @@ pub fn tasks_for(state: &AppState, project_id: &str) -> Vec<Value> {
         .inner
         .db
         .read(|conn| {
-            let mut stmt = conn.prepare("SELECT id, board_id, goal_id, stage_id, status, title, owner_id, pr_number FROM tasks WHERE project_id = ?1 ORDER BY created_at ASC, id ASC")?;
+            let mut stmt = conn.prepare("SELECT id, board_id, goal_id, stage_id, status, title, owner_id, pr_number, data_json FROM tasks WHERE project_id = ?1 ORDER BY created_at ASC, id ASC")?;
             let rows = stmt.query_map([project_id], |r| {
-                Ok(json!({
+                let mut task = json!({
                     "id": r.get::<_, String>(0)?, "boardId": r.get::<_, String>(1)?, "goalId": r.get::<_, Option<String>>(2)?,
                     "stageId": r.get::<_, String>(3)?, "status": r.get::<_, String>(4)?, "title": r.get::<_, String>(5)?,
                     "ownerId": r.get::<_, Option<String>>(6)?, "prNumber": r.get::<_, Option<i64>>(7)?
-                }))
+                });
+                // data_json holds the rest of a task (needs, files, cli, model...); the columns above win.
+                if let Ok(Value::Object(extra)) = serde_json::from_str::<Value>(&r.get::<_, String>(8)?) {
+                    for (k, v) in extra {
+                        if task.get(&k).is_none() {
+                            task[k] = v;
+                        }
+                    }
+                }
+                Ok(task)
             })?;
             rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
         })
@@ -281,7 +290,7 @@ pub fn complete_welcome(state: &AppState, project_id: &str, args: &[Value]) -> R
             "deploy": { "enabled": false, "tool": "custom", "command": "", "perAgentEnvironments": false }
         }),
         rules: template["rules"].clone(),
-        stack: input.get("stack").filter(|s| s.is_object()).cloned(),
+        stack: input.get("stack").and_then(crate::planning::clean_stack),
         project: json!({}),
     };
     let name = input["projectName"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(|n| n.chars().take(80).collect::<String>());
