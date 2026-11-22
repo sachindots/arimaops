@@ -44,3 +44,26 @@ Deploy ArimaOps v2.0 on an Ubuntu EC2 instance with automatic HTTPS TLS, WebAuth
 
 6. **Connect Desktop & Android Clients:**
    - Open the unified ArimaOps client (`apps/client/`) on Linux, macOS, Windows, or Android and add `https://hq.<your-domain>`.
+
+## Private mode: Tailscale only (no public ports)
+
+For a team that does not want a public HQ, skip Caddy and the public DNS records entirely:
+
+1. Close ports 80/443 in the EC2 Security Group; keep 22 only for your own IPs.
+2. `docker compose -f compose.aws.yaml --env-file .env up -d arima-hq` with
+   `HQ_PUBLIC_ORIGIN=https://<machine>.<tailnet>.ts.net` and, if another service holds the ports,
+   `HQ_HOST_PORT=7520` in `.env`. Do not start `caddy`.
+3. `sudo tailscale serve --bg --https=443 http://127.0.0.1:7520` (tailnet only; never `funnel`).
+4. Passkeys bind to the HQ public origin, so they work on that tailnet name only.
+5. Live previews need wildcard hostnames and are not available in this mode.
+
+## Demo HQ
+
+`compose.demo.yaml` runs a second, isolated HQ (own volume, fake data, loopback only) for trying the app:
+
+```bash
+docker compose -p arimaops-demo -f compose.demo.yaml --env-file .env up -d
+sudo tailscale serve --bg --https=8443 http://127.0.0.1:7530
+```
+
+Set `DEMO_PUBLIC_ORIGIN=https://<machine>.<tailnet>.ts.net:8443` in `.env` first.

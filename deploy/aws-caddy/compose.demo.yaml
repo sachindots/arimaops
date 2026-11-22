@@ -1,0 +1,35 @@
+# ArimaOps v2.0: isolated DEMO HQ (fake data, its own volume, loopback only).
+# Reach it through Tailscale: `tailscale serve --bg --https=8443 http://127.0.0.1:${DEMO_HOST_PORT:-7530}`.
+# Run beside the main stack with its own project name so volumes never mix:
+#   docker compose -p arimaops-demo -f compose.demo.yaml --env-file .env up -d
+services:
+  hq-demo:
+    image: ${ARIMA_HQ_IMAGE:-ghcr.io/sachindots/arimaops-v2:latest}
+    container_name: arimaops-hq-demo
+    restart: unless-stopped
+    environment:
+      ARIMA_HOME: /data
+      HQ_HOST: 0.0.0.0
+      HQ_PORT: "7420"
+      HQ_PREVIEW_PORT: "7421"
+      HQ_TRUST_PROXY: "true"
+      HQ_PUBLIC_ORIGIN: "${DEMO_PUBLIC_ORIGIN:?set DEMO_PUBLIC_ORIGIN, e.g. https://host.tailnet.ts.net:8443}"
+      ARIMA_GITHUB_WEBHOOK_SECRET: ""
+      RUST_LOG: "${RUST_LOG:-info}"
+    ports:
+      - "127.0.0.1:${DEMO_HOST_PORT:-7530}:7420"
+    volumes:
+      - demo_data:/data
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7420/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  demo_data:
