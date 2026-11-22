@@ -72,10 +72,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
       - name: Install Android NDK
         run: |
           yes | sdkmanager --install "ndk;27.2.12479018" "platforms;android-35" "build-tools;35.0.0"
@@ -85,7 +84,6 @@ jobs:
       - name: Initialize & build Android APK
         working-directory: apps/client
         run: |
-          cargo tauri android init --ci
           cargo tauri android build --apk
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
