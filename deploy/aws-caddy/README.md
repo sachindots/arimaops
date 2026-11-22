@@ -67,3 +67,17 @@ sudo tailscale serve --bg --https=8443 http://127.0.0.1:7530
 ```
 
 Set `DEMO_PUBLIC_ORIGIN=https://<machine>.<tailnet>.ts.net:8443` in `.env` first.
+
+## Updating the server (CI deploy)
+
+Every push to `main` that touches the server or UI runs `.github/workflows/hq-image.yml`, which publishes
+`ghcr.io/sachindots/arimaops-v2:latest` (and a `sha-<commit>` tag). To update a host:
+
+```bash
+sudo /opt/arimaops/update.sh
+```
+
+It pulls the image, recreates the HQ (and the demo HQ if present), waits for `/api/health`, and prunes old
+images. Set `ARIMA_HQ_IMAGE=ghcr.io/sachindots/arimaops-v2:latest` in `/opt/arimaops/.env` once. To roll back,
+set it to an earlier `sha-<commit>` tag and run the script again. Data lives in Docker volumes and survives
+updates; database migrations run automatically on start.
