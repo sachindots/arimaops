@@ -211,8 +211,8 @@ fn is_cli(v: &Value) -> bool {
     v.as_str().is_some_and(|c| AGENT_CLIS.contains(&c))
 }
 
-/// Replaces the project's template and re-resolves every seat from it. A seat whose role is gone blocks the change.
-fn set_template(model: &mut TeamModel, template: Value) -> Result<(), String> {
+/// Structural checks every template must pass: one lead, unique ids, valid CLIs and a flow.
+pub(crate) fn validate_template(template: &Value) -> Result<(), String> {
     let roles = template["roles"].as_array().ok_or("A template needs roles.")?;
     if roles.iter().filter(|r| r["isLead"] == true).count() != 1 {
         return Err("A template needs exactly one lead role.".into());
@@ -229,6 +229,13 @@ fn set_template(model: &mut TeamModel, template: Value) -> Result<(), String> {
     if !template["flow"]["stages"].is_array() {
         return Err("A template needs a flow with stages.".into());
     }
+    Ok(())
+}
+
+/// Replaces the project's template and re-resolves every seat from it. A seat whose role is gone blocks the change.
+fn set_template(model: &mut TeamModel, template: Value) -> Result<(), String> {
+    validate_template(&template)?;
+    let ids: Vec<&str> = template["roles"].as_array().into_iter().flatten().filter_map(|r| r["id"].as_str()).collect();
     if let Some(orphan) = model.team.iter().find(|a| a["roleId"].as_str().is_some_and(|r| !ids.contains(&r))) {
         return Err(format!("{} still sits in a role this template removes.", orphan["name"].as_str().unwrap_or("An agent")));
     }
@@ -240,6 +247,17 @@ fn set_template(model: &mut TeamModel, template: Value) -> Result<(), String> {
         rebuild(model, idx, &seat);
     }
     Ok(())
+}
+
+/// Edits one agent's seat and re-resolves it from its role.
+pub(crate) fn edit_seat(state: &AppState, project_id: &str, id: &str, f: impl FnOnce(&mut Value) -> Result<(), String>) -> Result<(), String> {
+    mutate(state, project_id, |model, _| {
+        let idx = agent_index(model, id).ok_or_else(|| format!("No agent \"{id}\"."))?;
+        let mut seat = seat_of(&model.team[idx]);
+        f(&mut seat)?;
+        rebuild(model, idx, &seat);
+        Ok(())
+    })
 }
 
 pub fn update_project_template(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {

@@ -294,3 +294,78 @@ async fn secrets_accounts_and_proxy_never_expose_values() {
     let left: i64 = state.inner.db.read(|c| c.query_row("SELECT COUNT(*) FROM agent_secrets WHERE agent_id = 'zero'", [], |r| r.get(0)).map_err(arima_db::DbError::from)).unwrap();
     assert_eq!(left, 0, "removing an agent removes its variables");
 }
+
+#[tokio::test]
+async fn sandbox_mcp_connections_and_template_library() {
+    use arima_server::integrations as int;
+    let (state, pid) = state();
+    team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+
+    int::update_sandbox(&state, &pid, &[json!("cipher"), json!({ "allow": ["B.com", "b.com", " "], "deny": ["x.io"], "resources": { "cpus": 9999, "memoryGb": 0.1 } })]).unwrap();
+    let sb = team::load(&state, &pid).unwrap().team[0]["sandbox"].clone();
+    assert_eq!(sb["allow"], json!(["b.com"]), "domains are lowercased and deduped");
+    assert!(sb["resources"]["cpus"].as_f64().unwrap() < 9999.0 && sb["resources"]["memoryGb"].as_f64() == Some(0.5), "limits are clamped to the host");
+    assert!(int::update_sandbox(&state, &pid, &[json!("nobody"), json!({})]).is_err());
+    int::set_lab_mode(&state, &pid, &[json!(true)]).unwrap();
+    let model = team::load(&state, &pid).unwrap();
+    assert_eq!((model.rules["labMode"].as_bool(), model.template["rules"]["labMode"].as_bool()), (Some(true), Some(true)));
+
+    assert!(int::add_mcp(&state, &pid, &[json!({ "name": "Bad Name", "url": "https://x.io" })]).is_err());
+    assert!(int::add_mcp(&state, &pid, &[json!({ "name": "local", "command": "node", "url": "https://x.io" })]).is_err(), "stdio servers don't run on a hosted HQ");
+    assert!(int::add_mcp(&state, &pid, &[json!({ "name": "meta", "url": "http://169.254.169.254/" })]).is_err());
+    int::add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://mcp.example.com/rpc", "apiKey": "mcp-secret-key-1" })]).unwrap();
+    assert!(int::add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://mcp.example.com/rpc" })]).is_err(), "names are unique");
+    int::set_agent_mcp(&state, &pid, &[json!("cipher"), json!(["docs", "docs", "ghost"])]).unwrap();
+    assert_eq!(team::load(&state, &pid).unwrap().team[0]["mcp"], json!(["docs"]));
+    let snap = arima_server::ws::build_initial_snapshot(&state, Some(&pid));
+    assert_eq!(snap["snapshot"]["mcp"]["servers"][0]["name"], "docs");
+    assert_eq!(snap["snapshot"]["mcp"]["attached"]["cipher"], json!(["docs"]));
+    assert!(!snap.to_string().contains("mcp-secret-key"));
+    int::remove_mcp(&state, &pid, &[json!("docs")]).unwrap();
+    assert_eq!(team::load(&state, &pid).unwrap().team[0]["mcp"], json!([]), "removing a server detaches it everywhere");
+    assert!(int::remove_mcp(&state, &pid, &[json!("docs")]).is_err());
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut s, _) = listener.accept().await.unwrap();
+        let mut buf = vec![0u8; 4096];
+        let n = s.read(&mut buf).await.unwrap();
+        let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+        assert!(req.contains("authorization: bearer conn-key-9"), "the stored key is sent as a bearer token");
+        let body = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"search","description":"find things"},{"name":"send_note","description":"post"}]}}"#;
+        s.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+    });
+    int::save_connection(&state, &pid, &[json!({ "name": "notes", "url": format!("http://127.0.0.1:{port}/mcp"), "apiKey": "conn-key-9", "roles": ["lead"], "read": ["search"], "send": "send_note" })]).unwrap();
+    int::check_connection(&state, &pid, &[json!("notes")]).await.unwrap();
+    let conn = int::connections_state(&state).remove(0);
+    assert_eq!((conn["tools"].as_array().unwrap().len(), conn["hasKey"].as_bool(), conn["send"].as_str(), conn["read"].clone()), (2, Some(true), Some("send_note"), json!(["search"])));
+    assert!(conn["probedAt"].is_string() && !conn.to_string().contains("conn-key-9"));
+    int::save_connection(&state, &pid, &[json!({ "name": "notes", "apiKey": "" })]).unwrap();
+    assert_eq!(int::connections_state(&state)[0]["hasKey"], false, "an empty key removes it");
+    int::remove_connection(&state, &pid, &[json!("notes")]).unwrap();
+    assert!(int::connections_state(&state).is_empty());
+    assert!(int::check_connection(&state, &pid, &[json!("notes")]).await.is_err());
+
+    let mut custom = team::load(&state, &pid).unwrap().template;
+    custom["id"] = json!("my-team");
+    custom["name"] = json!("My team");
+    let file = |t: &Value| json!({ "format": "arimaops-template", "v": 1, "template": t, "packs": {} }).to_string();
+    int::import_template(&state, &pid, &[json!(file(&custom))]).unwrap();
+    assert!(int::template_library(&state).iter().any(|e| e["template"]["id"] == "my-team" && e["builtin"] == false));
+    assert!(int::import_template(&state, &pid, &[json!("{}")]).is_err());
+    let mut builtin_clash = custom.clone();
+    builtin_clash["id"] = json!("dev");
+    assert!(int::import_template(&state, &pid, &[json!(file(&builtin_clash))]).is_err(), "a built-in id can't be replaced");
+    let mut packs = custom.clone();
+    packs["id"] = json!("with-packs");
+    packs["roles"][0]["skills"] = json!(["owner/repo:skill"]);
+    int::import_template(&state, &pid, &[json!(file(&packs))]).unwrap();
+    assert!(int::export_template(&state, &pid).is_ok());
+
+    let (fresh, fresh_pid) = self::state();
+    int::import_template(&fresh, &fresh_pid, &[json!(file(&custom))]).unwrap();
+    team::complete_welcome(&fresh, &fresh_pid, &[json!({ "templateId": "my-team" })]).unwrap();
+    assert_eq!(team::load(&fresh, &fresh_pid).unwrap().template["id"], "my-team", "an imported template can start a project");
+}

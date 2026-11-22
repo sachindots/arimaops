@@ -5,6 +5,7 @@
 pub mod backups;
 pub mod factory;
 pub mod github;
+pub mod integrations;
 pub mod license;
 pub mod mcp;
 pub mod meetings;

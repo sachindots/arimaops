@@ -551,6 +551,16 @@ async fn execute_ws_command(
         "saveAccount" => crate::secrets::save_account(state, project_id, args),
         "removeAccount" => crate::secrets::remove_account(state, project_id, args),
         "setProxy" => crate::secrets::set_proxy(state, project_id, args),
+        "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
+        "setLabMode" => crate::integrations::set_lab_mode(state, project_id, args),
+        "addMcp" => crate::integrations::add_mcp(state, project_id, args),
+        "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
+        "setAgentMcp" => crate::integrations::set_agent_mcp(state, project_id, args),
+        "saveConnection" => crate::integrations::save_connection(state, project_id, args),
+        "removeConnection" => crate::integrations::remove_connection(state, project_id, args),
+        "checkConnection" => crate::integrations::check_connection(state, project_id, args).await,
+        "exportTemplate" => crate::integrations::export_template(state, project_id),
+        "importTemplate" => crate::integrations::import_template(state, project_id, args),
         "setTeamMode" => crate::team_edit::set_team_mode(state, project_id, args),
         "updateWorkflow" => crate::team_edit::update_workflow(state, project_id, args),
         "updateProject" => crate::team_edit::update_project(state, project_id, args),
@@ -683,7 +693,7 @@ async fn execute_ws_command(
             );
             Ok(())
         }
-        other => Err(format!("Unknown command '{other}'.")),
+        other => Err(crate::integrations::unsupported(other).map_or_else(|| format!("Unknown command '{other}'."), str::to_owned)),
     }
 }
 
@@ -1380,7 +1390,9 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         "type": "snapshot",
         "snapshot": {
             "welcome": team_model.is_none(),
-            "templateLibrary": crate::team::template_library(),
+            "templateLibrary": crate::integrations::template_library(state),
+            "mcp": crate::integrations::mcp_state(state, &team, &now),
+            "connections": crate::integrations::connections_state(state),
             "setup": {
                 "machine": { "cpus": 8, "memoryGb": 16, "persistentAgents": true },
                 "checks": [],

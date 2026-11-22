@@ -281,7 +281,8 @@ pub fn complete_welcome(state: &AppState, project_id: &str, args: &[Value]) -> R
     }
     let input = args.first().cloned().unwrap_or(Value::Null);
     let template_id = input["templateId"].as_str().unwrap_or("");
-    let template = template_by_id(template_id).ok_or_else(|| format!("Unknown team template \"{template_id}\"."))?;
+    let found = template_by_id(template_id).cloned().or_else(|| crate::integrations::custom_template(state, template_id));
+    let template = &found.ok_or_else(|| format!("Unknown team template \"{template_id}\"."))?;
 
     let review_tool = input["reviewTool"].as_str().filter(|t| ["coderabbit", "greptile", "copilot", "human", "custom"].contains(t)).unwrap_or("human");
     let review_enabled = input["reviewEnabled"].as_bool().unwrap_or(true);
