@@ -38,14 +38,14 @@ export function PageTitle({ title, context }: { title: string; context?: ReactNo
 export function DrawerHeader({ children }: { children: ReactNode }) {
   const desktop = useDesktop();
   const drawer = useUi((s) => s.drawer);
-  const opened = drawer !== null;
+  const isSlideOver = !!drawer && SLIDE_OVER_KINDS.has(drawer.kind);
   const solo = useUi((s) => s.solo !== null);
-  const showControls = desktop && !solo && !!drawer && SLIDE_OVER_KINDS.has(drawer.kind);
+  const showControls = desktop && !solo && isSlideOver;
   return (
-    <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
-      {!desktop && opened && (
-        <button className="btn px-2.5" aria-label="Back" onClick={() => ui.closeDrawer()}>
-          ‹
+    <div className="flex flex-wrap items-center gap-2.5 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-3 md:px-5">
+      {!desktop && !solo && isSlideOver && (
+        <button type="button" className="btn px-2 py-1 text-[12px]" aria-label="Back" onClick={() => ui.closeDrawer()}>
+          <Icon name="arrow_back" size={16} />
         </button>
       )}
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">{children}</div>

@@ -106,7 +106,18 @@ const askwell: Preset = {
   id: "askwell",
   label: "Askwell · 3 agents",
   config: demoConfig({
-    project: { id: "askwell", name: "Askwell", repo: "acme/askwell", path: "~/developer/askwell", hqPort: 7420 },
+    project: {
+      id: "askwell",
+      name: "Askwell",
+      repo: "acme/askwell",
+      path: "~/developer/askwell",
+      hqPort: 7420,
+      scope: {
+        inScope: ["app.askwell.dev", "api.askwell.dev", "staging.askwell.dev"],
+        outOfScope: ["billing.askwell.dev", "169.254.169.254"],
+        rules: "Automated AppSec & pre-release security checks only. Max 10 req/s; cloud metadata endpoints always blocked.",
+      },
+    },
     team: [
       agent("michael", "Cipher", "Lead", "#f85149", { isLead: true, cli: "agy", model: "gemini-3.1-pro" }),
       agent("dwight", "Ghost", "Developer", "#3fb950", { cli: "claude" }),
@@ -153,6 +164,42 @@ const askwell: Preset = {
     "Run the migration on my DB branch?",
   ],
   leadQuestions: ["Approve the Phase 4 breakdown?", "Merge #{pr} before the other open PRs?"],
+  findings: [
+    finding("F-001", "dwight", "SSRF in webhook preview allows fetching internal metadata", "critical", "https://api.askwell.dev/v1/webhooks/preview", 4, {
+      projectId: "askwell",
+      taskId: "P3-T02",
+      cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:H/VA:N/SC:H/SI:L/SA:N", score: 9.3 },
+      cwe: ["CWE-918"],
+      attack: ["T1190"],
+      status: "confirmed",
+      verified: true,
+      verifiedBy: "michael",
+      description: "The webhook preview endpoint fetches caller-supplied URLs without resolving private/link-local destinations.",
+      impact: "Allows authenticated users to reach cloud instance metadata (`169.254.169.254`) and internal admin services.",
+      remediation: "Validate resolved IPs against RFC1918/link-local/IMDS CIDR deny lists and enforce an explicit outbound allow-list.",
+      evidence: [{ kind: "request", content: "POST /v1/webhooks/preview HTTP/1.1\nContent-Type: application/json\n\n{\"url\":\"http://169.254.169.254/latest/meta-data/\"}" }],
+    }),
+    finding("F-002", "jim", "Legacy session route accepts unsigned JWT alg=none tokens", "high", "https://api.askwell.dev/v0/session", 8, {
+      projectId: "askwell",
+      cvss: { vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", score: 8.7 },
+      cwe: ["CWE-347"],
+      status: "open",
+      description: "The deprecated `/v0/session` handler skips signature verification when the JWT header declares `alg: none`.",
+      impact: "Unauthenticated attackers can forge arbitrary session tokens for legacy API endpoints.",
+      remediation: "Pin allowed JWT verification algorithms strictly to `ES256`/`HS256` and retire `/v0/session`.",
+      evidence: [{ kind: "command", content: "curl -s https://api.askwell.dev/v0/session -H 'Authorization: Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJhZG1pbiJ9.'" }],
+    }),
+    finding("F-003", "dwight", "Webhook HMAC signature compared without constant-time equality", "medium", "https://api.askwell.dev/v1/webhooks/ingest", 19, {
+      projectId: "askwell",
+      cvss: { vector: "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N", score: 5.3 },
+      cwe: ["CWE-208"],
+      status: "open",
+      description: "Incoming webhook HMAC signatures are compared via `===` instead of `crypto.timingSafeEqual`.",
+      impact: "Timing side-channel could allow iterative signature forgery under high-rate probing.",
+      remediation: "Compare decoded HMAC digests using constant-time byte comparison.",
+      evidence: [{ kind: "note", content: "Observed in src/webhooks/verify.ts:42 (`if (sig !== expected)`)" }],
+    }),
+  ],
 };
 
 // ---------------------------------------------------------------- Cybersec & OSINT Cell (5 agents, Deliverables mode)

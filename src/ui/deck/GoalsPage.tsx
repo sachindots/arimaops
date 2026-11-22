@@ -3,6 +3,7 @@ import type { Goal } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { fmtUsd } from "../kit";
+import { Select } from "../primitives/Select";
 
 /**
  * What the work adds up to: one row per goal (its number now and the target, tasks done, the tasks linked to it,
@@ -58,14 +59,17 @@ export function GoalsPage() {
                 </button>
                 <span className="min-w-0 flex-1 truncate text-ink">{t.title}</span>
                 {!isViewer && (
-                  <select className="field w-auto text-[13px]" value="" aria-label={`Goal for ${t.id}`} onChange={(e) => e.target.value && officeActions.setTaskGoal(t.id, e.target.value)}>
-                    <option value="">Link to a goal…</option>
-                    {active.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.id} {g.title}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    className="w-auto min-w-[165px]"
+                    size="sm"
+                    value=""
+                    aria-label={`Goal for ${t.id}`}
+                    options={[
+                      { value: "", label: "Link to a goal…" },
+                      ...active.map((g) => ({ value: g.id, label: `${g.id} ${g.title}` })),
+                    ]}
+                    onChange={(v) => v && officeActions.setTaskGoal(t.id, v)}
+                  />
                 )}
               </li>
             ))}
@@ -124,11 +128,18 @@ function GoalRow({ goal: g, cols }: { goal: Goal; cols: string }) {
         {isViewer ? (
           <span className="text-[13px] capitalize text-muted">{g.status}</span>
         ) : (
-          <select className="field w-full text-[13px]" value={g.status} aria-label={`${g.id} status`} onChange={(e) => officeActions.updateGoal(g.id, { status: e.target.value as Goal["status"] })}>
-            <option value="active">Active</option>
-            <option value="done">Done</option>
-            <option value="dropped">Dropped</option>
-          </select>
+          <Select
+            className="w-full"
+            size="sm"
+            value={g.status}
+            aria-label={`${g.id} status`}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "done", label: "Done" },
+              { value: "dropped", label: "Dropped" },
+            ]}
+            onChange={(v) => officeActions.updateGoal(g.id, { status: v as Goal["status"] })}
+          />
         )}
       </span>
     </div>

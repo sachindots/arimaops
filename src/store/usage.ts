@@ -54,7 +54,10 @@ export function useAgentUsage(days = 1) {
       try {
         const tok = token();
         const r = await fetch(`/api/projects/${encodeURIComponent(projectId)}/usage?days=${days}${tok ? `&token=${encodeURIComponent(tok)}` : ""}`, { credentials: "same-origin" });
-        if (r.ok && !stop) setRows(((await r.json()) as { agents: AgentUsage[] }).agents);
+        if (r.ok && !stop) {
+          const data = (await r.json()) as { agents?: AgentUsage[] };
+          setRows(Array.isArray(data.agents) ? data.agents : []);
+        }
       } catch {
         /* offline: keep the last numbers */
       }

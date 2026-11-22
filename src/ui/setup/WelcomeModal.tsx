@@ -1,21 +1,54 @@
 import { BRAND } from "../../data/brand";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EMPTY_STACK, frameworks, STACK_CATEGORIES, toolsIn, type StackConfig } from "../../data/stack";
 import { BUILTIN_TEMPLATES } from "../../data/templates";
 import type { ReviewTool } from "../../data/types";
 import { officeActions, reviewToolLabel, useOffice } from "../../store/office";
+import { ui } from "../../store/ui";
+import { Icon } from "../deck/Icon";
 import { Field, RoleBadge } from "../kit";
+import { Select } from "../primitives/Select";
 import { TemplateImport } from "./TemplateImport";
 
 /** First run on a repo or folder: name the project and pick the team template it runs. */
 export function WelcomeModal() {
   const snap = useOffice((s) => s.snap);
+  const lastCommandError = useOffice((s) => s.lastCommandError);
   const [projectName, setProjectName] = useState(snap?.config.project.name ?? "");
   const [templateId, setTemplateId] = useState(BUILTIN_TEMPLATES[0].id);
   const [reviewEnabled, setReviewEnabled] = useState(snap?.config.workflow.review.enabled ?? true);
   const [reviewTool, setReviewTool] = useState<ReviewTool>(snap?.config.workflow.review.tool ?? "human");
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [stack, setStack] = useState<StackConfig>(EMPTY_STACK);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[data-select-popover="true"]')) return;
+      e.preventDefault();
+      ui.dismissWelcome();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (sending && lastCommandError) {
+      setError(lastCommandError);
+      setSending(false);
+    }
+  }, [sending, lastCommandError]);
+
+  useEffect(() => {
+    if (!sending) return;
+    const timer = window.setTimeout(() => {
+      setSending(false);
+      setError((prev) => prev ?? "Timed out waiting for HQ response. Check your connection and try again.");
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [sending]);
+
   if (!snap) return null;
   const library = snap.templateLibrary ?? BUILTIN_TEMPLATES.map((t) => ({ template: t, builtin: true, problems: [] as string[] }));
   const entry = library.find((e) => e.template.id === templateId) ?? library[0];
@@ -23,6 +56,8 @@ export function WelcomeModal() {
   const usesPrs = template.flow.stages.some((st) => st.gates.some((g) => g.kind === "pr-merged"));
 
   const submit = () => {
+    setError(null);
+    officeActions.clearCommandError();
     setSending(true);
     const hasStack = stack.frameworks.length > 0 || Object.values(stack.tools).some(Boolean);
     officeActions.completeWelcome({
@@ -38,13 +73,24 @@ export function WelcomeModal() {
   return (
     <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
       <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
-        <div className="border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
-          <h2 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">
-            Welcome to <span className="text-accent">{BRAND.name}</span>
-          </h2>
-          <p className="m-0 mt-0.5 text-[13px] text-muted">
-            Pick a team for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>. You can change its roles, models and agents later in Settings → Team.
-          </p>
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
+          <div>
+            <h2 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">
+              Welcome to <span className="text-accent">{BRAND.name}</span>
+            </h2>
+            <p className="m-0 mt-0.5 text-[13px] text-muted">
+              Pick a team for <b className="text-ink">{snap.config.project.repo || snap.config.project.name}</b>. You can change its roles, models and agents later in Settings → Team.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => ui.dismissWelcome()}
+            aria-label="Close"
+            title="Skip for now"
+            className="cursor-pointer rounded-md p-1 text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+          >
+            <Icon name="close" size={18} />
+          </button>
         </div>
 
         <div className="scroll-thin flex min-h-0 flex-col gap-4 overflow-y-auto px-5 py-4">
@@ -107,23 +153,38 @@ export function WelcomeModal() {
                   <input type="checkbox" checked={reviewEnabled} onChange={(e) => setReviewEnabled(e.target.checked)} />
                   Review PRs before merge
                 </label>
-                <select className="field w-[220px]" value={reviewTool} disabled={!reviewEnabled} onChange={(e) => setReviewTool(e.target.value as ReviewTool)} aria-label="Review tool">
-                  {(Object.keys(reviewToolLabel) as ReviewTool[]).map((t) => (
-                    <option key={t} value={t}>
-                      {reviewToolLabel[t]}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  className="w-[220px]"
+                  value={reviewTool}
+                  disabled={!reviewEnabled}
+                  aria-label="Review tool"
+                  options={(Object.keys(reviewToolLabel) as ReviewTool[]).map((t) => ({
+                    value: t,
+                    label: reviewToolLabel[t],
+                  }))}
+                  onChange={(v) => setReviewTool(v as ReviewTool)}
+                />
               </div>
             </section>
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-white/[0.08] px-4 py-2.5">
-          <span className="text-[12px] text-muted">Agents don't start until you press Start.</span>
-          <button className="btn" disabled={sending || entry.problems.length > 0} onClick={submit}>
-            {sending ? "Creating…" : "Create team"}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] px-4 py-2.5">
+          {error ? (
+            <span role="alert" className="text-[12px] font-medium text-red">
+              {error}
+            </span>
+          ) : (
+            <span className="text-[12px] text-muted">Agents don't start until you press Start.</span>
+          )}
+          <div className="flex items-center gap-2">
+            <button type="button" className="btn" onClick={() => ui.dismissWelcome()}>
+              Skip for now
+            </button>
+            <button type="button" className="btn btn-primary" disabled={sending || entry.problems.length > 0} onClick={submit}>
+              {sending ? "Creating…" : "Create team"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -161,23 +222,21 @@ function WelcomeStack({ stack, setStack }: { stack: StackConfig; setStack: (s: S
             {STACK_CATEGORIES.map((c) => (
               <label key={c.id} className="flex flex-col gap-0.5 text-[12px] font-semibold">
                 {c.label}
-                <select
-                  className="field"
+                <Select
+                  size="sm"
                   value={stack.tools[c.id]?.id ?? ""}
-                  onChange={(e) => {
+                  aria-label={c.label}
+                  options={[
+                    { value: "", label: "None" },
+                    ...toolsIn(c.id).map((t) => ({ value: t.id, label: t.name })),
+                  ]}
+                  onChange={(v) => {
                     const tools = { ...stack.tools };
-                    if (e.target.value) tools[c.id] = { id: e.target.value };
+                    if (v) tools[c.id] = { id: v };
                     else delete tools[c.id];
                     setStack({ ...stack, tools });
                   }}
-                >
-                  <option value="">None</option>
-                  {toolsIn(c.id).map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             ))}
           </div>

@@ -5,9 +5,10 @@ import { mentioned } from "../../data/mentions";
 import { HUMAN_ID, type AgentMessage, type OfficeSnapshot } from "../../data/types";
 import { BRAND } from "../../data/brand";
 import { isViewer, officeActions, useOffice } from "../../store/office";
-import { ui } from "../../store/ui";
+import { ui, useUi } from "../../store/ui";
 import { modeOf } from "../../data/mode";
 import { Icon } from "../deck/Icon";
+import { VisualDecisionCard } from "../decisions/VisualDecisionCard";
 import { ago, Portrait, useNow } from "../kit";
 import { MessageText, shown, TagChip } from "./MessageBody";
 
@@ -37,15 +38,40 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-d
 
 export function ChatPage({ thread, onThread }: { thread: string; onThread: (id: string) => void }) {
   const snap = useOffice((s) => s.snap)!;
+  const [showChannels, setShowChannels] = useState(false);
   return (
     <div className="flex min-h-0 flex-1">
-      <Channels snap={snap} thread={thread} onThread={onThread} />
-      <Conversation key={thread} snap={snap} thread={thread} />
+      <Channels
+        snap={snap}
+        thread={thread}
+        onThread={(id) => {
+          onThread(id);
+          setShowChannels(false);
+        }}
+        mobileOpen={showChannels}
+      />
+      <Conversation
+        key={thread}
+        snap={snap}
+        thread={thread}
+        mobileHidden={showChannels}
+        onOpenChannels={() => setShowChannels(true)}
+      />
     </div>
   );
 }
 
-function Channels({ snap, thread, onThread }: { snap: OfficeSnapshot; thread: string; onThread: (id: string) => void }) {
+function Channels({
+  snap,
+  thread,
+  onThread,
+  mobileOpen,
+}: {
+  snap: OfficeSnapshot;
+  thread: string;
+  onThread: (id: string) => void;
+  mobileOpen: boolean;
+}) {
   const now = useNow(15_000);
   const who = people(snap);
   const team = [...snap.config.team].sort((a, b) => Number(b.isLead) - Number(a.isLead));
@@ -71,7 +97,10 @@ function Channels({ snap, thread, onThread }: { snap: OfficeSnapshot; thread: st
     </button>
   );
   return (
-    <nav className="flex w-[300px] shrink-0 flex-col border-r border-[var(--border-hairline)] bg-cream-2/40" aria-label="Chats">
+    <nav
+      className={`${mobileOpen ? "flex w-full" : "hidden md:flex"} shrink-0 flex-col border-r border-[var(--border-hairline)] bg-cream-2/40 md:w-[260px] lg:w-[300px]`}
+      aria-label="Chats"
+    >
       <div className="px-4 pt-4 pb-2">
         <h1 className="m-0 text-[20px] font-semibold tracking-tight text-ink">Chat</h1>
         <p className="m-0 text-[12px] text-muted">Every message goes through HQ.</p>
@@ -111,7 +140,17 @@ function Channels({ snap, thread, onThread }: { snap: OfficeSnapshot; thread: st
   );
 }
 
-function Conversation({ snap, thread }: { snap: OfficeSnapshot; thread: string }) {
+function Conversation({
+  snap,
+  thread,
+  mobileHidden,
+  onOpenChannels,
+}: {
+  snap: OfficeSnapshot;
+  thread: string;
+  mobileHidden: boolean;
+  onOpenChannels: () => void;
+}) {
   const who = people(snap);
   const agent = snap.config.team.find((a) => a.id === thread);
   const st = agent ? snap.agents.find((s) => s.agentId === agent.id) : undefined;
@@ -119,14 +158,33 @@ function Conversation({ snap, thread }: { snap: OfficeSnapshot; thread: string }
     () => [...(thread === TEAM ? snap.messages : snap.messages.filter((m) => m.fromId === thread || m.toId === thread))].reverse(),
     [snap.messages, thread],
   );
+  const threadDecisions = useMemo(
+    () =>
+      (snap.visualDecisions ?? []).filter(
+        (d) => d.status === "open" && (thread === TEAM || d.fromId === thread),
+      ),
+    [snap.visualDecisions, thread],
+  );
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" }); // newer browsers return a Promise here: never hand it to React as cleanup
   }, [list.length]);
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col" aria-label={agent ? `Chat with ${agent.name}` : "Team chat"}>
-      <header className="flex items-center gap-3 border-b border-[var(--border-hairline)] px-6 py-3">
+    <section
+      className={`${mobileHidden ? "hidden md:flex" : "flex"} min-w-0 flex-1 flex-col`}
+      aria-label={agent ? `Chat with ${agent.name}` : "Team chat"}
+    >
+      <header className="flex items-center gap-2.5 border-b border-[var(--border-hairline)] px-4 py-3 md:gap-3 md:px-6">
+        <button
+          type="button"
+          onClick={onOpenChannels}
+          aria-label="Show channels"
+          className="btn px-2 py-1 text-[12px] md:hidden"
+        >
+          <Icon name="arrow_back" size={16} />
+          <span>Chats</span>
+        </button>
         {agent ? <Portrait name={agent.name} color={agent.color} lead={agent.isLead} size={32} /> : <Icon name="groups" size={22} className="text-muted" />}
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold text-ink">{agent ? agent.name : "Team"}</div>
@@ -141,7 +199,7 @@ function Conversation({ snap, thread }: { snap: OfficeSnapshot; thread: string }
         )}
       </header>
 
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-4" aria-live="polite">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6" aria-live="polite">
         {list.length === 0 && <p className="text-[13px] text-muted">{agent ? `No messages with ${agent.name} yet.` : "No messages yet. Ask the team something below."}</p>}
         {list.map((m, i) => {
           const prev = list[i - 1];
@@ -199,6 +257,13 @@ function Conversation({ snap, thread }: { snap: OfficeSnapshot; thread: string }
             </Fragment>
           );
         })}
+        {threadDecisions.length > 0 && (
+          <div className="mt-4 flex flex-col gap-3">
+            {threadDecisions.map((dec) => (
+              <VisualDecisionCard key={dec.id} decision={dec} compact />
+            ))}
+          </div>
+        )}
         <div ref={end} />
       </div>
 
@@ -209,7 +274,8 @@ function Conversation({ snap, thread }: { snap: OfficeSnapshot; thread: string }
 
 /** Enter sends, Shift+Enter is a new line, "@" offers the team (↑ ↓ to pick, Enter or Tab to take). */
 function Composer({ snap, thread }: { snap: OfficeSnapshot; thread: string }) {
-  const [draft, setDraft] = useState("");
+  const draft = useUi((s) => s.chatDrafts[thread] ?? "");
+  const setDraft = (next: string) => ui.setChatDraft(thread, next);
   const [pick, setPick] = useState(0);
   const box = useRef<HTMLTextAreaElement>(null);
   const team = snap.config.team;
@@ -259,7 +325,7 @@ function Composer({ snap, thread }: { snap: OfficeSnapshot; thread: string }) {
         : "This team has no lead: @Name an agent to write to them.";
 
   return (
-    <div className="relative border-t border-[var(--border-hairline)] px-6 py-3">
+    <div className="relative border-t border-[var(--border-hairline)] px-3.5 py-3 md:px-6">
       {options.length > 0 && (
         <ul className="absolute bottom-full left-6 m-0 mb-1 w-64 list-none overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] p-1 shadow-[var(--card-shadow-hover)]" role="listbox" aria-label="Mention">
           {options.map((a, i) => (

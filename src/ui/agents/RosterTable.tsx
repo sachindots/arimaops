@@ -44,10 +44,12 @@ export function RosterTable({
   /** Show the 1–9 focus keys. */
   keys?: boolean;
 }) {
-  const cols = narrow ? "minmax(170px,1.2fr) 110px minmax(0,1.6fr) 96px" : "minmax(200px,1.2fr) minmax(170px,1fr) 120px minmax(0,1.8fr) 150px auto";
+  const cols = narrow
+    ? "minmax(170px,1.2fr) 110px minmax(0,1.6fr) 96px"
+    : "minmax(150px,1.1fr) minmax(135px,1fr) 96px minmax(140px,1.8fr) 120px auto";
   const groups = grouped ? [...new Set(rows.map((r) => r.project))].map((p) => rows.filter((r) => r.project === p)) : [rows];
   return (
-    <div role="table" aria-label="Agents" className={`text-[13px] ${narrow ? "min-w-[520px]" : "min-w-[860px]"}`}>
+    <div role="table" aria-label="Agents" className={`text-[13px] ${narrow ? "min-w-[520px]" : "min-w-[820px]"}`}>
       <div role="row" className="grid items-center gap-3 border-b border-[var(--border-hairline)] px-3 pb-2 text-[12px] font-medium text-muted" style={{ gridTemplateColumns: cols }}>
         <span role="columnheader">Agent</span>
         {!narrow && <span role="columnheader">Runs on</span>}

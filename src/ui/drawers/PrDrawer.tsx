@@ -2,11 +2,13 @@
 // age), and the selected PR's review summary beside it. Merging stays a human action on GitHub.
 import { useState } from "react";
 import type { PullRequest } from "../../data/types";
-import { reviewToolLabel, useOffice } from "../../store/office";
+import { isViewer, reviewToolLabel, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Icon } from "../deck/Icon";
 import { ago, Portrait, ReviewChip, useNow } from "../kit";
+import { AnnotateModal } from "../preview/AnnotateModal";
 import { DrawerHeader, PageTitle } from "./Drawer";
+import { evidenceUrl } from "./TaskSheet";
 
 /** "[P3-T02] Chat route" → "Chat route": the task id has its own column. */
 const bare = (pr: PullRequest) => pr.title.replace(/^\[[^\]]+\]\s*/, "");
@@ -24,6 +26,7 @@ export function PrDrawer() {
   const now = useNow(10_000);
   const [tab, setTab] = useState<"open" | "merged">("open");
   const [picked, setPicked] = useState<number | null>(null);
+  const [mobileDetail, setMobileDetail] = useState(false);
   if (!snap) return null;
   const wf = snap.config.workflow;
   const open = snap.pullRequests.filter((p) => !p.merged && !p.closed).sort((a, b) => b.number - a.number);
@@ -44,19 +47,19 @@ export function PrDrawer() {
             key={t}
             type="button"
             aria-current={tab === t ? "page" : undefined}
-            onClick={() => (setTab(t), setPicked(null))}
+            onClick={() => (setTab(t), setPicked(null), setMobileDetail(false))}
             className={`-mb-px border-b-2 px-3 py-2 text-[13px] ${tab === t ? "border-[var(--accent)] font-medium text-ink" : "border-transparent text-muted hover:text-ink"}`}
           >
             {t === "open" ? "Open" : "Merged"} <span className="text-muted">{t === "open" ? open.length : merged.length}</span>
           </button>
         ))}
       </nav>
-      <div className="flex min-h-0 flex-1">
-        <div className="scroll-thin min-w-0 flex-1 overflow-auto">
+      <div className="flex min-h-0 flex-1 flex-col min-[1101px]:flex-row">
+        <div className={`scroll-thin min-w-0 flex-1 overflow-auto ${mobileDetail && current ? "max-[1100px]:hidden" : ""}`}>
           {list.length === 0 ? (
             <p className="m-0 p-6 text-[13px] text-muted">{tab === "open" ? "No open PRs." : "Nothing merged yet."}</p>
           ) : (
-            <div role="table" className="min-w-[760px] text-[13px]" aria-label={tab === "open" ? "Open pull requests" : "Merged pull requests"}>
+            <div role="table" className="min-w-[680px] text-[13px]" aria-label={tab === "open" ? "Open pull requests" : "Merged pull requests"}>
               <div role="row" className="grid items-center gap-3 border-b border-[var(--border-hairline)] px-4 py-2 text-[12px] font-medium text-muted" style={{ gridTemplateColumns: cols }}>
                 <span role="columnheader">#</span>
                 <span role="columnheader">Title</span>
@@ -77,8 +80,8 @@ export function PrDrawer() {
                     role="row"
                     tabIndex={0}
                     aria-selected={on || undefined}
-                    onClick={() => setPicked(pr.number)}
-                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setPicked(pr.number))}
+                    onClick={() => (setPicked(pr.number), setMobileDetail(true))}
+                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setPicked(pr.number), setMobileDetail(true))}
                     className={`grid cursor-pointer items-center gap-3 border-b border-[var(--border-hairline)] px-4 py-2.5 outline-none ${on ? "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" : "hover:bg-cream-2/70 focus-visible:bg-cream-2"}`}
                     style={{ gridTemplateColumns: cols }}
                   >
@@ -113,15 +116,19 @@ export function PrDrawer() {
             </div>
           )}
         </div>
-        {current && <Summary pr={current} />}
+        {current && <Summary pr={current} mobileDetail={mobileDetail} onBack={() => setMobileDetail(false)} />}
       </div>
     </>
   );
 }
 
 /** The selected PR: where review stands, CI, conflicts, the files, and where to act. */
-function Summary({ pr }: { pr: PullRequest }) {
-  const author = useOffice((s) => s.snap?.config.team.find((a) => a.id === pr.authorId));
+function Summary({ pr, mobileDetail, onBack }: { pr: PullRequest; mobileDetail?: boolean; onBack?: () => void }) {
+  const snap = useOffice((s) => s.snap);
+  const author = snap?.config.team.find((a) => a.id === pr.authorId);
+  const linkedTask = snap?.tasks.find((t) => (pr.taskId && t.id === pr.taskId) || t.prNumber === pr.number);
+  const projectId = snap?.config.project.id ?? "";
+  const [annotating, setAnnotating] = useState<{ url: string; label: string } | null>(null);
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border-hairline)] py-2 text-[13px] last:border-b-0">
       <span className="text-muted">{label}</span>
@@ -129,7 +136,21 @@ function Summary({ pr }: { pr: PullRequest }) {
     </div>
   );
   return (
-    <aside className="scroll-thin flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] p-5 max-[1100px]:hidden" aria-label={`PR #${pr.number}`}>
+    <aside
+      className={`scroll-thin flex shrink-0 flex-col gap-4 overflow-y-auto border-t border-[var(--border-hairline)] bg-[var(--surface-card)] p-5 min-[1101px]:w-[340px] min-[1101px]:border-t-0 min-[1101px]:border-l ${
+        mobileDetail ? "max-[1100px]:flex-1" : "max-[1100px]:max-h-[42dvh]"
+      }`}
+      aria-label={`PR #${pr.number}`}
+    >
+      {mobileDetail && onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="btn flex w-fit items-center gap-1.5 text-[12px] min-[1101px]:hidden"
+        >
+          <Icon name="arrow_back" size={16} /> Back to pull request list
+        </button>
+      )}
       <div>
         <div className="text-[12px] text-muted">#{pr.number}{pr.branch ? ` · ${pr.branch}` : ""}</div>
         <h2 className="m-0 mt-0.5 text-[15px] font-semibold leading-snug text-ink">{bare(pr)}</h2>
@@ -159,6 +180,54 @@ function Summary({ pr }: { pr: PullRequest }) {
           </ul>
         </div>
       )}
+      {linkedTask?.evidence && linkedTask.evidence.shots.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[12px] font-medium text-muted">
+            Verifier Evidence · {linkedTask.evidence.shots.length}
+          </div>
+          <div className="flex flex-col gap-2">
+            {linkedTask.evidence.shots.map((s) => {
+              const url = evidenceUrl(projectId, linkedTask.id, linkedTask.evidence!.sha, s.file);
+              const video = /\.(webm|mp4)$/.test(s.file);
+              return (
+                <div
+                  key={s.file}
+                  className="overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-cream-2"
+                >
+                  <a href={url} target="_blank" rel="noreferrer" className="block" title={`${s.label}: open full size`}>
+                    {video ? (
+                      <video src={url} className="aspect-[16/10] w-full object-cover object-top" muted controls />
+                    ) : (
+                      <img
+                        src={url}
+                        alt={s.label}
+                        loading="lazy"
+                        className="aspect-[16/10] w-full object-cover object-top"
+                      />
+                    )}
+                  </a>
+                  <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-muted" title={s.label}>
+                      {s.label}
+                    </span>
+                    {!video && !isViewer && (
+                      <button
+                        type="button"
+                        onClick={() => setAnnotating({ url, label: s.label })}
+                        className="btn min-h-[26px] shrink-0 px-2 py-0.5 text-[12px]"
+                        title="Freeze & Draw feedback on this evidence screenshot"
+                      >
+                        <Icon name="draw" size={14} />
+                        Annotate
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="mt-auto flex flex-col gap-2">
         {pr.url ? (
           <a className="btn btn-primary justify-center text-[13px]" href={pr.url} target="_blank" rel="noreferrer">
@@ -182,6 +251,16 @@ function Summary({ pr }: { pr: PullRequest }) {
           )}
         </div>
       </div>
+      {annotating && linkedTask && (
+        <AnnotateModal
+          imageUrl={annotating.url}
+          title={annotating.label}
+          sourceKind="pr-evidence"
+          taskId={linkedTask.id}
+          prNumber={pr.number}
+          onClose={() => setAnnotating(null)}
+        />
+      )}
     </aside>
   );
 }

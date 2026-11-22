@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { SERVICE_KEYS, type BasePolicy, type SbxRule } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { Dot, Field, SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
 import { ChipList, CommitInput, isDomain } from "./controls";
 import { ResourcesSection } from "./ResourcesSection";
 import { ask } from "../dialog";
@@ -172,11 +173,12 @@ function KeyEditor({ keys, onSet, onRemove, disabled }: { keys: string[]; onSet:
           }}
         >
           <Field label="Service">
-            <select className="field" value={service} onChange={(e) => setService(e.target.value)}>
-              {SERVICE_KEYS.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
+            <Select
+              value={service}
+              onChange={setService}
+              ariaLabel="Service"
+              options={SERVICE_KEYS.map((s) => ({ value: s, label: s }))}
+            />
           </Field>
           <Field label="Key / token">
             <input className="field" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />

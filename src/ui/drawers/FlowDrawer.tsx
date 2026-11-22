@@ -8,6 +8,7 @@ import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Icon } from "../deck/Icon";
 import { Dot } from "../kit";
+import { Select } from "../primitives/Select";
 import { DrawerHeader, PageTitle } from "./Drawer";
 import { SlideOver } from "./SlideOver";
 import { gateText } from "./TaskSheet";
@@ -317,48 +318,60 @@ export function FlowDrawer() {
                       </div>
                       <div className="text-[12px] text-muted">{gateText(g)}</div>
                       {g.kind === "reviewer" && (
-                        <select className="field mt-1.5 h-8 w-full py-0 text-[12px]" disabled={!canEdit} value={g.roleId ?? ""} onChange={(e) => set({ roleId: e.target.value || undefined } as Partial<Gate>)} aria-label="Reviewer role">
-                          <option value="">Anyone but the task's owner</option>
-                          {roles.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              A {r.title}
-                            </option>
-                          ))}
-                        </select>
+                        <Select
+                          className="mt-1.5"
+                          size="sm"
+                          disabled={!canEdit}
+                          value={g.roleId ?? ""}
+                          aria-label="Reviewer role"
+                          options={[
+                            { value: "", label: "Anyone but the task's owner" },
+                            ...roles.map((r) => ({ value: r.id, label: `A ${r.title}` })),
+                          ]}
+                          onChange={(v) => set({ roleId: v || undefined } as Partial<Gate>)}
+                        />
                       )}
                       {g.kind === "second-opinion" && (
-                        <select className="field mt-1.5 h-8 w-full py-0 text-[12px]" disabled={!canEdit} value={g.when} onChange={(e) => set({ when: e.target.value } as Partial<Gate>)} aria-label="When">
-                          <option value="high-stakes">Only for high-stakes tasks</option>
-                          <option value="always">Always</option>
-                        </select>
+                        <Select
+                          className="mt-1.5"
+                          size="sm"
+                          disabled={!canEdit}
+                          value={g.when}
+                          aria-label="When"
+                          options={[
+                            { value: "high-stakes", label: "Only for high-stakes tasks" },
+                            { value: "always", label: "Always" },
+                          ]}
+                          onChange={(v) => set({ when: v } as Partial<Gate>)}
+                        />
                       )}
                       {g.kind === "owner-approval" && (
-                        <select className="field mt-1.5 h-8 w-full py-0 text-[12px]" disabled={!canEdit} value={g.reason} onChange={(e) => set({ reason: e.target.value } as Partial<Gate>)} aria-label="What you approve">
-                          {APPROVAL_REASONS.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
+                        <Select
+                          className="mt-1.5"
+                          size="sm"
+                          disabled={!canEdit}
+                          value={g.reason}
+                          aria-label="What you approve"
+                          options={APPROVAL_REASONS.map((r) => ({ value: r, label: r }))}
+                          onChange={(v) => set({ reason: v } as Partial<Gate>)}
+                        />
                       )}
                     </li>
                   );
                 })}
               </ul>
               {canEdit && (
-                <select
-                  className="field mt-2 h-8 w-full py-0 text-[12px]"
+                <Select
+                  className="mt-2"
+                  size="sm"
                   value=""
                   aria-label="Add a gate"
-                  onChange={(e) => e.target.value && patchStage(cur.id, (s) => ({ gates: [...s.gates, newGate(e.target.value as GateKind, allGateIds)] }))}
-                >
-                  <option value="">+ Add a gate…</option>
-                  {GATE_KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {GATE_NAME[k]}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "+ Add a gate…" },
+                    ...GATE_KINDS.map((k) => ({ value: k, label: GATE_NAME[k] })),
+                  ]}
+                  onChange={(v) => v && patchStage(cur.id, (s) => ({ gates: [...s.gates, newGate(v as GateKind, allGateIds)] }))}
+                />
               )}
             </div>
 

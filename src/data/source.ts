@@ -46,6 +46,15 @@ import type {
   SkillPackView,
   TemplateEntry,
   LessonsState,
+  VisualDecision,
+  MeetingSession,
+  MeetingTurn,
+  MeetingMinutes,
+  PreviewTarget,
+  VisualFeedback,
+  AnswerDecisionInput,
+  StartMeetingInput,
+  SubmitVisualFeedbackInput,
 } from "./types";
 
 export type OfficeEvent =
@@ -85,6 +94,18 @@ export type OfficeEvent =
   | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
   | { type: "finding.updated"; finding: Finding }
+  | { type: "decision.updated"; decision: VisualDecision }
+  | { type: "decision-updated"; decision: VisualDecision }
+  | { type: "meeting.updated"; meeting: MeetingSession }
+  | { type: "meeting-updated"; meeting: MeetingSession }
+  | { type: "meeting.turn.added"; turn: MeetingTurn }
+  | { type: "meeting-turn-added"; turn: MeetingTurn }
+  | { type: "preview.targets"; targets: PreviewTarget[] }
+  | { type: "preview-targets"; targets: PreviewTarget[] }
+  | { type: "feedback.created"; feedback: VisualFeedback }
+  | { type: "feedback-created"; feedback: VisualFeedback }
+  | { type: "agent-status"; agentId: string; state: string; note: string | null }
+  | { type: "command.ack"; id: string; ok: boolean; error: string | null }
   /** Remote step-up: a risky command from a tablet/phone needs a TOTP code. Handled inside wsSource. */
   | { type: "remote.stepup"; status: "required" | "ok" | "denied"; cmd?: string; args?: unknown[]; until?: number };
 
@@ -228,6 +249,15 @@ export interface OfficeDataSource {
 
   /** Finishes first-run setup: saves the project's team and review tool. */
   completeWelcome(input: WelcomeInput): void;
+
+  // v2 Visual Decisions, Gates, Meetings & Preview Feedback
+  answerDecision(id: string, input: AnswerDecisionInput): void;
+  recordGate(taskId: string, gateId: string, state: "passed" | "waived" | "failed", note?: string | null): void;
+  startMeeting(input: StartMeetingInput): void;
+  joinMeeting(meetingId: string, action?: "join" | "pause" | "resume" | "close" | "snooze" | "decline", voiceEnabled?: boolean): void;
+  addMeetingTurn(meetingId: string, bodyMarkdown: string, speakerId?: string, decisionId?: string | null): void;
+  commitMeetingMinutes(meetingId: string, minutes: MeetingMinutes): void;
+  submitVisualFeedback(input: SubmitVisualFeedbackInput): void;
 
   dev?: DevControls;
 }

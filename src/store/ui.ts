@@ -14,7 +14,10 @@ export type DrawerState =
   | null;
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages" | "usage";
-export type SettingsTab = "team" | "users" | "accounts" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type SettingsTab = "team" | "users" | "license" | "accounts" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type WorkspaceId = "home" | "work" | "inbox" | "team" | "preview" | "usage" | "factory" | "ops";
+export type WorkTab = "board" | "prs" | "findings" | "goals" | "flow";
+export type TeamTab = "agents" | "chat" | "meetings";
 
 /** Something in the office the camera can fly to. */
 export type FocusTarget =
@@ -37,6 +40,25 @@ interface UiState {
   zoomRequest: { delta: number; nonce: number } | null;
   debugOpen: boolean;
   setupOpen: boolean;
+  welcomeDismissed: boolean;
+  /** Active top-level workspace preserved across desktop <-> tablet resize. */
+  workspace: WorkspaceId;
+  /** Sub-tab inside Work workspace (Board | PRs/Findings | Goals | Flow). */
+  workTab: WorkTab;
+  /** Optional board filter state when jumping to Work -> Board. */
+  boardFilter: { boardId?: string; stageId?: string; taskId?: string } | null;
+  /** Sub-tab inside Team workspace (Agents | Chat | Meetings). */
+  teamTab: TeamTab;
+  /** Active meeting session in Team -> Meetings. */
+  activeMeetingId: string | null;
+  /** Selected Inbox item or VisualDecision id. */
+  selectedDecisionId: string | null;
+  /** Active Chat thread id ("@team" or agentId), preserved across resize. */
+  chatThread: string;
+  /** Unsent Chat drafts keyed by thread id, preserved across resize. */
+  chatDrafts: Record<string, string>;
+  /** Whether the desktop left rail is expanded with full labels. */
+  railExpanded: boolean;
   /** Side drawer width in px, remembered per browser; `maximized` fills the screen. */
   drawerWidth: number;
   drawerMaximized: boolean;
@@ -72,10 +94,11 @@ function savedScheme(): { scheme: Scheme; pinned: boolean } {
       if (typeof document !== "undefined") document.documentElement.dataset.scheme = raw;
       return { scheme: raw, pinned: true };
     }
-    if (typeof document !== "undefined") document.documentElement.dataset.scheme = "light";
-    return { scheme: "light", pinned: false };
+    if (typeof document !== "undefined") document.documentElement.dataset.scheme = "dark";
+    return { scheme: "dark", pinned: false };
   } catch {
-    return { scheme: "light", pinned: false };
+    if (typeof document !== "undefined") document.documentElement.dataset.scheme = "dark";
+    return { scheme: "dark", pinned: false };
   }
 }
 function soloFromUrl(): Solo | null {
@@ -128,6 +151,22 @@ export const useUi = create<UiState>(() => ({
   zoomRequest: null,
   debugOpen: false,
   setupOpen: false,
+  welcomeDismissed: (() => {
+    try {
+      return sessionStorage.getItem("arima.welcomeDismissed") === "1";
+    } catch {
+      return false;
+    }
+  })(),
+  workspace: "home",
+  workTab: "board",
+  boardFilter: null,
+  teamTab: "agents",
+  activeMeetingId: null,
+  selectedDecisionId: null,
+  chatThread: "@team",
+  chatDrafts: {},
+  railExpanded: false,
   drawerWidth: savedWidth(),
   drawerMaximized: false,
   compact: isCompact(savedLayout()),
@@ -151,30 +190,168 @@ export const ui = {
     useUi.setState({ drawer: { kind: "agent", id, tab } });
     ui.focus({ kind: "agent", id });
   },
+  setWorkspace(workspace: WorkspaceId) {
+    useUi.setState({
+      workspace,
+      view: "office",
+      settings: null,
+      drawer: null,
+    });
+  },
+  openOps() {
+    useUi.setState({
+      workspace: "ops",
+      view: "office",
+      settings: null,
+      drawer: null,
+    });
+  },
+  setWorkTab(workTab: WorkTab) {
+    useUi.setState((s) => ({
+      workspace: "work",
+      workTab,
+      view: "office",
+      settings: null,
+      drawer:
+        s.drawer && ["boards", "prs", "findings", "flow", "actions"].includes(s.drawer.kind)
+          ? null
+          : s.drawer,
+    }));
+  },
+  setTeamTab(teamTab: TeamTab) {
+    useUi.setState((s) => ({
+      workspace: "team",
+      teamTab,
+      view: "office",
+      settings: null,
+      drawer:
+        s.drawer && ["boards", "prs", "findings", "flow", "actions"].includes(s.drawer.kind)
+          ? null
+          : s.drawer,
+    }));
+  },
   openBoards(boardId?: string, stageId?: string) {
-    useUi.setState({ drawer: { kind: "boards", boardId, stageId } });
+    useUi.setState({
+      workspace: "work",
+      workTab: "board",
+      boardFilter: { boardId, stageId },
+      drawer: { kind: "boards", boardId, stageId },
+      settings: null,
+    });
   },
   /** The board the task is on, with the task open. */
   openTask(taskId: string, boardId?: string) {
-    useUi.setState({ drawer: { kind: "boards", boardId, taskId } });
+    useUi.setState({
+      workspace: "work",
+      workTab: "board",
+      boardFilter: { boardId, taskId },
+      drawer: { kind: "boards", boardId, taskId },
+      settings: null,
+    });
+  },
+  openGoals() {
+    useUi.setState({
+      workspace: "work",
+      workTab: "goals",
+      drawer: null,
+      settings: null,
+    });
+  },
+  openUsage() {
+    useUi.setState({
+      workspace: "usage",
+      view: "office",
+      drawer: null,
+      settings: null,
+    });
+  },
+  openFactory() {
+    useUi.setState({
+      workspace: "factory",
+      view: "office",
+      drawer: null,
+      settings: null,
+    });
+  },
+  openPreview() {
+    useUi.setState({
+      workspace: "preview",
+      drawer: null,
+      settings: null,
+    });
+  },
+  openChat(thread?: string) {
+    useUi.setState((s) => ({
+      workspace: "team",
+      teamTab: "chat",
+      chatThread: thread ?? s.chatThread,
+      drawer: null,
+      settings: null,
+    }));
+  },
+  setChatThread(chatThread: string) {
+    useUi.setState({ chatThread });
+  },
+  setChatDraft(thread: string, text: string) {
+    useUi.setState((s) => ({
+      chatDrafts: { ...s.chatDrafts, [thread]: text },
+    }));
+  },
+  openMeetings(meetingId?: string | null) {
+    useUi.setState((s) => ({
+      workspace: "team",
+      teamTab: "meetings",
+      activeMeetingId: meetingId !== undefined ? meetingId : s.activeMeetingId,
+      drawer: null,
+      settings: null,
+    }));
+  },
+  setActiveMeeting(activeMeetingId: string | null) {
+    useUi.setState({ activeMeetingId });
+  },
+  toggleRail() {
+    useUi.setState((s) => ({ railExpanded: !s.railExpanded }));
   },
   openTerminal() {
     useUi.setState({ drawer: { kind: "terminal" } });
   },
-  openActions() {
-    useUi.setState({ drawer: { kind: "actions" } });
+  openActions(decisionId?: string) {
+    useUi.setState((s) => ({
+      workspace: "inbox",
+      selectedDecisionId: decisionId ?? s.selectedDecisionId,
+      drawer: { kind: "actions" },
+      settings: null,
+    }));
+  },
+  setSelectedDecision(selectedDecisionId: string | null) {
+    useUi.setState({ selectedDecisionId });
   },
   openFindings() {
-    useUi.setState({ drawer: { kind: "findings" } });
+    useUi.setState({
+      workspace: "work",
+      workTab: "findings",
+      drawer: { kind: "findings" },
+      settings: null,
+    });
   },
   openCto() {
     useUi.setState({ drawer: { kind: "cto" } });
   },
   openFlow() {
-    useUi.setState({ drawer: { kind: "flow" } });
+    useUi.setState({
+      workspace: "work",
+      workTab: "flow",
+      drawer: { kind: "flow" },
+      settings: null,
+    });
   },
   openPrs() {
-    useUi.setState({ drawer: { kind: "prs" } });
+    useUi.setState({
+      workspace: "work",
+      workTab: "prs",
+      drawer: { kind: "prs" },
+      settings: null,
+    });
   },
   openEnv(name: string) {
     useUi.setState({ drawer: { kind: "env", name } });
@@ -201,6 +378,22 @@ export const ui = {
   },
   closeSetup() {
     useUi.setState({ setupOpen: false });
+  },
+  dismissWelcome() {
+    try {
+      sessionStorage.setItem("arima.welcomeDismissed", "1");
+    } catch {
+      /* private mode */
+    }
+    useUi.setState({ welcomeDismissed: true });
+  },
+  openWelcome() {
+    try {
+      sessionStorage.removeItem("arima.welcomeDismissed");
+    } catch {
+      /* private mode */
+    }
+    useUi.setState({ welcomeDismissed: false });
   },
   setDrawerWidth(px: number) {
     const w = Math.round(Math.min(drawerMax(), Math.max(DRAWER_MIN, px)));

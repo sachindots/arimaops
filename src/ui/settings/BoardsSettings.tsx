@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BoardStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
 import { SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
 import { CommitInput } from "./controls";
 
 export function BoardsSettings() {
@@ -25,11 +26,16 @@ export function BoardsSettings() {
               <div key={b.id} className="grid grid-cols-[60px_1fr_140px_120px] items-center gap-2.5 panel px-2.5 py-2">
                 <span className="font-term text-[13px] text-muted">{b.id}</span>
                 <CommitInput className="field" value={b.title} onCommit={(v) => v.trim() && officeActions.updateBoard(b.id, { title: v.trim() })} />
-                <select className="field" value={b.status} onChange={(e) => officeActions.updateBoard(b.id, { status: e.target.value as BoardStatus })} aria-label={`${b.title} status`}>
-                  <option value="active">Active</option>
-                  <option value="planned">Planned</option>
-                  <option value="done">Done</option>
-                </select>
+                <Select
+                  value={b.status}
+                  onChange={(v) => officeActions.updateBoard(b.id, { status: v as BoardStatus })}
+                  ariaLabel={`${b.title} status`}
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "planned", label: "Planned" },
+                    { value: "done", label: "Done" },
+                  ]}
+                />
                 <span className="text-right font-term text-[13px] text-muted">
                   {done}/{tasks.length} done
                 </span>
@@ -39,7 +45,7 @@ export function BoardsSettings() {
         </div>
       </section>
       <form
-        className="flex items-end gap-2 rounded-xl border border-dashed border-white/15 p-3"
+        className="flex items-end gap-2 rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] p-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (!title.trim()) return;

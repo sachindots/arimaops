@@ -4,6 +4,7 @@ import { type ProjectOverview, type TaskStatus } from "../../data/types";
 import { isViewer, officeActions, openProject, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Field, Portrait, SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
 import { DrawerHeader } from "./Drawer";
 import { presets } from "../../data/mock/presets";
 
@@ -445,9 +446,7 @@ export function CtoDrawer() {
                       <p className="mb-3 text-[12px] text-muted">No tasks on this project's board yet. Add one below.</p>
                     ) : (
                       <div className="mb-3 flex flex-col gap-1.5">
-                        {p.tasks.map((t) => {
-                          const st = STATUS_BADGE[t.status] ?? STATUS_BADGE.todo;
-                          return (
+                        {p.tasks.map((t) => (
                             <div
                               key={t.id}
                               className="grid grid-cols-2 items-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
@@ -459,45 +458,31 @@ export function CtoDrawer() {
                                 </div>
                                 {t.note && <div className="truncate text-[12px] text-muted">{t.note}</div>}
                               </div>
-                              <select
-                                className="field min-w-0 py-0.5 text-[12px]"
+                              <Select
+                                size="sm"
                                 value={t.ownerId ?? ""}
                                 aria-label={`Owner for ${t.id}`}
-                                onChange={(e) =>
-                                  void handleUpdateTask(p.id, t.id, { ownerId: e.target.value || null })
-                                }
-                              >
-                                <option value="">Unassigned</option>
-                                {p.team.map((m) => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.name} ({m.role})
-                                  </option>
-                                ))}
-                              </select>
-                              <select
-                                className="field min-w-0 py-0.5 text-[12px]"
-                                style={{ color: st.color }}
+                                options={[
+                                  { value: "", label: "Unassigned" },
+                                  ...p.team.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` })),
+                                ]}
+                                onChange={(v) => void handleUpdateTask(p.id, t.id, { ownerId: v || null })}
+                              />
+                              <Select
+                                size="sm"
                                 value={t.status}
                                 aria-label={`Status for ${t.id}`}
-                                onChange={(e) =>
-                                  void handleUpdateTask(p.id, t.id, { status: e.target.value as TaskStatus })
-                                }
-                              >
-                                {TASK_STATUSES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {STATUS_BADGE[s].label}
-                                  </option>
-                                ))}
-                              </select>
+                                options={TASK_STATUSES.map((s) => ({ value: s, label: STATUS_BADGE[s].label }))}
+                                onChange={(v) => void handleUpdateTask(p.id, t.id, { status: v as TaskStatus })}
+                              />
                             </div>
-                          );
-                        })}
+                        ))}
                       </div>
                     )}
 
                     {/* Quick cross-project task creator */}
                     <form
-                      className="grid grid-cols-[1fr_150px_auto] items-end gap-2 border-t border-white/[0.08] pt-3"
+                      className="grid grid-cols-[1fr_150px_auto] items-end gap-2 border-t border-[var(--border-hairline)] pt-3"
                       onSubmit={(e) => {
                         e.preventDefault();
                         void handleCreateTask(p.id);
@@ -512,18 +497,16 @@ export function CtoDrawer() {
                         />
                       </Field>
                       <Field label="Assign to">
-                        <select
-                          className="field text-[12px]"
+                        <Select
+                          size="sm"
                           value={newTaskOwner[p.id] ?? ""}
-                          onChange={(e) => setNewTaskOwner((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                        >
-                          <option value="">Unassigned</option>
-                          {p.team.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name} ({m.role})
-                            </option>
-                          ))}
-                        </select>
+                          aria-label={`Assign new task on ${p.name}`}
+                          options={[
+                            { value: "", label: "Unassigned" },
+                            ...p.team.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` })),
+                          ]}
+                          onChange={(v) => setNewTaskOwner((prev) => ({ ...prev, [p.id]: v }))}
+                        />
                       </Field>
                       <button type="submit" className="btn px-3 py-1.5 text-[12px]">
                         + Add Task

@@ -2,7 +2,10 @@
 // Server → browser: OfficeEvent JSON. Browser → server: { cmd, args }.
 
 import type { OfficeDataSource, OfficeEvent } from "../source";
+import { markSignedOut } from "../../store/auth";
 import { ask } from "../../ui/dialog";
+
+let cmdCounter = 0;
 
 /** `watch`: a read-only feed for the one-building office (no terminal output; the server ignores commands). */
 export function createWsSource(token: string, project = "", opts: { watch?: boolean } = {}): OfficeDataSource {
@@ -10,7 +13,8 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
   const queue: string[] = [];
 
   const send = (cmd: string, ...args: unknown[]) => {
-    const msg = JSON.stringify({ cmd, args });
+    cmdCounter += 1;
+    const msg = JSON.stringify({ id: `c${cmdCounter}`, cmd, args });
     if (ws?.readyState === WebSocket.OPEN) ws.send(msg);
     else if (queue.length < 200) queue.push(msg);
   };
@@ -63,6 +67,9 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
     answerApproval: "Answering an agent's request",
     resolveAccess: "Answering an access request",
     resolveActionItem: "Closing an action item",
+    answerDecision: "Answering a decision",
+    recordGate: "Recording a workflow gate",
+    commitMeetingMinutes: "Committing meeting minutes",
     updateWorkflow: "Changing the workflow",
     updateProject: "Changing the project",
     forwardPort: "Opening a port",
@@ -111,16 +118,31 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
         sock.onmessage = (m) => {
           if (!active) return;
           try {
-            const ev = JSON.parse(String(m.data)) as OfficeEvent;
-            if (ev.type === "remote.stepup") return handleStepUp(ev);
-            onEvent(ev);
+            const raw = JSON.parse(String(m.data)) as Record<string, unknown>;
+            if (raw.type === "remote.stepup") return handleStepUp(raw as unknown as Extract<OfficeEvent, { type: "remote.stepup" }>);
+            if (raw.type === "command-ack") {
+              onEvent({
+                type: "command.ack",
+                id: String(raw.id ?? ""),
+                ok: Boolean(raw.ok),
+                error: typeof raw.error === "string" ? raw.error : null,
+              });
+              return;
+            }
+            onEvent(raw as unknown as OfficeEvent);
           } catch {
             /* ignore malformed frames */
           }
         };
-        sock.onclose = () => {
+        sock.onclose = (ev) => {
           if (ws === sock) ws = null;
           if (!active) return;
+          if (ev.code === 4001) {
+            active = false;
+            onStatus?.("unauthorized");
+            markSignedOut();
+            return;
+          }
           // Never opened, several times in a row: the token or device cookie was rejected (HQ restarted, or the device was revoked).
           onStatus?.(!opened && retry > 2 ? "unauthorized" : "reconnecting");
           retry += 1;
@@ -207,6 +229,13 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
     setAgentMcp: (agentId, names) => send("setAgentMcp", agentId, names),
     answerApproval: (agentId, approvalId, decision) => send("answerApproval", agentId, approvalId, decision),
     resolveAccess: (requestId, decision) => send("resolveAccess", requestId, decision),
+    answerDecision: (id, input) => send("answerDecision", id, input),
+    recordGate: (taskId, gateId, state, note) => send("recordGate", taskId, gateId, state, note ?? null),
+    startMeeting: (input) => send("startMeeting", input),
+    joinMeeting: (meetingId, action, voiceEnabled) => send("joinMeeting", meetingId, action ?? "join", voiceEnabled ?? false),
+    addMeetingTurn: (meetingId, bodyMarkdown, speakerId, decisionId) => send("addMeetingTurn", meetingId, bodyMarkdown, speakerId ?? "you", decisionId ?? null),
+    commitMeetingMinutes: (meetingId, minutes) => send("commitMeetingMinutes", meetingId, minutes),
+    submitVisualFeedback: (input) => send("submitVisualFeedback", input),
   };
   return source;
 }

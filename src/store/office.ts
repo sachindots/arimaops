@@ -6,7 +6,26 @@ import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
 import type { StackConfig } from "../data/stack";
-import type { AccountInput, AccessDecision, NewMcpServer, AgentCli, AgentConfig, AgentMode, AgentStatus, ConnectionInput, GoalPatch, OfficeSnapshot, RemoveAgentOptions, SetupCheckId, WelcomeInput, WorkspaceInfo } from "../data/types";
+import type {
+  AccountInput,
+  AccessDecision,
+  NewMcpServer,
+  AgentCli,
+  AgentConfig,
+  AgentMode,
+  AgentStatus,
+  AnswerDecisionInput,
+  ConnectionInput,
+  GoalPatch,
+  MeetingMinutes,
+  OfficeSnapshot,
+  RemoveAgentOptions,
+  SetupCheckId,
+  StartMeetingInput,
+  SubmitVisualFeedbackInput,
+  WelcomeInput,
+  WorkspaceInfo,
+} from "../data/types";
 import { appendTerminal, clearTerminals } from "./terminal";
 
 export interface LoggedEvent {
@@ -29,6 +48,7 @@ interface OfficeState {
   /** The last template import's answer, for the dialog that sent it. */
   templateImport: { ok: boolean; message: string; id?: string } | null;
   connection: ConnectionStatus;
+  lastCommandError: string | null;
   source: OfficeDataSource;
 }
 
@@ -62,7 +82,16 @@ function hqToken(): string | null {
     }
     remember("hq-live", "1");
     remember("hq-role", role);
-    void fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: fromUrl }), credentials: "same-origin" }).catch(() => {});
+    void fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: fromUrl }), credentials: "same-origin" })
+      .then((res) => {
+        if (!res.ok) return;
+        try {
+          sessionStorage.removeItem("hq-token");
+        } catch {
+          /* private mode */
+        }
+      })
+      .catch(() => {});
     url.searchParams.delete("token");
     url.searchParams.delete("role");
     history.replaceState(null, "", url.toString()); // keep the token out of history and screenshots
@@ -75,7 +104,14 @@ function hqToken(): string | null {
   }
 }
 
-const token = hqToken();
+const forceMock = (() => {
+  try {
+    return new URL(location.href).searchParams.get("mock") === "1";
+  } catch {
+    return false;
+  }
+})();
+const token = forceMock ? null : hqToken();
 /** Which project this tab shows: ?project=… (kept in the URL so tabs can show different projects), else the last one opened. */
 export const currentProject = (() => {
   const fromUrl = new URL(location.href).searchParams.get("project");
@@ -113,7 +149,7 @@ export const isViewer = (() => {
     return false;
   }
 })();
-const source: OfficeDataSource = token || loggedIn ? createWsSource(token ?? "", currentProject) : createMockSource();
+const source: OfficeDataSource = !forceMock && (token || loggedIn) ? createWsSource(token ?? "", currentProject) : createMockSource();
 
 export const useOffice = create<OfficeState>(() => ({
   snap: null,
@@ -122,11 +158,12 @@ export const useOffice = create<OfficeState>(() => ({
   terminalChunks: 0,
   speed: 1,
   presets: source.dev?.presets ?? null,
-  live: token !== null || loggedIn, // a saved device login is just as live as a token link
+  live: !forceMock && (token !== null || loggedIn), // a saved device login is just as live as a token link
   workspaceInfo: {},
   templateExportAsked: false,
   templateImport: null,
   connection: "connecting",
+  lastCommandError: null,
   source,
 }));
 
@@ -216,13 +253,56 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
     case "mcp.updated":
       return { ...snap, mcp: e.mcp };
     case "remote.stepup":
+    case "command.ack":
       return snap;
     case "access.updated":
       return { ...snap, accessRequests: upsert(snap.accessRequests ?? [], e.request, (r) => r.id === e.request.id) };
+    case "decision.updated":
+    case "decision-updated":
+      return { ...snap, visualDecisions: upsert(snap.visualDecisions ?? [], e.decision, (d) => d.id === e.decision.id) };
+    case "meeting.updated":
+    case "meeting-updated":
+      return { ...snap, meetings: upsert(snap.meetings ?? [], e.meeting, (m) => m.id === e.meeting.id) };
+    case "meeting.turn.added":
+    case "meeting-turn-added": {
+      const prev = snap.meetingTurns?.[e.turn.meetingId] ?? [];
+      return {
+        ...snap,
+        meetingTurns: {
+          ...(snap.meetingTurns ?? {}),
+          [e.turn.meetingId]: upsert(prev, e.turn, (t) => t.id === e.turn.id),
+        },
+      };
+    }
+    case "preview.targets":
+    case "preview-targets":
+      return { ...snap, previewTargets: e.targets };
+    case "feedback.created":
+    case "feedback-created":
+      return {
+        ...snap,
+        visualFeedback: [e.feedback, ...(snap.visualFeedback ?? []).filter((f) => f.id !== e.feedback.id)].slice(0, 100),
+      };
+    case "agent-status": {
+      const cur = snap.agents.find((a) => a.agentId === e.agentId);
+      if (!cur) return snap;
+      return {
+        ...snap,
+        agents: upsert(
+          snap.agents,
+          { ...cur, state: e.state as AgentStatus["state"], note: e.note },
+          (a) => a.agentId === e.agentId,
+        ),
+      };
+    }
   }
 }
 
 function handle(e: OfficeEvent) {
+  if (e.type === "command.ack") {
+    useOffice.setState({ lastCommandError: e.ok ? null : (e.error ?? "Command failed.") });
+    return;
+  }
   if (e.type === "terminal.output") {
     appendTerminal(e.agentId, e.data);
     useOffice.setState((s) => ({ terminalChunks: s.terminalChunks + 1 }));
@@ -271,6 +351,7 @@ export function connectOffice() {
 // ---------------------------------------------------------------- actions
 
 export const officeActions = {
+  clearCommandError: () => useOffice.setState({ lastCommandError: null }),
   sendTerminalInput: (agentId: string, data: string) => source.sendTerminalInput(agentId, data),
   resizeTerminal: (agentId: string, cols: number, rows: number) => source.resizeTerminal(agentId, cols, rows),
   startAgent: (id: string) => source.startAgent(id),
@@ -347,6 +428,31 @@ export const officeActions = {
   removeMcp: (name: string) => source.removeMcp(name),
   setAgentMcp: (agentId: string, names: string[]) => source.setAgentMcp(agentId, names),
   resolveAccess: (requestId: string, decision: AccessDecision) => source.resolveAccess(requestId, decision),
+  answerDecision: (id: string, input: AnswerDecisionInput) => source.answerDecision(id, input),
+  recordGate: (taskId: string, gateId: string, state: "passed" | "waived" | "failed", note?: string | null) =>
+    source.recordGate(taskId, gateId, state, note),
+  startMeeting: (input: StartMeetingInput) => source.startMeeting(input),
+  joinMeeting: (meetingId: string, action?: "join" | "pause" | "resume" | "close" | "snooze" | "decline", voiceEnabled?: boolean) =>
+    source.joinMeeting(meetingId, action, voiceEnabled),
+  addMeetingTurn: (meetingId: string, bodyMarkdown: string, speakerId?: string, decisionId?: string | null) =>
+    source.addMeetingTurn(meetingId, bodyMarkdown, speakerId, decisionId),
+  commitMeetingMinutes: (meetingId: string, minutes: MeetingMinutes) => source.commitMeetingMinutes(meetingId, minutes),
+  submitVisualFeedback: (input: SubmitVisualFeedbackInput) => source.submitVisualFeedback(input),
+  upsertVisualFeedback: (feedback: import("../data/generated").VisualFeedback) =>
+    useOffice.setState((s) =>
+      s.snap
+        ? {
+            snap: {
+              ...s.snap,
+              visualFeedback: [feedback, ...(s.snap.visualFeedback ?? []).filter((f) => f.id !== feedback.id)].slice(0, 100),
+            },
+          }
+        : {},
+    ),
+  setVisualFeedbackList: (items: import("../data/generated").VisualFeedback[]) =>
+    useOffice.setState((s) => (s.snap ? { snap: { ...s.snap, visualFeedback: items } } : {})),
+  setPreviewTargetsList: (targets: import("../data/generated").PreviewTarget[]) =>
+    useOffice.setState((s) => (s.snap ? { snap: { ...s.snap, previewTargets: targets } } : {})),
   simulateAccessRequest: () => source.dev?.simulateAccessRequest(),
   setSpeed(speed: SimSpeed) {
     source.dev?.setSpeed(speed);
@@ -383,13 +489,22 @@ export const reviewToolLabel = {
 
 export const deployToolLabel = { instacloud: "InstaCloud", vercel: "Vercel", custom: "Custom deploy" } as const;
 
-/** Everything waiting on the user: open action items, agents asking in the terminal, access requests, blocked requests, PRs ready to merge. */
+/** Everything waiting on the user: visual decisions, open action items, agents asking in the terminal, access requests, blocked requests, PRs ready to merge. */
 export function selectAttention(snap: OfficeSnapshot | null) {
-  if (!snap) return { items: [], asking: [], access: [], blocked: [], readyPrs: [], total: 0 };
+  if (!snap) return { decisions: [], items: [], asking: [], access: [], blocked: [], readyPrs: [], total: 0 };
+  const decisions = (snap.visualDecisions ?? []).filter((d) => d.status === "open");
   const items = (snap.actionItems ?? []).filter((i) => i.status === "open");
   const access = (snap.accessRequests ?? []).filter((r) => r.status === "pending");
   const asking = snap.agents.filter((a) => a.state === "needs-input" && !access.some((r) => r.agentId === a.agentId));
   const blocked = snap.config.team.map((a) => ({ agentId: a.id, count: snap.sbx.agents[a.id]?.approvals?.length ?? 0 })).filter((b) => b.count > 0);
   const readyPrs = snap.pullRequests.filter((p) => p.review === "passed" && p.mergeable && !p.merged && !p.closed);
-  return { items, asking, access, blocked, readyPrs, total: items.length + asking.length + access.length + blocked.length + readyPrs.length };
+  return {
+    decisions,
+    items,
+    asking,
+    access,
+    blocked,
+    readyPrs,
+    total: decisions.length + items.length + asking.length + access.length + blocked.length + readyPrs.length,
+  };
 }

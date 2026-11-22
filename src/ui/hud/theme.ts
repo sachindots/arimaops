@@ -22,14 +22,14 @@ export function agentMode(agent: Pick<AgentConfig, "id" | "role" | "roleId">): A
   return SECURITY.test(`${agent.id} ${agent.role} ${agent.roleId ?? ""}`.toLowerCase()) ? "redteam" : "build";
 }
 
-/** Blue or purple when the template says so; red team when it's another security template, it has findings, or half its team is security. */
+/** Blue or purple when the template says so; red team when it's another security template, security rules are enabled, or half its team is security. */
 export function projectMode(snap: OfficeSnapshot | null): TeamMode {
   if (!snap) return "build";
   const tpl = `${snap.config.template?.id ?? ""} ${snap.config.template?.name ?? ""}`.toLowerCase();
   if (/\bblue\b/.test(tpl)) return "blueteam";
   if (/\bpurple\b/.test(tpl)) return "purpleteam";
   if (SECURITY.test(tpl)) return "redteam";
-  if ((snap.findings?.length ?? 0) > 0) return "redteam";
+  if (snap.config.rules?.findings) return "redteam";
   const sec = snap.config.team.filter((a) => agentMode(a) === "redteam").length;
   return sec > 0 && sec >= snap.config.team.length / 2 ? "redteam" : "build";
 }

@@ -760,6 +760,310 @@ export function createMockSource(): OfficeDataSource {
       if (world.status(req.agentId)?.state === "needs-input") world.setStatus(req.agentId, { state: "working", note: decision === "deny" ? "Continuing without it" : `Reading ${req.domain}` });
     },
 
+    answerDecision(id, input) {
+      const list = world.snap.visualDecisions ?? [];
+      const dec = list.find((d) => d.id === id);
+      if (!dec) return;
+      const nowIso = new Date().toISOString();
+      dec.status = input.status ?? "resolved";
+      dec.waiting = false;
+      dec.note = input.note?.trim() || dec.note || null;
+      dec.closedAt = nowIso;
+
+      if (dec.payload.kind === "question" && input.answers) {
+        dec.payload = { ...dec.payload, answers: input.answers };
+      } else if ((dec.payload.kind === "second-opinion" || dec.payload.kind === "disagreement") && input.chosenSide) {
+        dec.payload = { ...dec.payload, chosenSide: input.chosenSide };
+        if (input.chosenSide === "waive" && dec.payload.taskId && dec.payload.gateId) {
+          source.recordGate(dec.payload.taskId, dec.payload.gateId, "waived", dec.note ?? "Waived from Second Opinion card");
+        }
+      } else if (dec.payload.kind === "permission" && input.resolution) {
+        dec.payload = { ...dec.payload, resolution: input.resolution };
+      } else if (dec.payload.kind === "meeting-request" && input.meetingAction) {
+        const mtgId = dec.payload.meetingId;
+        if (input.meetingAction === "decline") {
+          source.joinMeeting(mtgId, "decline");
+        } else if (input.meetingAction === "join") {
+          source.joinMeeting(mtgId, "join");
+        }
+      }
+
+      world.emit({ type: "decision.updated", decision: structuredClone(dec) });
+      world.activity("agent.answered", dec.fromId === "hq" ? null : dec.fromId, `You answered "${dec.title}"`);
+      if (dec.fromId && dec.fromId !== "hq" && world.cfg(dec.fromId)) {
+        const summary =
+          input.chosenSide ? `Chosen: ${input.chosenSide}`
+          : input.resolution ? `Permission: ${input.resolution}`
+          : input.answers?.length ? `Answered ${input.answers.length} question(s)`
+          : dec.status;
+        world.message("you", dec.fromId, `${dec.title} — ${summary}${dec.note ? ` (${dec.note})` : ""}`);
+      }
+    },
+
+    recordGate(taskId, gateId, state, note) {
+      const task = world.snap.tasks.find((t) => t.id === taskId);
+      const cleanNote = note?.trim() || null;
+      if (task) {
+        const record = { at: Date.now(), gateId, state, by: "you", note: cleanNote };
+        task.gateRecords = [record, ...(task.gateRecords ?? [])];
+        if (state === "passed" || state === "waived") {
+          const flow = world.snap.config.template?.flow;
+          if (flow?.stages.length) {
+            const idx = flow.stages.findIndex((s) => s.id === task.stageId);
+            if (idx >= 0 && idx + 1 < flow.stages.length) {
+              task.stageId = flow.stages[idx + 1].id;
+            }
+          }
+        }
+        world.emit({ type: "task.updated", task: structuredClone(task) });
+      }
+      world.activity("config", null, `Gate ${gateId} on ${taskId} ${state} by you${cleanNote ? `: ${cleanNote}` : ""}`);
+    },
+
+    startMeeting(input) {
+      const lead = world.lead();
+      const nowIso = new Date().toISOString();
+      const id = `mtg-${Date.now().toString(36)}`;
+      const participants = input.participantIds?.length ? input.participantIds : world.snap.config.team.map((a) => a.id);
+      const agendaItems = (input.agenda?.length ? input.agenda : [" Status & blockers", "Key decisions", "Next actions"]).map((title, idx) => ({
+        id: `${id}-ag-${idx + 1}`,
+        title: title.trim(),
+        status: idx === 0 ? "active" : "pending",
+        ownerId: idx === 0 ? lead.id : null,
+        recommendationDecisionId: null,
+      }));
+      const meeting = {
+        id,
+        projectId: world.snap.config.project.id,
+        kind: input.kind,
+        status: "live" as const,
+        urgency: input.urgency ?? ("normal" as const),
+        title: input.title.trim() || "Team Sync",
+        moderatorId: lead.id,
+        participantIds: participants,
+        requestedBy: "you",
+        voiceEnabled: false,
+        voiceProvider: "browser-web-speech" as const,
+        agenda: agendaItems,
+        minutes: {
+          summaryMarkdown: `### ${input.title.trim() || "Team Sync"}\n- Reviewing active tasks and blockers with ${participants.length} team members.`,
+          decisions: [
+            {
+              id: `${id}-pd-1`,
+              title: `Align team on ${input.title.trim() || "sprint priorities"}`,
+              rationale: "Confirmed during live discussion session.",
+              saveToMemory: true,
+            },
+          ],
+          proposedTasks: [],
+          agentInstructions: participants
+            .filter((pid) => pid !== lead.id)
+            .slice(0, 2)
+            .map((pid) => ({
+              agentId: pid,
+              instruction: `Follow up on action items from ${input.title.trim() || "Team Sync"}.`,
+              approved: true,
+            })),
+          committedAt: null,
+        },
+        createdAt: nowIso,
+        startedAt: nowIso,
+        closedAt: null,
+      };
+      world.snap.meetings = [meeting, ...(world.snap.meetings ?? [])];
+      const firstTurn = {
+        id: `${id}-t-1`,
+        meetingId: id,
+        speakerId: lead.id,
+        speakerRole: lead.role,
+        kind: "moderator-open",
+        bodyMarkdown: `Welcome to **${meeting.title}**. I've pulled in ${participants.map((p) => world.name(p)).join(", ")}. Let's walk through the agenda items.`,
+        decisionId: null,
+        spokenText: `Welcome to ${meeting.title}. Let's walk through the agenda.`,
+        createdAt: nowIso,
+      };
+      world.snap.meetingTurns = { ...(world.snap.meetingTurns ?? {}), [id]: [firstTurn] };
+      world.emit({ type: "meeting.updated", meeting: structuredClone(meeting) });
+      world.emit({ type: "meeting.turn.added", turn: structuredClone(firstTurn) });
+      world.activity("message", lead.id, `Started ${meeting.kind}: ${meeting.title}`);
+    },
+
+    joinMeeting(meetingId, action = "join", voiceEnabled) {
+      const mtg = (world.snap.meetings ?? []).find((m) => m.id === meetingId);
+      if (!mtg) return;
+      const nowIso = new Date().toISOString();
+      if (action === "join" || action === "resume") {
+        mtg.status = "live";
+        mtg.startedAt ??= nowIso;
+      } else if (action === "pause" || action === "snooze") {
+        mtg.status = "paused";
+      } else if (action === "close") {
+        mtg.status = "minutes-review";
+      } else if (action === "decline") {
+        mtg.status = "declined";
+        mtg.closedAt = nowIso;
+      }
+      if (voiceEnabled !== undefined) mtg.voiceEnabled = voiceEnabled;
+      world.emit({ type: "meeting.updated", meeting: structuredClone(mtg) });
+    },
+
+    addMeetingTurn(meetingId, bodyMarkdown, speakerId = "you", decisionId = null) {
+      const text = bodyMarkdown.trim();
+      if (!text) return;
+      const mtg = (world.snap.meetings ?? []).find((m) => m.id === meetingId);
+      if (!mtg) return;
+      const speaker = speakerId === "you" ? { name: "You", role: "Owner" } : world.cfg(speakerId) ?? { name: speakerId, role: "Agent" };
+      const turn = {
+        id: `${meetingId}-t-${Date.now().toString(36)}`,
+        meetingId,
+        speakerId,
+        speakerRole: speaker.role,
+        kind: "message",
+        bodyMarkdown: text,
+        decisionId,
+        spokenText: speakerId === "you" ? null : text,
+        createdAt: new Date().toISOString(),
+      };
+      const cur = world.snap.meetingTurns?.[meetingId] ?? [];
+      world.snap.meetingTurns = { ...(world.snap.meetingTurns ?? {}), [meetingId]: [...cur, turn] };
+      world.emit({ type: "meeting.turn.added", turn: structuredClone(turn) });
+
+      if (speakerId === "you") {
+        const lead = world.cfg(mtg.moderatorId) ?? world.lead();
+        world.after(0.6, () => {
+          const reply = {
+            id: `${meetingId}-t-${Date.now().toString(36)}-r`,
+            meetingId,
+            speakerId: lead.id,
+            speakerRole: lead.role,
+            kind: "moderator-reply",
+            bodyMarkdown: `Noted: *"${text.slice(0, 100)}"*. I've updated the draft meeting minutes so we can commit that decision to Team Memory and the Board.`,
+            decisionId: null,
+            spokenText: `Noted. I have updated the draft meeting minutes so we can commit that decision.`,
+            createdAt: new Date().toISOString(),
+          };
+          const list = world.snap.meetingTurns?.[meetingId] ?? [];
+          world.snap.meetingTurns = { ...(world.snap.meetingTurns ?? {}), [meetingId]: [...list, reply] };
+          world.emit({ type: "meeting.turn.added", turn: structuredClone(reply) });
+        });
+      }
+    },
+
+    commitMeetingMinutes(meetingId, minutes) {
+      const mtg = (world.snap.meetings ?? []).find((m) => m.id === meetingId);
+      if (!mtg) return;
+      const nowIso = new Date().toISOString();
+      const committed = { ...minutes, committedAt: nowIso };
+      mtg.minutes = committed;
+      mtg.status = "closed";
+      mtg.closedAt = nowIso;
+      world.emit({ type: "meeting.updated", meeting: structuredClone(mtg) });
+
+      // 1. Create approved tasks on the Board
+      const boardId = world.snap.boards[0]?.id ?? "B1";
+      for (const pt of minutes.proposedTasks.filter((t) => t.approved)) {
+        const newId = `${pt.boardId || boardId}-T${String(world.snap.tasks.length + 1).padStart(2, "0")}`;
+        const newTask = {
+          id: newId,
+          boardId: pt.boardId || boardId,
+          stageId: pt.stageId || "build",
+          title: pt.title,
+          ownerId: pt.assigneeId,
+          status: "todo" as const,
+          needs: [],
+          prNumber: null,
+          description: pt.description,
+        };
+        world.putTask(newTask);
+      }
+
+      // 2. Deliver approved agent instructions
+      for (const inst of minutes.agentInstructions.filter((i) => i.approved)) {
+        if (world.cfg(inst.agentId)) {
+          world.message("you", inst.agentId, `[Meeting Minutes] ${inst.instruction}`);
+        }
+      }
+
+      // 3. Save certified decisions to lessons/memory
+      if (world.snap.lessons) {
+        const saved = minutes.decisions.filter((d) => d.saveToMemory);
+        for (const d of saved) {
+          world.snap.lessons.approved.unshift({
+            id: `L-${d.id}`,
+            templateId: world.snap.lessons.templateId ?? "dev",
+            type: "Decision",
+            text: `${d.title} — ${d.rationale}`,
+            status: "approved",
+            createdAt: nowIso,
+          });
+        }
+        world.emit({ type: "lessons.updated", lessons: structuredClone(world.snap.lessons) });
+      }
+
+      // Also mark any open meeting-request decision for this meeting resolved
+      for (const dec of world.snap.visualDecisions ?? []) {
+        if (dec.payload.kind === "meeting-request" && dec.payload.meetingId === meetingId && dec.status === "open") {
+          dec.status = "resolved";
+          dec.waiting = false;
+          dec.closedAt = nowIso;
+          world.emit({ type: "decision.updated", decision: structuredClone(dec) });
+        }
+      }
+
+      world.activity("config", mtg.moderatorId, `Committed minutes for "${mtg.title}"`);
+    },
+
+    submitVisualFeedback(input) {
+      const nowIso = new Date().toISOString();
+      const id = `vf-${Date.now().toString(36)}`;
+      const boardId = world.snap.boards[0]?.id ?? "B1";
+      let route = input.route;
+
+      if (route.kind === "create-task") {
+        const taskId = `${route.boardId || boardId}-T${String(world.snap.tasks.length + 1).padStart(2, "0")}`;
+        const selectorNote = input.selection ? `\nElement: \`${input.selection.cssSelector}\` (${input.selection.tagName})` : "";
+        const newTask = {
+          id: taskId,
+          boardId: route.boardId || boardId,
+          stageId: "build",
+          title: input.note.trim().slice(0, 80) || "Visual feedback from Live Preview",
+          ownerId: route.assignToAgentId ?? (world.workers()[0]?.id ?? null),
+          status: "todo" as const,
+          needs: [],
+          prNumber: null,
+          description: `${input.note.trim()}\n\nPage: ${input.pageUrl} (${input.viewportWidth}x${input.viewportHeight})${selectorNote}\nAnnotated screenshot synced to \`.arima/feedback/${id}/annotated.png\`.`,
+          deliverablePath: `.arima/feedback/${id}/annotated.png`,
+        };
+        world.putTask(newTask);
+        route = { ...route, boardId: newTask.boardId, taskId };
+      } else if (route.kind === "send-to-chat") {
+        const targetAgent = world.cfg(route.toAgentId) ? route.toAgentId : world.lead().id;
+        const selectorInfo = input.selection ? ` [${input.selection.cssSelector}]` : "";
+        world.message("you", targetAgent, `[Visual Feedback ${id}]${selectorInfo} ${input.note.trim()} (${input.pageUrl}, ${input.viewportWidth}x${input.viewportHeight})`);
+      }
+
+      const fb = {
+        id,
+        projectId: world.snap.config.project.id,
+        authorUserId: "you",
+        targetId: input.targetId,
+        sourceKind: input.sourceKind,
+        pageUrl: input.pageUrl,
+        viewportWidth: input.viewportWidth,
+        viewportHeight: input.viewportHeight,
+        note: input.note,
+        selection: input.selection,
+        consoleErrors: input.consoleErrors,
+        imagePath: `~/.arima/v2/feedback/${world.snap.config.project.id}/${id}/annotated.png`,
+        workspaceRelDir: `.arima/feedback/${id}`,
+        route,
+        createdAt: nowIso,
+      };
+      world.snap.visualFeedback = [fb, ...(world.snap.visualFeedback ?? [])];
+      world.emit({ type: "feedback.created", feedback: structuredClone(fb) });
+      world.activity("task.created", null, `Submitted visual feedback (${route.kind === "create-task" ? `created ${route.taskId}` : `sent to ${world.name(route.toAgentId)}`})`);
+    },
+
     dev: {
       presets: presets.map((p) => ({ id: p.id, label: p.label })),
       loadPreset(id) {

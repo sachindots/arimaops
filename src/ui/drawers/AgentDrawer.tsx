@@ -5,10 +5,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, HUMAN_ID, SANDBOX_DEFAULT, type AccessRequest, type AgentCli, type AgentConfig, type AgentStatus, type OfficeSnapshot, cliPickerLabel } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { RemoveAgentDialog } from "../settings/RemoveAgentDialog";
-import { ui, type AgentTab } from "../../store/ui";
+import { ui, useUi, type AgentTab } from "../../store/ui";
 import { ago, RoleBadge, Dot, Portrait, ReviewChip, SectionTitle, StateChip, Tabs, useNow } from "../kit";
 import { MessageText, shown, TagChip } from "../chat/MessageBody";
 import { ModelSelect } from "../primitives/ModelSelect";
+import { Select } from "../primitives/Select";
 import { DrawerHeader } from "./Drawer";
 import { PortBanner, PortsRow } from "./Ports";
 import { TerminalView } from "./TerminalView";
@@ -72,23 +73,18 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
           {editing && (
           <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2 text-[12px]">
             <label className="flex min-w-0 flex-col gap-1 text-muted">CLI
-            <select
-              className="field h-8 w-full py-0 text-[12px]"
+            <Select
+              size="sm"
               value={agent.cli}
               aria-label={`${agent.name} CLI`}
-              onChange={(e) => {
-                const nextCli = e.target.value as AgentCli;
+              options={AGENT_CLIS.map((c) => ({ value: c, label: cliPickerLabel(c) }))}
+              onChange={(v) => {
+                const nextCli = v as AgentCli;
                 const defaultModel = CLI_MODELS[nextCli]?.[0] ?? "";
                 if (agent.roleId) officeActions.updateRole(agent.roleId, { cli: nextCli, model: defaultModel });
                 if (isRunning) setPendingRestart(true);
               }}
-            >
-              {AGENT_CLIS.map((c) => (
-                <option key={c} value={c}>
-                  {cliPickerLabel(c)}
-                </option>
-              ))}
-            </select>
+            />
             </label>
             <div className="flex min-w-0 flex-col gap-1 text-muted">Model
               <ModelSelect
@@ -104,19 +100,20 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
               />
             </div>
             <label className="flex min-w-0 flex-col gap-1 text-muted">Runs in
-            <select
-              className="field h-8 w-full py-0 text-[12px]"
+            <Select
+              size="sm"
               value={agent.mode}
               aria-label={`${agent.name} runtime mode`}
-              onChange={(e) => {
-                officeActions.updateAgent(agent.id, { mode: e.target.value as AgentConfig["mode"] });
+              options={[
+                { value: "sandbox", label: "Docker Sandbox" },
+                { value: "container", label: "Container" },
+                { value: "local", label: "Local mode" },
+              ]}
+              onChange={(v) => {
+                officeActions.updateAgent(agent.id, { mode: v as AgentConfig["mode"] });
                 if (isRunning) setPendingRestart(true);
               }}
-            >
-              <option value="sandbox">Docker Sandbox</option>
-              <option value="container">Container</option>
-              <option value="local">Local mode</option>
-            </select>
+            />
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-muted">Account
             <input
@@ -475,14 +472,15 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
       )}
       <SectionTitle>Assign a task</SectionTitle>
       <div className="flex gap-2">
-        <select className="field" value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Task to assign">
-          <option value="">Pick a to-do task…</option>
-          {free.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.id} {t.title}
-            </option>
-          ))}
-        </select>
+        <Select
+          value={pick}
+          aria-label="Task to assign"
+          options={[
+            { value: "", label: "Pick a to-do task…" },
+            ...free.map((t) => ({ value: t.id, label: `${t.id} ${t.title}` })),
+          ]}
+          onChange={setPick}
+        />
         <button className="btn" disabled={!pick} onClick={() => (officeActions.assignTask(pick, agent.id), setPick(""))}>
           Assign
         </button>
@@ -575,7 +573,8 @@ function SandboxTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig 
 
 export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentConfig }) {
   const now = useNow(1000);
-  const [draft, setDraft] = useState("");
+  const draft = useUi((s) => s.chatDrafts[agent.id] ?? "");
+  const setDraft = (next: string) => ui.setChatDraft(agent.id, next);
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
     id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#3b82f6" } : snap.config.team.find((a) => a.id === id);

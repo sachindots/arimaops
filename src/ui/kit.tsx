@@ -54,12 +54,14 @@ export function Logo({ size = 32 }: { size?: number }) {
 export function Portrait({ color, lead, size = 32, name }: { color: string; lead: boolean; size?: number; name?: string }) {
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-md font-semibold text-white"
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-semibold text-white shadow-2xs ${
+        lead ? "ring-2 ring-[var(--accent)]/60" : ""
+      }`}
       style={{
         width: size,
         height: size,
-        fontSize: [12, 13, 15, 20, 28].reduce((a, b) => (Math.abs(b - size * 0.42) < Math.abs(a - size * 0.42) ? b : a)), // nearest size on the type scale
-        background: lead ? "#0f172a" : color,
+        fontSize: [12, 13, 15, 20, 28].reduce((a, b) => (Math.abs(b - size * 0.42) < Math.abs(a - size * 0.42) ? b : a)),
+        background: color || "var(--accent)",
       }}
       title={lead ? "Lead" : undefined}
       aria-hidden

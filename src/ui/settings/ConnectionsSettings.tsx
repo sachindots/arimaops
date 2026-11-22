@@ -1,142 +1,333 @@
-import { useState } from "react";
-import type { ToolConnection } from "../../data/types";
-import { officeActions, useOffice } from "../../store/office";
-import { useAuth } from "../../store/auth";
-import { ask } from "../dialog";
-import { Field, SectionTitle } from "../kit";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Vaulted Tool Connections (GET/POST/DELETE /api/connections) + Owner-only `propose_send` Inbox bridge.
 
-/**
- * Services HQ calls for the agents (server/connections.ts): the key stays in HQ's vault, agents call only the tools
- * you tick as read tools, and the send tool runs only when you click Send on a proposed send in the Inbox.
- */
+import { useCallback, useEffect, useState } from "react";
+import type { VisualDecision } from "../../data/generated";
+import { useAuth } from "../../store/auth";
+import { useOffice } from "../../store/office";
+import { ui } from "../../store/ui";
+import { Icon } from "../deck/Icon";
+import { Field, SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
+
+export interface VaultedConnection {
+  id: string;
+  kind: string;
+  label: string;
+  endpoint: string;
+  hasSecret: boolean;
+  createdAt: string;
+}
+
+const CONNECTION_KINDS = [
+  { value: "mcp", label: "MCP Server" },
+  { value: "webhook", label: "Webhook / HTTP" },
+  { value: "slack", label: "Slack" },
+  { value: "email", label: "Email / SMTP" },
+  { value: "github", label: "GitHub API" },
+  { value: "crm", label: "CRM / Support" },
+];
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  let tok = "";
+  try {
+    tok = sessionStorage.getItem("hq-token") ?? "";
+  } catch {
+    /* ignore */
+  }
+  return { ...(extra ?? {}), ...(tok ? { Authorization: `Bearer ${tok}` } : {}) };
+}
+
+function initialMockConnections(): VaultedConnection[] {
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+  return [
+    {
+      id: "slack-releases",
+      kind: "slack",
+      label: "Slack #releases Bot",
+      endpoint: "https://slack.com/api/chat.postMessage",
+      hasSecret: true,
+      createdAt: daysAgo(9),
+    },
+    {
+      id: "linear-sync",
+      kind: "mcp",
+      label: "Linear Issue Sync",
+      endpoint: "https://mcp.linear.app/sse",
+      hasSecret: true,
+      createdAt: daysAgo(4),
+    },
+  ];
+}
+
 export function ConnectionsSettings() {
-  const connections = useOffice((s) => s.snap?.connections) ?? [];
-  const roles = useOffice((s) => s.snap?.config.template?.roles) ?? [];
+  const snap = useOffice((s) => s.snap);
+  const live = useOffice((s) => s.live);
   const owner = useAuth((s) => s.role === "owner" || s.status === "none");
-  const [form, setForm] = useState({ name: "", url: "", apiKey: "" });
-  const valid = /^[a-z0-9][a-z0-9-]{0,39}$/.test(form.name.trim()) && form.url.trim();
+
+  const [connections, setConnections] = useState<VaultedConnection[]>(() =>
+    live ? [] : initialMockConnections(),
+  );
+  const [livePendingSends, setLivePendingSends] = useState<VisualDecision[]>([]);
+  const [form, setForm] = useState({ id: "", kind: "mcp", label: "", endpoint: "", secret: "" });
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadLiveConnections = useCallback(async () => {
+    if (!live) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/connections", {
+        credentials: "same-origin",
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        connections?: VaultedConnection[];
+        pendingSends?: VisualDecision[];
+      };
+      if (Array.isArray(data.connections)) setConnections(data.connections);
+      if (Array.isArray(data.pendingSends)) setLivePendingSends(data.pendingSends);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [live]);
+
+  useEffect(() => {
+    if (live) void loadLiveConnections();
+  }, [live, loadLiveConnections]);
+
+  const snapPendingSends =
+    (snap?.visualDecisions ?? []).filter((d) => d.status === "open" && d.payload.kind === "send-proposal").length +
+    (snap?.actionItems ?? []).filter((i) => i.status === "open" && i.kind === "send").length;
+  const pendingSendCount = live ? Math.max(livePendingSends.length, snapPendingSends) : snapPendingSends;
+
+  const cleanId = form.id.trim().toLowerCase();
+  const valid = /^[a-z0-9][a-z0-9_-]{0,47}$/.test(cleanId) && form.endpoint.trim().length > 0;
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valid || !owner) return;
+    setError(null);
+    setStatus(null);
+    setBusy(true);
+    try {
+      const payload = {
+        id: cleanId,
+        kind: form.kind,
+        label: form.label.trim() || cleanId,
+        endpoint: form.endpoint.trim(),
+        ...(form.secret.trim() ? { secret: form.secret.trim() } : {}),
+      };
+      if (live) {
+        const res = await fetch("/api/connections", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+        await loadLiveConnections();
+      } else {
+        const next: VaultedConnection = {
+          id: payload.id,
+          kind: payload.kind,
+          label: payload.label,
+          endpoint: payload.endpoint,
+          hasSecret: Boolean(form.secret.trim()),
+          createdAt: new Date().toISOString(),
+        };
+        setConnections((prev) => [next, ...prev.filter((c) => c.id !== next.id)]);
+      }
+      setForm({ id: "", kind: "mcp", label: "", endpoint: "", secret: "" });
+      setStatus(`Saved connection "${payload.label}"${payload.secret ? " with vaulted secret" : ""}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (c: VaultedConnection) => {
+    if (!owner) return;
+    setError(null);
+    setStatus(null);
+    try {
+      if (live) {
+        const res = await fetch(`/api/connections/${encodeURIComponent(c.id)}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: authHeaders(),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+        await loadLiveConnections();
+      } else {
+        setConnections((prev) => prev.filter((x) => x.id !== c.id));
+      }
+      setStatus(`Removed connection "${c.label}" and purged its vaulted secret.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
-    <section className="flex flex-col gap-3 border-t border-white/[0.08] pt-4">
-      <SectionTitle>Connections through HQ</SectionTitle>
-      <p className="m-0 text-[13px] text-muted">
-        For your CRM, analytics, billing or mail. HQ keeps the key and makes each call, so agents never hold it, even drafts-only ones. Agents call only the
-        tools you tick as reading. A send tool runs only when you click Send on a proposal in the Inbox. Nothing is on until you pick roles and tools. A
-        read-only key is safest: a tool's name doesn't prove it only reads.
-      </p>
-      {!owner && <p className="m-0 text-[13px] text-muted">Only the owner can change connections.</p>}
-      {connections.map((c) => (
-        <ConnectionCard key={c.name} c={c} roles={roles.map((r) => ({ id: r.id, title: r.title }))} disabled={!owner} />
-      ))}
+    <section
+      className="mt-5 flex flex-col gap-3.5 border-t border-[var(--border-hairline)] pt-5"
+      aria-label="Tool connections through HQ"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <SectionTitle>Connections through HQ</SectionTitle>
+          <p className="m-0 text-[13px] text-muted">
+            Secrets stay encrypted inside HQ's vault and are never echoed to agents or the browser. External sends via{" "}
+            <code>propose_send</code> always wait for explicit Owner approval in Inbox.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn text-[12px]"
+          onClick={() => ui.openActions()}
+        >
+          <Icon name="inbox" size={16} />
+          Pending sends ({pendingSendCount})
+        </button>
+      </div>
+
+      {!owner && <p className="m-0 text-[13px] text-muted">Only the owner can add or remove vaulted connections.</p>}
+
+      {error && (
+        <div className="rounded-lg border border-red/40 bg-red/10 px-3 py-2 text-[12px] text-red" role="alert">
+          {error}
+        </div>
+      )}
+      {status && (
+        <div
+          className="flex items-center justify-between gap-2 rounded-lg border border-green/40 bg-green/10 px-3 py-2 text-[12px] font-medium text-green"
+          role="status"
+        >
+          <span className="flex items-center gap-1.5">
+            <Icon name="check_circle" size={15} />
+            {status}
+          </span>
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] text-muted hover:text-ink"
+            onClick={() => setStatus(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {connections.length === 0 ? (
+        <p className="m-0 rounded-lg border border-[var(--border-hairline)] bg-cream-2/30 px-4 py-4 text-[13px] text-muted">
+          No vaulted tool connections configured yet.
+        </p>
+      ) : (
+        <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Configured tool connections">
+          {connections.map((c) => (
+            <li
+              key={c.id}
+              className="panel flex flex-col gap-2 p-3.5 text-[13px] sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <b className="text-ink">{c.label}</b>
+                  <code className="font-term text-[12px] text-muted">{c.id}</code>
+                  <span className="chip text-[12px] uppercase">{c.kind}</span>
+                  <span
+                    className="chip text-[12px]"
+                    style={{ ["--c" as string]: c.hasSecret ? "var(--color-green)" : "var(--color-muted)" }}
+                  >
+                    <Icon name={c.hasSecret ? "lock" : "lock_open"} size={13} />
+                    {c.hasSecret ? "Vaulted secret" : "No secret"}
+                  </span>
+                </div>
+                <div className="mt-1 truncate font-term text-[12px] text-muted">{c.endpoint}</div>
+              </div>
+              {owner && (
+                <button
+                  type="button"
+                  className="btn border-red/30 px-2.5 py-1 text-[12px] text-red"
+                  aria-label={`Remove connection ${c.id}`}
+                  onClick={() => void handleDelete(c)}
+                >
+                  <Icon name="delete" size={15} />
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {owner && (
         <form
-          className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.4fr)_auto] items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!valid) return;
-            const name = form.name.trim();
-            officeActions.saveConnection({ name, url: form.url.trim(), ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}) });
-            officeActions.checkConnection(name);
-            setForm({ name: "", url: "", apiKey: "" });
-          }}
+          className="panel grid grid-cols-1 gap-3 p-4 sm:grid-cols-2"
+          onSubmit={(e) => void handleAdd(e)}
+          aria-label="Add tool connection"
         >
-          <Field label="Name">
-            <input className="field" value={form.name} placeholder="crm" onChange={(e) => setForm({ ...form, name: e.target.value.toLowerCase() })} />
+          <Field label="Connection ID">
+            <input
+              className="field font-term text-[13px]"
+              value={form.id}
+              placeholder="slack-ops"
+              aria-label="Connection ID"
+              onChange={(e) => setForm({ ...form, id: e.target.value.toLowerCase() })}
+            />
           </Field>
-          <Field label="MCP server URL">
-            <input className="field" value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} />
+          <Field label="Kind">
+            <Select
+              value={form.kind}
+              aria-label="Connection kind"
+              options={CONNECTION_KINDS}
+              onChange={(v) => setForm({ ...form, kind: v })}
+            />
           </Field>
-          <Field label="Key (optional)">
-            <input className="field" type="password" autoComplete="off" value={form.apiKey} placeholder="Sent as a Bearer token" onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+          <Field label="Label">
+            <input
+              className="field text-[13px]"
+              value={form.label}
+              placeholder="Slack Operations Channel"
+              aria-label="Connection label"
+              onChange={(e) => setForm({ ...form, label: e.target.value })}
+            />
           </Field>
-          <button className="btn" type="submit" disabled={!valid}>
-            Add
-          </button>
+          <Field label="Endpoint URL">
+            <input
+              className="field font-term text-[13px]"
+              value={form.endpoint}
+              placeholder="https://mcp.example.com/sse"
+              aria-label="Connection endpoint"
+              onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
+            />
+          </Field>
+          <Field label="API Secret (vaulted, optional)" hint="Stored write-only via AES-256-GCM vault; never echoed back.">
+            <input
+              className="field text-[13px]"
+              type="password"
+              autoComplete="off"
+              value={form.secret}
+              placeholder="Bearer token or webhook key"
+              aria-label="Connection secret"
+              onChange={(e) => setForm({ ...form, secret: e.target.value })}
+            />
+          </Field>
+          <div className="flex items-end justify-end">
+            <button className="btn btn-primary text-[13px]" type="submit" disabled={!valid || busy}>
+              <Icon name="add_link" size={16} />
+              {busy ? "Saving…" : "Add connection"}
+            </button>
+          </div>
         </form>
       )}
     </section>
-  );
-}
-
-function ConnectionCard({ c, roles, disabled }: { c: ToolConnection; roles: { id: string; title: string }[]; disabled: boolean }) {
-  const save = (patch: Omit<Parameters<typeof officeActions.saveConnection>[0], "name">) => officeActions.saveConnection({ ...patch, name: c.name });
-  const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
-  return (
-    <div className="panel flex flex-col gap-2 p-3 text-[13px]">
-      <div className="flex flex-wrap items-center gap-2">
-        <b className="font-term">{c.name}</b>
-        <span className="min-w-0 flex-1 truncate font-term text-[12px] text-muted">{c.url}</span>
-        <span className="text-[12px] text-muted">{c.hasKey ? "key stored" : "no key"}</span>
-        <button className="btn px-2 text-[12px]" disabled={disabled} onClick={() => officeActions.checkConnection(c.name)}>
-          Check tools
-        </button>
-        <button
-          className="btn px-2 text-[12px]"
-          disabled={disabled}
-          onClick={async () => {
-            if (await ask.confirm(`Remove ${c.name}?`, "Its key is deleted from HQ's vault and agents lose its tools.", { ok: "Remove", danger: true }))
-              officeActions.removeConnection(c.name);
-          }}
-        >
-          Remove
-        </button>
-      </div>
-      <fieldset className="m-0 flex flex-wrap items-center gap-1.5 border-0 p-0" disabled={disabled}>
-        <legend className="mb-1 text-[12px] text-muted">Roles that may use it</legend>
-        {roles.map((r) => (
-          <button key={r.id} type="button" className="btn px-1.5 py-0.5 text-[12px]" aria-pressed={c.roles.includes(r.id)} onClick={() => save({ roles: toggle(c.roles, r.id) })}>
-            {c.roles.includes(r.id) ? "✓ " : "+ "}
-            {r.title}
-          </button>
-        ))}
-      </fieldset>
-      {c.tools.length === 0 ? (
-        <p className="m-0 text-[12px] text-muted">{c.probedAt ? "The server lists no tools." : "Check tools to see what the server offers."}</p>
-      ) : (
-        <table className="w-full text-left text-[12px]">
-          <thead className="text-muted">
-            <tr>
-              <th className="py-1 font-normal">Tool</th>
-              <th className="py-1 font-normal">Reads only</th>
-              <th className="py-1 font-normal">Send (your click)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.tools.map((t) => (
-              <tr key={t.name} className="border-t border-white/[0.06] align-top">
-                <td className="py-1 pr-2">
-                  <span className="font-term">{t.name}</span>
-                  {t.description && <div className="text-muted">{t.description}</div>}
-                </td>
-                <td className="py-1">
-                  <input
-                    type="checkbox"
-                    disabled={disabled || c.send === t.name}
-                    checked={c.read.includes(t.name)}
-                    aria-label={`${t.name} reads only`}
-                    onChange={() => save({ read: toggle(c.read, t.name) })}
-                  />
-                </td>
-                <td className="py-1">
-                  <input
-                    type="radio"
-                    name={`send-${c.name}`}
-                    disabled={disabled || c.read.includes(t.name)}
-                    checked={c.send === t.name}
-                    aria-label={`${t.name} is the send tool`}
-                    onChange={() => save({ send: t.name })}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {c.send && (
-        <button className="self-start text-[12px] underline" disabled={disabled} onClick={() => save({ send: null })}>
-          No send tool
-        </button>
-      )}
-    </div>
   );
 }

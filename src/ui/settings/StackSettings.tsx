@@ -16,6 +16,7 @@ import {
 import { officeActions, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Field, SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
 import { CommitInput } from "./controls";
 
 /** Optional: what the project is built with. Agents get it in ROLE.md, plus skills and access. */
@@ -167,15 +168,16 @@ function ToolRow({ category, label, hint, stack, save }: { category: StackCatego
         <b className="text-[15px]">{label}</b>
         <div className="text-[12px] text-muted">{hint}</div>
       </div>
-      <select className="field" value={choice?.id ?? ""} aria-label={label} onChange={(e) => set(e.target.value ? { id: e.target.value } : undefined)}>
-        <option value="">None</option>
-        {toolsIn(category).map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.name}
-          </option>
-        ))}
-        <option value="other">Other…</option>
-      </select>
+      <Select
+        value={choice?.id ?? ""}
+        ariaLabel={label}
+        onChange={(v) => set(v ? { id: v } : undefined)}
+        options={[
+          { value: "", label: "None" },
+          ...toolsIn(category).map((t) => ({ value: t.id, label: t.name })),
+          { value: "other", label: "Other…" },
+        ]}
+      />
       {choice?.id === "other" ? (
         <div className="grid grid-cols-2 gap-2">
           <CommitInput className="field" value={choice.name ?? ""} placeholder="Tool name" onCommit={(v) => set({ ...choice, name: v.trim() || undefined })} />

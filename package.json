@@ -57,7 +57,9 @@
     "hq": "vite build --logLevel warn && tsx server/main.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
     "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
+    "gen:types": "cargo run --quiet --manifest-path server-rs/Cargo.toml -p arima-core --bin export_types -- src/data/generated.ts",
     "test": "node scripts/run-tests.mjs",
+    "test:e2e": "playwright test",
     "bench": "node --import tsx scripts/bench/run.ts",
     "preview": "vite preview",
     "prepack": "npm run build",
@@ -76,6 +78,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",

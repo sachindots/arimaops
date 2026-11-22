@@ -7,7 +7,12 @@ import { Icon } from "../deck/Icon";
 export function SlideOver({ title, onClose, children, width = 440 }: { title: ReactNode; onClose: () => void; children: ReactNode; width?: number }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), onClose());
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[data-select-popover="true"], [data-annotate-modal="true"]')) return;
+      e.stopPropagation();
+      onClose();
+    };
     window.addEventListener("keydown", onKey, true);
     panel.current?.focus();
     return () => window.removeEventListener("keydown", onKey, true);

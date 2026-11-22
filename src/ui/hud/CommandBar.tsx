@@ -21,12 +21,19 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
 
   const items = useMemo<CommandItem[]>(() => {
     const base: CommandItem[] = [
-      { id: "projects", label: "Projects", sub: "Switch, create, pause, archive or delete", tag: "HQ", run: () => ui.openCto() },
-      { id: "boards", label: "Task Board", sub: `${snap.tasks.length} tasks`, tag: "VIEW", run: () => ui.openBoards() },
-      { id: "inbox", label: "Approvals & Inbox", sub: attention > 0 ? `${attention} waiting` : "All clear", tag: "OPS", run: () => ui.openActions() },
-      { id: "findings", label: "Security Findings", sub: `${findingsCount} recorded`, tag: "SEC", run: () => ui.openFindings() },
-      { id: "flow", label: "Flow", sub: "Stages and gates", tag: "FLOW", run: () => ui.openFlow() },
-      { id: "prs", label: "Pull Requests", sub: `${snap.pullRequests.length} open`, tag: "GIT", run: () => ui.openPrs() },
+      { id: "home", label: "Home — Focus & Orbit", sub: "Spatial team orbit, quick intent & waiting decisions", tag: "HOME", run: () => ui.setWorkspace("home") },
+      { id: "boards", label: "Work — Task Board", sub: `${snap.tasks.length} tasks across boards`, tag: "WORK", run: () => ui.openBoards() },
+      { id: "prs", label: "Work — Pull Requests", sub: `${snap.pullRequests.length} open`, tag: "WORK", run: () => ui.openPrs() },
+      { id: "goals", label: "Work — Goals & Outcomes", sub: `${(snap.goals ?? []).length} active goals`, tag: "WORK", run: () => ui.openGoals() },
+      { id: "flow", label: "Work — Pipeline Flow", sub: "Stages and gates", tag: "WORK", run: () => ui.openFlow() },
+      { id: "findings", label: "Work — Security Findings", sub: `${findingsCount} recorded`, tag: "SEC", run: () => ui.openFindings() },
+      { id: "inbox", label: "Inbox — Visual Decisions & Approvals", sub: attention > 0 ? `${attention} waiting` : "All clear", tag: "INBOX", run: () => ui.openActions() },
+      { id: "agents", label: "Team — Agents Roster", sub: `${snap.config.team.length} agents in project`, tag: "TEAM", run: () => ui.setTeamTab("agents") },
+      { id: "chat", label: "Team — Chat", sub: "Direct & team channels", tag: "TEAM", run: () => ui.openChat() },
+      { id: "meetings", label: "Team — Standup & Meetings Room", sub: "Moderated standups, voice call & 1-click minutes", tag: "MEET", run: () => ui.openMeetings() },
+      { id: "preview", label: "Live Preview & Annotation Studio", sub: "Viewport switcher, DOM picker & Freeze & Draw canvas", tag: "VIEW", run: () => ui.openPreview() },
+      { id: "usage", label: "Ops — Usage & Budgets", sub: "Tokens, cost & role caps", tag: "OPS", run: () => ui.openUsage() },
+      { id: "projects", label: "Switch / Manage Projects", sub: "Switch, create, pause, archive or delete", tag: "HQ", run: () => ui.openCto() },
       {
         id: "command",
         label: "Multi-Project Command Grid",
@@ -40,8 +47,8 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
     ];
     if (!isViewer) {
       base.push(
-        { id: "terminal", label: "HQ Terminal", sub: "Host shell & logs", tag: "SYS", run: () => ui.openTerminal() },
-        { id: "settings", label: "System Settings", sub: "Team, accounts, MCP, sandbox, workflow", tag: "CFG", run: () => ui.openSettings("project") },
+        { id: "terminal", label: "Ops — Host Terminal", sub: "Host shell & logs", tag: "OPS", run: () => ui.openTerminal() },
+        { id: "settings", label: "System Settings", sub: "Project, team & workflow, access & security, integrations", tag: "CFG", run: () => ui.openSettings("project") },
       );
     }
     for (const a of snap.config.team) {

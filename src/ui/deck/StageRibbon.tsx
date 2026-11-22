@@ -4,13 +4,15 @@
 import { Fragment } from "react";
 import type { OfficeSnapshot } from "../../data/types";
 import { useOffice } from "../../store/office";
-import { ui } from "../../store/ui";
+import { ui, useUi } from "../../store/ui";
 import type { Theme } from "../theme/projectTheme";
 import { DECK } from "./frame";
 
 export function StageRibbon({ snap, theme }: { snap: OfficeSnapshot; theme: Theme }) {
   const live = useOffice((s) => s.live);
   const connection = useOffice((s) => s.connection);
+  const railExpanded = useUi((s) => s.railExpanded);
+  const railW = railExpanded ? DECK.railExpanded : DECK.rail;
   const stages = snap.config.template?.flow.stages ?? [];
   if (stages.length < 2) return null;
   const open = snap.tasks.filter((t) => t.status !== "done");
@@ -28,8 +30,8 @@ export function StageRibbon({ snap, theme }: { snap: OfficeSnapshot; theme: Them
 
   return (
     <footer
-      className="deck-bar fixed bottom-0 right-0 z-20 flex items-center justify-between border-t px-6"
-      style={{ left: DECK.rail, height: DECK.footer }}
+      className="deck-bar fixed bottom-0 right-0 z-20 flex items-center justify-between border-t px-6 transition-[left] duration-150"
+      style={{ left: railW, height: DECK.footer }}
     >
       <div className="hidden shrink-0 items-center gap-2 lg:flex">
         <span className="text-[12px] font-semibold text-ink/80">{theme.pipeline}</span>

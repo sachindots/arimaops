@@ -41,7 +41,7 @@ export function useProjectTheme(snap: OfficeSnapshot | null): Theme {
   useEffect(() => {
     document.documentElement.dataset.theme = theme.id;
     if (!schemePinned) {
-      const auto = theme.security ? "dark" : "light";
+      const auto = "dark";
       document.documentElement.dataset.scheme = auto;
       useUi.setState({ scheme: auto });
     } else {

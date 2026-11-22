@@ -11,6 +11,8 @@ import { AGENT_CLIS, CLI_LABEL, CLI_MODELS, cliPickerLabel, type AgentCli, type 
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { Icon } from "../deck/Icon";
 import { ago, Dot, TokensChip, useNow } from "../kit";
+import { AnnotateModal } from "../preview/AnnotateModal";
+import { Select } from "../primitives/Select";
 
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: "To do", color: "#6b7280" },
@@ -48,7 +50,9 @@ const withToken = (url: string) => (token() ? `${url}${url.includes("?") ? "&" :
 
 /** The URL HQ serves an evidence file at (read-only; the browser's token goes along, as for screen previews). */
 export const evidenceUrl = (projectId: string, taskId: string, sha: string, file: string) =>
-  withToken(`/api/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(taskId)}/${sha}/${encodeURIComponent(file)}`);
+  file.startsWith("data:")
+    ? file
+    : withToken(`/api/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(taskId)}/${sha}/${encodeURIComponent(file)}`);
 
 interface History {
   events: { at: number; status: string; stageId: string; ownerId: string | null }[];
@@ -57,8 +61,10 @@ interface History {
 
 /** The task's status history and gate events from HQ; null while loading or offline (the demo has none). */
 function useHistory(projectId: string, taskId: string, stamp: string): History | null {
+  const live = useOffice((s) => s.live);
   const [h, setH] = useState<History | null>(null);
   useEffect(() => {
+    if (!live || !projectId) return;
     let stop = false;
     fetch(withToken(`/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/history`), { credentials: "same-origin" })
       .then((r) => (r.ok ? (r.json() as Promise<History>) : null))
@@ -67,7 +73,7 @@ function useHistory(projectId: string, taskId: string, stamp: string): History |
     return () => {
       stop = true;
     };
-  }, [projectId, taskId, stamp]);
+  }, [live, projectId, taskId, stamp]);
   return h;
 }
 
@@ -87,9 +93,19 @@ function Section({ title, children, aside }: { title: string; children: React.Re
 /** Where the task is in its flow: done stages, the current one with what it needs, the ones after. */
 function Stepper({ task }: { task: Task }) {
   const flow = useOffice((s) => s.snap?.config.template?.flow);
+  const [gateNote, setGateNote] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
   if (!flow?.stages.length) return null;
   const at = task.status === "done" ? flow.stages.length : Math.max(0, flow.stages.findIndex((s) => s.id === task.stageId));
   const current = flow.stages[at];
+  const recorded = task.gateRecords ?? [];
+
+  const handleGate = (gateId: string, state: "passed" | "waived") => {
+    officeActions.recordGate(task.id, gateId, state, gateNote.trim() || null);
+    setFeedback(`Gate "${gateId}" ${state}${gateNote.trim() ? ` (${gateNote.trim()})` : ""}`);
+    setGateNote("");
+  };
+
   return (
     <>
       <ol className="m-0 flex list-none items-center gap-0 p-0" aria-label="Flow">
@@ -114,15 +130,61 @@ function Stepper({ task }: { task: Task }) {
         })}
       </ol>
       {current && current.gates.length > 0 && (
-        <div className="mt-2.5 text-[12px]">
-          <span className="text-muted">To leave {current.name}:</span>
-          <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">
-            {current.gates.map((g) => (
-              <li key={g.id} className="flex items-baseline gap-1.5">
-                <span className="text-muted">○</span> {gateText(g)}
-              </li>
-            ))}
+        <div className="mt-3 rounded-lg border border-[var(--border-hairline)] bg-cream-2/40 p-3 text-[12px]">
+          <div className="mb-1.5 font-semibold text-ink">Stage gates to leave {current.name}</div>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {current.gates.map((g) => {
+              const rec = recorded.find((r) => r.gateId === g.id);
+              return (
+                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2.5 py-2">
+                  <span className="flex items-center gap-1.5 text-[13px] text-ink">
+                    <span className={rec ? "text-green" : "text-muted"}>{rec ? "✓" : "○"}</span>
+                    <span>{gateText(g)}</span>
+                    {rec && (
+                      <span className="chip text-[12px]" style={{ ["--c" as string]: rec.state === "waived" ? "var(--color-amber)" : "var(--color-green)" }}>
+                        {rec.state}
+                      </span>
+                    )}
+                  </span>
+                  {!isViewer && (
+                    <span className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleGate(g.id, "passed")}
+                        className="btn px-2 py-1 text-[12px] text-green"
+                      >
+                        Pass Gate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleGate(g.id, "waived")}
+                        className="btn border-amber/40 px-2 py-1 text-[12px] text-amber"
+                      >
+                        Waive Gate
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+          {!isViewer && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                className="field text-[12px]"
+                value={gateNote}
+                onChange={(e) => setGateNote(e.target.value)}
+                placeholder="Gate pass or waiver rationale (optional)…"
+                aria-label="Gate rationale note"
+              />
+            </div>
+          )}
+          {feedback && (
+            <div className="mt-2 flex items-center gap-1.5 text-[12px] font-medium text-green" role="status">
+              <Icon name="check_circle" size={15} />
+              <span>{feedback}</span>
+            </div>
+          )}
         </div>
       )}
     </>
@@ -153,6 +215,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
   const head = useOffice((s) => s.snap?.pullRequests.find((p) => p.number === task.prNumber)?.headSha);
   const verifier = useOffice((s) => s.snap?.config.team.find((a) => a.id === ev.by)?.name ?? ev.by);
   const now = useNow(30_000);
+  const [annotating, setAnnotating] = useState<{ url: string; label: string } | null>(null);
   const stale = !!head && head !== ev.sha;
   return (
     <>
@@ -165,10 +228,45 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
           const url = evidenceUrl(projectId, task.id, ev.sha, s.file);
           const video = /\.(webm|mp4)$/.test(s.file);
           return (
-            <a key={s.file} href={url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-cream-2" title={`${s.label}: open full size`}>
-              {video ? <video src={url} className="aspect-[4/3] w-full object-cover object-top" muted controls /> : <img src={url} alt={s.label} loading="lazy" className="aspect-[4/3] w-full object-cover object-top transition-opacity group-hover:opacity-90" />}
-              <span className="block truncate px-1.5 py-1 text-[12px] text-muted">{s.label}</span>
-            </a>
+            <div
+              key={s.file}
+              className="group flex flex-col overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-cream-2"
+            >
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="block"
+                title={`${s.label}: open full size`}
+              >
+                {video ? (
+                  <video src={url} className="aspect-[4/3] w-full object-cover object-top" muted controls />
+                ) : (
+                  <img
+                    src={url}
+                    alt={s.label}
+                    loading="lazy"
+                    className="aspect-[4/3] w-full object-cover object-top transition-opacity group-hover:opacity-90"
+                  />
+                )}
+              </a>
+              <div className="flex items-center justify-between gap-1.5 px-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[12px] text-muted" title={s.label}>
+                  {s.label}
+                </span>
+                {!video && !isViewer && (
+                  <button
+                    type="button"
+                    onClick={() => setAnnotating({ url, label: s.label })}
+                    className="btn min-h-[26px] shrink-0 px-2 py-0.5 text-[12px]"
+                    title="Freeze & Draw feedback on this screenshot"
+                  >
+                    <Icon name="draw" size={14} />
+                    Annotate
+                  </button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -178,6 +276,16 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
             <li key={i}>{s}</li>
           ))}
         </ol>
+      )}
+      {annotating && (
+        <AnnotateModal
+          imageUrl={annotating.url}
+          title={annotating.label}
+          sourceKind="pr-evidence"
+          taskId={task.id}
+          prNumber={task.prNumber ?? undefined}
+          onClose={() => setAnnotating(null)}
+        />
       )}
     </>
   );
@@ -235,35 +343,45 @@ function People({ task }: { task: Task }) {
         </div>
       )}
       {editable && (
-        <div className="grid grid-cols-1 gap-1.5 min-[480px]:grid-cols-3">
-          <select className="field min-h-[40px] text-[13px]" value="" onChange={(e) => e.target.value && officeActions.assignTask(task.id, e.target.value)} aria-label={`Assign ${task.id}`}>
-            <option value="">Assign to…</option>
-            {workers.map((a) => {
-              const limit = limitedUntil(a.id);
-              return (
-                <option key={a.id} value={a.id} disabled={!!limit}>
-                  {a.name} ({a.role}, {a.cli}){limit ? ` · limited until ${limit}` : ""}
-                </option>
-              );
-            })}
-          </select>
-          <select className="field min-h-[40px] text-[13px]" value={task.cli ?? ""} onChange={(e) => officeActions.setTaskRunsOn(task.id, (e.target.value || null) as AgentCli | null, task.model ?? null)} aria-label={`${task.id} runs on`}>
-            <option value="">Runs on: any CLI</option>
-            {AGENT_CLIS.map((c) => (
-              <option key={c} value={c}>
-                Runs on: {cliPickerLabel(c)}
-              </option>
-            ))}
-          </select>
-          <select className="field min-h-[40px] text-[13px]" value={task.model ?? ""} disabled={!task.cli} onChange={(e) => officeActions.setTaskRunsOn(task.id, task.cli ?? null, e.target.value || null)} aria-label={`${task.id} model`}>
-            <option value="">Model: agent's default</option>
-            {task.cli &&
-              CLI_MODELS[task.cli].map((m) => (
-                <option key={m} value={m}>
-                  Model: {m}
-                </option>
-              ))}
-          </select>
+        <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-3">
+          <Select
+            size="sm"
+            value=""
+            onChange={(v) => v && officeActions.assignTask(task.id, v)}
+            ariaLabel={`Assign ${task.id}`}
+            options={[
+              { value: "", label: "Assign to…" },
+              ...workers.map((a) => {
+                const limit = limitedUntil(a.id);
+                return {
+                  value: a.id,
+                  disabled: !!limit,
+                  label: `${a.name} (${a.role}, ${a.cli})${limit ? ` · limited until ${limit}` : ""}`,
+                };
+              }),
+            ]}
+          />
+          <Select
+            size="sm"
+            value={task.cli ?? ""}
+            onChange={(v) => officeActions.setTaskRunsOn(task.id, (v || null) as AgentCli | null, task.model ?? null)}
+            ariaLabel={`${task.id} runs on`}
+            options={[
+              { value: "", label: "Runs on: any CLI" },
+              ...AGENT_CLIS.map((c) => ({ value: c, label: `Runs on: ${cliPickerLabel(c)}` })),
+            ]}
+          />
+          <Select
+            size="sm"
+            value={task.model ?? ""}
+            disabled={!task.cli}
+            onChange={(v) => officeActions.setTaskRunsOn(task.id, task.cli ?? null, v || null)}
+            ariaLabel={`${task.id} model`}
+            options={[
+              { value: "", label: "Model: default" },
+              ...(task.cli ? CLI_MODELS[task.cli].map((m) => ({ value: m, label: `Model: ${m}` })) : []),
+            ]}
+          />
         </div>
       )}
     </div>
@@ -278,7 +396,14 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
   const projectId = snap?.config.project.id ?? "";
   const history = useHistory(projectId, taskId, `${task?.status}|${task?.stageId}`);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), onClose());
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[data-select-popover="true"], [data-annotate-modal="true"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      onClose();
+    };
     window.addEventListener("keydown", onKey, true);
     panel.current?.focus();
     return () => window.removeEventListener("keydown", onKey, true);
@@ -375,9 +500,15 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
             </Section>
           )}
 
-          {history && (
+          {(history || (task.gateRecords?.length ?? 0) > 0) && (
             <Section title="History">
-              <Timeline history={history} name={name} />
+              <Timeline
+                history={{
+                  events: history?.events ?? [],
+                  gates: [...(task.gateRecords ?? []), ...(history?.gates ?? [])],
+                }}
+                name={name}
+              />
             </Section>
           )}
 

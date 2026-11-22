@@ -3,6 +3,7 @@ import { clisFor, PROVIDER_SPECS, PROVIDERS, type Provider } from "../../data/pr
 import { CLI_LABEL } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, Field, SectionTitle, useNow } from "../kit";
+import { Select } from "../primitives/Select";
 
 const MASTER: Record<"env" | "keychain" | "file", [string, string]> = {
   env: ["Master key from ARIMA_MASTER_KEY", "#3fb950"],
@@ -104,18 +105,13 @@ export function AccountsSettings() {
           <SectionTitle>{editing ? `Edit ${editing}` : "Add an account"}</SectionTitle>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Provider">
-              <select
-                className="field"
+              <Select
                 value={form.provider}
                 disabled={!!editing}
-                onChange={(e) => setForm({ ...form, provider: e.target.value as Provider, fields: {} })}
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p} value={p}>
-                    {PROVIDER_SPECS[p].label}
-                  </option>
-                ))}
-              </select>
+                aria-label="Provider"
+                options={PROVIDERS.map((p) => ({ value: p, label: PROVIDER_SPECS[p].label }))}
+                onChange={(v) => setForm({ ...form, provider: v as Provider, fields: {} })}
+              />
             </Field>
             <Field label="Name" hint="Short: work, client-a, bedrock-us">
               <input className="field" value={form.id} disabled={!!editing} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="work" autoComplete="off" />

@@ -4,6 +4,7 @@ import { officeActions, useOffice } from "../../store/office";
 import { readPref, writePref } from "../../lib/prefs";
 import { ago, Dot, Meter, Portrait, TokensChip, useNow } from "../kit";
 import { Icon } from "../deck/Icon";
+import { Select } from "../primitives/Select";
 import { DrawerHeader, PageTitle } from "./Drawer";
 import { TaskSheet } from "./TaskSheet";
 
@@ -65,30 +66,26 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
         { id: "", name: "Unassigned", tasks: tasks.filter((t) => !t.ownerId || !snap.config.team.some((a) => a.id === t.ownerId)) },
       ].filter((l) => l.tasks.length)
     : [{ id: "all", name: "", tasks }];
-  const select = "h-8 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 text-[13px] text-ink";
+  const selectClass = "w-auto min-w-[120px]";
 
   return (
     <>
       <DrawerHeader>
         <PageTitle title="Board" context={board ? <>{board.title} · {done}/{onBoard.length} done</> : <>{boards.length} boards</>} />
         {board && (
-          <span className="ml-auto flex items-center gap-2">
+          <span className="ml-auto flex flex-wrap items-center gap-2">
             <span className="hidden w-[120px] items-center lg:flex" title="Tasks done on this board">
               <Meter value={done} max={Math.max(1, onBoard.length)} color="var(--accent)" label="Board progress" />
             </span>
-            <select
-              className={select}
+            <Select
+              className="w-auto min-w-[104px]"
+              size="sm"
               value={board.status}
               aria-label="Board status (agents only pick tasks from active boards)"
               title="Agents only pick tasks from active boards"
-              onChange={(e) => officeActions.updateBoard(board.id, { status: e.target.value as BoardStatus })}
-            >
-              {(Object.keys(STATUS_LABEL) as BoardStatus[]).map((st) => (
-                <option key={st} value={st}>
-                  {STATUS_LABEL[st]}
-                </option>
-              ))}
-            </select>
+              options={(Object.keys(STATUS_LABEL) as BoardStatus[]).map((st) => ({ value: st, label: STATUS_LABEL[st] }))}
+              onChange={(v) => officeActions.updateBoard(board.id, { status: v as BoardStatus })}
+            />
             <button className="btn text-[13px]" aria-pressed={byAgent} onClick={toggleLanes} title="One row per agent">
               <Icon name="view_agenda" size={16} /> Group by agent
             </button>
@@ -113,34 +110,43 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-hairline)] px-4 py-2">
         <Icon name="filter_list" size={16} className="text-muted" />
-        <select className={select} value={agentId ?? "*"} aria-label="Filter by agent" onChange={(e) => setAgentId(e.target.value === "*" ? null : e.target.value)}>
-          <option value="*">Every agent</option>
-          {snap.config.team.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-          <option value="">Unassigned</option>
-        </select>
+        <Select
+          className={selectClass}
+          size="sm"
+          value={agentId ?? "*"}
+          aria-label="Filter by agent"
+          options={[
+            { value: "*", label: "Every agent" },
+            ...snap.config.team.map((a) => ({ value: a.id, label: a.name })),
+            { value: "", label: "Unassigned" },
+          ]}
+          onChange={(v) => setAgentId(v === "*" ? null : v)}
+        />
         {goals.length > 0 && (
-          <select className={select} value={goalId ?? ""} aria-label="Filter by goal" onChange={(e) => setGoalId(e.target.value || null)}>
-            <option value="">Every goal</option>
-            {goals.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.id} · {g.title}
-              </option>
-            ))}
-          </select>
+          <Select
+            className={selectClass}
+            size="sm"
+            value={goalId ?? ""}
+            aria-label="Filter by goal"
+            options={[
+              { value: "", label: "Every goal" },
+              ...goals.map((g) => ({ value: g.id, label: `${g.id} · ${g.title}` })),
+            ]}
+            onChange={(v) => setGoalId(v || null)}
+          />
         )}
         {stages.length > 0 && (
-          <select className={select} value={stageId ?? ""} aria-label="Filter by stage" onChange={(e) => setStageId(e.target.value || null)}>
-            <option value="">Every stage</option>
-            {stages.map((st) => (
-              <option key={st.id} value={st.id}>
-                {st.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            className={selectClass}
+            size="sm"
+            value={stageId ?? ""}
+            aria-label="Filter by stage"
+            options={[
+              { value: "", label: "Every stage" },
+              ...stages.map((st) => ({ value: st.id, label: st.name })),
+            ]}
+            onChange={(v) => setStageId(v || null)}
+          />
         )}
         {filtered && (
           <button type="button" className="text-[13px] text-accent hover:underline" onClick={() => (setAgentId(null), setGoalId(null), setStageId(null))}>

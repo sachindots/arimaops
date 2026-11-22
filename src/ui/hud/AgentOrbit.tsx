@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { CLI_LABEL, type AgentConfig, type AgentStatus, type Task } from "../../data/types";
 import { modeOf, type Mode } from "../../data/mode";
 import { isViewer, officeActions, useOffice } from "../../store/office";
-import { ui } from "../../store/ui";
+import { ui, useUi } from "../../store/ui";
 import { fmtTokens, fmtUsd, Portrait, useCountUp } from "../kit";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
 import { DECK, homeSides } from "../deck/frame";
@@ -44,21 +44,22 @@ const STATE: Record<Mode, { dot: string; label: string; badge: string }> = {
   stopped: {
     dot: "bg-slate-400/60",
     label: "Stopped",
-    badge: "border-[var(--border-hairline)] bg-cream-2 text-muted/80",
+    badge: "border-[var(--border-hairline)] bg-cream-2 text-muted",
   },
 };
 
 /**
  * Where the core and the ring sit inside a box of w × h.
  */
-export function hudFrame(w: number, h: number, compact = false, strip = false, team = 0) {
+export function hudFrame(w: number, h: number, compact = false, strip = false, team = 0, railW: number = DECK.rail) {
   if (compact) return { cx: w / 2, cy: (h - (strip ? 52 : 0)) / 2 - 8, width: w, height: h - 16 - (strip ? 52 : 0), r: Math.min(w, h) * (w < 640 ? 0.17 : 0.2) };
-  const side = homeSides(w, team); // Home's Needs you / Today columns
-  const left = DECK.rail + side.left;
+  const side = homeSides(w, team); // Home's Waiting on you / Today columns
+  const left = railW + side.left;
   const top = DECK.header;
+  const bottomReserve = (strip ? DECK.footer : 0) + 88; // Leave room for HomeIntentBar above StageRibbon
   const width = w - left - side.right;
-  const height = h - top - (strip ? DECK.footer : 0);
-  return { cx: left + width / 2, cy: top + height / 2, width, height, r: Math.min(width, height) * 0.14 };
+  const height = Math.max(280, h - top - bottomReserve);
+  return { cx: left + width / 2, cy: top + height / 2 - 6, width, height, r: Math.min(width, height) * 0.14 };
 }
 
 function useBoxSize(ref: RefObject<HTMLElement | null>) {
@@ -94,12 +95,14 @@ export function AgentOrbit({
   const { w, h } = useBoxSize(box);
   const usage = useAgentUsage(1);
   const snap = useOffice((s) => s.snap);
+  const railExpanded = useUi((s) => s.railExpanded);
+  const railW = railExpanded ? DECK.railExpanded : DECK.rail;
   const stages = snap?.config.template?.flow.stages;
-  const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1, team.length);
+  const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1, team.length, railW);
   const kind = compact && w < 640 ? "node" : team.length > 6 ? "pill" : "card";
   const half = HALF[kind];
-  const rx = Math.min(f.width * 0.34, f.width / 2 - half.x - 16);
-  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.4, f.height / 2 - half.y - 16);
+  const rx = Math.min(f.width * 0.33, f.width / 2 - half.x - 16);
+  const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.37, f.height / 2 - half.y - 12);
   const outerTrack = Math.round(Math.min(rx, ry) * 1.92);
   const innerTrack = Math.round(outerTrack * 0.68);
   const slots = team.map((m, i) => {
@@ -127,11 +130,11 @@ export function AgentOrbit({
         </>
       )}
 
-      {/* Active Project Status Badge directly below the Particle Orb */}
+      {/* Active Project Status Badge centered near the Particle Orb */}
       {w > 0 && (
         <div
-          className="pointer-events-none absolute -translate-x-1/2 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3.5 py-1 text-[12px] text-muted shadow-2xs"
-          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy + f.height / 2 - 36 }} // below the lowest cards, above the stage ribbon
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--border-hairline)] bg-[var(--surface-glass)] px-3.5 py-1 text-[12px] text-muted shadow-[var(--card-shadow)] backdrop-blur-md"
+          style={{ left: f.cx, top: compact ? f.cy + f.height / 2 - (lift ? 52 : 24) : f.cy }}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
           <span className="font-semibold text-ink">{projectName}</span>

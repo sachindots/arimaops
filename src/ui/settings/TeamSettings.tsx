@@ -10,28 +10,33 @@ import { agentPalette } from "../../theme/tokens";
 import { Field, Portrait, RoleBadge, SectionTitle } from "../kit";
 import { ModelSetup } from "../setup/ModelSetup";
 import { ModelSelect } from "../primitives/ModelSelect";
+import { Select } from "../primitives/Select";
 import { CommitInput } from "./controls";
 import { RemoveAgentDialog } from "./RemoveAgentDialog";
 
 export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: AgentCli) => void }) {
   return (
-    <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentCli)} aria-label="Agent CLI">
-      {AGENT_CLIS.map((c) => (
-        <option key={c} value={c}>
-          {cliPickerLabel(c)}
-        </option>
-      ))}
-    </select>
+    <Select
+      value={value}
+      onChange={(v) => onChange(v as AgentCli)}
+      ariaLabel="Agent CLI"
+      options={AGENT_CLIS.map((c) => ({ value: c, label: cliPickerLabel(c) }))}
+    />
   );
 }
 
 function ModeSelect({ value, onChange }: { value: AgentMode; onChange: (v: AgentMode) => void }) {
   return (
-    <select className="field" value={value} onChange={(e) => onChange(e.target.value as AgentMode)} aria-label="Runs in">
-      <option value="sandbox">Sandbox</option>
-      <option value="container">Container</option>
-      <option value="local">Local</option>
-    </select>
+    <Select
+      value={value}
+      onChange={(v) => onChange(v as AgentMode)}
+      ariaLabel="Runs in"
+      options={[
+        { value: "sandbox", label: "Sandbox" },
+        { value: "container", label: "Container" },
+        { value: "local", label: "Local" },
+      ]}
+    />
   );
 }
 
@@ -180,16 +185,16 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
                 />
               </Field>
               <Field label="Sending" hint="Drafts only: this role's agents can't reach mail, social or CRM hosts; you send.">
-                <select
-                  className="field"
+                <Select
                   value={role.outbound ?? ""}
-                  aria-label={`${role.title} sending`}
-                  onChange={(e) => set({ outbound: e.target.value === "" ? null : (e.target.value as "none" | "drafts-only") })}
-                >
-                  <option value="">As the project ({projectOutbound === "drafts-only" ? "drafts only" : "no limit"})</option>
-                  <option value="drafts-only">Drafts only</option>
-                  <option value="none">No limit</option>
-                </select>
+                  ariaLabel={`${role.title} sending`}
+                  onChange={(v) => set({ outbound: v === "" ? null : (v as "none" | "drafts-only") })}
+                  options={[
+                    { value: "", label: `As the project (${projectOutbound === "drafts-only" ? "drafts only" : "no limit"})` },
+                    { value: "drafts-only", label: "Drafts only" },
+                    { value: "none", label: "No limit" },
+                  ]}
+                />
               </Field>
             </div>
           )}
@@ -237,15 +242,14 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
           {agent.isLead ? (
             <div className="field text-muted">{agent.role}</div>
           ) : (
-            <select className="field" value={agent.roleId} onChange={(e) => set({ roleId: e.target.value })} aria-label={`${agent.name} role`}>
-              {roles
+            <Select
+              value={agent.roleId ?? ""}
+              onChange={(v) => set({ roleId: v })}
+              ariaLabel={`${agent.name} role`}
+              options={roles
                 .filter((r) => !r.isLead)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.title}
-                  </option>
-                ))}
-            </select>
+                .map((r) => ({ value: r.id, label: r.title }))}
+            />
           )}
         </Field>
         <Field label="Runs in" hint={agent.nextMode ? `${MODE_LABEL[agent.nextMode]} at its next start` : undefined}>
@@ -292,10 +296,15 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
           </Field>
           {agent.cli === "claude" && (agent.nextMode ?? agent.mode) !== "local" && (
             <Field label="Engine" hint="Stream (beta): Claude Code runs headless, takes messages only between turns, and its terminal shows a log. Applies at its next start.">
-              <select className="field" value={agent.engine ?? "terminal"} aria-label={`${agent.name} engine`} onChange={(e) => set({ engine: e.target.value as AgentEngine })}>
-                <option value="terminal">Terminal</option>
-                <option value="stream">Stream (beta)</option>
-              </select>
+              <Select
+                value={agent.engine ?? "terminal"}
+                ariaLabel={`${agent.name} engine`}
+                onChange={(v) => set({ engine: v as AgentEngine })}
+                options={[
+                  { value: "terminal", label: "Terminal" },
+                  { value: "stream", label: "Stream (beta)" },
+                ]}
+              />
             </Field>
           )}
         </div>
@@ -313,7 +322,7 @@ function AddAgent({ roles, defaultMode }: { roles: Role[]; defaultMode: AgentMod
   if (!roles.length)
     return <p className="text-[13px] text-muted">This template has only the lead role. Add a worker role to the template to add agents.</p>;
   return (
-    <section className="rounded-xl border border-dashed border-white/15 p-3">
+    <section className="rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] p-4">
       <SectionTitle>Add an agent</SectionTitle>
       <form
         className="grid grid-cols-[minmax(100px,1fr)_minmax(130px,1fr)_120px_auto] items-end gap-2"
@@ -327,13 +336,12 @@ function AddAgent({ roles, defaultMode }: { roles: Role[]; defaultMode: AgentMod
           <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
         </Field>
         <Field label="Role">
-          <select className="field" value={roleId} onChange={(e) => setRoleId(e.target.value)}>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.title}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={roleId}
+            onChange={setRoleId}
+            ariaLabel="Role"
+            options={roles.map((r) => ({ value: r.id, label: r.title }))}
+          />
         </Field>
         <Field label="Runs in">
           <ModeSelect value={mode} onChange={setMode} />

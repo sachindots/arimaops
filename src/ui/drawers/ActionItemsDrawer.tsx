@@ -2,11 +2,25 @@ import { useEffect, useState, type ReactNode } from "react";
 import { BRAND } from "../../data/brand";
 import type { ActionItem } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
-import { ui } from "../../store/ui";
+import { ui, useUi } from "../../store/ui";
 import { useAuth } from "../../store/auth";
 import { ago, Dot, useNow } from "../kit";
 import { Icon } from "../deck/Icon";
+import { VisualDecisionCard } from "../decisions/VisualDecisionCard";
 import { DrawerHeader, PageTitle } from "./Drawer";
+
+function useSplitInboxPane(): boolean {
+  const [wide, setWide] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 960px)").matches : true,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 960px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
 
 /** One row of the triage list and what the detail pane shows for it. */
 interface Entry {
@@ -26,6 +40,7 @@ interface Entry {
 }
 
 const KIND_ICON: Record<string, string> = {
+  question: "help", "second-opinion": "compare_arrows", disagreement: "warning", permission: "terminal", "meeting-request": "groups",
   plan: "account_tree", spec: "description", gate: "verified", lesson: "school", skills: "extension", overflow: "swap_horiz",
   send: "send", spend: "payments", approval: "undo", memory: "neurology", info: "info", request: "assignment_ind",
 };
@@ -34,15 +49,39 @@ const KIND_ICON: Record<string, string> = {
 export function ActionItemsDrawer() {
   const snap = useOffice((s) => s.snap);
   const now = useNow(10_000);
+  const splitPane = useSplitInboxPane();
   const [showClosed, setShowClosed] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const selectedFromStore = useUi((s) => s.selectedDecisionId);
+  const [selected, setSelected] = useState<string | null>(selectedFromStore);
+  useEffect(() => {
+    if (selectedFromStore) setSelected(selectedFromStore);
+  }, [selectedFromStore]);
   const a = snap ? selectAttention(snap) : null;
   const agent = (id: string) => snap?.config.team.find((x) => x.id === id);
   const who = (id: string) => agent(id)?.name ?? (id === "hq" ? BRAND.name : id);
 
   const entries: Entry[] = [];
   if (snap && a) {
-    // Waiting items first, then oldest first (what's been waiting longest).
+    // 1. Unified v2 Visual Decisions first (waiting first, then oldest first)
+    const openDecisions = [...a.decisions].sort(
+      (x, y) => Number(y.waiting) - Number(x.waiting) || x.createdAt.localeCompare(y.createdAt),
+    );
+    for (const dec of openDecisions) {
+      const pKind = dec.payload.kind;
+      entries.push({
+        key: dec.id,
+        icon: KIND_ICON[pKind] ?? "help",
+        title: dec.title,
+        sub: [who(dec.fromId), dec.taskId].filter(Boolean).join(" · "),
+        at: dec.createdAt,
+        color: agent(dec.fromId)?.color,
+        waiting: dec.waiting,
+        finality: dec.ownerOnly ? "cannot undo" : undefined,
+        detail: <VisualDecisionCard decision={dec} />,
+      });
+    }
+
+    // 2. Legacy Action Items
     const open = [...a.items].sort((x, y) => Number(y.waiting) - Number(x.waiting) || x.at.localeCompare(y.at));
     for (const item of open) {
       const kind = item.kind ?? "request";
@@ -126,16 +165,19 @@ export function ActionItemsDrawer() {
         {entries.length > 0 && <span className="ml-auto hidden text-[12px] text-muted md:inline">j / k to move · a approve · r send back</span>}
       </DrawerHeader>
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-[380px] shrink-0 flex-col border-r border-[var(--border-hairline)] max-[900px]:w-full">
+        <div className={`flex shrink-0 flex-col border-r border-[var(--border-hairline)] ${splitPane ? "w-[380px]" : "w-full"}`}>
           <ul className="scroll-thin m-0 min-h-0 flex-1 list-none overflow-y-auto p-2" role="listbox" aria-label="Waiting on you">
-            {entries.length === 0 && <li className="p-4 text-[13px] text-muted">All clear. When an agent needs you to do something outside its sandbox, it shows up here.</li>}
+            {entries.length === 0 && <li className="p-4 text-[13px] text-muted">All clear. When an agent needs a decision, approval or meeting, it shows up here.</li>}
             {entries.map((e) => {
               const on = e === current;
               return (
                 <li key={e.key} role="option" aria-selected={on}>
                   <button
                     type="button"
-                    onClick={() => setSelected(e.key)}
+                    onClick={() => {
+                      setSelected(e.key);
+                      ui.setSelectedDecision(e.key);
+                    }}
                     className={`flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${on ? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]" : "hover:bg-cream-2"}`}
                   >
                     <Icon name={e.icon} size={18} className={`mt-0.5 ${e.waiting ? "text-amber" : "text-muted"}`} />
@@ -156,7 +198,7 @@ export function ActionItemsDrawer() {
                       )}
                     </span>
                   </button>
-                  {on && <div className="px-3 pt-1 pb-4 min-[901px]:hidden">{e.detail}</div>}
+                  {!splitPane && on && <div className="px-3 pt-2 pb-4">{e.detail}</div>}
                 </li>
               );
             })}
@@ -180,9 +222,11 @@ export function ActionItemsDrawer() {
             </div>
           )}
         </div>
-        <section className="scroll-thin min-w-0 flex-1 overflow-y-auto px-8 py-6 max-[900px]:hidden" aria-label="Selected item">
-          {current ? <div key={current.key} className="mx-auto max-w-[720px]">{current.detail}</div> : <p className="text-[13px] text-muted">Nothing selected.</p>}
-        </section>
+        {splitPane && (
+          <section className="scroll-thin min-w-0 flex-1 overflow-y-auto px-8 py-6" aria-label="Selected item">
+            {current ? <div key={current.key} className="mx-auto max-w-[760px]">{current.detail}</div> : <p className="text-[13px] text-muted">Nothing selected.</p>}
+          </section>
+        )}
       </div>
     </>
   );
@@ -356,9 +400,9 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
       <div className="mb-1 text-[12px] text-muted">
         Team memory{item.taskId ? ` · ${item.taskId}` : ""} · {ago(item.at, now)} ago
       </div>
-      <ul className="flex flex-col">
+      <ul className="m-0 flex list-none flex-col divide-y divide-[var(--border-hairline)] p-0">
         {list.map((m) => (
-          <li key={m.id} className="flex flex-col gap-1 border-t-2 border-dashed border-cream-3 py-2 first:border-t-0">
+          <li key={m.id} className="flex flex-col gap-2 py-3">
             <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
               <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#a371f7" }}>
                 {m.type}

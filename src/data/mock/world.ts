@@ -118,6 +118,29 @@ export class World {
     const tasks = structuredClone(preset.tasks);
     for (const t of tasks) t.stageId ??= demoStage(config, t.status);
     const workers = config.team.filter((a) => !a.isLead);
+    // Attach a clean inline SVG evidence screenshot to the first task with a PR so the
+    // Verifier Evidence -> Annotate Freeze & Draw modal works interactively in ?mock=1.
+    const evidenceTask = tasks.find((t) => t.prNumber !== null) ?? tasks[0];
+    if (evidenceTask && !evidenceTask.evidence) {
+      const demoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500"><rect width="800" height="500" fill="#0c1322"/><rect x="0" y="0" width="800" height="56" fill="#131d31"/><circle cx="28" cy="28" r="6" fill="#06b6d4"/><text x="46" y="33" fill="#f1f5f9" font-family="Inter,sans-serif" font-size="16" font-weight="600">${config.project.name} · Verification Capture</text><rect x="40" y="88" width="720" height="168" rx="12" fill="#131d31" stroke="#334155"/><text x="64" y="128" fill="#f1f5f9" font-family="Inter,sans-serif" font-size="18" font-weight="600">Knowledge Upload Dropzone (Streamed 25 MB)</text><text x="64" y="158" fill="#94a3b8" font-family="Inter,sans-serif" font-size="14">Drop PDF or Markdown files here · GFM tables preserved across chunk boundaries</text><rect x="64" y="184" width="210" height="40" rx="8" fill="#06b6d4"/><text x="90" y="209" fill="#04131a" font-family="Inter,sans-serif" font-size="14" font-weight="600">Upload &amp; Chunk Document</text><rect x="40" y="284" width="720" height="160" rx="12" fill="#131d31" stroke="#334155"/><text x="64" y="324" fill="#10b981" font-family="Inter,sans-serif" font-size="14" font-weight="600">Edge Sliding-Window Active · 288 / 300 requests remaining</text><text x="64" y="356" fill="#94a3b8" font-family="Inter,sans-serif" font-size="13">Viewport: 1280×800 · 0 console errors · All visual checks passed</text></svg>`;
+      evidenceTask.evidence = {
+        sha: "a4f92c1e7b03",
+        prNumber: evidenceTask.prNumber,
+        by: workers[1]?.id ?? workers[0]?.id ?? "hq",
+        at: new Date(Date.now() - 18 * 60_000).toISOString(),
+        steps: [
+          "Loaded /knowledge/upload at 1280×800 in isolated preview proxy",
+          "Uploaded 18 MB sample PDF and verified streaming progress & chunk summary",
+          "Confirmed 0 console errors and intact Markdown table rendering",
+        ],
+        shots: [
+          {
+            file: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(demoSvg)}`,
+            label: "Desktop 1280×800 — Upload & Rate Limit Status",
+          },
+        ],
+      };
+    }
     const pullRequests: PullRequest[] = tasks
       .filter((t) => t.prNumber !== null)
       .map((t) => ({
@@ -315,6 +338,360 @@ export class World {
         error: null,
         checkedAt: now(),
       },
+      visualDecisions: (() => {
+        const lead = config.team.find((a) => a.isLead) ?? config.team[0];
+        const w1 = workers[0] ?? lead;
+        const w2 = workers[1] ?? w1;
+        const t1 = tasks[0]?.id ?? "P3-T01";
+        const t2 = tasks[1]?.id ?? "P3-T02";
+        const pid = config.project.id;
+        return [
+          {
+            id: "vd-question-1",
+            projectId: pid,
+            fromId: lead?.id ?? "hq",
+            taskId: t1,
+            title: "Knowledge ingestion architecture & file-size limits",
+            details: "Before finalizing the ingestion pipeline, confirm the streaming upload cap and extraction options.",
+            waiting: true,
+            ownerOnly: false,
+            status: "open" as const,
+            createdAt: now(),
+            closedAt: null,
+            note: null,
+            payload: {
+              kind: "question" as const,
+              questions: [
+                {
+                  id: "q-upload-limit",
+                  prompt: "What should the maximum single-file upload limit be for PDF and Markdown documents?",
+                  multiSelect: false,
+                  allowOther: true,
+                  options: [
+                    {
+                      id: "opt-25mb",
+                      label: "25 MB (streamed chunks)",
+                      description: "Stream directly through the chunker with bounded 4 MB memory buffers.",
+                      recommended: true,
+                    },
+                    {
+                      id: "opt-10mb",
+                      label: "10 MB (strict synchronous)",
+                      description: "Reject larger files at the edge before parsing.",
+                      recommended: false,
+                    },
+                    {
+                      id: "opt-100mb",
+                      label: "100 MB (background worker queue)",
+                      description: "Spool to object storage and process asynchronously.",
+                      recommended: false,
+                    },
+                  ],
+                },
+                {
+                  id: "q-extract-features",
+                  prompt: "Which extraction features should be enabled for this board?",
+                  multiSelect: true,
+                  allowOther: false,
+                  options: [
+                    {
+                      id: "opt-md-tables",
+                      label: "Markdown table preservation",
+                      description: "Keep GFM table headers intact across chunk boundaries.",
+                      recommended: true,
+                    },
+                    {
+                      id: "opt-code-fences",
+                      label: "Syntax-aware code blocks",
+                      description: "Never split inside fenced code blocks.",
+                      recommended: true,
+                    },
+                    {
+                      id: "opt-ocr-scan",
+                      label: "Scanned PDF OCR fallback",
+                      description: "Run OCR on image-only pages (adds 1.2s per page).",
+                      recommended: false,
+                    },
+                  ],
+                },
+              ],
+              answers: [],
+            },
+          },
+          {
+            id: "vd-second-opinion-1",
+            projectId: pid,
+            fromId: lead?.id ?? "hq",
+            taskId: t2,
+            title: "Second Opinion: Edge rate-limiting vs per-route token bucket",
+            details: "High-stakes gate review: two models compared rate-limiting architectures for the public chat endpoint.",
+            waiting: true,
+            ownerOnly: true,
+            status: "open" as const,
+            createdAt: now(),
+            closedAt: null,
+            note: null,
+            payload: {
+              kind: "second-opinion" as const,
+              taskId: t2,
+              gateId: "second-opinion",
+              recommendation: "Option A (Edge Middleware Sliding Window) stops abusive traffic before hitting Postgres.",
+              confidence: "High (92%)",
+              canWaiveGate: true,
+              chosenSide: null,
+              optionA: {
+                label: "Option A: Edge Middleware Sliding Window",
+                authorId: w1?.id ?? "hq",
+                summary: "Enforce IP + session sliding-window limits in middleware before database lookup.",
+                rationaleMarkdown:
+                  "### Why Option A\n- Rejects unauthenticated floods in **< 0.4 ms**.\n- Zero database connection pool pressure during traffic spikes.\n- Uses atomic in-memory counters with automatic TTL eviction.",
+                risks: ["Shared corporate NAT IPs could hit the anonymous tier limit faster."],
+              },
+              optionB: {
+                label: "Option B: Per-Route Postgres Token Bucket",
+                authorId: w2?.id ?? "hq",
+                summary: "Store per-user token buckets in Postgres and check inside each route handler.",
+                rationaleMarkdown:
+                  "### Why Option B\n- Custom per-workspace quota weights stored alongside user billing rows.\n- Exact transactional consistency across multi-node deployments.",
+                risks: [
+                  "Every blocked flood request still consumes a Postgres connection and write lock.",
+                  "Adds 6-12 ms latency to every chat turn.",
+                ],
+              },
+            },
+          },
+          {
+            id: "vd-permission-1",
+            projectId: pid,
+            fromId: w1?.id ?? "hq",
+            taskId: t1,
+            title: "Allow database migration command in workspace?",
+            details: "Requested via arima-shim permission bridge while running integration tests.",
+            waiting: true,
+            ownerOnly: false,
+            status: "open" as const,
+            createdAt: now(),
+            closedAt: null,
+            note: null,
+            payload: {
+              kind: "permission" as const,
+              toolName: "bash",
+              commandOrPath: "pnpm db:migrate --apply 004_knowledge_chunks.sql",
+              reason: "Apply the vector chunk index migration to the local dev SQLite database before running upload tests.",
+              scopeHint: `workspace: ~/.arima/${slug(config.project.name)}/${w1?.id ?? "agent"}`,
+              resolution: null,
+            },
+          },
+          {
+            id: "vd-meeting-req-1",
+            projectId: pid,
+            fromId: lead?.id ?? "hq",
+            taskId: null,
+            title: "Morning Standup & Blocker Sync",
+            details: "Review P3-T01 upload streaming, resolve the P3-T02 rate-limit gate, and commit sprint tasks.",
+            waiting: true,
+            ownerOnly: false,
+            status: "open" as const,
+            createdAt: now(),
+            closedAt: null,
+            note: null,
+            payload: {
+              kind: "meeting-request" as const,
+              meetingId: "mtg-standup-1",
+              meetingKind: "standup" as const,
+              urgency: "normal" as const,
+              participantIds: config.team.map((a) => a.id),
+              agendaPreview: [
+                "P3-T01 PDF & Markdown streaming upload progress",
+                "P3-T02 Rate-limit Second Opinion gate resolution",
+                "Live Preview verification on :3000",
+              ],
+            },
+          },
+        ];
+      })(),
+      meetings: (() => {
+        const lead = config.team.find((a) => a.isLead) ?? config.team[0];
+        const w1 = workers[0] ?? lead;
+        const w2 = workers[1] ?? w1;
+        return [
+          {
+            id: "mtg-standup-1",
+            projectId: config.project.id,
+            kind: "standup" as const,
+            status: "live" as const,
+            urgency: "normal" as const,
+            title: "Morning Standup & Blocker Sync",
+            moderatorId: lead?.id ?? "hq",
+            participantIds: config.team.map((a) => a.id),
+            requestedBy: lead?.id ?? "hq",
+            voiceEnabled: false,
+            voiceProvider: "browser-web-speech" as const,
+            createdAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+            startedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
+            closedAt: null,
+            agenda: [
+              {
+                id: "ag-1",
+                title: "P3-T01 PDF & Markdown streaming upload",
+                status: "done",
+                ownerId: w1?.id ?? null,
+                recommendationDecisionId: "vd-question-1",
+              },
+              {
+                id: "ag-2",
+                title: "P3-T02 Rate-limit architecture A/B review",
+                status: "active",
+                ownerId: w2?.id ?? null,
+                recommendationDecisionId: "vd-second-opinion-1",
+              },
+              {
+                id: "ag-3",
+                title: "Live Preview & sprint goal alignment",
+                status: "pending",
+                ownerId: lead?.id ?? null,
+                recommendationDecisionId: null,
+              },
+            ],
+            minutes: {
+              summaryMarkdown:
+                "### Standup Summary\n- **Upload Pipeline (P3-T01):** Streamed 25 MB chunker is ready with GFM table preservation.\n- **Rate Limiting (P3-T02):** Team recommends Option A (Edge Middleware Sliding Window) to keep Postgres off the hot path.\n- **Next Steps:** Verify the knowledge upload UI in Live Preview and merge PR #14.",
+              decisions: [
+                {
+                  id: "pd-1",
+                  title: "Enforce rate limits in edge middleware before auth",
+                  rationale: "Protects Postgres connection pool from anonymous floods and keeps p99 latency under 1 ms.",
+                  saveToMemory: true,
+                },
+                {
+                  id: "pd-2",
+                  title: "Cap single-file uploads at 25 MB with 4 MB streaming buffers",
+                  rationale: "Balances large technical PDF support with predictable container memory usage.",
+                  saveToMemory: true,
+                },
+              ],
+              proposedTasks: [
+                {
+                  id: "pt-1",
+                  title: "Add sliding-window rate limiter middleware + unit tests",
+                  boardId: preset.boards[0]?.id ?? "B1",
+                  assigneeId: w1?.id ?? null,
+                  stageId: "build",
+                  description: "Implement edge sliding-window limiter with 60 req/min anonymous and 300 req/min authenticated tiers.",
+                  approved: true,
+                },
+                {
+                  id: "pt-2",
+                  title: "Verify knowledge upload progress bar in Live Preview",
+                  boardId: preset.boards[0]?.id ?? "B1",
+                  assigneeId: w2?.id ?? null,
+                  stageId: "review",
+                  description: "Run visual check on the upload dropzone and attach evidence screenshots.",
+                  approved: true,
+                },
+              ],
+              agentInstructions: [
+                {
+                  agentId: w1?.id ?? "hq",
+                  instruction: "Proceed with 25 MB streaming chunks and preserve Markdown tables across chunk boundaries.",
+                  approved: true,
+                },
+                {
+                  agentId: w2?.id ?? "hq",
+                  instruction: "Implement Option A (Edge Middleware Sliding Window) for P3-T02 and close the second-opinion gate.",
+                  approved: true,
+                },
+              ],
+              committedAt: null,
+            },
+          },
+        ];
+      })(),
+      meetingTurns: (() => {
+        const lead = config.team.find((a) => a.isLead) ?? config.team[0];
+        const w1 = workers[0] ?? lead;
+        const w2 = workers[1] ?? w1;
+        const at = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+        return {
+          "mtg-standup-1": [
+            {
+              id: "mt-1",
+              meetingId: "mtg-standup-1",
+              speakerId: lead?.id ?? "hq",
+              speakerRole: lead?.role ?? "Lead",
+              kind: "moderator-open",
+              bodyMarkdown:
+                "Good morning! I called this standup to lock in the **25 MB streaming upload cap** on `P3-T01` and resolve the **Second Opinion rate-limit gate** on `P3-T02`.",
+              decisionId: null,
+              spokenText: "Good morning! Let's lock in the 25 megabyte upload cap and resolve the rate-limit second opinion gate.",
+              createdAt: at(10),
+            },
+            {
+              id: "mt-2",
+              meetingId: "mtg-standup-1",
+              speakerId: w1?.id ?? "hq",
+              speakerRole: w1?.role ?? "Developer",
+              kind: "update",
+              bodyMarkdown:
+                "Streaming PDF and Markdown chunker is passing local tests. I recommend **25 MB with GFM table preservation** below so we don't spike container RAM.",
+              decisionId: "vd-question-1",
+              spokenText: "Streaming PDF and Markdown chunker is passing tests. I recommend 25 megabytes with table preservation.",
+              createdAt: at(8),
+            },
+            {
+              id: "mt-3",
+              meetingId: "mtg-standup-1",
+              speakerId: w2?.id ?? "hq",
+              speakerRole: w2?.role ?? "Developer",
+              kind: "disagreement",
+              bodyMarkdown:
+                "For `P3-T02`, we compared **Option A (Edge Middleware Sliding Window)** against **Option B (Postgres Token Bucket)**. Option A avoids DB connection exhaustion during floods.",
+              decisionId: "vd-second-opinion-1",
+              spokenText: "For P3-T02, we compared Edge Middleware against Postgres Token Bucket. Option A avoids database connection exhaustion.",
+              createdAt: at(5),
+            },
+            {
+              id: "mt-4",
+              meetingId: "mtg-standup-1",
+              speakerId: lead?.id ?? "hq",
+              speakerRole: lead?.role ?? "Lead",
+              kind: "summary",
+              bodyMarkdown:
+                "Once you pick the options above (or click **Commit Minutes**), I'll create the follow-up tasks, save both architectural decisions to certified Team Memory, and unblock the team.",
+              decisionId: null,
+              spokenText: "Once you pick the options or commit the minutes, I will save the decisions to memory and unblock the team.",
+              createdAt: at(2),
+            },
+          ],
+        };
+      })(),
+      previewTargets: (() => {
+        const w1 = workers[0] ?? config.team[0];
+        const w2 = workers[1] ?? w1;
+        return [
+          {
+            id: "pt-web-1",
+            projectId: config.project.id,
+            agentId: w1?.id ?? null,
+            label: `${config.project.name} App (:3000)`,
+            mode: "sandbox" as const,
+            port: 3000,
+            previewUrl: "http://localhost:3000/knowledge/upload",
+            status: "live" as const,
+          },
+          {
+            id: "pt-docs-2",
+            projectId: config.project.id,
+            agentId: w2?.id ?? null,
+            label: "Docs & API Playground (:4173)",
+            mode: "container" as const,
+            port: 4173,
+            previewUrl: "http://localhost:4173/docs/rate-limits",
+            status: "live" as const,
+          },
+        ];
+      })(),
+      visualFeedback: [],
     };
   }
 

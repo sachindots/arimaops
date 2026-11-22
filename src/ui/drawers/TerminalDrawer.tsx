@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { HOST_TERMINAL } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
+import { Select } from "../primitives/Select";
 import { DrawerHeader } from "./Drawer";
 import { TerminalView } from "./TerminalView";
 
@@ -48,25 +49,24 @@ export function TerminalDrawer() {
         <label className="text-muted" htmlFor="host-term-dir">
           Folder
         </label>
-        <select
+        <Select
           id="host-term-dir"
-          className="min-w-0 max-w-full flex-1 rounded-lg border border-white/10 bg-white px-1 py-0.5 text-[13px]"
+          className="min-w-0 flex-1"
+          size="sm"
           value={picking || !known ? OTHER : dir}
-          onChange={(e) => {
-            if (e.target.value === OTHER) {
+          aria-label="Folder"
+          options={[
+            { value: "", label: "This repo (your working copy)" },
+            ...folders.map((f) => ({ value: f.path, label: `${f.agent.name}'s folder` })),
+            { value: OTHER, label: !known && !picking ? dir : "Other folder…" },
+          ]}
+          onChange={(v) => {
+            if (v === OTHER) {
               setOther(known ? "" : dir);
               setPicking(true);
-            } else open(e.target.value);
+            } else open(v);
           }}
-        >
-          <option value="">This repo (your working copy)</option>
-          {folders.map((f) => (
-            <option key={f.agent.id} value={f.path}>
-              {f.agent.name}'s folder
-            </option>
-          ))}
-          <option value={OTHER}>{!known && !picking ? dir : "Other folder…"}</option>
-        </select>
+        />
         <button className="btn px-2 text-[12px]" onClick={() => open(dir, true)} title="Close this shell and open a new one in the same folder">
           New shell
         </button>

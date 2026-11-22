@@ -11,13 +11,12 @@ import { DrawerHost } from "./ui/drawers/Drawer";
 import { ConnectionBanner } from "./ui/hud/ConnectionBanner";
 import { SetupChecklist } from "./ui/setup/SetupChecklist";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
-import { SettingsModal } from "./ui/settings/SettingsModal";
-import { CompactApp } from "./ui/compact/CompactApp";
 import { useProjectTheme } from "./ui/theme/projectTheme";
 import { Deck } from "./ui/deck/Deck";
 import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
+import { Logo } from "./ui/kit";
 import { closeTopPanel, useNativePush } from "./lib/native";
 
 
@@ -156,31 +155,23 @@ function useDeepLink() {
   }, [open]);
 }
 
-function useDesktopHud(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1000px)").matches);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1000px)");
-    const onChange = () => setWide(mq.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return wide;
-}
-
 export function App() {
   useEffect(() => connectOffice(), []);
   useEffect(() => void checkAuth(), []);
   const auth = useAuth((s) => s.status);
+  const live = useOffice((s) => s.live);
+  const welcomeDismissed = useUi((s) => s.welcomeDismissed);
+  const forceMock = new URLSearchParams(location.search).get("mock") === "1";
   const pushError = useNativePush(auth === "signed-in");
   useDeepLink();
   useGithubAppReturn();
   useKeyboard();
   useSetupPrompt();
-  const desktopHud = useDesktopHud();
   useProjectTheme(useOffice((s) => s.snap)); // <html data-theme>: the accent follows the open project
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
+  const showWelcome = welcome && !welcomeDismissed;
   const readOnly = useOffice((s) => s.live && !!s.snap && !s.snap.welcome && !s.snap.config.template);
   const readOnlyNote = "Read-only: this project was made before team templates. You can watch, answer and stop its agents.";
   const compact = useUi((s) => s.compact);
@@ -190,8 +181,18 @@ export function App() {
     if (solo) document.title = solo.kind === "agent" ? `${agentName ?? "Agent"} · ArimaOps` : "Command · ArimaOps";
   }, [solo, agentName]);
   useEffect(() => void (document.body.style.minWidth = ""), []);
+  if (auth === "checking" && !forceMock && !live) {
+    return (
+      <div className="deck-grid fixed inset-0 flex items-center justify-center bg-[var(--color-grass)] text-ink">
+        <div className="panel flex items-center gap-3 rounded-xl px-5 py-4 text-[13px] font-medium text-muted">
+          <Logo size={32} />
+          <span>Connecting to HQ…</span>
+        </div>
+      </div>
+    );
+  }
   // A real HQ that doesn't know this device: sign in first (not the demo data).
-  if (auth === "signed-out") return <SignIn />;
+  if (!forceMock && auth === "signed-out") return <SignIn />;
 
   // A pop-out window (another monitor): one agent, or the command center, filling the window.
   if (solo)
@@ -211,7 +212,7 @@ export function App() {
               </>
             )}
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
-            {!welcome && !setupOpen && <OwnerPrompt />}
+            {!showWelcome && !setupOpen && <OwnerPrompt />}
             <DialogHost />
           </>
         )}
@@ -230,11 +231,10 @@ export function App() {
         )}
         {ready && (
           <>
-            {desktopHud ? <Deck /> : <CompactApp />}
-            {!desktopHud && <SettingsModal />}
+            <Deck />
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
-            {!welcome && !setupOpen && <OwnerPrompt />}
-            {welcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
+            {!showWelcome && !setupOpen && <OwnerPrompt />}
+            {showWelcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
             <DialogHost />
           </>
         )}

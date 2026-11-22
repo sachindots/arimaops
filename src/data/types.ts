@@ -1,6 +1,109 @@
 import type { MessageTag } from "./messageTags";
 import type { FreeModelsState } from "./freeModels";
 import type { TaskScore } from "./scorers";
+import type {
+  AgentInstruction,
+  BoundingBox,
+  ConsoleErrorEntry,
+  DecisionKind,
+  DecisionPayload,
+  DecisionStatus,
+  ElementSelection,
+  FeedbackRoute,
+  MeetingAgendaItem,
+  MeetingKind,
+  MeetingMinutes,
+  MeetingSession,
+  MeetingStatus,
+  MeetingTurn,
+  MeetingUrgency,
+  OpinionSide,
+  PermissionPayload,
+  PreviewMode,
+  PreviewTarget,
+  PreviewTargetStatus,
+  ProposedDecision,
+  ProposedTask,
+  QuestionAnswer,
+  QuestionOption,
+  QuestionPayload,
+  QuestionPrompt,
+  SecondOpinionPayload,
+  VisualDecision,
+  VisualFeedback,
+  VoiceProvider,
+} from "./generated";
+
+export type {
+  AgentInstruction,
+  BoundingBox,
+  ConsoleErrorEntry,
+  DecisionKind,
+  DecisionPayload,
+  DecisionStatus,
+  ElementSelection,
+  FeedbackRoute,
+  MeetingAgendaItem,
+  MeetingKind,
+  MeetingMinutes,
+  MeetingSession,
+  MeetingStatus,
+  MeetingTurn,
+  MeetingUrgency,
+  OpinionSide,
+  PermissionPayload,
+  PreviewMode,
+  PreviewTarget,
+  PreviewTargetStatus,
+  ProposedDecision,
+  ProposedTask,
+  QuestionAnswer,
+  QuestionOption,
+  QuestionPayload,
+  QuestionPrompt,
+  SecondOpinionPayload,
+  VisualDecision,
+  VisualFeedback,
+  VoiceProvider,
+};
+
+export interface GateRecord {
+  at: number;
+  gateId: string;
+  state: "passed" | "waived" | "failed";
+  by: string;
+  note: string | null;
+}
+
+export interface AnswerDecisionInput {
+  status?: "resolved" | "dismissed";
+  note?: string | null;
+  answers?: QuestionAnswer[];
+  chosenSide?: string | null;
+  resolution?: string | null;
+  meetingAction?: "join" | "snooze" | "decline" | null;
+}
+
+export interface StartMeetingInput {
+  kind: MeetingKind;
+  title: string;
+  urgency?: MeetingUrgency;
+  participantIds?: string[];
+  agenda?: string[];
+}
+
+export interface SubmitVisualFeedbackInput {
+  targetId: string | null;
+  sourceKind: string;
+  pageUrl: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  note: string;
+  selection: ElementSelection | null;
+  consoleErrors: ConsoleErrorEntry[];
+  route: FeedbackRoute;
+  imageDataUrl?: string;
+}
 
 /** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
 export interface TaskEvidence {
@@ -370,6 +473,8 @@ export interface Task {
   movedAt?: string;
   /** The goal it moves forward (server/goals.ts). */
   goalId?: string | null;
+  /** Recorded gate passes or waivers for this task. */
+  gateRecords?: GateRecord[];
 }
 
 /** An outcome the owner wants, with the tasks that roll up to it. done/total/usd are worked out by HQ. */
@@ -658,6 +763,11 @@ export interface OfficeSnapshot {
   lessons?: LessonsState;
   actionItems?: ActionItem[];
   findings?: Finding[];
+  visualDecisions?: VisualDecision[];
+  meetings?: MeetingSession[];
+  meetingTurns?: Record<string, MeetingTurn[]>;
+  previewTargets?: PreviewTarget[];
+  visualFeedback?: VisualFeedback[];
 }
 
 /** A memory waiting for the user's check. `conflict`: a certified memory of the same type about the same thing. */

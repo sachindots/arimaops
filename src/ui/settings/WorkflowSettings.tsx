@@ -1,6 +1,7 @@
 import type { DeployTool, ReviewTool, WorkflowMode } from "../../data/types";
 import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
+import { Select } from "../primitives/Select";
 import { CommitInput, Toggle } from "./controls";
 import { useState } from "react";
 import { appManifest, GITHUB_STATE_KEY, newAppUrl, securityReviewWorkflow, WEBHOOK_PATH } from "../../data/githubApp";
@@ -164,7 +165,7 @@ export function WorkflowSettings() {
               {stage("Merge", true, wf.merge.by === "lead" ? "by the lead" : "by you")}
               <span>→</span>
               {live ? (
-                <span className="rounded-xl border border-dashed border-white/15 bg-cream-2 px-2 py-0.5 text-muted">
+                <span className="rounded-xl border border-[var(--border-hairline)] bg-cream-2 px-2.5 py-1 text-muted">
                   <b>Deploy</b> <span className="text-[12px]">coming soon</span>
                 </span>
               ) : (
@@ -185,18 +186,16 @@ export function WorkflowSettings() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tool" hint={REVIEW_HINT[wf.review.tool]}>
-                <select
-                  className="field"
+                <Select
                   disabled={!wf.review.enabled}
                   value={wf.review.tool}
-                  onChange={(e) => officeActions.updateWorkflow({ review: { tool: e.target.value as ReviewTool } })}
-                >
-                  {(Object.keys(reviewToolLabel) as ReviewTool[]).map((t) => (
-                    <option key={t} value={t}>
-                      {reviewToolLabel[t]}
-                    </option>
-                  ))}
-                </select>
+                  aria-label="Review tool"
+                  options={(Object.keys(reviewToolLabel) as ReviewTool[]).map((t) => ({
+                    value: t,
+                    label: reviewToolLabel[t],
+                  }))}
+                  onChange={(v) => officeActions.updateWorkflow({ review: { tool: v as ReviewTool } })}
+                />
               </Field>
               {wf.review.tool === "custom" && (
                 <Field label="Command" hint="Runs on the host against the PR branch.">
@@ -224,7 +223,7 @@ export function WorkflowSettings() {
 
 
           {live ? (
-            <section className="rounded-xl border border-dashed border-white/15 bg-cream-2 p-3">
+            <section className="rounded-xl border border-[var(--border-hairline)] bg-cream-2 p-3">
               <div className="mb-1 flex items-center justify-between">
                 <SectionTitle>Deploy</SectionTitle>
                 <span className="chip text-[12px]">Coming soon</span>
@@ -242,18 +241,16 @@ export function WorkflowSettings() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Tool">
-                  <select
-                    className="field"
+                  <Select
                     disabled={!wf.deploy.enabled}
                     value={wf.deploy.tool}
-                    onChange={(e) => officeActions.updateWorkflow({ deploy: { tool: e.target.value as DeployTool } })}
-                  >
-                    {(Object.keys(deployToolLabel) as DeployTool[]).map((t) => (
-                      <option key={t} value={t}>
-                        {deployToolLabel[t]}
-                      </option>
-                    ))}
-                  </select>
+                    aria-label="Deploy tool"
+                    options={(Object.keys(deployToolLabel) as DeployTool[]).map((t) => ({
+                      value: t,
+                      label: deployToolLabel[t],
+                    }))}
+                    onChange={(v) => officeActions.updateWorkflow({ deploy: { tool: v as DeployTool } })}
+                  />
                 </Field>
                 {wf.deploy.tool === "custom" && (
                   <Field label="Command">

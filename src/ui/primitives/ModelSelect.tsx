@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CLI_MODELS, type AgentCli } from "../../data/types";
 import { useOffice } from "../../store/office";
 import { FREE_SOURCE_INFO } from "../../data/freeModels";
+import { Select, type SelectOption } from "./Select";
 
 const CUSTOM_SENTINEL = "__custom__";
 
@@ -9,7 +10,7 @@ export function ModelSelect({
   cli,
   value,
   onChange,
-  className = "input",
+  className = "field",
   ariaLabel = "Model",
   compact = false,
   account,
@@ -70,37 +71,40 @@ export function ModelSelect({
     );
   }
 
-  return (<div>
-    <select
-      className={`${className} font-mono ${compact ? "py-1 text-[12px]" : ""}`}
-      value={isCustomValue ? CUSTOM_SENTINEL : value}
-      aria-label={ariaLabel}
-      onChange={(e) => {
-        const next = e.target.value;
-        if (next === CUSTOM_SENTINEL) {
-          setCustomMode(true);
-          return;
-        }
-        onChange(next);
-      }}
-    >
-      <option value="">CLI Default</option>
-      {free.length > 0 && (
-        <optgroup label="Free (rotates; HQ swaps a model that leaves the list)">
-          {free.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} · free · {FREE_SOURCE_INFO[m.source].label}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {presets.filter((m) => !freeIds.has(m)).map((m) => (
-        <option key={m} value={m}>
-          {m}
-        </option>
-      ))}
-      <option value={CUSTOM_SENTINEL}>Custom model ID…</option>
-    </select>
-    {catalogError && <p role="status" className="text-[12px] text-red">{catalogError}</p>}
-  </div>);
+  const options: SelectOption[] = [
+    { value: "", label: "CLI Default" },
+    ...free.map((m) => ({
+      value: m.id,
+      label: `${m.name} · free · ${FREE_SOURCE_INFO[m.source].label}`,
+      group: "Free (rotates; HQ swaps if removed)",
+    })),
+    ...presets
+      .filter((m) => !freeIds.has(m))
+      .map((m) => ({
+        value: m,
+        label: m,
+        group: free.length > 0 ? "Models" : undefined,
+      })),
+    { value: CUSTOM_SENTINEL, label: "Custom model ID…", group: free.length > 0 ? "Other" : undefined },
+  ];
+
+  return (
+    <div>
+      <Select
+        className={className === "field" ? "" : className}
+        size={compact ? "sm" : "md"}
+        value={isCustomValue ? CUSTOM_SENTINEL : value}
+        aria-label={ariaLabel}
+        options={options}
+        onChange={(next) => {
+          if (next === CUSTOM_SENTINEL) {
+            setCustomMode(true);
+            return;
+          }
+          onChange(next);
+        }}
+      />
+      {catalogError && <p role="status" className="text-[12px] text-red">{catalogError}</p>}
+    </div>
+  );
 }
