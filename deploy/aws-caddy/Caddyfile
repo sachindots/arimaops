@@ -13,8 +13,10 @@
 
 {
 	email {$ACME_EMAIL}
+	# Bind to one address when another service (e.g. a VPN daemon) already holds :443 on another.
+	default_bind {$CADDY_BIND:0.0.0.0}
 	on_demand_tls {
-		ask http://127.0.0.1:7421/__arima_preview/health
+		ask http://127.0.0.1:{$HQ_PREVIEW_HOST_PORT:7421}/__arima_preview/health
 	}
 }
 
@@ -29,7 +31,7 @@ hq.{$ARIMA_DOMAIN} {
 		-Server
 	}
 
-	reverse_proxy 127.0.0.1:7420 {
+	reverse_proxy 127.0.0.1:{$HQ_HOST_PORT:7420} {
 		header_up Host {http.request.host}
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
@@ -43,7 +45,7 @@ hq.{$ARIMA_DOMAIN} {
 # Separate origin from hq.<domain> guarantees untrusted preview apps can never read hq_sid
 # or issue authenticated requests to HQ /api/*.
 *.{$ARIMA_DOMAIN} {
-	@preview_sub host_regexp preview ^preview-[a-z0-9-]+\.
+	@preview_sub header_regexp Host ^preview-[a-z0-9-]+\.
 	tls {
 		on_demand
 		# DNS-01 wildcard alternative (requires custom Caddy DNS module):
@@ -60,7 +62,7 @@ hq.{$ARIMA_DOMAIN} {
 			-Server
 		}
 
-		reverse_proxy 127.0.0.1:7421 {
+		reverse_proxy 127.0.0.1:{$HQ_PREVIEW_HOST_PORT:7421} {
 			header_up Host {http.request.host}
 			header_up X-Real-IP {remote_host}
 			header_up X-Forwarded-For {remote_host}

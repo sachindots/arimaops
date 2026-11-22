@@ -10,3 +10,11 @@ pack
 .env
 HANDOFF.md
 ROADMAP.md
+
+# v2: build outputs and the client app are never part of the HQ image
+**/target
+apps
+context
+tests
+playwright-report
+test-results

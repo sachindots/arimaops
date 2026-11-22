@@ -4,8 +4,9 @@
 # Stage 1: Build the React UI bundle (dist/)
 FROM node:22-slim AS ui-builder
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@latest --activate
-COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY scripts/fix-node-pty.mjs ./scripts/fix-node-pty.mjs
 RUN pnpm install --frozen-lockfile
 COPY index.html tsconfig.json vite.config.ts ./
 COPY public ./public
@@ -13,7 +14,7 @@ COPY src ./src
 RUN pnpm exec vite build
 
 # Stage 2: Build the release Rust arima-server binary embedding dist/
-FROM rust:1.85-slim-bookworm AS rust-builder
+FROM rust:1.98.1-slim-bookworm AS rust-builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev ca-certificates \

@@ -25,18 +25,18 @@ services:
       RUST_LOG: "${RUST_LOG:-info}"
     ports:
       # Strictly bound to loopback so external traffic MUST pass through Caddy TLS.
-      - "127.0.0.1:7420:7420"
-      - "127.0.0.1:7421:7421"
+      - "127.0.0.1:${HQ_HOST_PORT:-7420}:7420"
+      - "127.0.0.1:${HQ_PREVIEW_HOST_PORT:-7421}:7421"
     volumes:
       - arima_data:/data
       - ${ARIMA_WORKSPACES_DIR:-/opt/arimaops/workspaces}:/workspaces
-    cpus: 4.0
+    cpus: ${HQ_CPUS:-2.0}
     mem_limit: 4g
     pids_limit: 512
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7420/api/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7420/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -52,6 +52,9 @@ services:
         condition: service_healthy
     environment:
       ARIMA_DOMAIN: "${ARIMA_DOMAIN}"
+      HQ_HOST_PORT: "${HQ_HOST_PORT:-7420}"
+      HQ_PREVIEW_HOST_PORT: "${HQ_PREVIEW_HOST_PORT:-7421}"
+      CADDY_BIND: "${CADDY_BIND:-0.0.0.0}"
       ACME_EMAIL: "${ACME_EMAIL}"
       CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
       AWS_REGION: "${AWS_REGION:-us-east-1}"
