@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CS &amp; Stack Fundamentals · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">02 · CS &amp; Stack Fundamentals</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">02 · Fundamentals Primer</div>
+    <h1>CS &amp; Stack Fundamentals</h1>
+    <p class="lead">Every concept used inside ArimaOps explained from first principles—and linked directly to the exact file where you will see it in action.</p>
+
+    <h2 id="node-ts-zod">1. Node.js Event Loop, TypeScript &amp; "Parse, Don't Validate"</h2>
+    <p><strong>What it is:</strong> Node.js executes JavaScript on a <em>single main thread</em> using an event loop: slow work (disk reads, HTTP calls, spawning child processes, waiting on WebSockets) is handed off to the OS asynchronously so Node can serve dozens of browser tabs and agent hooks simultaneously without blocking.</p>
+    <ul>
+      <li><strong>Why <code>process.on("unhandledRejection")</code> sits in <code>server/main.ts</code>:</strong> Because one HQ process supervises every project and every terminal stream on your machine, an uncaught async failure in one background GitHub poll must log a warning—never crash Node and take down all running agents.</li>
+      <li><strong>TypeScript as a shared wire contract:</strong> Both <code>server/</code> and <code>src/</code> import <code>src/data/types.ts</code>, <code>src/data/model.ts</code>, and <code>src/data/source.ts</code>. TypeScript checks shapes at compile time (<code>pnpm typecheck</code>), but TypeScript types disappear at runtime!</li>
+      <li><strong>Parse, Don't Validate (Zod v4):</strong> Anything arriving over WebSocket or HTTP is untrusted JSON. Instead of checking <code>if (typeof x === "string")</code> inside 40 handlers, <code>server/commandPolicy.ts</code> runs Zod tuple schemas at the edge so every command handler in <code>server/commands.ts</code> receives guaranteed typed arguments or is rejected before running.</li>
+    </ul>
+
+    <div class="code-block">
+      <div class="code-head"><span>server/commandPolicy.ts — Boundary parsing with Zod</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>const engine = z.enum(["terminal", "stream"]);
+const agentPatch = z.looseObject({
+  name: z.string().max(200).optional(),
+  mode: z.enum(["local", "sandbox", "container"]).optional(),
+  engine: engine.optional(),
+});
+// Bad payloads fail in authorize() before commands.ts ever sees them.</pre>
+    </div>
+
+    <h2 id="http-ws-csp">2. HTTP, Cookies, Same-Origin Policy &amp; WebSockets</h2>
+    <p><strong>Why ArimaOps uses both HTTP and WebSockets:</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Protocol</th><th>How it works</th><th>Where ArimaOps uses it</th></tr></thead>
+        <tbody>
+          <tr><td><strong>HTTP(S)</strong></td><td>Stateless request → response. Client asks, server replies and closes.</td><td>Serving built <code>dist/</code> assets, <code>POST /api/login</code>, GitHub webhooks, CLI hooks (<code>POST /hook/...</code>), MCP (<code>POST /mcp</code>), REST projects API.</td></tr>
+          <tr><td><strong>WebSocket (<code>/ws</code>)</strong></td><td>Starts as HTTP, then upgrades to one persistent full-duplex TCP tunnel. Both sides push frames anytime.</td><td>Streaming live terminal bytes, instant task/agent state deltas (<code>OfficeEvent</code>), and low-latency commands (<code>{ cmd, args }</code>) from UI to HQ.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Auth without leaking tokens in URLs:</strong> Opening <code>http://127.0.0.1:7420/?token=...</code> lets <code>src/store/office.ts</code> immediately <code>POST /api/login</code> to trade the URL token for an <code>HttpOnly</code> device cookie (<code>hq_sid</code>), then strips <code>?token=</code> from the address bar via <code>history.replaceState</code> so screenshots and browser history never expose it.</li>
+      <li><strong>Origin Check + CSP (<code>APP_CSP</code> in <code>server/http.ts</code>):</strong> Even if you are signed in to HQ in Tab 1, a malicious website in Tab 2 cannot open a WebSocket to <code>127.0.0.1:7420/ws</code> because HQ verifies the browser's <code>Origin</code> header on upgrade, and sends <code>Content-Security-Policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'</code> on HTML responses.</li>
+    </ul>
+
+    <h2 id="react-zustand">3. React 19, Unidirectional Reducers &amp; Zustand Traps</h2>
+    <p><strong>The mental model:</strong> Your UI is a pure projection <code>UI = f(state)</code>. Components never mutate <code>snap.tasks</code> directly. When you click "Assign", the UI sends a WebSocket command to HQ; HQ validates it, mutates the server's <code>Hub</code>, saves SQLite, and broadcasts an <code>OfficeEvent</code>; finally <code>reduce(snap, event)</code> in <code>src/store/office.ts</code> produces a new immutable snapshot object, triggering React to repaint only the affected components.</p>
+
+    <div class="callout danger">
+      <div class="callout-title">Critical Footgun in Zustand Selectors</div>
+      <p>Never create a fresh array or object inside a Zustand selector callback:</p>
+      <p><strong>Wrong (causes infinite React render loop):</strong> <code>useOffice((s) =&gt; s.snap?.tasks ?? [])</code> — because <code>[] !== []</code> on every store check.</p>
+      <p><strong>Right:</strong> <code>useOffice((s) =&gt; s.snap?.tasks) ?? []</code> — the selector returns the stable reference from the store, and the fallback happens outside.</p>
+    </div>
+
+    <h2 id="sqlite-wal-fts5">4. SQLite, WAL Mode, Transactions &amp; FTS5</h2>
+    <p>Instead of requiring users to install Postgres, Redis, or Neo4j, ArimaOps uses Node 22.13+'s built-in <code>node:sqlite</code> (<code>DatabaseSync</code>). Everything lives in one <code>0600</code> file: <code>~/.arima/arima.db</code> (plus per-project <code>arima.db</code> for doc rows).</p>
+    <ul>
+      <li><strong>WAL (Write-Ahead Logging):</strong> Enabled in <code>server/lib/db.ts</code> and <code>server/lib/docs.ts</code> via <code>PRAGMA journal_mode = WAL;</code>. Writes append to a separate <code>-wal</code> file before merging into the main DB, which means <strong>readers never block writers</strong> and a sudden crash (or <code>SIGKILL</code>) leaves the last committed state intact.</li>
+      <li><strong>Numbered immutable migrations:</strong> <code>MIGRATIONS</code> in <code>server/lib/db.ts</code> is an append-only array of SQL scripts wrapped in <code>BEGIN IMMEDIATE ... COMMIT</code> transactions. Released migrations are never edited—only new steps are appended.</li>
+      <li><strong>FTS5 (Full-Text Search):</strong> Rather than running vector embeddings or a graph server, <code>memories</code> mirrors text automatically via SQLite triggers into a virtual <code>memory_text USING fts5</code> table so agent <code>recall()</code> searches run in microseconds in-process.</li>
+    </ul>
+
+    <h2 id="pty-tmux">5. Terminals, PTYs, ANSI Codes &amp; <code>tmux</code></h2>
+    <p>When you open an agent's terminal in the browser, you are not looking at a plain text file. Interactive CLIs like Claude Code draw full-screen TUIs (menus, spinners, colors, cursor jumps) using <strong>ANSI escape sequences</strong> inside a <strong>PTY (pseudo-terminal)</strong>—a kernel pair of virtual device descriptors (controller ↔ worker) that tricks a CLI into thinking a real human monitor/keyboard is attached.</p>
+    <ul>
+      <li><strong><code>@lydell/node-pty</code>:</strong> Gives Node a controller handle to spawn a shell/CLI with terminal dimensions (<code>cols × rows</code>) and pipe raw ANSI output bytes over WebSocket to <code>@xterm/xterm</code> in the browser.</li>
+      <li><strong>Why <code>tmux</code> wraps every agent:</strong> If Node spawned the CLI directly as a child PTY, restarting HQ for an upgrade would kill every running AI agent mid-edit. Running each agent inside a detached <code>tmux</code> session named <code>hq-&lt;project&gt;-&lt;agent&gt;</code> lets HQ restart and cleanly reattach to surviving agents (and lets you inspect any terminal from your shell via <code>tmux attach</code>).</li>
+    </ul>
+
+    <h2 id="docker-proxy">6. Docker Bridges, HTTP <code>CONNECT</code> Proxies &amp; <code>iptables</code></h2>
+    <p>Running autonomous AI coding agents with shell access requires tight blast-radius control. ArimaOps supports three isolation modes (<code>local</code>, <code>sandbox</code> via Docker Sandboxes microVMs, and <code>container</code> for plain Linux VMs without nested virtualization):</p>
+    <ul>
+      <li><strong>Dedicated Bridge (<code>br-hq</code>, <code>172.30.0.0/24</code>):</strong> In Container mode (<code>server/containers.ts</code>), agents run on an isolated Docker bridge with container-to-container traffic disabled (<code>icc=false</code>). They can reach HQ only at the bridge gateway IP <code>172.30.0.1</code>.</li>
+      <li><strong>Allowlist Proxy (<code>172.30.0.1:8420</code>):</strong> Every container starts with <code>HTTP_PROXY</code> and <code>HTTPS_PROXY</code> pointing to HQ's egress proxy. For HTTPS, the CLI sends an unencrypted <code>CONNECT api.anthropic.com:443 HTTP/1.1</code> tunnel request first; HQ inspects the hostname against <code>BASE_ALLOW</code> + the agent's allow/deny lists before opening a TCP pipe—without needing to break TLS encryption.</li>
+      <li><strong>Mandatory Firewall Lock:</strong> Adding <code>sudo iptables -I DOCKER-USER -i br-hq -j DROP</code> prevents a rogue script inside a container from ignoring <code>HTTPS_PROXY</code> and dialing arbitrary internet IPs directly.</li>
+    </ul>
+
+    <h2 id="mcp">7. Model Context Protocol (MCP)</h2>
+    <p><strong>What it is:</strong> MCP is an open JSON-RPC protocol that lets AI CLIs discover external tools at startup (<code>tools/list</code>) and execute typed actions (<code>tools/call</code>). HQ embeds a stateless Streamable HTTP MCP server at <code>POST /mcp</code> (<code>server/mcp.ts</code>).</p>
+    <p><strong>Why stateless per-request registration is clever:</strong> Every agent receives a tailored <code>.mcp.json</code> pointing to HQ with its own HMAC token and <code>X-HQ-Agent</code> header. When Claude or Codex calls <code>/mcp</code>, HQ looks up who the caller is and dynamically registers <em>only the tools allowed for that role and project rules</em>—a developer never even sees <code>create_task</code> or <code>report_finding</code> (unless findings are enabled).</p>
+
+    <h2 id="crypto">8. Applied Cryptography in ArimaOps</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Primitive</th><th>Where Used</th><th>Plain-English Role</th></tr></thead>
+        <tbody>
+          <tr><td><strong>AES-256-GCM + AAD</strong></td><td><code>server/credentials/vault.ts</code></td><td>Authenticated encryption for stored API keys. Using the secret's key name as AAD (Associated Authenticated Data) guarantees an attacker cannot copy an encrypted blob from one account entry into another.</td></tr>
+          <tr><td><strong>HMAC-SHA256</strong></td><td><code>server/paths.ts</code>, <code>server/githubApp.ts</code></td><td>Keyed hash. Derives deterministic per-agent tokens from the project secret (<code>agentTokenFor</code>) so Agent A cannot impersonate Agent B, and verifies GitHub's <code>X-Hub-Signature-256</code> webhook header in constant time.</td></tr>
+          <tr><td><strong>RFC 6238 TOTP</strong></td><td><code>server/remote.ts</code></td><td>6-digit time-based 30-second authenticator code using HMAC-SHA1 over the current time step. Unlocks risky remote commands for 24h per device; replay-protected by tracking <code>usedSteps</code>.</td></tr>
+          <tr><td><strong>Ed25519</strong></td><td><code>server/license.ts</code></td><td>Asymmetric digital signature. ArimaOps ships only the public key in the binary; paid <code>ee/</code> license files are verified 100% offline with zero phone-home requests.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="webview-bridge">9. Android WebView Bridges &amp; Deep Links</h2>
+    <p><strong>Why <code>WebMessagePort</code> beats <code>@JavascriptInterface</code>:</strong> Classic Android WebView Java bridges inject Java objects globally—even if a page navigates or embeds third-party content. In <code>android/app/src/main/java/com/arimaops/app/MainActivity.java</code>, HQ creates a message port pair (<code>createWebMessageChannel</code>) and transfers one port <em>only</em> to the exact main-frame origin verified by <code>ServerUrl.sameOrigin()</code>, freezing <code>window.ArimaNative</code> in JavaScript. Combined with Firebase Cloud Messaging data payloads (<code>PushService.java</code>) and the <code>arimaops://open</code> intent scheme, tapping an alert on your phone jumps directly into the exact agent or Inbox drawer.</p>
+
+    <h2 id="quiz">Fundamentals Self-Check</h2>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">1. Why does ArimaOps put a Zod parsing layer in <code>server/commandPolicy.ts</code> instead of checking types inside each handler in <code>server/commands.ts</code>?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. Zod runs inside the browser before WebSocket frames are sent.</button>
+        <button class="quiz-opt" type="button" data-correct>B. "Parse, Don't Validate": malformed JSON, wrong types, and oversized strings are rejected at one auditable security boundary before any handler runs.</button>
+        <button class="quiz-opt" type="button">C. TypeScript interfaces automatically reject invalid JSON payloads at runtime.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="TypeScript types vanish after compilation. Enforcing Zod tuple schemas alongside role and TOTP checks in one central table (commandPolicy.ts) guarantees no command handler ever operates on unparsed data, and tests verify 1-to-1 parity across all commands."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">2. Why does this React component cause an infinite re-render crash? <code>const tasks = useOffice((s) =&gt; s.snap?.tasks ?? []);</code></div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. Zustand forbids optional chaining inside selectors.</button>
+        <button class="quiz-opt" type="button" data-correct>B. When <code>s.snap?.tasks</code> is undefined, the selector allocates a brand-new <code>[]</code> array reference on every call, so Zustand thinks state changed every render.</button>
+        <button class="quiz-opt" type="button">C. React 19 requires <code>tasks</code> to be stored in <code>localStorage</code>.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="Zustand compares selector return values by reference (Object.is). Always write <code>useOffice((s) =&gt; s.snap?.tasks) ?? []</code> so the fallback array happens outside the selector."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">3. How does HQ's egress proxy (<code>:8420</code>) enforce domain allowlists on HTTPS traffic without decrypting TLS?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. It installs a custom root CA certificate into every container.</button>
+        <button class="quiz-opt" type="button" data-correct>B. Clients send a plaintext <code>CONNECT host:443</code> request first; HQ checks the destination hostname against the allowlist before tunneling encrypted bytes.</button>
+        <button class="quiz-opt" type="button">C. It downgrades all container connections to plain HTTP.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="In HTTP CONNECT tunneling, the client asks the proxy to open a TCP connection to host:port in plaintext before the TLS handshake begins. HQ inspects that hostname (combining BASE_ALLOW, template rules, and per-agent allow/deny lists) without ever acting as a TLS MITM."></div>
+    </div>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="index.html">
+        <span class="pager-dir">← Previous · 01</span>
+        <span class="pager-name">Start Here &amp; System Map</span>
+      </a>
+      <a class="pager-link pager-next" href="architecture.html">
+        <span class="pager-dir">Next · 03</span>
+        <span class="pager-name">Architecture &amp; Data Flow →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading Library &amp; Docs · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">08 · Reading Library &amp; Docs</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">08 · Complete Reading Library</div>
+    <h1>Repo Docs &amp; External Reading Materials</h1>
+    <p class="lead">Every design specification already living inside <code>docs/</code> (with freshness notes where the code evolved), plus authoritative external documentation for every technology ArimaOps uses.</p>
+
+    <h2 id="repo-docs">A. Existing Markdown Specs in <code>docs/</code></h2>
+    <p>Each script under <code>scripts/*-test.ts</code> references the section of these design docs it verifies. Read them alongside the code—while keeping the freshness notes in mind:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Document</th><th>What to Read It For</th><th>Freshness Note</th></tr></thead>
+        <tbody>
+          <tr><td><a href="../getting-started.md"><code>docs/getting-started.md</code></a></td><td>Prerequisites (Node 22+, git, gh, tmux, sbx), network policies, first-run walkthrough.</td><td>Current.</td></tr>
+          <tr><td><a href="../how-it-works.md"><code>docs/how-it-works.md</code></a></td><td>Operator manual: workspaces, MCP, GitHub sync, Container mode, terminal links, Inbox, shortcuts.</td><td>Current.</td></tr>
+          <tr><td><a href="../architecture.md"><code>docs/architecture.md</code></a></td><td>Module boundaries, security boundaries, credential vault, open-core seam.</td><td>Current (required reading before adding a module).</td></tr>
+          <tr><td><a href="../core-model.md"><code>docs/core-model.md</code></a></td><td>Foundational data shapes: Templates, Roles, Flows, 11 Gates, Findings schema, Briefs, Usage events.</td><td>Current data contract.</td></tr>
+          <tr><td><a href="../agent-engine.md"><code>docs/agent-engine.md</code></a></td><td>Role routing, on-demand workers, 2h owner-away rules, stall replans, GitHub App webhooks, stacked PRs, spend caps, Codex overflow.</td><td>Current.</td></tr>
+          <tr><td><a href="../memory-core.md"><code>docs/memory-core.md</code></a></td><td>Ontology, task summaries, Haiku extraction, privacy masking (<code>cleanMemory</code>), Inbox certification, <code>forgetProject</code>.</td><td><strong>Updated:</strong> Neo4j sections were superseded on 2026-11-17 by SQLite + FTS5 in <code>server/memory.ts</code>.</td></tr>
+          <tr><td><a href="../templates.md"><code>docs/templates.md</code></a></td><td>Pinned skill packs (<code>skill-packs.lock.json</code>), static skill scanner rules, Dev/Security/Research/Marketing/Sales templates, lesson promotion, benchmarks.</td><td>Current.</td></tr>
+          <tr><td><a href="../factory.md"><code>docs/factory.md</code></a></td><td>Task template versioning, factory metrics, rule + Haiku scorers, own-task replay benchmarks, Playwright verifier evidence gate.</td><td><strong>Updated:</strong> Section 5 (Improvement proposals) was removed on 2026-11-17.</td></tr>
+          <tr><td><a href="../design/command-deck.md"><code>docs/design/command-deck.md</code></a></td><td>Desktop Command Deck layout, CSS tokens, <code>data-theme</code> switch, typography scale, bundled Material Symbols.</td><td>Current (Flow page uses stage cards instead of React Flow).</td></tr>
+          <tr><td><a href="../design/stream-json.md"><code>docs/design/stream-json.md</code></a></td><td>Why headless Claude Code stream-json runs inside tmux via long-poll HTTP routes.</td><td><strong>Note:</strong> Implemented as Python 3 <code>.claude/arima-run.py</code> (<code>server/streamRunner.ts</code>) rather than Node.</td></tr>
+          <tr><td><a href="../design/revamp.md"><code>docs/design/revamp.md</code></a></td><td>The 5 security &amp; subtraction units: unified <code>commandPolicy.ts</code>, SQLite FTS5 memory swap, and cleanup.</td><td>Current (all 5 units shipped).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="external-library">B. Curated External Reading Library</h2>
+    <p>Filter by topic to deep-dive into the underlying engineering standards and protocols behind ArimaOps:</p>
+
+    <div class="filter-row" data-filter-group=".read-item">
+      <button class="filter-btn active" type="button" data-tag="all">All Topics</button>
+      <button class="filter-btn" type="button" data-tag="runtime">Node, TS &amp; Frontend</button>
+      <button class="filter-btn" type="button" data-tag="db">SQLite &amp; Search</button>
+      <button class="filter-btn" type="button" data-tag="infra">Linux, Docker &amp; Terminals</button>
+      <button class="filter-btn" type="button" data-tag="agents">AI Agents &amp; MCP</button>
+      <button class="filter-btn" type="button" data-tag="security">Security &amp; Crypto</button>
+      <button class="filter-btn" type="button" data-tag="mobile">Android &amp; Remote</button>
+      <button class="filter-btn" type="button" data-tag="craft">Software Design</button>
+    </div>
+
+    <div class="card-grid">
+      <a class="card read-item" data-tags="runtime" href="https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Node.js Event Loop &amp; Timers</div>
+        <p class="card-body">Understand why one single-threaded Node process handles dozens of WebSockets and hooks concurrently without blocking.</p>
+        <span class="card-meta">nodejs.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime db" href="https://nodejs.org/api/sqlite.html" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Node.js Built-in <code>node:sqlite</code></div>
+        <p class="card-body">API reference for <code>DatabaseSync</code> used across <code>server/lib/docs.ts</code> and <code>server/lib/db.ts</code> with zero native npm wrappers.</p>
+        <span class="card-meta">nodejs.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime" href="https://www.typescriptlang.org/docs/handbook/intro.html" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">TypeScript Handbook</div>
+        <p class="card-body">Structural typing, discriminated unions (<code>OfficeEvent</code>, <code>Gate</code>), and mapped types (<code>Handlers</code> in <code>commandPolicy.ts</code>).</p>
+        <span class="card-meta">typescriptlang.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime security" href="https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Parse, Don't Validate (Alexis King)</div>
+        <p class="card-body">The exact philosophy behind Zod boundary parsing in <code>server/commandPolicy.ts</code> and <code>scripts/architecture-invariants-test.ts</code>.</p>
+        <span class="card-meta">lexi-lambda.github.io ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime" href="https://zod.dev/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Zod Documentation</div>
+        <p class="card-body">Schema validation library used for command tuples, Firebase payloads, scorer replies, and push tokens.</p>
+        <span class="card-meta">zod.dev ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime" href="https://react.dev/learn/you-might-not-need-an-effect" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">React: Thinking in React &amp; Effects</div>
+        <p class="card-body">Avoid unnecessary state sync effects and lifecycle bugs (like returning Promises from <code>useEffect</code>).</p>
+        <span class="card-meta">react.dev ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime" href="https://zustand.docs.pmnd.rs/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Zustand State Management</div>
+        <p class="card-body">How ArimaOps stores (<code>office.ts</code>, <code>ui.ts</code>, <code>auth.ts</code>) work and why selector reference stability matters.</p>
+        <span class="card-meta">zustand.docs.pmnd.rs ↗</span>
+      </a>
+      <a class="card read-item" data-tags="runtime security" href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">MDN: WebSockets &amp; CSP</div>
+        <p class="card-body">Bidirectional frame streaming over <code>/ws</code> plus strict <code>Content-Security-Policy</code> headers in <code>server/http.ts</code>.</p>
+        <span class="card-meta">developer.mozilla.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="db" href="https://www.sqlite.org/wal.html" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">SQLite Write-Ahead Logging (WAL)</div>
+        <p class="card-body">Why WAL lets readers read concurrently without blocking writers and survives crashes mid-transaction.</p>
+        <span class="card-meta">sqlite.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="db" href="https://www.sqlite.org/fts5.html" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">SQLite FTS5 Full-Text Search</div>
+        <p class="card-body">How <code>memory_text</code> virtual tables and triggers power fast agent <code>recall()</code> with zero external vector or graph DB.</p>
+        <span class="card-meta">sqlite.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="infra" href="https://man7.org/linux/man-pages/man7/pty.7.html" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Linux Pseudo-Terminals (<code>pty(7)</code>)</div>
+        <p class="card-body">How <code>node-pty</code> and <code>xterm.js</code> drive full-screen interactive CLIs over controller/worker terminal pairs.</p>
+        <span class="card-meta">man7.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="infra" href="https://github.com/tmux/tmux/wiki/Getting-Started" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">tmux Manual &amp; Sessions</div>
+        <p class="card-body">Detached sessions (<code>hq-&lt;project&gt;-&lt;agent&gt;</code>), <code>capture-pane</code>, and <code>send-keys</code> underlying HQ's persistence.</p>
+        <span class="card-meta">github.com/tmux ↗</span>
+      </a>
+      <a class="card read-item" data-tags="infra security" href="https://docs.docker.com/engine/network/packet-filtering-firewalls/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Docker Networking &amp; <code>DOCKER-USER</code></div>
+        <p class="card-body">How the <code>br-hq</code> bridge network and <code>iptables -I DOCKER-USER -i br-hq -j DROP</code> force egress through <code>:8420</code>.</p>
+        <span class="card-meta">docs.docker.com ↗</span>
+      </a>
+      <a class="card read-item" data-tags="infra security" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods/CONNECT" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">HTTP <code>CONNECT</code> Tunneling</div>
+        <p class="card-body">How HQ's allowlist proxy filters outbound TLS domains cleanly without breaking end-to-end HTTPS encryption.</p>
+        <span class="card-meta">developer.mozilla.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="agents" href="https://modelcontextprotocol.io/specification/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Model Context Protocol (MCP) Spec</div>
+        <p class="card-body">Streamable HTTP transport and JSON-RPC tool schemas powering HQ's stateless <code>/mcp</code> server.</p>
+        <span class="card-meta">modelcontextprotocol.io ↗</span>
+      </a>
+      <a class="card read-item" data-tags="agents" href="https://www.anthropic.com/engineering/building-effective-agents" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Building Effective Agents</div>
+        <p class="card-body">Patterns for clear tool boundaries, orchestrator-worker delegation, and evaluator loops mirrored in HQ's Lead + Workers + Gates.</p>
+        <span class="card-meta">anthropic.com ↗</span>
+      </a>
+      <a class="card read-item" data-tags="agents" href="https://docs.anthropic.com/en/docs/claude-code/hooks" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Claude Code Hooks &amp; Headless Mode</div>
+        <p class="card-body">Event hooks (<code>UserPromptSubmit</code>, <code>PreToolUse</code>, <code>Stop</code>) and <code>--output-format stream-json</code> driving HQ's real-time state.</p>
+        <span class="card-meta">docs.anthropic.com ↗</span>
+      </a>
+      <a class="card read-item" data-tags="security" href="https://datatracker.ietf.org/doc/html/rfc6238" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">RFC 6238 (TOTP) &amp; RFC 8032 (Ed25519)</div>
+        <p class="card-body">The exact cryptographic standards implemented directly in <code>server/remote.ts</code> (TOTP step-up) and <code>server/license.ts</code> (offline licenses).</p>
+        <span class="card-meta">datatracker.ietf.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="security" href="https://owasp.org/www-project-web-security-testing-guide/" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">OWASP WSTG, CVSS v4.0, ATT&amp;CK &amp; D3FEND</div>
+        <p class="card-body">The security scoring and taxonomy standards built straight into ArimaOps's Red, Purple, and Blue templates and finding exports.</p>
+        <span class="card-meta">owasp.org ↗</span>
+      </a>
+      <a class="card read-item" data-tags="mobile" href="https://developer.android.com/reference/android/webkit/WebMessagePort" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Android <code>WebMessagePort</code> &amp; FCM HTTP v1</div>
+        <p class="card-body">Origin-scoped WebView capability channels in <code>MainActivity.java</code> plus RSA-JWT FCM pushes in <code>server/push.ts</code>.</p>
+        <span class="card-meta">developer.android.com ↗</span>
+      </a>
+      <a class="card read-item" data-tags="mobile infra" href="https://tailscale.com/kb/1312/serve" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">Tailscale Serve &amp; Funnel</div>
+        <p class="card-body">Exposing HQ safely to your tablet over private tailnet HTTPS (<code>serve</code>) while isolating public GitHub webhooks on <code>:8443</code> (<code>funnel</code>).</p>
+        <span class="card-meta">tailscale.com ↗</span>
+      </a>
+      <a class="card read-item" data-tags="craft" href="https://web.stanford.edu/~ouster/cgi-bin/book.php" target="_blank" rel="noopener noreferrer">
+        <div class="card-title">A Philosophy of Software Design (Ousterhout)</div>
+        <p class="card-body">Deep modules with simple interfaces—explicitly referenced in ArimaOps's design docs to justify choices like <code>commandPolicy.ts</code> and <code>projectTheme.ts</code>.</p>
+        <span class="card-meta">stanford.edu ↗</span>
+      </a>
+    </div>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="labs.html">
+        <span class="pager-dir">← Previous · 07</span>
+        <span class="pager-name">Learn by Doing (6 Labs)</span>
+      </a>
+      <span></span>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

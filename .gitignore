@@ -23,3 +23,13 @@ ROADMAP.md
 
 # Compose settings (holds the vault master key)
 .env
+
+# Rust v2 build output
+server-rs/target/
+
+# Playwright E2E artifacts
+playwright-report/
+test-results/
+
+# Tauri client build output
+apps/client/src-tauri/target/

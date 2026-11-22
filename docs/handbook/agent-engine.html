@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Engine, Memory &amp; Skills · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">04 · Agent Engine, Memory &amp; Skills</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">04 · The Heart of ArimaOps</div>
+    <h1>Agent Engine, Memory &amp; Skills</h1>
+    <p class="lead">How HQ launches real AI CLIs, talks to them reliably, enforces 11 workflow gates, remembers lessons in SQLite FTS5, and blocks malicious skill packs before an agent ever reads them.</p>
+
+    <h2 id="dual-engine">1. Dual Execution Engine: Terminal vs Stream-JSON</h2>
+    <p>Every agent runs inside a <code>tmux</code> session (<code>hq-&lt;project&gt;-&lt;agent&gt;</code>) on its own full git clone at <code>~/.arima/&lt;project&gt;/&lt;agent&gt;/</code>. Depending on the agent's <code>engine</code> setting, HQ drives it through one of two engines:</p>
+
+    <div class="diagram-card" data-stepper data-steps='{
+      "all": "<strong>Two Paths, One Orchestration Layer:</strong> Both engines share <code>tmux</code> persistence, <code>Inbox</code> queues, <code>/mcp</code> tools, and <code>Hub</code> state. Stream-JSON is opt-in per Claude Code seat in sandbox/container mode.",
+      "t1": "<strong>Terminal Engine — Launch &amp; Screen Watch (<code>sessions.ts</code>, <code>screen.ts</code>):</strong> Runs the interactive CLI inside <code>tmux</code>. CLI hooks POST lifecycle events to <code>/hook/&lt;agent&gt;/&lt;event&gt;</code>; <code>screen.ts</code> parses the last terminal lines as a fallback (detecting dialogs, folder-trust prompts, busy footers, and usage limits).",
+      "t2": "<strong>Terminal Engine — Inbox Delivery (<code>inbox.ts</code>):</strong> When idle and <code>canType()</code> passes, HQ injects text into the prompt via <code>tmux send-keys</code>. When busy, messages wait in the SQLite-backed queue and are returned to Claude on its <code>Stop</code> hook (or typed on idle).",
+      "st1": "<strong>Stream-JSON Engine — Headless Runner (<code>streamRunner.ts</code>):</strong> HQ writes a tiny zero-dependency Python 3 script (<code>.claude/arima-run.py</code>) into the workspace. Inside <code>tmux</code>, it spawns <code>claude -p --input-format stream-json --output-format stream-json --verbose</code> and prints a clean readable log to the terminal.",
+      "st2": "<strong>Stream-JSON Engine — Long-Poll &amp; Exact Events (<code>streamEngine.ts</code>):</strong> The runner long-polls <code>GET /agent/:id/next?ack=seq</code> (25s wait) and delivers the next queued message only after Claude emits a <code>result</code> event, while posting structured JSON events to <code>POST /agent/:id/events</code>.",
+      "mcp": "<strong>Shared Team MCP (<code>server/mcp.ts</code>):</strong> Both engines connect over Streamable HTTP to <code>POST /mcp</code> using their per-agent HMAC token + <code>X-HQ-Agent</code> header. Tool lists are scoped dynamically per role and template rules."
+    }'>
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 4.1 · Terminal Engine vs Stream-JSON Engine</span>
+        <span class="badge accent">Interactive Trace</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 380" role="img" aria-label="Dual agent execution engine diagram">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+            </marker>
+          </defs>
+
+          <!-- HQ Core Top -->
+          <rect class="box-accent" x="20" y="16" width="880" height="62" />
+          <text class="h" x="34" y="40">HQ Server Core: Sessions · Inbox Queue · Hooks · StreamEngine · Team MCP</text>
+          <text class="sub mono" x="34" y="60">server/sessions.ts   |   server/inbox.ts   |   server/hooks.ts   |   server/streamEngine.ts   |   server/mcp.ts</text>
+
+          <!-- Terminal Engine Column -->
+          <g data-step="t1 t2">
+            <rect class="box-soft" x="20" y="102" width="425" height="190" />
+            <text class="h" x="34" y="126">Engine A: Terminal UI (Default, All 6 CLIs)</text>
+          </g>
+          <g data-step="t2">
+            <path class="edge-accent" d="M 135 78 L 135 142" marker-end="url(#ar3)" />
+            <rect class="box" x="36" y="144" width="190" height="60" />
+            <text class="h" x="48" y="166">Inbox -&gt; tmux send-keys</text>
+            <text class="sub" x="48" y="182">Types when canType() passes;</text>
+            <text class="sub" x="48" y="195">else hands over on Stop hook</text>
+          </g>
+          <g data-step="t1">
+            <path class="edge-accent" d="M 330 204 L 330 78" marker-end="url(#ar3)" />
+            <rect class="box" x="238" y="144" width="192" height="60" />
+            <text class="h" x="250" y="166">/hook/&lt;id&gt;/&lt;event&gt;</text>
+            <text class="sub" x="250" y="182">SessionStart, PreToolUse, Stop</text>
+            <text class="sub mono" x="250" y="195">+ screen.ts footer fallback</text>
+          </g>
+          <g data-step="t1 t2">
+            <rect class="box" x="36" y="218" width="394" height="58" />
+            <text class="h" x="48" y="240">tmux session: hq-&lt;project&gt;-&lt;agent&gt;</text>
+            <text class="sub" x="48" y="258">Interactive Claude / Codex / agy / Gemini / OpenCode / Copilot</text>
+          </g>
+
+          <!-- Stream-JSON Column -->
+          <g data-step="st1 st2">
+            <rect class="box-soft" x="475" y="102" width="425" height="190" />
+            <text class="h" x="489" y="126">Engine B: Stream-JSON (Claude Sandbox/Container)</text>
+          </g>
+          <g data-step="st2">
+            <path class="edge-accent" d="M 590 78 L 590 142" marker-end="url(#ar3)" />
+            <path class="edge-accent" d="M 785 144 L 785 78" marker-end="url(#ar3)" />
+            <rect class="box" x="491" y="144" width="190" height="60" />
+            <text class="h" x="503" y="166">GET /agent/:id/next</text>
+            <text class="sub" x="503" y="182">25s long-poll + ack=seq</text>
+            <text class="sub" x="503" y="195">Never collides mid-turn</text>
+            <rect class="box" x="695" y="144" width="190" height="60" />
+            <text class="h" x="707" y="166">POST /agent/:id/events</text>
+            <text class="sub" x="707" y="182">assistant, tool_use, result</text>
+            <text class="sub" x="707" y="195">Exact tokens &amp; cost</text>
+          </g>
+          <g data-step="st1">
+            <rect class="box" x="491" y="218" width="394" height="58" />
+            <text class="h" x="503" y="240">tmux -&gt; python3 .claude/arima-run.py</text>
+            <text class="sub mono" x="503" y="258">Spawns: claude -p --input-format stream-json --output-format stream-json</text>
+          </g>
+
+          <!-- Shared MCP bottom bar -->
+          <g data-step="mcp">
+            <path class="edge-accent" d="M 233 276 L 233 310" marker-end="url(#ar3)" />
+            <path class="edge-accent" d="M 688 276 L 688 310" marker-end="url(#ar3)" />
+            <rect class="box-ok" x="20" y="312" width="880" height="52" />
+            <text class="h" x="34" y="335">Shared Team MCP (POST /mcp · Stateless per-request tool scoping)</text>
+            <text class="sub" x="34" y="352">Lead: write_spec, create_board, create_task, assign_task, ledger_add  |  All: get_my_task, send_message, ask_user, recall, remember, set_my_status</text>
+          </g>
+        </svg>
+      </div>
+      <div class="stepper-bar">
+        <button class="step-btn active" data-target="all">Both Engines</button>
+        <button class="step-btn" data-target="t1">Terminal Hooks &amp; Screen</button>
+        <button class="step-btn" data-target="t2">Terminal Inbox</button>
+        <button class="step-btn" data-target="st1">Stream-JSON Runner</button>
+        <button class="step-btn" data-target="st2">Long-Poll &amp; Events</button>
+        <button class="step-btn" data-target="mcp">Team MCP</button>
+      </div>
+      <div class="stepper-detail">
+        <strong>Two Paths, One Orchestration Layer:</strong> Both engines share <code>tmux</code> persistence, <code>Inbox</code> queues, <code>/mcp</code> tools, and <code>Hub</code> state. Stream-JSON is opt-in per Claude Code seat in sandbox/container mode.
+      </div>
+    </div>
+
+    <h2 id="adapters">2. Per-CLI Adapters (<code>server/adapters.ts</code> &amp; <code>agentFiles.ts</code>)</h2>
+    <p>How does HQ support 6 different AI CLIs (<code>claude</code>, <code>codex</code>, <code>agy</code>, <code>opencode</code>, <code>gemini</code>, <code>copilot</code>) without 6 separate engines? Every CLI difference is isolated to two files:</p>
+    <ul>
+      <li><strong><code>agentFiles.ts</code>:</strong> Writes the agent's role brief (<code>.arima-role.md</code>), Team MCP config (<code>.mcp.json</code> / TOML / JSON), and CLI hook scripts, adding all of them to <code>.git/info/exclude</code> so agent repos stay clean.</li>
+      <li><strong>Deduplicated instructions:</strong> <code>architecture-invariants-test.ts</code> explicitly verifies that Gemini (via <code>contextFileName</code>) and Antigravity (<code>.agents/rules/hq-role.md</code> + <code>.arima-role.md</code>) never load duplicate copies of the role text—saving thousands of system-prompt tokens.</li>
+      <li><strong>Container "YOLO" flags:</strong> Inside containers and sandboxes, the VM/container + egress proxy <em>is</em> the permission boundary, so <code>containerArgs()</code> automatically passes each CLI's non-interactive flag (e.g., <code>--dangerously-skip-permissions</code> for Claude, <code>--yolo</code> for Gemini) so agents don't stall on every shell command.</li>
+    </ul>
+
+    <h2 id="flow-gates">3. Templates, Flows &amp; All 11 Gate Kinds</h2>
+    <p>Every project is instantiated from a <code>TeamTemplate</code> copied into <code>projects_model</code>. A template defines <strong>roles</strong> (the Lead is never on-demand; workers can be on-demand), <strong>tool rules</strong> (<code>findings</code>, <code>plans</code>, <code>scopeRequired</code>, <code>labMode</code>, <code>outbound</code>, <code>egress</code>), and an ordered <strong>flow of stages</strong> guarded by gates (<code>server/gates.ts</code>).</p>
+
+    <div class="diagram-card">
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 4.2 · Dev Team v3 Pipeline (<code>DEV_TEMPLATE</code> in <code>src/data/templates.ts</code>)</span>
+        <span class="badge">5 Stages · 7 Gates</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 155" role="img" aria-label="Dev team stage and gate flow">
+          <defs>
+            <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+            </marker>
+          </defs>
+          <rect class="box" x="15" y="22" width="152" height="110" />
+          <text class="h" x="27" y="45">1. Spec</text>
+          <text class="sub" x="27" y="64">Role: lead</text>
+          <text class="sub mono" x="27" y="88">Gate:</text>
+          <text class="sub mono" x="27" y="104">• spec-approved</text>
+
+          <path class="edge-accent" d="M 167 77 L 195 77" marker-end="url(#ar4)" />
+          <rect class="box" x="197" y="22" width="152" height="110" />
+          <text class="h" x="209" y="45">2. Plan</text>
+          <text class="sub" x="209" y="64">Role: lead</text>
+          <text class="sub mono" x="209" y="88">Gate:</text>
+          <text class="sub mono" x="209" y="104">• analyze (S1..Sn)</text>
+
+          <path class="edge-accent" d="M 349 77 L 377 77" marker-end="url(#ar4)" />
+          <rect class="box-accent" x="379" y="22" width="152" height="110" />
+          <text class="h" x="391" y="45">3. Build</text>
+          <text class="sub" x="391" y="64">Role: developer</text>
+          <text class="sub mono" x="391" y="88">Gate:</text>
+          <text class="sub mono" x="391" y="104">• tests-ci</text>
+
+          <path class="edge-accent" d="M 531 77 L 559 77" marker-end="url(#ar4)" />
+          <rect class="box-warn" x="561" y="22" width="175" height="110" />
+          <text class="h" x="573" y="45">4. Review</text>
+          <text class="sub" x="573" y="64">reviewer · 2nd · verifier</text>
+          <text class="sub mono" x="573" y="86">• reviewer</text>
+          <text class="sub mono" x="573" y="101">• second-opinion</text>
+          <text class="sub mono" x="573" y="116">• evidence (UI PRs)</text>
+
+          <path class="edge-accent" d="M 736 77 L 764 77" marker-end="url(#ar4)" />
+          <rect class="box-ok" x="766" y="22" width="138" height="110" />
+          <text class="h" x="778" y="45">5. Merge</text>
+          <text class="sub" x="778" y="64">Role: lead</text>
+          <text class="sub mono" x="778" y="88">Gate:</text>
+          <text class="sub mono" x="778" y="104">• pr-merged</text>
+        </svg>
+      </div>
+      <div class="diagram-cap">Other built-in templates swap in domain stages using the exact same gate engine: Security Red/Purple/Blue (PTES / NIST SP 800-61), Research (Sources → Claims → Fact-check → Report), Marketing, Sales, Startup, and Blank.</div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Gate Kind</th><th>Observed by HQ?</th><th>How It Passes</th></tr></thead>
+        <tbody>
+          <tr><td><code>pr-merged</code></td><td>Yes</td><td>Task's matching PR (by <code>[TASK-ID]</code>) is merged on GitHub.</td></tr>
+          <tr><td><code>tests-ci</code></td><td>Yes</td><td>PR modifies at least one test file (<code>TEST_FILE</code>) AND every required CI check passes.</td></tr>
+          <tr><td><code>analyze</code></td><td>Yes</td><td>Every numbered item (<code>S1.</code>, <code>S2.</code>…) in the board spec is named in a task's <code>specItems</code>.</td></tr>
+          <tr><td><code>file-delivered</code></td><td>Yes</td><td>The deliverable file path exists in the workspace (non-PR workflows).</td></tr>
+          <tr><td><code>findings-report</code></td><td>Yes</td><td>Findings report generated after the task's latest finding (and severe findings verified by another vendor).</td></tr>
+          <tr><td><code>scope-set</code></td><td>Yes</td><td>Engagement scope has &ge; 1 in-scope entry (Red/Purple seats can't even start without scope or <code>labMode</code>).</td></tr>
+          <tr><td><code>evidence</code></td><td>Yes</td><td>If PR touches UI files (<code>UI_FILE</code>), Verifier agent ran Playwright at the PR's head commit and called <code>attach_evidence</code>.</td></tr>
+          <tr><td><code>spec-approved</code></td><td>Recorded</td><td>Owner approves spec in Inbox (or Lead approves on behalf after 2h owner away; undoable).</td></tr>
+          <tr><td><code>reviewer</code></td><td>Recorded</td><td>Agent or person other than task's owner records a pass via <code>record_gate</code>.</td></tr>
+          <tr><td><code>second-opinion</code></td><td>Recorded</td><td>Model from a <em>different vendor</em> (e.g., Gemini <code>agy</code> reviewing Claude) records pass (<code>always</code> or <code>high-stakes</code>).</td></tr>
+          <tr><td><code>owner-approval</code></td><td>Recorded</td><td>Owner must approve high-impact steps (<code>merge</code>, <code>containment</code>, <code>outbound</code> sends; Lead never approves these).</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Stalls, Owner-Away &amp; Stacked PRs:</strong> Every few minutes <code>runStallCheck()</code> (<code>server/stalls.ts</code>) watches for workers idle &ge; 5 min or silent while working &ge; 15 min: it nudges once, logs a <code>stall</code> entry to the Progress ledger, asks the Lead to <strong>replan</strong> on stall #2, and pushes the owner on stall #3. Meanwhile, <code>Planner.stackBase</code> allows a task whose only open dependency has an unmerged PR to branch on top of that PR and rebase cleanly when the parent merges.</p>
+
+    <h2 id="memory-core">4. Memory Core (SQLite + FTS5 + Privacy Scrubbing)</h2>
+    <p>Originally prototyped against Neo4j, ArimaOps moved its entire memory graph cleanly into SQLite (<code>server/memory.ts</code>) with zero external daemon overhead:</p>
+    <ul>
+      <li><strong>Ledgers (<code>ledger_entries</code>):</strong> <em>Task ledger</em> (Lead's <code>fact</code>, <code>guess</code>, <code>plan</code>) and <em>Progress ledger</em> (HQ's <code>stall</code>, <code>replan</code>). Append-only: revisions create a new row and mark the old row <code>superseded_by</code>.</li>
+      <li><strong>Memories + FTS5 + 1–2 hop graph:</strong> Memories (<code>Decision</code>, <code>Lesson</code>, <code>DeadEnd</code>, plus template types like <code>Finding</code> or <code>Source</code>) are indexed in virtual FTS5 table <code>memory_text</code> via SQLite triggers for instant <code>recall()</code>. <code>related()</code> walks <code>memory_about</code> file links and <code>task_summaries</code> dependencies up to 2 hops.</li>
+      <li><strong>Safety &amp; lifecycle (<code>memoryClean.ts</code>, <code>memoryReview.ts</code>, <code>forget.ts</code>):</strong> Every memory passes through <code>cleanMemory()</code> first—masking vault secrets, tokens, emails, phone numbers, public IPs, and project keep-out names. Uncertified memories fade after 30 days unused; Inbox lets you certify or reject them (contradictions against certified memories push urgently). <code>forgetProject()</code> wipes all project rows, anonymizes usage telemetry, deletes workspaces, and emits a printable deletion record.</li>
+    </ul>
+
+    <h2 id="skills-security">5. Skills &amp; Supply-Chain Security</h2>
+    <p>Third-party agent skill repos are a real prompt-injection and RCE vector. ArimaOps refuses to run unpinned <code>npx skills add</code> installers. Instead, <code>server/skillPacks.ts</code> and <code>server/skillScan.ts</code> enforce a strict 5-stage pipeline:</p>
+
+    <div class="diagram-card">
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 4.3 · Skill Pack Verification Pipeline</span>
+        <span class="badge ok">Zero-Execution Fetch</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 130" role="img" aria-label="Skill pack verification pipeline">
+          <defs>
+            <marker id="ar5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+            </marker>
+          </defs>
+          <rect class="box" x="15" y="22" width="160" height="82" />
+          <text class="h" x="27" y="45">1. Pinned Commit</text>
+          <text class="sub mono" x="27" y="64">skill-packs.lock.json</text>
+          <text class="sub" x="27" y="82">Exact git SHA + tree</text>
+
+          <path class="edge-accent" d="M 175 63 L 198 63" marker-end="url(#ar5)" />
+          <rect class="box" x="200" y="22" width="168" height="82" />
+          <text class="h" x="212" y="45">2. Raw HTTP Fetch</text>
+          <text class="sub" x="212" y="64">Only SKILL.md folders</text>
+          <text class="sub" x="212" y="82">No npx, no git hooks</text>
+
+          <path class="edge-accent" d="M 368 63 L 391 63" marker-end="url(#ar5)" />
+          <rect class="box-accent" x="393" y="22" width="165" height="82" />
+          <text class="h" x="405" y="45">3. SHA-256 Verify</text>
+          <text class="sub" x="405" y="64">Per-skill sorted hash</text>
+          <text class="sub" x="405" y="82">Rejects symlinks/.git</text>
+
+          <path class="edge-accent" d="M 558 63 L 581 63" marker-end="url(#ar5)" />
+          <rect class="box-bad" x="583" y="22" width="168" height="82" />
+          <text class="h" x="595" y="45">4. Static Scanner</text>
+          <text class="sub mono" x="595" y="64">server/skillScan.ts</text>
+          <text class="sub" x="595" y="82">Blocks tricks, never edits</text>
+
+          <path class="edge-accent" d="M 751 63 L 774 63" marker-end="url(#ar5)" />
+          <rect class="box-ok" x="776" y="22" width="130" height="82" />
+          <text class="h" x="788" y="45">5. Role Install</text>
+          <text class="sub" x="788" y="64">Scoped offensive check</text>
+          <text class="sub" x="788" y="82">Copy to agent skills</text>
+        </svg>
+      </div>
+      <div class="diagram-cap"><code>skillScan.ts</code> blocks invisible Unicode tag characters (<code>U+E0000–E007F</code>), bidi overrides, agent prompt hijacks in plain prose ("ignore previous instructions", "do not tell the user", reading <code>~/.ssh</code>/<code>vault.json</code>), CLI hooks files, <code>curl | sh</code>, and <code>base64 -d | sh</code>—while smartly stripping inline code spans and quoted strings so legitimate security-testing skills are warned rather than false-blocked.</div>
+    </div>
+
+    <h2 id="quiz">Agent Engine Self-Check</h2>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">1. When the owner has been away for 2 hours, which gates may the Lead pass on the owner's behalf, and what happens when the owner returns?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. Any gate, permanently and invisibly.</button>
+        <button class="quiz-opt" type="button" data-correct>B. Only reversible gates (specs and drafts—never merge, containment, or outbound sends), logged with <code>onBehalf: true</code> and surfaced in Inbox with Keep / Undo.</button>
+        <button class="quiz-opt" type="button">C. None; the entire team pauses after 30 minutes.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="<code>server/presence.ts</code> tracks <code>ownerSeen()</code> across all owner devices (and operators don't count). After 2h, the Lead can unblock reversible specs/drafts while creating an undoable Inbox item; irreversible actions always wait."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">2. Why does <code>server/skillScan.ts</code> strip inline backticks and quoted strings before scanning Markdown prose for prompt-injection phrases?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button" data-correct>A. Defensive and red-team security skills legitimately quote attack strings as test payloads inside backticks or quotes; judging plain prose catches real injections aimed at the agent.</button>
+        <button class="quiz-opt" type="button">B. Backticks cannot be read by AI language models.</button>
+        <button class="quiz-opt" type="button">C. To automatically clean and rewrite malicious files.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="<code>skillScan.ts</code> explicitly documents: 'Findings are reasons to refuse, never to clean a file.' Distinguishing prose from quoted/code examples keeps vetted security packs usable while still blocking real hijacks and invisible Unicode tag characters everywhere."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">3. Why does the Stream-JSON runner (<code>server/streamRunner.ts</code>) run inside <code>tmux</code> instead of HQ spawning <code>claude -p</code> as a direct child process?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. Because Python 3 cannot talk to Node over HTTP.</button>
+        <button class="quiz-opt" type="button" data-correct>B. Running the small Python runner inside tmux preserves HQ restart resilience (agents outlive HQ restarts) and keeps a live human-readable terminal view in the UI.</button>
+        <button class="quiz-opt" type="button">C. Because <code>claude -p</code> requires a graphical X11 window.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="As documented in <code>docs/design/stream-json.md</code>, placing the runner inside tmux inside the sandbox/container gives you structured JSON delivery and exact token/cost reporting without sacrificing tmux persistence."></div>
+    </div>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="architecture.html">
+        <span class="pager-dir">← Previous · 03</span>
+        <span class="pager-name">Architecture &amp; Data Flow</span>
+      </a>
+      <a class="pager-link pager-next" href="efficiency.html">
+        <span class="pager-dir">Next · 05</span>
+        <span class="pager-name">Efficiency, Speed &amp; Craft →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

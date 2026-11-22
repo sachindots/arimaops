@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Learn by Doing (6 Labs) · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">07 · Learn by Doing (6 Labs)</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">07 · Learn by Doing</div>
+    <h1>Six Progressive Hands-On Labs</h1>
+    <p class="lead">You don't truly own a codebase until you inspect it live, fix a real bug, wire a command end-to-end, write a pure test, and ship a scoped UI + MCP change. Check off each lab as you finish it (saved in your browser).</p>
+
+    <div class="lab-progress-box">
+      <div class="progress-top">
+        <span id="labs-count">0 / 6 labs completed</span>
+        <button id="labs-reset" class="icon-btn" type="button">Reset progress</button>
+      </div>
+      <div class="progress-track"><div id="labs-progress-fill" class="progress-fill"></div></div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Safety Before You Experiment</div>
+      <p>For Labs 2–5, work on a throwaway git branch (e.g. <code>git switch -c learn/labs</code>) so your <code>main</code> stays pristine, and use <code>HQ_PORT=59999 pnpm exec vite --port 5178 --strictPort</code> for safe UI testing without colliding with your live Docker HQ on <code>:7420</code>.</p>
+    </div>
+
+    <!-- LAB 0 -->
+    <article id="lab-0" class="lab-card" data-lab-id="lab-0">
+      <div class="lab-head">
+        <div>
+          <span class="badge ok">Lab 0 · Beginner · Ops</span>
+          <h3>Inspect the Live System Without Breaking It</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> See the real processes, open ports, SQLite database rows, and mock UI running side by side.</p>
+      <p><strong>Steps:</strong></p>
+      <ol>
+        <li>Check Docker containers and listening HQ ports (`7420` &amp; `8420`).</li>
+        <li>Query the SQLite `docs` table read-only using Node's built-in `node:sqlite`.</li>
+        <li>Run `pnpm test architecture-invariants` to see the invariant suite execute.</li>
+        <li>Boot the offline mock UI on `:5178` and open `http://localhost:5178/?mock=1` in your browser.</li>
+      </ol>
+      <div class="code-block">
+        <div class="code-head"><span>Terminal Verification Commands</span><button class="copy-btn" type="button">Copy</button></div>
+        <pre>docker ps --filter name=arimaops
+ss -tlnp | grep -E '7420|8420'
+node -e 'const {DatabaseSync}=require("node:sqlite"); const db=new DatabaseSync(process.env.HOME+"/.arima/arima.db",{readOnly:true}); console.log(db.prepare("SELECT name FROM docs").all())'
+pnpm test architecture-invariants
+HQ_PORT=59999 pnpm exec vite --port 5178 --strictPort</pre>
+      </div>
+      <details class="lab-disclosure">
+        <summary>What you should observe</summary>
+        <p>You will see <code>arimaops-hq-1</code> listening on <code>127.0.0.1:7420</code>, <code>172.30.0.1:7420</code>, and <code>172.30.0.1:8420</code>; SQLite listing rows like <code>projects.json</code>, <code>devices.json</code>, and <code>users.json</code>; and the mock Command Deck rendering sample software and red-team teams without touching live HQ.</p>
+      </details>
+    </article>
+
+    <!-- LAB 1 -->
+    <article id="lab-1" class="lab-card" data-lab-id="lab-1">
+      <div class="lab-head">
+        <div>
+          <span class="badge accent">Lab 1 · Beginner/Intermediate · Real Fix</span>
+          <h3>Fix the Ubuntu Desktop Icon Launcher</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> Fix all three bugs in <code>scripts/launcher/arimaops-launch.sh</code> (<a href="operations.html#desktop-icon">diagnosed in Chapter 6</a>) so clicking the Ubuntu desktop icon detects live Docker HQ on <code>:7420</code>, reads recent projects from <code>~/.arima/arima.db</code>, and opens the browser cleanly.</p>
+      <p><strong>Files to edit:</strong> <code>scripts/launcher/arimaops-launch.sh</code>, then run <code>bash scripts/launcher/install-desktop.sh --remote</code>.</p>
+      <ol>
+        <li>Replace the old <code>~/.arima/projects.json</code> reader (lines 18–24) with a one-liner reading the <code>projects.json</code> row from <code>~/.arima/arima.db</code> via <code>node:sqlite</code>.</li>
+        <li>Before checking <code>server.pid</code>, probe <code>curl -sf http://127.0.0.1:7420/api/health</code>. If it returns <code>{"ok":true}</code>, open <code>http://127.0.0.1:7420</code> via <code>xdg-open</code> (passing <code>?project=&lt;slug&gt;</code> if a project slug matches the picked folder) instead of spawning a second HQ process!</li>
+        <li>Reinstall the desktop shortcuts with <code>install-desktop.sh</code> and click the Desktop icon to verify.</li>
+      </ol>
+      <details class="lab-disclosure">
+        <summary>Hint: Reading <code>projects.json</code> from SQLite with Node</summary>
+        <pre>const { DatabaseSync } = require("node:sqlite");
+const db = new DatabaseSync(require("os").homedir() + "/.arima/arima.db", { readOnly: true });
+const row = db.prepare("SELECT value FROM docs WHERE name = 'projects.json'").get();</pre>
+      </details>
+      <details class="lab-disclosure">
+        <summary>Reference solution snippet for <code>arimaops-launch.sh</code></summary>
+        <div class="code-block">
+          <div class="code-head"><span>scripts/launcher/arimaops-launch.sh (updated sections)</span><button class="copy-btn" type="button">Copy</button></div>
+          <pre># 1) Read recent projects from SQLite (fallback to legacy JSON)
+recent=$("$NODE" -e '
+  try {
+    const fs = require("fs"), os = require("os"), path = require("path");
+    const dbPath = path.join(os.homedir(), ".arima", "arima.db");
+    let raw = null;
+    if (fs.existsSync(dbPath)) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      raw = db.prepare("SELECT value FROM docs WHERE name = ?").get("projects.json")?.value ?? null;
+      db.close();
+    }
+    const r = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(r) ? r : r.projects ?? [];
+    for (const p of list) if (p.path &amp;&amp; fs.existsSync(p.path)) console.log((p.name || p.id) + "\t" + p.path + "\t" + (p.id || ""));
+  } catch {}
+' 2&gt;/dev/null || true)
+
+# 2) If HQ is already listening on :7420 (e.g. Docker Compose), open it directly
+if curl -sf http://127.0.0.1:7420/api/health &gt;/dev/null 2&gt;&amp;1; then
+  xdg-open "http://127.0.0.1:7420/" &gt;/dev/null 2&gt;&amp;1 &amp;
+  exit 0
+fi</pre>
+        </div>
+      </details>
+    </article>
+
+    <!-- LAB 2 -->
+    <article id="lab-2" class="lab-card" data-lab-id="lab-2">
+      <div class="lab-head">
+        <div>
+          <span class="badge accent">Lab 2 · Intermediate · Full-Stack Trace</span>
+          <h3>Trace <code>assignTask</code> Across Every Layer</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> Read and verify every single hop of <code>assignTask(taskId, agentId)</code> from React click to SQLite and back.</p>
+      <ol>
+        <li>Find where <code>officeActions.assignTask</code> is called inside <code>src/ui/drawers/TaskSheet.tsx</code>.</li>
+        <li>Inspect <code>assignTask</code> in <code>src/store/office.ts</code> and <code>src/data/ws/wsSource.ts</code>.</li>
+        <li>Look up <code>assignTask</code> in <code>server/commandPolicy.ts</code> (note its required role and Zod args).</li>
+        <li>Read its handler in <code>server/commands.ts</code> and follow it into <code>Planner.assign()</code> inside <code>server/planner.ts</code>.</li>
+        <li>See how <code>hub.emit({ type: "task.updated", task })</code> flows back into <code>reduce()</code> inside <code>src/store/office.ts</code>.</li>
+      </ol>
+      <div class="code-block">
+        <div class="code-head"><span>Quick grep to jump right to every hop</span><button class="copy-btn" type="button">Copy</button></div>
+        <pre>grep -rn "assignTask" src/ server/</pre>
+      </div>
+      <details class="lab-disclosure">
+        <summary>Checkpoint question: Does <code>assignTask</code> require 24h TOTP step-up from a remote tablet?</summary>
+        <p>Check <code>server/commandPolicy.ts</code>! Notice <code>assignTask</code> has <code>role: "operator"</code> and <em>no</em> <code>stepUp: true</code>, so an operator on a phone/tablet can assign tasks smoothly without entering an authenticator code every time—unlike <code>updateAgent</code> or <code>openShell</code>.</p>
+      </details>
+    </article>
+
+    <!-- LAB 3 -->
+    <article id="lab-3" class="lab-card" data-lab-id="lab-3">
+      <div class="lab-head">
+        <div>
+          <span class="badge accent">Lab 3 · Intermediate · Backend + Contract</span>
+          <h3>Add a Typed WebSocket Command</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> Add a new command <code>pingTeam</code> (accepts a short message string, emits an activity feed line via <code>hub.activity</code>) and make the compiler + invariant suite pass.</p>
+      <ol>
+        <li>Add <code>pingTeam(note: string): void;</code> to <code>OfficeDataSource</code> in <code>src/data/source.ts</code>.</li>
+        <li>Implement <code>pingTeam</code> in <code>src/data/ws/wsSource.ts</code> (<code>send("pingTeam", note)</code>) and <code>src/data/mock/mockSource.ts</code> (no-op or simulated activity).</li>
+        <li>Expose <code>officeActions.pingTeam</code> in <code>src/store/office.ts</code>.</li>
+        <li>Register <code>pingTeam: entry({ role: "operator", args: z.tuple([text(200)]) })</code> in <code>server/commandPolicy.ts</code>.</li>
+        <li>Implement <code>pingTeam: (note) =&gt; hub.activity("config", null, note)</code> inside <code>makeCommands()</code> in <code>server/commands.ts</code>.</li>
+        <li>Run <code>pnpm typecheck &amp;&amp; pnpm test architecture-invariants</code>.</li>
+      </ol>
+      <details class="lab-disclosure">
+        <summary>Hint: Why does <code>architecture-invariants-test.ts</code> fail if you skip step 4 or step 5?</summary>
+        <p>Line 70 of <code>scripts/architecture-invariants-test.ts</code> runs <code>assert.deepEqual(handlerKeys, policyKeys)</code>, plus TypeScript verifies <code>server/commands.ts</code> satisfies the mapped type <code>Handlers</code> from <code>server/commandPolicy.ts</code>. You cannot ship an unauthenticated or untyped command by mistake.</p>
+      </details>
+    </article>
+
+    <!-- LAB 4 -->
+    <article id="lab-4" class="lab-card" data-lab-id="lab-4">
+      <div class="lab-head">
+        <div>
+          <span class="badge accent">Lab 4 · Intermediate · Pure Logic &amp; TDD</span>
+          <h3>Write a Deterministic Scorer Rule</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> Follow ArimaOps's "pure logic first, zero I/O" pattern by adding a new free rule scorer (for example, <code>large-diff</code> or checking that a task's <code>note</code> isn't empty) and writing a test for it.</p>
+      <ol>
+        <li>Inspect <code>SCORERS</code> in <code>src/data/scorers.ts</code> and <code>RULES</code> in <code>server/scorers.ts</code>.</li>
+        <li>Add a new rule id (e.g. <code>"empty-handoff"</code>) to <code>SCORERS</code> with <code>kind: "rule"</code>.</li>
+        <li>Add its pure function to <code>RULES</code> in <code>server/scorers.ts</code> (checking <code>(f.task.note ?? "").trim().length &gt;= 10</code>).</li>
+        <li>Add an automated assertion in <code>scripts/factory-test.ts</code> (or a small test check) and run <code>pnpm test factory</code>.</li>
+      </ol>
+      <details class="lab-disclosure">
+        <summary>Reference pure rule snippet</summary>
+        <pre>"empty-handoff": (f) =&gt; {
+  const note = (f.task.note ?? "").trim();
+  return note.length &gt;= 10
+    ? { pass: true, reason: "Includes handoff summary." }
+    : { pass: false, reason: "Handoff note is missing or under 10 characters." };
+},</pre>
+      </details>
+    </article>
+
+    <!-- LAB 5 -->
+    <article id="lab-5" class="lab-card" data-lab-id="lab-5">
+      <div class="lab-head">
+        <div>
+          <span class="badge warn">Lab 5 · Advanced · MCP + Command Deck UI</span>
+          <h3>Add a Role-Scoped MCP Tool &amp; Deck Card</h3>
+        </div>
+        <label class="lab-check"><input type="checkbox"> Done</label>
+      </div>
+      <p><strong>Goal:</strong> Register a new Lead-only MCP tool in <code>server/mcp.ts</code> and display data safely in the Command Deck UI without breaking invariants or design rules.</p>
+      <ol>
+        <li>In <code>server/mcp.ts</code> inside <code>buildServer()</code>, add a tool gated by <code>if (isLead)</code> (e.g. <code>project_summary</code> returning board + open task counts).</li>
+        <li>Add the tool name to <code>LEAD_ONLY_TOOLS</code> in <code>scripts/architecture-invariants-test.ts</code> and verify <code>pnpm test architecture-invariants</code> passes across all 9 templates!</li>
+        <li>In a UI component under <code>src/ui/deck/</code>, read snapshot stats using safe Zustand selectors (no <code>?? []</code> inside the selector callback!), stick strictly to font sizes <code>12/13/15/20/28 px</code> and CSS tokens (<code>text-accent</code>, <code>bg-[var(--surface-card)]</code>), and preview in <code>http://localhost:5178/?mock=1</code>.</li>
+        <li>Run <code>pnpm build</code> and <code>pnpm test</code> to confirm zero regressions.</li>
+      </ol>
+      <details class="lab-disclosure">
+        <summary>Design &amp; UI Checklist Before Considering Lab 5 Done</summary>
+        <ul>
+          <li>Uses Inter font and Material Symbols (<code>&lt;Icon name="…" /&gt;</code>), no external fonts or hard-coded hex colors for accents.</li>
+          <li>Respects the <code>12 / 13 / 15 / 20 / 28 px</code> size scale and weights <code>400 / 500 / 600</code>.</li>
+          <li>Zustand selectors return stable primitives/references directly from state.</li>
+          <li><code>pnpm build</code> and <code>pnpm test</code> both exit <code>0</code>.</li>
+        </ul>
+      </details>
+    </article>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="operations.html">
+        <span class="pager-dir">← Previous · 06</span>
+        <span class="pager-name">Ops, Desktop Icon &amp; Tablet</span>
+      </a>
+      <a class="pager-link pager-next" href="reading.html">
+        <span class="pager-dir">Next · 08</span>
+        <span class="pager-name">Reading Library &amp; Docs →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

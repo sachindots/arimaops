@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Efficiency, Speed &amp; Craft · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">05 · Efficiency, Speed &amp; Craft</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">05 · Engineering Scorecard</div>
+    <h1>How Efficient, How Fast, How Best</h1>
+    <p class="lead">Why ArimaOps uses the specific patterns it does—how it cuts token burn, RAM footprint, and latency while keeping a strict engineering bar enforced by automated invariant tests.</p>
+
+    <h2 id="token-efficiency">1. Token &amp; Dollar Cost Efficiency</h2>
+    <p>Multi-agent orchestrators easily burn through quotas by dumping entire codebases, chat histories, and bloated tool lists into every prompt. ArimaOps attacks token waste from six angles:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Mechanism</th><th>Where in Code</th><th>How It Saves Tokens &amp; Money</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Bounded ~4k-token briefs</strong></td><td><code>server/brief.ts</code></td><td><code>buildBrief()</code> builds one structured brief capped to <code>BRIEF_BUDGET</code>. If over budget, it deterministically sheds oldest handoffs → oldest ledger items → half of memory → older facts → spec → description, telling the agent what was omitted so it can pull deeper via <code>recall()</code> only if needed.</td></tr>
+          <tr><td><strong>Lean mode reset</strong></td><td><code>server/adapters.ts</code> (<code>CLEAR_COMMAND</code>)</td><td>Clears the CLI conversation between tasks so task #5 doesn't carry stale diff context from task #1. Only the structured brief and handoff carry forward.</td></tr>
+          <tr><td><strong>3-line message discipline</strong></td><td><code>src/data/messageTags.ts</code>, <code>server/mcp.ts</code></td><td><code>send_message</code> nudges agents when replies exceed 3 short lines and starts messages with crisp tags (<code>Done:</code>, <code>Blocked:</code>, <code>Question:</code>, <code>FYI:</code>), stripping greetings and sign-offs via <code>tidy()</code>.</td></tr>
+          <tr><td><strong>Role-scoped MCP tools</strong></td><td><code>server/mcp.ts</code></td><td>Workers never receive Lead-only tool schemas in their MCP context, and non-security projects never load finding schemas—shrinking input tokens and preventing wrong tool calls.</td></tr>
+          <tr><td><strong>Tiered paid + free model routing</strong></td><td><code>src/data/teamSetup.ts</code>, <code>server/freeModels.ts</code></td><td><code>proposeSetup()</code> puts paid models (Opus/Sonnet) on the Lead and coding seats, while assigning light/review/QA roles to rotating zero-cost models from 4 sources (OpenCode Zen, OpenRouter <code>:free</code>, NVIDIA NIM, AMD Token Lab).</td></tr>
+          <tr><td><strong>Spend caps + Overflow</strong></td><td><code>server/spendCaps.ts</code>, <code>server/overflow.ts</code></td><td>Polls API-key spend every 30s (default $5/day, $50/month; 80% alert, 100% auto-pause of workers). When a paid subscription hits a limit, <code>overflow.ts</code> offers an ask-first move to the role's fallback or best free model.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="ram-efficiency">2. RAM &amp; Compute Efficiency</h2>
+    <p>Running 5–8 AI CLIs and sandboxes on a developer laptop or an 8 GB EC2 instance fails quickly if every project spawns its own server, database, and half-RAM VMs:</p>
+    <ul>
+      <li><strong>Single Node process across all projects:</strong> One HQ server hosts every active repo, sharing one HTTP/WS server, one SQLite connection pool, one egress proxy, and one free-model catalog cache.</li>
+      <li><strong>On-demand workers with 2-minute grace (<code>server/onDemand.ts</code>):</strong> Only the Lead stays running when a project is idle. Workers start automatically when assigned an unblocked task and shut down <code>GRACE_MS = 120_000 ms</code> after their last open task completes (reusing the session if another task arrives quickly).</li>
+      <li><strong>Tamed sandbox RAM + 3 GB host headroom (<code>server/accounts.ts</code>):</strong> Docker Sandboxes' own default claims half of host RAM per VM! ArimaOps overrides creation with <code>SANDBOX_DEFAULT = { cpus: 2, memoryGb: 2 }</code> and runs <code>fitsInRam()</code> before starting any agent—reserving <code>RESERVED_MB = 3072</code> (3 GB) for your OS, browser, and HQ, counting <code>500 MB</code> per local/container agent or real reported GB per sandbox, and queuing excess on-demand starts cleanly instead of OOM-crashing your laptop.</li>
+      <li><strong>Zero extra DB daemons:</strong> Replacing Neo4j (768 MB+ JVM heap/cache) with SQLite FTS5 inside <code>~/.arima/arima.db</code> dropped memory-store RAM overhead to near zero while keeping full-text search and 2-hop graph traversal.</li>
+    </ul>
+
+    <h2 id="speed-latency">3. Speed &amp; Latency</h2>
+    <ul>
+      <li><strong>GitHub App webhooks + smart polling (<code>server/githubApp.ts</code>, <code>githubSync.ts</code>):</strong> Rather than hammering <code>gh</code> every second or waiting minutes, signed webhooks over Tailscale Funnel (<code>:8443</code>) act as instant hints that trigger an immediate PR fetch, while <code>GhPolling</code> falls back smoothly (20s normal, 5m safety net when webhooks are healthy). Merged PR files/checks are fetched once and cached.</li>
+      <li><strong>Stacked PRs (<code>Planner.stackBase</code>):</strong> Dependent tasks whose parent PR is already open in review don't sit idle waiting for merge—they branch directly on top of the parent branch and rebase cleanly once the parent lands.</li>
+      <li><strong>Stream-JSON vs screen scraping:</strong> In Stream-JSON mode, <code>streamEngine.ts</code> receives exact tool events over HTTP as Claude emits them and dispatches the next message on <code>result</code> with zero terminal quiet-wait timers.</li>
+      <li><strong>Lean UI transport &amp; rendering:</strong> Static assets are gzip-compressed on the fly by <code>server/http.ts</code> (saving ~4× bandwidth on mobile Wi-Fi) with immutable cache headers for hashed chunks, incremental WebSocket deltas avoid re-sending snapshots, and desktop page switches fade in <code>150 ms</code> opacity-only.</li>
+    </ul>
+
+    <h2 id="code-quality">4. Code Quality &amp; "How Best" Engineering Practices</h2>
+    <p>What separates a maintainable codebase from an AI-generated tangle is enforceable invariants. Look at how ArimaOps keeps itself clean as it grows:</p>
+
+    <div class="compare-grid">
+      <div class="card">
+        <div class="card-title">Pure Logic Separated from I/O</div>
+        <p class="card-body">Complex rules—<code>server/gates.ts</code> (11 gate evaluators), <code>server/accounts.ts</code> (<code>fitsInRam</code>), <code>server/scorers.ts</code> (<code>RULES</code>), and <code>server/skillScan.ts</code>—take plain inputs and return plain values with zero network or DB side effects. That lets unit tests run in milliseconds without mocks.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Automated Architecture Invariants</div>
+        <p class="card-body"><code>scripts/architecture-invariants-test.ts</code> runs on every <code>pnpm test</code> and fails CI if: (1) <code>commandPolicy.ts</code> and <code>commands.ts</code> drift out of 1-to-1 parity, (2) a worker leaks a Lead-only MCP tool in any of the 9 templates, (3) Gemini/agy rule writers emit duplicate instructions, or (4) any <code>server/*.ts</code> file exceeds its line cap (<code>http.ts</code> &le; 650, <code>planner.ts</code> &le; 760, others &le; 850).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">53 Standalone Test Suites</div>
+        <p class="card-body">Each subsystem has its own fast, readable <code>scripts/*-test.ts</code> harness executed in isolated Node processes by <code>scripts/run-tests.mjs</code>—including real <code>SIGKILL</code> crash tests for SQLite (<code>docs-test.ts</code>), signed GitHub webhook fixtures, and TOTP replay checks.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Factory Metrics &amp; Task Scoring</div>
+        <p class="card-body">ArimaOps measures its own agent output: <code>server/metrics.ts</code> computes cost per merged PR, cycle time (<code>task_events</code>), rework (failed gates), stalls, and owner interventions; <code>server/scorers.ts</code> grades finished tasks with free deterministic checks plus metered Haiku rubric checks; <code>server/suite.ts</code> replays tasks across models to compare cost vs quality.</p>
+      </div>
+    </div>
+
+    <h2 id="honest-tradeoffs">5. Honest Tradeoffs &amp; Known Limits (Senior Engineer Read)</h2>
+    <p>Every architecture trades something off. Before extending or scaling ArimaOps, know where the sharp edges are today:</p>
+    <ul>
+      <li><strong>Single-machine vertical ceiling:</strong> One Node process + local SQLite WAL + host RAM fits solo developers and small teams brilliantly, with zero ops overhead. It is <em>not</em> designed to horizontally shard one project across multiple worker servers.</li>
+      <li><strong>Container DNS is unfiltered:</strong> The <code>:8420</code> allowlist proxy blocks disallowed HTTP/HTTPS connections by hostname, and <code>DOCKER-USER</code> drops direct outbound IP packets—but DNS queries themselves aren't filtered by the proxy yet (documented in <code>docs/how-it-works.md</code>).</li>
+      <li><strong>Line ceilings are tight in core files:</strong> <code>server/sessions.ts</code> (~848 / 850 lines) and <code>server/planner.ts</code> (~759 / 760 lines) sit right at their invariant limits. When adding features, extract a focused pure helper module (just like <code>server/stalls.ts</code> and <code>server/resumeAgents.ts</code>) instead of cramming more logic into those files.</li>
+      <li><strong>Container GitHub pushes need <code>GH_TOKEN</code>:</strong> Containers deliberately do not mount your host SSH keys or host <code>gh</code> keyring; builder seats in Container mode need a fine-grained <code>GH_TOKEN</code> added via App Variables to push branches.</li>
+      <li><strong>Free-tier rate limits &amp; rotation:</strong> Free model catalogs rotate daily and impose strict RPM/daily caps (OpenRouter ~50/day without top-up, NIM ~40 RPM, Token Lab ~20 RPM). Subscription plans (e.g., Claude Pro 5h windows) share limits across every seat on that account across projects.</li>
+    </ul>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="agent-engine.html">
+        <span class="pager-dir">← Previous · 04</span>
+        <span class="pager-name">Agent Engine, Memory &amp; Skills</span>
+      </a>
+      <a class="pager-link pager-next" href="operations.html">
+        <span class="pager-dir">Next · 06</span>
+        <span class="pager-name">Ops, Desktop Icon &amp; Tablet →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture &amp; Data Flow · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">03 · Architecture &amp; Data Flow</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button"><span class="accent-dot" aria-hidden="true"></span><span data-accent-label>Build</span></button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">03 · Deep Codebase Architecture</div>
+    <h1>Architecture &amp; Data Flow</h1>
+    <p class="lead">From process startup in <code>server/main.ts</code> to real-time WebSocket frames in <code>src/store/office.ts</code>, here is how every module wires together without circular sprawl.</p>
+
+    <h2 id="boot-sequence">Server Boot Lifecycle (<code>bin/arimaops.mjs</code> → <code>server/main.ts</code>)</h2>
+    <p>When ArimaOps launches (via CLI, <code>pnpm dev:hq</code>, or <code>compose.yaml</code>), <code>bin/arimaops.mjs</code> verifies Node.js &ge; 22.13 (the minimum version where <code>node:sqlite</code> loads without a flag), validates <code>--repo</code> and <code>--port</code>, and imports <code>dist-server/main.mjs</code> (or <code>setup.mjs</code> for <code>arimaops setup</code>). Inside <code>server/main.ts</code>, startup follows a deliberate sequence:</p>
+    <ol>
+      <li><strong>Scrub parent agent variables first:</strong> Line 11 imports <code>./lib/scrubEnv</code> <em>before any other module</em>. If you accidentally start HQ inside an active AI coding CLI session, <code>scrubParentSession(process.env)</code> strips parent session variables before <code>sessions.ts</code> copies <code>process.env</code> into <code>TERM_ENV</code>.</li>
+      <li><strong>Fix PTY permissions &amp; migrate home:</strong> <code>ensurePtyHelperExecutable()</code> repairs <code>node-pty</code> spawn-helper permissions; <code>migrateHome()</code> ensures <code>~/.arima</code> is ready.</li>
+      <li><strong>Seed built-ins &amp; open-core seam:</strong> <code>seedBuiltins(hqDb())</code> inserts the built-in templates into SQLite; <code>loadEe()</code> dynamically imports <code>ee/</code> only if present and enables features authorized by the offline Ed25519 <code>license.json</code>.</li>
+      <li><strong>Load projects sequentially:</strong> Reads registered non-archived repos from SQLite + any <code>--repo</code> path and awaits <code>startProject()</code> (<code>server/project.ts</code>) one at a time so shared setup checks and <code>sbx</code> calls don't contend on start.</li>
+      <li><strong>Start Docker egress proxy &amp; schedulers:</strong> If Docker is available, <code>ensureNetwork()</code> creates <code>hq-agents</code> (<code>br-hq</code>) and <code>startEgressProxy(projects, port)</code> listens on <code>172.30.0.1:8420</code>. Then background timers start for nightly backups, pending memory extraction, daily memory digests, daily <code>models.dev</code> free-model refreshes, and 09:00 / 18:00 standup notes.</li>
+      <li><strong>Listen on HTTP + extra hosts:</strong> <code>startHttp()</code> binds <code>127.0.0.1:7420</code> plus <code>172.30.0.1:7420</code> (so container agents can reach hooks and MCP), then re-runs container reachability checks.</li>
+    </ol>
+
+    <h2 id="command-event-loop">Interactive 8-Step Command &amp; Event Loop</h2>
+    <p>Every action in ArimaOps follows one strict round-trip loop. Step through 1–8 below to watch how a single button click travels through the entire stack:</p>
+
+    <div class="diagram-card" data-stepper data-steps='{
+      "all": "<strong>Complete Round-Trip Loop:</strong> UI actions never mutate local state optimistically for important writes. They send <code>{ cmd, args }</code> to HQ, pass <code>authorize()</code>, mutate <code>Hub</code> + SQLite, and broadcast <code>OfficeEvent</code>s to all open tabs and phones.",
+      "s1": "<strong>Step 1 — UI Dispatch (<code>src/store/office.ts</code>):</strong> A React component calls e.g. <code>officeActions.assignTask(taskId, agentId)</code>, which delegates to <code>source.assignTask(...)</code>.",
+      "s2": "<strong>Step 2 — WS Transport (<code>src/data/ws/wsSource.ts</code>):</strong> Serializes <code>JSON.stringify({ cmd, args })</code> over the <code>/ws?project=…</code> socket (queuing up to 200 frames while reconnecting).",
+      "s3": "<strong>Step 3 — Socket Auth &amp; Step-Up (<code>server/http.ts</code>):</strong> <code>onClient</code> resolves the live user/device role, marks <code>ownerSeen()</code>, and checks if an <code>elevate</code> TOTP payload was attached.",
+      "s4": "<strong>Step 4 — Policy &amp; Zod Boundary (<code>server/commandPolicy.ts</code>):</strong> <code>authorize(cmd, args, who, ctx)</code> verifies <code>role</code>, remote <code>stepUp</code> (24h window), <code>ownerIf</code> escalation, and parses <code>args</code> through strict Zod tuple schemas. Returns <code>remote.stepup</code> if a code is needed.",
+      "s5": "<strong>Step 5 — Server Handler (<code>server/commands.ts</code>):</strong> Runs the matched handler in <code>makeCommands()</code> (1-to-1 parity enforced by tests), calling into <code>Planner</code>, <code>Sessions</code>, or <code>Accounts</code>.",
+      "s6": "<strong>Step 6 — Hub &amp; Persistence (<code>server/hub.ts</code> &amp; <code>db.ts</code>):</strong> Updates <code>hub.snap</code> (single source of truth), writes atomically to SQLite WAL (<code>arima.db</code>), and logs the command in the audit log.",
+      "s7": "<strong>Step 7 — Redacted Broadcast (<code>server/hub.ts</code> → <code>http.ts</code>):</strong> <code>hub.emit(event)</code> notifies all subscribed sockets; <code>http.ts</code> runs <code>redactor().redact()</code> before sending JSON over WebSocket (stripping terminal output for <code>watch=1</code> sockets).",
+      "s8": "<strong>Step 8 — Client Reducer (<code>src/store/office.ts</code>):</strong> <code>reduce(snap, event)</code> returns a fresh immutable snapshot in Zustand, instantly re-rendering Desktop Deck and any connected tablets."
+    }'>
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 3.1 · End-to-End Command &amp; Event Loop</span>
+        <span class="badge accent">8-Step Trace</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 340" role="img" aria-label="End-to-end command and event flow diagram">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+            </marker>
+          </defs>
+
+          <!-- Top Row: Request path UI -> Server -->
+          <g data-step="s1">
+            <rect class="box" x="20" y="24" width="185" height="72" />
+            <text class="h" x="32" y="48">1. UI + officeActions</text>
+            <text class="sub" x="32" y="66">Click dispatches typed call</text>
+            <text class="sub mono" x="32" y="82">src/store/office.ts</text>
+          </g>
+
+          <g data-step="s2">
+            <path class="edge-accent" d="M 205 60 L 245 60" marker-end="url(#ar2)" />
+            <rect class="box" x="247" y="24" width="185" height="72" />
+            <text class="h" x="259" y="48">2. wsSource.ts</text>
+            <text class="sub" x="259" y="66">Sends { cmd, args } on /ws</text>
+            <text class="sub mono" x="259" y="82">src/data/ws/wsSource.ts</text>
+          </g>
+
+          <g data-step="s3">
+            <path class="edge-accent" d="M 432 60 L 472 60" marker-end="url(#ar2)" />
+            <rect class="box" x="474" y="24" width="185" height="72" />
+            <text class="h" x="486" y="48">3. WS Edge &amp; TOTP</text>
+            <text class="sub" x="486" y="66">Live role + device cookie</text>
+            <text class="sub mono" x="486" y="82">server/http.ts:onClient</text>
+          </g>
+
+          <g data-step="s4">
+            <path class="edge-accent" d="M 659 60 L 699 60" marker-end="url(#ar2)" />
+            <rect class="box-accent" x="701" y="24" width="199" height="72" />
+            <text class="h" x="713" y="48">4. authorize() Gate</text>
+            <text class="sub" x="713" y="66">Role + stepUp + Zod parse</text>
+            <text class="sub mono" x="713" y="82">server/commandPolicy.ts</text>
+          </g>
+
+          <!-- Turn down -->
+          <g data-step="s5">
+            <path class="edge-accent" d="M 800 96 L 800 148" marker-end="url(#ar2)" />
+            <rect class="box" x="701" y="150" width="199" height="72" />
+            <text class="h" x="713" y="174">5. Command Handler</text>
+            <text class="sub" x="713" y="192">1-to-1 parity table runs</text>
+            <text class="sub mono" x="713" y="208">server/commands.ts</text>
+          </g>
+
+          <!-- Bottom Row: Response / Broadcast path Server -> UI -->
+          <g data-step="s6">
+            <path class="edge-accent" d="M 701 186 L 661 186" marker-end="url(#ar2)" />
+            <rect class="box-ok" x="474" y="150" width="185" height="72" />
+            <text class="h" x="486" y="174">6. Hub + SQLite</text>
+            <text class="sub" x="486" y="192">Mutates snap + writes WAL</text>
+            <text class="sub mono" x="486" y="208">hub.ts · lib/db.ts</text>
+          </g>
+
+          <g data-step="s7">
+            <path class="edge-accent" d="M 474 186 L 434 186" marker-end="url(#ar2)" />
+            <rect class="box" x="247" y="150" width="185" height="72" />
+            <text class="h" x="259" y="174">7. Redact &amp; Emit</text>
+            <text class="sub" x="259" y="192">Masks secrets -&gt; all /ws</text>
+            <text class="sub mono" x="259" y="208">redact.ts · http.ts</text>
+          </g>
+
+          <g data-step="s8">
+            <path class="edge-accent" d="M 247 186 L 207 186" marker-end="url(#ar2)" />
+            <rect class="box-accent" x="20" y="150" width="185" height="72" />
+            <text class="h" x="32" y="174">8. Zustand reduce()</text>
+            <text class="sub" x="32" y="192">Immutable update -&gt; React</text>
+            <text class="sub mono" x="32" y="208">src/store/office.ts</text>
+          </g>
+
+          <!-- Audit / Step-Up notes -->
+          <g data-step="s4">
+            <rect class="box-warn" x="247" y="254" width="653" height="62" />
+            <text class="h" x="261" y="278">Remote Step-Up Branch (if verdict.why === "step-up"):</text>
+            <text class="sub" x="261" y="298">Server emits { type: "remote.stepup", status: "required", cmd, args }. wsSource.ts prompts for 6-digit TOTP code and sends "elevate".</text>
+          </g>
+        </svg>
+      </div>
+      <div class="stepper-bar">
+        <button class="step-btn active" data-target="all">All Steps</button>
+        <button class="step-btn" data-target="s1">1 · Action</button>
+        <button class="step-btn" data-target="s2">2 · WS Send</button>
+        <button class="step-btn" data-target="s3">3 · Auth</button>
+        <button class="step-btn" data-target="s4">4 · Policy</button>
+        <button class="step-btn" data-target="s5">5 · Handler</button>
+        <button class="step-btn" data-target="s6">6 · Hub/DB</button>
+        <button class="step-btn" data-target="s7">7 · Emit</button>
+        <button class="step-btn" data-target="s8">8 · Reduce</button>
+      </div>
+      <div class="stepper-detail">
+        <strong>Complete Round-Trip Loop:</strong> UI actions never mutate local state optimistically for important writes. They send <code>{ cmd, args }</code> to HQ, pass <code>authorize()</code>, mutate <code>Hub</code> + SQLite, and broadcast <code>OfficeEvent</code>s to all open tabs and phones.
+      </div>
+    </div>
+
+    <h2 id="hub-truth">The Hub: Single Source of Truth (<code>server/hub.ts</code>)</h2>
+    <p>Every loaded project owns one <code>Hub</code> instance holding an <code>OfficeSnapshot</code> in memory. Notice three subtle engineering patterns inside <code>server/hub.ts</code>:</p>
+    <ul>
+      <li><strong>Snapshot + Delta stream:</strong> Newly connected browsers receive the entire <code>OfficeSnapshot</code> once (<code>{ type: "snapshot", snapshot }</code>), followed only by tiny incremental <code>OfficeEvent</code> objects (<code>task.updated</code>, <code>agent.updated</code>, <code>message</code>, <code>terminal.output</code>).</li>
+      <li><strong>Overlay state without clobbering truth (<code>holdForAccess</code> / <code>workState</code>):</strong> If a container agent tries to reach an unapproved domain, HQ marks its UI status <code>"needs-input"</code> (glowing amber) so you see it immediately. Meanwhile, <code>hub.held</code> remembers what the agent was actually doing underneath (<code>"working"</code> or <code>"idle"</code>) so <code>Inbox</code> delivery checks <code>hub.workState()</code> and restores the real state the moment you click Allow or Deny.</li>
+      <li><strong>Streaming secret redaction on terminal output:</strong> <code>hub.terminal(agentId, data)</code> never sends raw PTY bytes straight to the WebSocket. It passes chunks through <code>redactor().stream()</code> (<code>server/credentials/redact.ts</code>), which even buffers partial trailing prefixes up to 80 ms so a vault key split across two TCP packets cannot leak to a viewer!</li>
+    </ul>
+
+    <h2 id="storage-architecture">Storage Architecture &amp; Crash-Safe SQLite</h2>
+    <p>ArimaOps separates <strong>machine-wide relational data</strong> from <strong>per-project runtime files</strong> and <strong>git-committed project definitions</strong>. Every SQLite database opens via <code>openDb()</code> (<code>server/lib/docs.ts</code>) with file mode <code>0600</code>, <code>PRAGMA journal_mode = WAL</code>, and <code>busy_timeout = 5000</code>.</p>
+
+    <div class="diagram-card">
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 3.2 · Three-Tier Storage Layout &amp; Ownership</span>
+        <span class="badge">SQLite WAL + Git</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 260" role="img" aria-label="Storage layout across machine DB, project folder, and git repo">
+          <rect class="box-accent" x="20" y="20" width="290" height="220" />
+          <text class="h" x="34" y="44">~/.arima/arima.db (Machine-Wide)</text>
+          <text class="sub" x="34" y="62">Mode 0600 · WAL · Shared across projects</text>
+          <text class="sub mono" x="34" y="88">Typed tables (server/lib/db.ts):</text>
+          <text class="sub mono" x="34" y="106">• templates, projects_model, goals</text>
+          <text class="sub mono" x="34" y="122">• boards, tasks, task_events, specs</text>
+          <text class="sub mono" x="34" y="138">• gate_events, scores, findings</text>
+          <text class="sub mono" x="34" y="154">• memories, memory_about, memory_text (FTS5)</text>
+          <text class="sub mono" x="34" y="170">• ledger_entries, usage_events, usage_marks</text>
+          <text class="sub mono" x="34" y="194">Doc/Log tables (docs.ts):</text>
+          <text class="sub mono" x="34" y="212">• devices.json, users.json, projects.json</text>
+          <text class="sub mono" x="34" y="228">• push-devices.json, free-models, audit.log</text>
+
+          <rect class="box" x="330" y="20" width="280" height="220" />
+          <text class="h" x="344" y="44">~/.arima/&lt;slug&gt;/ (Per Project)</text>
+          <text class="sub" x="344" y="62">Never committed · Deleted on "Forget"</text>
+          <text class="sub mono" x="344" y="92">• arima.db (docs: config.json,</text>
+          <text class="sub mono" x="356" y="108">messages.json, running-agents.json,</text>
+          <text class="sub mono" x="356" y="124">action-items.json, access.json)</text>
+          <text class="sub mono" x="344" y="148">• agent-token (0600 project HMAC secret)</text>
+          <text class="sub mono" x="344" y="166">• &lt;agent&gt;/ (isolated git clone of repo)</text>
+          <text class="sub mono" x="344" y="184">• evidence/&lt;task&gt;/ (verifier shots)</text>
+          <text class="sub mono" x="344" y="202">• secrets/&lt;agent&gt;/ (ephemeral launch.env)</text>
+
+          <rect class="box-ok" x="630" y="20" width="270" height="220" />
+          <text class="h" x="644" y="44">&lt;repo&gt;/.arima/ (In Your Repo)</text>
+          <text class="sub" x="644" y="62">Committed in git · Team-shareable</text>
+          <text class="sub mono" x="644" y="96">• .arima/config.json (team, workflow)</text>
+          <text class="sub mono" x="644" y="114">• .arima/plan.json (boards &amp; tasks)</text>
+          <text class="sub mono" x="644" y="132">• docs/plan.md (if exportPlan enabled)</text>
+          <text class="sub mono" x="644" y="162">.gitignore auto-excludes:</text>
+          <text class="sub mono" x="644" y="180">• arima.db*, *.pre-sqlite.bak</text>
+          <text class="sub mono" x="644" y="198">• .arima-role.md, .mcp.json, hooks</text>
+        </svg>
+      </div>
+      <div class="diagram-cap">Why one shared <code>~/.arima/arima.db</code> for typed tables? Cross-project dashboards (Grid view), account-level spend caps, and transactional GDPR-style <code>forgetProject()</code> deletes (<code>DELETE ... WHERE project_id = ?</code>) all run cleanly in one place.</div>
+    </div>
+
+    <p><strong>Crash-safe migration (<code>server/lib/docs.ts</code>):</strong> Originally, ArimaOps wrote plain JSON files. When migrating to SQLite, <code>readDoc(file)</code> / <code>writeDoc(file)</code> kept the exact file-path interface so callers barely changed: on first access, <code>adopt()</code> imports an existing JSON file inside a transaction and renames it to <code>&lt;file&gt;.pre-sqlite.bak</code>. Tested in <code>scripts/docs-test.ts</code> by firing <code>SIGKILL</code> mid-write across 5 rounds—the database always preserves a whole valid snapshot.</p>
+
+    <h2 id="open-core">Command Boundary &amp; Open-Core Seam (<code>ee/</code>)</h2>
+    <ul>
+      <li><strong>Command parity &amp; <code>ownerIf</code>:</strong> Every WebSocket command in <code>server/commandPolicy.ts</code> declares a minimum role (<code>viewer</code>, <code>operator</code>, <code>owner</code>), optional <code>stepUp: true</code>, Zod tuple schema, and an optional <code>ownerIf(args, ctx)</code> hook. Example: an <code>operator</code> may restart a sandboxed agent, but <code>sendTerminalInput</code> or <code>updateAgent</code> automatically escalates to <code>owner</code>-only if that agent runs in <code>local</code> mode (because a local terminal is a shell on the host machine!).</li>
+      <li><strong>Open-core boundary (<code>server/features.ts</code> &amp; <code>server/license.ts</code>):</strong> Core code never statically imports <code>ee/</code>. At startup, <code>loadEe()</code> checks if <code>dist-server/ee.mjs</code> (or <code>ee/index.ts</code>) exists, dynamically imports its exported <code>features</code> map, and starts only the features explicitly listed in an Ed25519-signed <code>~/.arima/license.json</code> verified offline against the embedded public key.</li>
+    </ul>
+
+    <h2 id="frontend">Frontend Architecture (<code>src/</code>)</h2>
+    <p>The React 19 UI cleanly decouples rendering from transport through the <code>OfficeDataSource</code> interface (<code>src/data/source.ts</code>):</p>
+    <ul>
+      <li><strong>Live vs Demo behind one interface:</strong> When a browser has a token or <code>hq-live</code> session, <code>src/store/office.ts</code> instantiates <code>createWsSource()</code>. When opened with plain Vite (or <code>?mock=1</code>), it instantiates <code>createMockSource()</code>—letting you develop and test every screen at <code>http://localhost:5178/?mock=1</code> with zero server running.</li>
+      <li><strong>Responsive shell split at <code>1000 px</code>:</strong> <code>src/App.tsx</code> measures <code>window.matchMedia("(min-width: 1000px)")</code>. Wide screens render <code>Deck.tsx</code> (<code>DeckHeader</code>, <code>DeckRail</code>, <code>ParticleCore</code>, <code>AgentOrbit</code>, <code>HomePanels</code>, <code>StageRibbon</code>, and right <code>SlideOver</code> panels). Narrow screens render <code>CompactApp.tsx</code> (bottom tab navigation + full-screen drawers).</li>
+      <li><strong>Theme &amp; type discipline:</strong> <code>src/ui/theme/projectTheme.ts</code> computes <code>data-theme</code> (<code>build</code>, <code>redteam</code>, <code>blueteam</code>, <code>purpleteam</code>) and sets it on <code>&lt;html&gt;</code>, driving CSS variables (<code>--accent</code>, <code>--accent-2</code>, <code>--accent-glow</code>) across every component without per-component domain booleans. Typography strictly uses sizes <code>12 / 13 / 15 / 20 / 28 px</code> and weights <code>400 / 500 / 600</code>. Modals/slide-overs (<code>SlideOver.tsx</code>, <code>TaskSheet.tsx</code>) render via <code>createPortal(..., document.body)</code> so page transition contexts never clip them underneath the header.</li>
+    </ul>
+
+    <h2 id="quiz">Architecture Self-Check</h2>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">1. Why does <code>server/main.ts</code> keep <code>import { scrubbedVars } from "./lib/scrubEnv"</code> as its very first import?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. It speeds up TypeScript compilation.</button>
+        <button class="quiz-opt" type="button" data-correct>B. ESM evaluates imports top-to-bottom; modules like <code>sessions.ts</code> snapshot <code>process.env</code> at import time, so parent CLI session variables must be stripped before those modules load.</button>
+        <button class="quiz-opt" type="button">C. It unlocks the AES-256-GCM vault automatically.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="In ES modules, top-level statements execute during import. <code>sessions.ts</code> defines <code>TERM_ENV = { ...process.env }</code> at module load time. Scrubbing first guarantees no parent agent session variables leak into child agents."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">2. Why does <code>Hub</code> keep a separate <code>held</code> map (`holdForAccess` / `workState`) when a container agent triggers an access request?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button" data-correct>A. To display "needs-input" in the UI without overwriting the agent's real underlying state (working/idle), so message delivery and post-approval restoration stay accurate.</button>
+        <button class="quiz-opt" type="button">B. To pause all other agents in the project while one waits for network access.</button>
+        <button class="quiz-opt" type="button">C. To write the blocked URL into git history.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="Before this fix, an open access request masked the agent as needs-input and caused Inbox to hold messages even when the agent was actually idle underneath. <code>workState()</code> exposes the real state to Inbox while the UI keeps showing the amber alert."></div>
+    </div>
+
+    <div class="quiz-card" data-quiz>
+      <div class="quiz-q">3. An <code>operator</code> tries to send keystrokes via <code>sendTerminalInput</code> to an agent running in <code>local</code> mode. What happens in <code>commandPolicy.ts</code>?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" type="button">A. It succeeds immediately because operators can run any terminal.</button>
+        <button class="quiz-opt" type="button" data-correct>B. <code>ownerIf</code> inspects <code>ctx.agentMode(id) === "local"</code> and escalates the required role to <code>owner</code>, blocking the operator.</button>
+        <button class="quiz-opt" type="button">C. The React UI crashes with an uncaught exception.</button>
+      </div>
+      <div class="quiz-feedback" data-explain="A local agent's terminal is an unconstrained shell directly on the host machine. <code>commandPolicy.ts</code> uses <code>ownerIf</code> to dynamically elevate commands that touch host paths or local shells to owner-only."></div>
+    </div>
+
+    <nav class="pager" aria-label="Page navigation">
+      <a class="pager-link" href="fundamentals.html">
+        <span class="pager-dir">← Previous · 02</span>
+        <span class="pager-name">CS &amp; Stack Fundamentals</span>
+      </a>
+      <a class="pager-link pager-next" href="agent-engine.html">
+        <span class="pager-dir">Next · 04</span>
+        <span class="pager-name">Agent Engine, Memory &amp; Skills →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>

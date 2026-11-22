@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Start Here · ArimaOps Engineering Handbook</title>
+  <link rel="stylesheet" href="assets/handbook.css">
+  <script>try{var t=localStorage.getItem("arima-handbook-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);var a=localStorage.getItem("arima-handbook-accent");if(a==="red"||a==="build")document.documentElement.setAttribute("data-accent",a);}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="menu-toggle" class="menu-btn" type="button" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8.585 8.58l2 1l-.67 1.34l-2-1zm5.5 2.34l2-1l-.67-1.34l-2 1z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6.471 6.148A2.75 2.75 0 0 1 8.94 5.135l3.06.36l3.06-.36a2.75 2.75 0 0 1 2.469 1.013L19 7.987v4.99l-1.532 2.298a2.75 2.75 0 0 1-1.978 1.207A2.75 2.75 0 0 1 12.75 19h-1.5a2.75 2.75 0 0 1-2.74-2.518a2.75 2.75 0 0 1-1.978-1.207L5 12.977v-4.99zM12 15.652a2.75 2.75 0 0 0 1.975.848c-.116.57-.62 1-1.225 1h-1.5a1.25 1.25 0 0 1-1.225-1A2.75 2.75 0 0 0 12 15.652M8.765 6.625a1.25 1.25 0 0 0-1.123.46L6.5 8.513v4.01l1.28 1.92A1.25 1.25 0 0 0 8.82 15h1.194a1.25 1.25 0 0 0 1.118-.691l.118-.236V13.5h-.75V12h3v1.5h-.75v.573l.118.236a1.25 1.25 0 0 0 1.118.691h1.194a1.25 1.25 0 0 0 1.04-.557l1.28-1.92v-4.01l-1.142-1.428a1.25 1.25 0 0 0-1.123-.46L12 7.005z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M7.037 1.696a2.75 2.75 0 0 0-2.605 1.027l-3.02 3.883l.566 1.699l-1.049 5.767l2.111 1.583l.518 4.66l8.45 2.726l7.883-2.719l1.031-4.638l2.149-1.612l-1.049-5.767l.567-1.699l-3.02-3.883a2.75 2.75 0 0 0-2.606-1.027L12 2.49zM5.616 3.644A1.25 1.25 0 0 1 6.8 3.178l5.2.832l5.2-.832a1.25 1.25 0 0 1 1.184.466l2.528 3.25l-.434 1.301l.951 5.233l-1.85 1.388l-.97 4.362l-6.617 2.281l-7.05-2.274l-.482-4.34l-1.89-1.417l.952-5.233l-.434-1.301z"/></svg>
+      ArimaOps
+    </a>
+    <span class="brand-pill">Handbook</span>
+    <span class="crumb">Start Here · Complete System Map</span>
+  </div>
+  <div class="topbar-right">
+    <button id="search-open" class="search-trigger" type="button" aria-label="Search handbook">
+      <span class="search-trigger-label">Search docs…</span>
+      <kbd>Ctrl K</kbd>
+    </button>
+    <button id="accent-toggle" class="icon-btn" type="button" title="Preview Build vs Red Team accent">
+      <span class="accent-dot" aria-hidden="true"></span>
+      <span data-accent-label>Build</span>
+    </button>
+    <button id="theme-toggle" class="icon-btn" type="button">Dark</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="sidebar" class="sidebar" aria-label="Handbook navigation">
+    <div class="nav-group">
+      <div class="nav-group-title">Orientation</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="index.html"><span>Start Here &amp; System Map</span><span class="nav-num">01</span></a></li>
+        <li><a class="nav-link" href="fundamentals.html"><span>CS &amp; Stack Fundamentals</span><span class="nav-num">02</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How It Works Deeply</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="architecture.html"><span>Architecture &amp; Data Flow</span><span class="nav-num">03</span></a></li>
+        <li><a class="nav-link" href="agent-engine.html"><span>Agent Engine, Memory &amp; Skills</span><span class="nav-num">04</span></a></li>
+        <li><a class="nav-link" href="efficiency.html"><span>Efficiency, Speed &amp; Craft</span><span class="nav-num">05</span></a></li>
+      </ul>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Run, Operate &amp; Build</div>
+      <ul class="nav-list">
+        <li><a class="nav-link" href="operations.html"><span>Ops, Desktop Icon &amp; Tablet</span><span class="nav-num">06</span></a></li>
+        <li><a class="nav-link" href="labs.html"><span>Learn by Doing (6 Labs)</span><span class="nav-num">07</span></a></li>
+        <li><a class="nav-link" href="reading.html"><span>Reading Library &amp; Docs</span><span class="nav-num">08</span></a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="content">
+    <div class="eyebrow">01 · Start Here</div>
+    <h1>ArimaOps Top to Bottom</h1>
+    <p class="lead">Everything you need to read, reason about, debug, and extend ArimaOps on your own: core mental models, architecture diagrams, security boundaries, performance tradeoffs, tablet integration, and six hands-on labs.</p>
+
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-val">1 Server</div><div class="stat-label">Single Node.js HQ runs all projects</div></div>
+      <div class="stat-card"><div class="stat-val">9 Templates</div><div class="stat-label">8 specialized teams + Blank</div></div>
+      <div class="stat-card"><div class="stat-val">11 Gates</div><div class="stat-label">Deterministic + human stage checks</div></div>
+      <div class="stat-card"><div class="stat-val">6 CLIs</div><div class="stat-label">Claude, Codex, agy, OpenCode, Gemini, Copilot</div></div>
+      <div class="stat-card"><div class="stat-val">53 Tests</div><div class="stat-label">Standalone suites + invariant guards</div></div>
+    </div>
+
+    <h2 id="mental-model">The 4 Core Ideas Behind ArimaOps</h2>
+    <p>Before reading a single line of code, lock in the four architectural decisions that shape every file in the repository:</p>
+    <ul>
+      <li><strong>One HQ server owns everything on the machine:</strong> Instead of spawning one backend per repository, <code>server/main.ts</code> boots a single Node.js HTTP + WebSocket process (<code>:7420</code>) that loads every active project into memory as a <code>Runtime</code> and persists shared tables in <code>~/.arima/arima.db</code>.</li>
+      <li><strong>Real AI CLIs run outside Node in isolated sessions:</strong> ArimaOps does not reimplement an agent loop from scratch. Each agent is a real CLI process (Claude Code, Codex, Antigravity, Gemini CLI, OpenCode, Copilot) running inside a <code>tmux</code> session—optionally inside a Docker Sandbox VM or a locked-down Docker container—and communicating with HQ via <strong>hooks</strong>, <strong>Stream-JSON</strong>, and the <strong>Team MCP</strong> server.</li>
+      <li><strong>Server is the single source of truth:</strong> The browser and Android app never invent business logic or bypass permissions. The React UI receives an initial <code>OfficeSnapshot</code> plus live <code>OfficeEvent</code> deltas over WebSocket, and sends back validated <code>{ cmd, args }</code> commands enforced by <code>server/commandPolicy.ts</code>.</li>
+      <li><strong>Gates instead of blind trust:</strong> Tasks move along stage pipelines (e.g., <code>Spec → Plan → Build → Review → Merge</code>) guarded by 11 concrete gate types (<code>spec-approved</code>, <code>analyze</code>, <code>tests-ci</code>, <code>reviewer</code>, <code>second-opinion</code>, <code>evidence</code>, <code>pr-merged</code>, <code>scope-set</code>, <code>findings-report</code>, <code>file-delivered</code>, <code>owner-approval</code>).</li>
+    </ul>
+
+    <h2 id="system-map">Interactive 5-Layer System Architecture</h2>
+    <p>Click any step below the diagram to isolate each layer of ArimaOps and see the exact source files responsible for it.</p>
+
+    <div class="diagram-card" data-stepper data-steps='{
+      "all": "<strong>Full System View:</strong> Five clean layers separate presentation (React / Android), transport (HTTP + WebSocket), orchestration (HQ Runtime), storage (SQLite + Vault), and isolated agent execution.",
+      "l1": "<strong>Layer 1 — Clients (src/ &amp; android/):</strong> Desktop Command Deck (<code>Deck.tsx</code>, ≥ 1000 px) and Phone/Tablet tabs (<code>CompactApp.tsx</code>, &lt; 1000 px) share one Zustand store (<code>src/store/office.ts</code>). Android wraps the exact same web UI in a secure <code>WebView</code> with a <code>WebMessagePort</code> native bridge and FCM push.",
+      "l2": "<strong>Layer 2 — Server Edge (server/http.ts):</strong> Serves the built Vite UI, authenticates browsers (token link → 30-day <code>hq_sid</code> cookie + Origin check + 24h TOTP step-up), terminates WebSockets (<code>/ws</code>), and routes agent callbacks (<code>/hook/*</code>, <code>/agent/*</code>, <code>/mcp</code>).",
+      "l3": "<strong>Layer 3 — Project Runtime (server/project.ts):</strong> Each project gets a <code>Hub</code> (in-memory state + event bus), <code>Planner</code> (boards, tasks, gates, stalls), <code>Inbox</code> (message delivery), <code>Sessions</code> (tmux/container/sbx lifecycle), <code>GitHubSync</code>, and <code>OnDemand</code>.",
+      "l4": "<strong>Layer 4 — Storage &amp; Vault (~/.arima/):</strong> Embedded <code>node:sqlite</code> in WAL mode (<code>arima.db</code>) stores typed tables (<code>tasks</code>, <code>gate_events</code>, <code>memories</code> + FTS5) and legacy JSON-imported rows (<code>docs</code>). API keys live AES-256-GCM encrypted in <code>vault.json</code>.",
+      "l5": "<strong>Layer 5 — Isolated Agent Runtimes:</strong> Agents run in <code>tmux</code> inside Docker Sandboxes (microVMs), Docker containers on bridge <code>br-hq</code> forced through HQ&apos;s <code>:8420</code> egress allowlist proxy, or Local folders with scrubbed environments."
+    }'>
+      <div class="diagram-head">
+        <span class="diagram-title">Figure 1.1 · ArimaOps 5-Layer Architecture</span>
+        <span class="badge accent">Interactive Trace</span>
+      </div>
+      <div class="diagram-body">
+        <svg class="arch" viewBox="0 0 920 510" role="img" aria-label="ArimaOps 5-layer architecture diagram">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--muted)" />
+            </marker>
+            <marker id="arr-a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)" />
+            </marker>
+          </defs>
+
+          <!-- Layer 1: Clients -->
+          <g data-step="l1">
+            <rect class="box-soft" x="20" y="14" width="880" height="74" />
+            <text class="sub" x="34" y="33">LAYER 1 · PRESENTATION &amp; CLIENTS</text>
+            <rect class="box" x="38" y="42" width="250" height="36" />
+            <text class="h" x="50" y="61">Desktop Deck UI (&ge; 1000 px)</text>
+            <text class="sub mono" x="50" y="73">src/ui/deck/Deck.tsx</text>
+
+            <rect class="box" x="315" y="42" width="250" height="36" />
+            <text class="h" x="327" y="61">Phone / Tablet UI (&lt; 1000 px)</text>
+            <text class="sub mono" x="327" y="73">src/ui/compact/CompactApp.tsx</text>
+
+            <rect class="box" x="592" y="42" width="290" height="36" />
+            <text class="h" x="604" y="61">Android Shell + FCM Push</text>
+            <text class="sub mono" x="604" y="73">android/.../MainActivity.java</text>
+          </g>
+
+          <!-- Layer 2: Edge -->
+          <g data-step="l2">
+            <path class="edge-accent" d="M 460 88 L 460 112" marker-end="url(#arr-a)" />
+            <rect class="box-accent" x="20" y="114" width="880" height="62" />
+            <text class="h" x="34" y="138">LAYER 2 · HTTP / WEBSOCKET EDGE &amp; SECURITY GATE (server/http.ts · :7420)</text>
+            <text class="sub" x="34" y="158">WS /ws?project=… (snapshot + OfficeEvent)  |  POST /api/login (hq_sid)  |  commandPolicy.ts (Zod + Role + 24h TOTP)  |  /hook/*  |  /mcp  |  /agent/*</text>
+          </g>
+
+          <!-- Layer 3: Project Runtime -->
+          <g data-step="l3">
+            <path class="edge-accent" d="M 460 176 L 460 200" marker-end="url(#arr-a)" />
+            <rect class="box" x="20" y="202" width="880" height="104" />
+            <text class="sub" x="34" y="221">LAYER 3 · PER-PROJECT RUNTIME (server/project.ts — one Runtime per registered repo)</text>
+
+            <rect class="box-soft" x="36" y="232" width="155" height="62" />
+            <text class="h" x="48" y="253">Hub</text>
+            <text class="sub" x="48" y="269">Snapshot + Event Bus</text>
+            <text class="sub mono" x="48" y="283">server/hub.ts</text>
+
+            <rect class="box-soft" x="207" y="232" width="160" height="62" />
+            <text class="h" x="219" y="253">Planner &amp; Gates</text>
+            <text class="sub" x="219" y="269">Tasks, Briefs, 11 Gates</text>
+            <text class="sub mono" x="219" y="283">planner.ts · gates.ts</text>
+
+            <rect class="box-soft" x="383" y="232" width="155" height="62" />
+            <text class="h" x="395" y="253">Inbox</text>
+            <text class="sub" x="395" y="269">Queue + Idle Delivery</text>
+            <text class="sub mono" x="395" y="283">server/inbox.ts</text>
+
+            <rect class="box-soft" x="554" y="232" width="160" height="62" />
+            <text class="h" x="566" y="253">Sessions &amp; Engine</text>
+            <text class="sub" x="566" y="269">tmux / Stream / OnDemand</text>
+            <text class="sub mono" x="566" y="283">sessions.ts · streamEngine.ts</text>
+
+            <rect class="box-soft" x="730" y="232" width="154" height="62" />
+            <text class="h" x="742" y="253">GitHub &amp; Ops</text>
+            <text class="sub" x="742" y="269">PRs, Checks, Scorers</text>
+            <text class="sub mono" x="742" y="283">githubSync.ts · scorers.ts</text>
+          </g>
+
+          <!-- Layer 4: Storage -->
+          <g data-step="l4">
+            <path class="edge" d="M 210 306 L 210 336" marker-end="url(#arr)" />
+            <rect class="box" x="20" y="338" width="420" height="154" />
+            <text class="sub" x="34" y="357">LAYER 4 · MACHINE STORAGE &amp; CRYPTO (~/.arima/)</text>
+            <rect class="box-soft" x="36" y="368" width="185" height="52" />
+            <text class="h" x="48" y="388">SQLite + FTS5</text>
+            <text class="sub mono" x="48" y="405">arima.db (WAL, 0600)</text>
+            <rect class="box-soft" x="235" y="368" width="189" height="52" />
+            <text class="h" x="247" y="388">AES-256-GCM Vault</text>
+            <text class="sub mono" x="247" y="405">vault.json + redact.ts</text>
+            <rect class="box-soft" x="36" y="430" width="388" height="48" />
+            <text class="h" x="48" y="450">Per-Project Clones &amp; Skill Cache</text>
+            <text class="sub mono" x="48" y="466">~/.arima/&lt;slug&gt;/&lt;agent&gt;/  |  ~/.arima/skill-packs/</text>
+          </g>
+
+          <!-- Layer 5: Agent Runtimes -->
+          <g data-step="l5">
+            <path class="edge-accent" d="M 670 306 L 670 336" marker-end="url(#arr-a)" />
+            <rect class="box" x="460" y="338" width="440" height="154" />
+            <text class="sub" x="474" y="357">LAYER 5 · ISOLATED AGENT RUNTIMES &amp; EGRESS PROXY</text>
+            <rect class="box-ok" x="476" y="368" width="128" height="62" />
+            <text class="h" x="488" y="388">Docker Sandbox</text>
+            <text class="sub" x="488" y="404">sbx microVM (2c/2G)</text>
+            <text class="sub mono" x="488" y="418">server/sbx.ts</text>
+
+            <rect class="box-warn" x="616" y="368" width="140" height="62" />
+            <text class="h" x="628" y="388">Docker Container</text>
+            <text class="sub" x="628" y="404">br-hq + :8420 proxy</text>
+            <text class="sub mono" x="628" y="418">containers.ts</text>
+
+            <rect class="box-soft" x="768" y="368" width="116" height="62" />
+            <text class="h" x="780" y="388">Local PTY</text>
+            <text class="sub" x="780" y="404">tmux + cleanEnv</text>
+            <text class="sub mono" x="780" y="418">backends/tmux.ts</text>
+
+            <rect class="box-soft" x="476" y="440" width="408" height="38" />
+            <text class="sub" x="488" y="463">Talks back to HQ at http://172.30.0.1:7420 via HMAC-signed per-agent token</text>
+          </g>
+        </svg>
+      </div>
+      <div class="stepper-bar">
+        <button class="step-btn active" data-target="all">All Layers</button>
+        <button class="step-btn" data-target="l1">1 · Clients</button>
+        <button class="step-btn" data-target="l2">2 · Edge &amp; Auth</button>
+        <button class="step-btn" data-target="l3">3 · Project Runtime</button>
+        <button class="step-btn" data-target="l4">4 · Storage &amp; Vault</button>
+        <button class="step-btn" data-target="l5">5 · Agent Runtimes</button>
+      </div>
+      <div class="stepper-detail">
+        <strong>Full System View:</strong> Five clean layers separate presentation (React / Android), transport (HTTP + WebSocket), orchestration (HQ Runtime), storage (SQLite + Vault), and isolated agent execution.
+      </div>
+    </div>
+
+    <h2 id="study-tracks">Choose Your Learning Track</h2>
+    <div class="card-grid">
+      <a class="card" href="fundamentals.html">
+        <div class="card-title">1. Build CS &amp; Stack Intuition</div>
+        <p class="card-body">New to Node Event Loops, WebSockets, Zustand, SQLite WAL, PTYs/tmux, MCP, or Docker bridges? Start here for plain-English mental models wired directly to ArimaOps code.</p>
+        <span class="card-meta">Read Fundamentals →</span>
+      </a>
+      <a class="card" href="architecture.html">
+        <div class="card-title">2. Trace Full-Stack Data Flow</div>
+        <p class="card-body">Follow a command from a React button click through WebSocket auth, Zod validation, Hub mutation, SQLite persistence, and back to every connected screen.</p>
+        <span class="card-meta">Read Architecture →</span>
+      </a>
+      <a class="card" href="agent-engine.html">
+        <div class="card-title">3. Master the Agent Engine</div>
+        <p class="card-body">Understand how HQ orchestrates 6 AI CLIs via hooks, stream-json, MCP tools, 11 workflow gates, FTS5 memory, and cryptographic skill-pack scanning.</p>
+        <span class="card-meta">Read Agent Engine →</span>
+      </a>
+      <a class="card" href="labs.html">
+        <div class="card-title">4. Learn by Doing (6 Labs)</div>
+        <p class="card-body">Inspect the live Docker HQ safely, fix the Ubuntu desktop launcher script, add a new WebSocket command, write a pure gate/scorer test, and build UI safely.</p>
+        <span class="card-meta">Open Hands-On Labs →</span>
+      </a>
+    </div>
+
+    <h2 id="repo-map">Repository &amp; Runtime Map</h2>
+    <p>Every folder in <code>~/projects/arimaops</code> has one sharp responsibility, and an automated invariant test (<code>scripts/architecture-invariants-test.ts</code>) enforces boundaries and file-length ceilings across <code>server/*.ts</code>.</p>
+
+    <div class="code-block">
+      <div class="code-head"><span>~/projects/arimaops — Repository Layout</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>arimaops/
+├── bin/arimaops.mjs         # CLI entry (checks Node &gt;= 22.13, dispatches setup or main)
+├── server/                  # HQ Backend (92 TypeScript modules)
+│   ├── main.ts              # Process boot, loads projects, egress proxy, daily cron jobs
+│   ├── http.ts              # HTTP routes, /ws WebSockets, /hook, /mcp, /agent, static dist/
+│   ├── project.ts           # Wires one project's Runtime (Hub, Planner, Inbox, Sessions…)
+│   ├── hub.ts               # In-memory OfficeSnapshot + OfficeEvent pub-sub bus
+│   ├── commandPolicy.ts     # Role, TOTP step-up &amp; Zod arg schemas for every WS command
+│   ├── commands.ts          # 1-to-1 handlers matching commandPolicy.ts
+│   ├── planner.ts           # Boards, tasks, briefs, gate transitions, PR reactions
+│   ├── gates.ts             # Pure gate evaluation across all 11 gate kinds
+│   ├── inbox.ts             # Message queue + idle-prompt / Stop-hook delivery
+│   ├── mcp.ts               # Team MCP server (/mcp) with role-scoped tool registration
+│   ├── hooks.ts             # Normalizes CLI hooks (Claude/Codex/Gemini/agy) -&gt; Hub state
+│   ├── sessions.ts          # Agent start/stop across tmux, Docker containers, and sbx VMs
+│   ├── streamEngine.ts      # Headless stream-json loop + long-poll delivery
+│   ├── memory.ts            # SQLite FTS5 memories, ledgers, 1-2 hop related graph
+│   ├── skillPacks.ts        # Pinned GitHub fetch + SHA-256 verification
+│   ├── skillScan.ts         # Static security scanner (hidden Unicode, injections, curl|sh)
+│   ├── credentials/         # AES-256-GCM vault.ts, providers.ts, deliver.ts, redact.ts
+│   ├── backends/            # tmux.ts, tmuxCli.ts, pty.ts
+│   └── lib/                 # db.ts (migrations), docs.ts (WAL SQLite docs), cleanEnv.ts
+├── src/                     # React 19 + TypeScript + Tailwind v4 UI
+│   ├── data/                # Shared contract: types.ts, source.ts, model.ts, templates.ts
+│   ├── data/ws/wsSource.ts  # Live WebSocket OfficeDataSource + TOTP step-up prompts
+│   ├── data/mock/           # Offline demo dataset (?mock=1)
+│   ├── store/               # Zustand stores: office.ts, ui.ts, auth.ts, building.ts, usage.ts
+│   └── ui/                  # deck/ (&gt;=1000px), compact/ (&lt;1000px), hud/, drawers/, settings/
+├── android/                 # Java WebView + WebMessagePort bridge + FCM PushService
+├── docker/                  # hq.Dockerfile, agent.Dockerfile, verifier.Dockerfile
+├── ee/                      # Open-core licensed feature seam (never imported directly by core)
+├── scripts/                 # 53 *-test.ts suites, build-server.mjs, launcher/
+└── site/                    # Public product website (deployed separately via GitHub Pages)
+
+~/.arima/                    # Machine-wide live state (created at runtime, outside git)
+├── arima.db                 # Shared SQLite WAL database (tasks, findings, memory, usage, docs)
+├── vault.json &amp; vault.key   # Encrypted API keys (when not using OS keychain / ARIMA_MASTER_KEY)
+├── totp-secret              # RFC 6238 authenticator key for remote step-up
+├── skill-packs/             # Verified downloaded skill folders
+└── &lt;project-slug&gt;/          # Per-project agent git clones, arima.db, secrets/, evidence/</pre>
+    </div>
+
+    <h2 id="five-minute-trace">How to Read Any Feature in 5 Minutes</h2>
+    <p>Whenever you want to understand how a button or setting works end-to-end, trace these 6 files in order:</p>
+    <ol>
+      <li><strong>Types (<code>src/data/types.ts</code> &amp; <code>src/data/model.ts</code>):</strong> Find the data structure and field names shared by server and UI.</li>
+      <li><strong>Contract (<code>src/data/source.ts</code>):</strong> Find the <code>OfficeDataSource</code> method signature and matching <code>OfficeEvent</code> union member.</li>
+      <li><strong>UI Dispatch (<code>src/store/office.ts</code>):</strong> Find the <code>officeActions.*</code> wrapper and how <code>reduce(snap, event)</code> updates Zustand state.</li>
+      <li><strong>Security Gate (<code>server/commandPolicy.ts</code>):</strong> Find the role requirement (<code>viewer</code> / <code>operator</code> / <code>owner</code>), <code>stepUp</code> flag, and Zod tuple schema.</li>
+      <li><strong>Server Handler (<code>server/commands.ts</code>):</strong> Read the exact server mutation, database write, and <code>hub.emit(...)</code> call.</li>
+      <li><strong>Verification Test (<code>scripts/*-test.ts</code>):</strong> Read the test file for that module—ArimaOps tests document edge cases and exact invariants clearly.</li>
+    </ol>
+
+    <div class="callout tip">
+      <div class="callout-title">Two Essential Repo Commands</div>
+      <p>Run <code>pnpm test</code> to execute all 53 test scripts in <code>scripts/*-test.ts</code> (or <code>pnpm test auth gates</code> to run just two). Run <code>pnpm build</code> to typecheck both UI and server, build Vite, and bundle <code>dist-server/</code> via esbuild.</p>
+    </div>
+
+    <nav class="pager" aria-label="Page navigation">
+      <span></span>
+      <a class="pager-link pager-next" href="fundamentals.html">
+        <span class="pager-dir">Next · 02</span>
+        <span class="pager-name">CS &amp; Stack Fundamentals →</span>
+      </a>
+    </nav>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul id="toc-list" class="toc-list"></ul>
+  </aside>
+</div>
+
+<div id="search-backdrop" class="search-backdrop" role="dialog" aria-modal="true" aria-label="Search handbook">
+  <div class="search-modal">
+    <div class="search-input-wrap">
+      <input id="search-input" class="search-input" type="search" placeholder="Search concepts, files (e.g. hub.ts, TOTP, gates, desktop)…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<script src="assets/search-index.js"></script>
+<script src="assets/handbook.js"></script>
+</body>
+</html>
