@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en" data-scheme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ArimaOps — Select Server</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #060a14;
+      --surface: #0c1322;
+      --surface-elevated: #111b2e;
+      --border: rgba(148, 163, 184, 0.16);
+      --border-strong: rgba(148, 163, 184, 0.28);
+      --ink: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #22d3ee;
+      --accent-glow: rgba(56, 189, 248, 0.22);
+      --ok: #34d399;
+      --err: #f87171;
+      --warn: #fbbf24;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.1), transparent 46%), var(--bg);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.48;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(34, 211, 238, 0.08));
+      border: 1px solid var(--border-strong);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 0 24px var(--accent-glow);
+      color: var(--accent-2);
+      font-weight: 600;
+      font-size: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      margin: 2px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(17, 27, 46, 0.92), rgba(12, 19, 34, 0.96));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 40px rgba(0, 0, 0, 0.4);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .server-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .server-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: rgba(6, 10, 20, 0.55);
+      border: 1px solid var(--border);
+      transition: border-color 140ms ease, background 140ms ease;
+      flex-wrap: wrap;
+    }
+
+    .server-row.active {
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.16);
+    }
+
+    .server-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 200px;
+      flex: 1;
+    }
+
+    .server-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .server-name {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .server-url {
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .badge.ok {
+      color: var(--ok);
+      border-color: rgba(52, 211, 153, 0.35);
+      background: rgba(52, 211, 153, 0.1);
+    }
+
+    .badge.err {
+      color: var(--err);
+      border-color: rgba(248, 113, 113, 0.35);
+      background: rgba(248, 113, 113, 0.08);
+    }
+
+    .badge.accent {
+      color: var(--accent-2);
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 500;
+      min-height: 34px;
+      padding: 0 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface-elevated);
+      color: var(--ink);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #04101f;
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    button.danger:hover {
+      border-color: var(--err);
+      color: var(--err);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    @media (max-width: 640px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    input {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: rgba(6, 10, 20, 0.72);
+      color: var(--ink);
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    .error-banner {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      background: rgba(248, 113, 113, 0.12);
+      color: var(--err);
+      font-size: 13px;
+      display: none;
+    }
+
+    .error-banner.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">A</div>
+        <div>
+          <h1>ArimaOps</h1>
+          <p class="subtitle">Connect to a local HQ instance or your AWS HTTPS server</p>
+        </div>
+      </div>
+      <button id="refresh-btn" type="button">Check status</button>
+    </header>
+
+    <div id="error-banner" class="error-banner" role="alert"></div>
+
+    <section class="card" aria-label="Saved HQ servers">
+      <div class="section-head">
+        <h2 class="section-title">Saved Servers</h2>
+        <span id="server-count" class="badge">0 servers</span>
+      </div>
+      <div id="server-list" class="server-list"></div>
+    </section>
+
+    <section class="card" aria-label="Add or edit server">
+      <div class="section-head">
+        <h2 id="form-heading" class="section-title">Add HQ Server</h2>
+        <button id="cancel-edit-btn" type="button" style="display:none">Cancel edit</button>
+      </div>
+      <form id="server-form" class="form-grid">
+        <label>
+          Server name
+          <input id="input-name" type="text" placeholder="AWS Production" maxlength="80" required />
+        </label>
+        <label>
+          HQ URL (http:// or https://)
+          <input id="input-url" type="url" placeholder="https://hq.yourdomain.com" required />
+        </label>
+        <button id="save-btn" class="primary" type="submit">Save server</button>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const invoke = (cmd, args = {}) => {
+        if (window.__TAURI_INTERNALS__ && typeof window.__TAURI_INTERNALS__.invoke === "function") {
+          return window.__TAURI_INTERNALS__.invoke(cmd, args);
+        }
+        return Promise.reject(new Error("Tauri runtime unavailable"));
+      };
+
+      const state = {
+        profiles: [],
+        lastActiveId: null,
+        editingId: null,
+        healthById: {},
+      };
+
+      const listEl = document.getElementById("server-list");
+      const countEl = document.getElementById("server-count");
+      const errEl = document.getElementById("error-banner");
+      const formEl = document.getElementById("server-form");
+      const headingEl = document.getElementById("form-heading");
+      const nameInput = document.getElementById("input-name");
+      const urlInput = document.getElementById("input-url");
+      const cancelEditBtn = document.getElementById("cancel-edit-btn");
+      const refreshBtn = document.getElementById("refresh-btn");
+
+      function showError(msg) {
+        if (!msg) {
+          errEl.textContent = "";
+          errEl.classList.remove("visible");
+          return;
+        }
+        errEl.textContent = String(msg);
+        errEl.classList.add("visible");
+      }
+
+      function render() {
+        listEl.textContent = "";
+        countEl.textContent = `${state.profiles.length} ${state.profiles.length === 1 ? "server" : "servers"}`;
+
+        if (state.profiles.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "subtitle";
+          empty.textContent = "No servers saved yet. Add a local or AWS HTTPS HQ server below.";
+          listEl.appendChild(empty);
+          return;
+        }
+
+        for (const p of state.profiles) {
+          const row = document.createElement("div");
+          row.className = "server-row" + (p.id === state.lastActiveId ? " active" : "");
+
+          const meta = document.createElement("div");
+          meta.className = "server-meta";
+
+          const titleRow = document.createElement("div");
+          titleRow.className = "server-title-row";
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "server-name";
+          nameSpan.textContent = p.name;
+          titleRow.appendChild(nameSpan);
+
+          if (p.id === state.lastActiveId) {
+            const lastBadge = document.createElement("span");
+            lastBadge.className = "badge accent";
+            lastBadge.textContent = "Last active";
+            titleRow.appendChild(lastBadge);
+          }
+
+          const health = state.healthById[p.id];
+          const statusBadge = document.createElement("span");
+          statusBadge.className = "badge" + (health ? (health.ok ? " ok" : " err") : "");
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          statusBadge.appendChild(dot);
+          const statusText = document.createElement("span");
+          if (!health) {
+            statusText.textContent = "Checking...";
+          } else if (health.ok) {
+            statusText.textContent = `Online${health.version ? " · " + health.version : ""} (${health.latencyMs}ms)`;
+          } else {
+            statusText.textContent = "Offline";
+          }
+          statusBadge.appendChild(statusText);
+          titleRow.appendChild(statusBadge);
+
+          const urlSpan = document.createElement("span");
+          urlSpan.className = "server-url";
+          urlSpan.textContent = p.url;
+
+          meta.appendChild(titleRow);
+          meta.appendChild(urlSpan);
+
+          const actions = document.createElement("div");
+          actions.className = "actions";
+
+          const connectBtn = document.createElement("button");
+          connectBtn.type = "button";
+          connectBtn.className = "primary";
+          connectBtn.textContent = "Connect";
+          connectBtn.addEventListener("click", async () => {
+            showError("");
+            try {
+              await invoke("connect_server", { id: p.id });
+            } catch (e) {
+              showError(e && e.message ? e.message : String(e));
+            }
+          });
+
+          const editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", () => {
+            state.editingId = p.id;
+            headingEl.textContent = `Edit ${p.name}`;
+            nameInput.value = p.name;
+            urlInput.value = p.url;
+            cancelEditBtn.style.display = "inline-flex";
+            nameInput.focus();
+          });
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "danger";
+          delBtn.textContent = "Delete";
+          delBtn.addEventListener("click", async () => {
+            showError("");
+            try {
+              const data = await invoke("delete_profile", { id: p.id });
+              applyStoreData(data);
+            } catch (e) {
+              showError(e && e.message ? e.message : String(e));
+            }
+          });
+
+          actions.appendChild(connectBtn);
+          actions.appendChild(editBtn);
+          actions.appendChild(delBtn);
+
+          row.appendChild(meta);
+          row.appendChild(actions);
+          listEl.appendChild(row);
+        }
+      }
+
+      async function probeAll() {
+        for (const p of state.profiles) {
+          state.healthById[p.id] = null;
+        }
+        render();
+        await Promise.all(
+          state.profiles.map(async (p) => {
+            try {
+              const res = await invoke("probe_health", { url: p.url });
+              state.healthById[p.id] = res;
+            } catch (e) {
+              state.healthById[p.id] = { ok: false, latencyMs: 0, error: String(e) };
+            }
+            render();
+          })
+        );
+      }
+
+      function applyStoreData(data) {
+        state.profiles = Array.isArray(data.profiles) ? data.profiles : [];
+        state.lastActiveId = data.lastActiveId || null;
+        render();
+        void probeAll();
+      }
+
+      function resetForm() {
+        state.editingId = null;
+        headingEl.textContent = "Add HQ Server";
+        nameInput.value = "";
+        urlInput.value = "";
+        cancelEditBtn.style.display = "none";
+      }
+
+      cancelEditBtn.addEventListener("click", resetForm);
+      refreshBtn.addEventListener("click", () => void probeAll());
+
+      formEl.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        showError("");
+        try {
+          const data = await invoke("save_profile", {
+            id: state.editingId,
+            name: nameInput.value,
+            url: urlInput.value,
+          });
+          resetForm();
+          applyStoreData(data);
+        } catch (e) {
+          showError(e && e.message ? e.message : String(e));
+        }
+      });
+
+      invoke("list_profiles")
+        .then(applyStoreData)
+        .catch((e) => showError(e && e.message ? e.message : String(e)));
+    })();
+  </script>
+</body>
+</html>
