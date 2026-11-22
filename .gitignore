@@ -33,3 +33,11 @@ test-results/
 
 # Tauri client build output
 apps/client/src-tauri/target/
+
+# Tauri Android generated build output
+apps/client/src-tauri/gen/android/**/build/
+apps/client/src-tauri/gen/android/.gradle/
+apps/client/src-tauri/gen/android/app/src/main/jniLibs/
+apps/client/src-tauri/gen/android/local.properties
+apps/client/src-tauri/gen/android/app/tauri.build.gradle.kts
+apps/client/src-tauri/gen/android/app/src/main/assets/
