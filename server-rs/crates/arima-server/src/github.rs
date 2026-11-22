@@ -79,8 +79,11 @@ pub struct GithubSyncService {
 impl GithubSyncService {
     #[must_use]
     pub fn new(db: Db) -> Self {
+        // Unset env: a random per-process secret, so no signature can match until the owner configures one.
         let default_secret = std::env::var("ARIMA_GITHUB_WEBHOOK_SECRET")
-            .unwrap_or_else(|_| "arima-github-webhook-secret".into());
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple()));
         Self {
             db,
             webhook_secret: Arc::new(Mutex::new(default_secret)),
@@ -98,7 +101,7 @@ impl GithubSyncService {
         self.webhook_secret
             .lock()
             .map(|g| g.clone())
-            .unwrap_or_else(|_| "arima-github-webhook-secret".into())
+            .unwrap_or_default()
     }
 
     /// Loads the persisted [`GithubSyncState`] for `project_id` from SQLite.
