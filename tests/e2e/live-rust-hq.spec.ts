@@ -349,6 +349,18 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     await expect(page.locator('button[role="combobox"][aria-label="QaOwner\'s role"]')).toContainText("owner");
     await page.getByRole("button", { name: "Done" }).click();
 
+    // 4b. First-run team creation completes on the Rust HQ (completeWelcome) and survives a reload
+    await page.locator("header").getByRole("button", { name: /Pick team/i }).click();
+    const teamDialog = page.getByRole("dialog", { name: /Welcome to ArimaOps/i });
+    await teamDialog.getByRole("button", { name: "Create team" }).click();
+    await expect(teamDialog).toBeHidden();
+    await expect(page.locator("header").getByRole("button", { name: /Pick team/i })).toBeHidden();
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("dialog", { name: /Welcome to ArimaOps/i })).toBeHidden();
+    await expect(page.locator("header").getByRole("button", { name: /Pick team/i })).toBeHidden();
+    await page.getByRole("button", { name: "Team" }).first().click();
+    await expect(page.getByText("Cipher").first()).toBeVisible();
+
     // 5. Preview Proxy security checks:
     //    (a) Rejects hq_sid-only requests with HTTP 401
     //    (b) Exchanges signed token cleanly & injects ArimaBridge

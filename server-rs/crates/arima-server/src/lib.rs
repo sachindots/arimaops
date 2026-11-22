@@ -15,6 +15,7 @@ pub(crate) mod routes_m4;
 pub(crate) mod routes_m5;
 pub mod security;
 pub mod state;
+pub mod team;
 pub mod voice;
 pub mod ws;
 

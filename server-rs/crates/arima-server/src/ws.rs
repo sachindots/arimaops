@@ -530,6 +530,7 @@ async fn execute_ws_command(
 ) -> Result<(), String> {
     match cmd {
         "ping" | "recheckSetup" | "refreshSbx" | "refreshMcp" => Ok(()),
+        "completeWelcome" => crate::team::complete_welcome(state, project_id, args),
         "answerDecision" | "resolveDecision" | "resolveActionItem" => {
             exec_answer_decision(state, args, actor_role)
         }
@@ -1271,58 +1272,8 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         .load_state(project_id)
         .unwrap_or_default();
 
-    let boards: Vec<Value> = state
-        .inner
-        .db
-        .read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, name, status, spec_version, spec_markdown
-                 FROM boards WHERE project_id = ?1 ORDER BY created_at ASC",
-            )?;
-            let rows = stmt.query_map([project_id], |r| {
-                Ok(json!({
-                    "id": r.get::<_, String>(0)?,
-                    "title": r.get::<_, String>(1)?,
-                    "status": r.get::<_, String>(2)?,
-                    "specVersion": r.get::<_, i64>(3)?,
-                    "specMarkdown": r.get::<_, Option<String>>(4)?,
-                }))
-            })?;
-            let mut out = Vec::new();
-            for row in rows {
-                out.push(row?);
-            }
-            Ok::<_, DbError>(out)
-        })
-        .unwrap_or_default();
-
-    let tasks: Vec<Value> = state
-        .inner
-        .db
-        .read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, board_id, goal_id, stage_id, status, title, owner_id, pr_number
-                 FROM tasks WHERE project_id = ?1 ORDER BY created_at ASC",
-            )?;
-            let rows = stmt.query_map([project_id], |r| {
-                Ok(json!({
-                    "id": r.get::<_, String>(0)?,
-                    "boardId": r.get::<_, String>(1)?,
-                    "goalId": r.get::<_, Option<String>>(2)?,
-                    "stageId": r.get::<_, String>(3)?,
-                    "status": r.get::<_, String>(4)?,
-                    "title": r.get::<_, String>(5)?,
-                    "ownerId": r.get::<_, Option<String>>(6)?,
-                    "prNumber": r.get::<_, Option<i64>>(7)?,
-                }))
-            })?;
-            let mut out = Vec::new();
-            for row in rows {
-                out.push(row?);
-            }
-            Ok::<_, DbError>(out)
-        })
-        .unwrap_or_default();
+    let boards = crate::team::boards_for(state, project_id);
+    let tasks = crate::team::tasks_for(state, project_id);
 
     let preview_targets = state
         .inner
@@ -1351,10 +1302,32 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         .collect();
 
     let now = Utc::now().to_rfc3339();
+    let team_model = crate::team::load(state, project_id);
+    let team: Vec<Value> = team_model.as_ref().map(|m| m.team.clone()).unwrap_or_default();
+    let agents: Vec<Value> = team.iter().filter_map(|a| a["id"].as_str()).map(crate::team::fresh_status).collect();
+    let rules = team_model.as_ref().map_or_else(
+        || json!({
+            "findings": !findings.is_empty(),
+            "scope": scope.as_ref().is_some_and(|s| !s.in_scope.is_empty()),
+            "plans": false,
+            "outbound": "drafts-only"
+        }),
+        |m| m.rules.clone(),
+    );
+    let workflow = team_model.as_ref().map_or_else(
+        || json!({
+            "mode": "github-pr",
+            "review": { "enabled": true, "tool": "human", "command": "" },
+            "merge": { "by": "human" },
+            "deploy": { "enabled": false, "tool": "custom", "command": "", "perAgentEnvironments": false }
+        }),
+        |m| m.workflow.clone(),
+    );
     json!({
         "type": "snapshot",
         "snapshot": {
-            "welcome": true,
+            "welcome": team_model.is_none(),
+            "templateLibrary": crate::team::template_library(),
             "setup": {
                 "machine": { "cpus": 8, "memoryGb": 16, "persistentAgents": true },
                 "checks": [],
@@ -1379,22 +1352,13 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
                     "hqPort": state.inner.config.port,
                     "scope": scope.as_ref().filter(|s| !s.in_scope.is_empty() || !s.out_of_scope.is_empty() || !s.notes.is_empty())
                 },
-                "team": [],
-                "template": null,
-                "rules": {
-                    "findings": !findings.is_empty(),
-                    "scope": scope.as_ref().is_some_and(|s| !s.in_scope.is_empty()),
-                    "plans": false,
-                    "outbound": "drafts-only"
-                },
-                "workflow": {
-                    "mode": "github-pr",
-                    "review": { "enabled": true, "tool": "human", "command": "" },
-                    "merge": { "by": "human" },
-                    "deploy": { "enabled": false, "tool": "custom", "command": "", "perAgentEnvironments": false }
-                }
+                "team": team,
+                "template": team_model.as_ref().map(|m| m.template.clone()),
+                "rules": rules,
+                "workflow": workflow,
+                "stack": team_model.as_ref().and_then(|m| m.stack.clone())
             },
-            "agents": [],
+            "agents": agents,
             "boards": boards,
             "tasks": tasks,
             "pullRequests": github_sync.pull_requests,

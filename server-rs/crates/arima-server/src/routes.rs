@@ -1258,30 +1258,24 @@ async fn list_projects(
 ) -> Result<Json<Value>, ApiError> {
     let ctx = extract_ctx(&state, &headers, peer_ip, &Method::GET)?;
     let _session = require_session(&state, &ctx, false)?;
-    let projects = state.inner.db.read(|conn| {
+    let rows = state.inner.db.read(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, slug, name, root_path, template_id, paused, archived, created_at
-             FROM projects
-             ORDER BY created_at ASC",
+            "SELECT id, slug, name, root_path, paused, archived, updated_at FROM projects ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map([], |r| {
-            Ok(json!({
-                "id": r.get::<_, String>(0)?,
-                "slug": r.get::<_, String>(1)?,
-                "name": r.get::<_, String>(2)?,
-                "path": r.get::<_, String>(3)?,
-                "templateId": r.get::<_, Option<String>>(4)?,
-                "paused": r.get::<_, i64>(5)? != 0,
-                "archived": r.get::<_, i64>(6)? != 0,
-                "createdAt": r.get::<_, i64>(7)?
-            }))
+            Ok(crate::team::ProjectRow {
+                id: r.get(0)?,
+                slug: r.get(1)?,
+                name: r.get(2)?,
+                path: r.get(3)?,
+                paused: r.get::<_, i64>(4)? != 0,
+                archived: r.get::<_, i64>(5)? != 0,
+                updated_at_ms: r.get(6)?,
+            })
         })?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row?);
-        }
-        Ok::<_, DbError>(out)
+        rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
     })?;
+    let projects: Vec<Value> = rows.iter().map(|row| crate::team::project_info(&state, row)).collect();
     Ok(Json(json!({ "projects": projects })))
 }
 

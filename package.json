@@ -57,6 +57,7 @@
     "hq": "vite build --logLevel warn && tsx server/main.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
     "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
+    "gen:team": "tsx scripts/export-team-data.ts",
     "gen:types": "cargo run --quiet --manifest-path server-rs/Cargo.toml -p arima-core --bin export_types -- src/data/generated.ts",
     "test": "node scripts/run-tests.mjs",
     "test:e2e": "playwright test",
