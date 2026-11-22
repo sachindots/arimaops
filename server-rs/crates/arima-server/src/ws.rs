@@ -531,6 +531,13 @@ async fn execute_ws_command(
     match cmd {
         "ping" | "recheckSetup" | "refreshSbx" | "refreshMcp" => Ok(()),
         "completeWelcome" => crate::team::complete_welcome(state, project_id, args),
+        "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
+        "addAgent" => crate::team_edit::add_agent(state, project_id, args),
+        "removeAgent" => crate::team_edit::remove_agent(state, project_id, args).await,
+        "setTeamMode" => crate::team_edit::set_team_mode(state, project_id, args),
+        "updateWorkflow" => crate::team_edit::update_workflow(state, project_id, args),
+        "updateProject" => crate::team_edit::update_project(state, project_id, args),
+        "assignTask" => crate::team_edit::assign_task(state, project_id, args),
         "answerDecision" | "resolveDecision" | "resolveActionItem" => {
             exec_answer_decision(state, args, actor_role)
         }
@@ -1323,6 +1330,17 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         }),
         |m| m.workflow.clone(),
     );
+    let mut project = json!({
+        "id": proj.0,
+        "name": proj.2,
+        "repo": proj.1,
+        "path": proj.3,
+        "hqPort": state.inner.config.port,
+        "scope": scope.as_ref().filter(|s| !s.in_scope.is_empty() || !s.out_of_scope.is_empty() || !s.notes.is_empty())
+    });
+    if let (Some(extras), Some(base)) = (team_model.as_ref().and_then(|m| m.project.as_object()), project.as_object_mut()) {
+        base.extend(extras.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
     json!({
         "type": "snapshot",
         "snapshot": {
@@ -1344,14 +1362,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
                 "checkedAt": now
             },
             "config": {
-                "project": {
-                    "id": proj.0,
-                    "name": proj.2,
-                    "repo": proj.1,
-                    "path": proj.3,
-                    "hqPort": state.inner.config.port,
-                    "scope": scope.as_ref().filter(|s| !s.in_scope.is_empty() || !s.out_of_scope.is_empty() || !s.notes.is_empty())
-                },
+                "project": project,
                 "team": team,
                 "template": team_model.as_ref().map(|m| m.template.clone()),
                 "rules": rules,

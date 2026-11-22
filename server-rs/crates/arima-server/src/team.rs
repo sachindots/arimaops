@@ -46,9 +46,12 @@ pub struct TeamModel {
     pub workflow: Value,
     pub rules: Value,
     pub stack: Option<Value>,
+    /// Project settings HQ keeps beyond the name and path: officeName, charter, standup, rituals, exportPlan, crossProject.
+    #[serde(default)]
+    pub project: Value,
 }
 
-fn slugify(s: &str) -> String {
+pub(crate) fn slugify(s: &str) -> String {
     let mut out = String::new();
     for c in s.to_lowercase().chars() {
         if c.is_ascii_alphanumeric() {
@@ -61,7 +64,7 @@ fn slugify(s: &str) -> String {
     if trimmed.is_empty() { "project".into() } else { trimmed.to_owned() }
 }
 
-fn free_color(want: &str, taken: &[String]) -> String {
+pub(crate) fn free_color(want: &str, taken: &[String]) -> String {
     if !taken.iter().any(|c| c == want) {
         return want.to_owned();
     }
@@ -162,7 +165,7 @@ pub fn load(state: &AppState, project_id: &str) -> Option<TeamModel> {
     serde_json::from_value(root.get(CONFIG_KEY)?.clone()).ok()
 }
 
-fn save(conn: &rusqlite::Connection, project_id: &str, model: &TeamModel) -> Result<(), DbError> {
+pub(crate) fn save(conn: &rusqlite::Connection, project_id: &str, model: &TeamModel) -> Result<(), DbError> {
     let raw: String = conn.query_row("SELECT config_json FROM projects WHERE id = ?1", [project_id], |r| r.get(0))?;
     let mut root: Value = serde_json::from_str(&raw).unwrap_or_else(|_| json!({}));
     root[CONFIG_KEY] = serde_json::to_value(model).map_err(|e| DbError::InvalidInput(e.to_string()))?;
@@ -279,6 +282,7 @@ pub fn complete_welcome(state: &AppState, project_id: &str, args: &[Value]) -> R
         }),
         rules: template["rules"].clone(),
         stack: input.get("stack").filter(|s| s.is_object()).cloned(),
+        project: json!({}),
     };
     let name = input["projectName"].as_str().map(str::trim).filter(|n| !n.is_empty()).map(|n| n.chars().take(80).collect::<String>());
     let now_ms = Utc::now().timestamp_millis();
