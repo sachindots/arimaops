@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/arima-core",
+    "crates/arima-db",
+    "crates/arima-auth",
+    "crates/arima-proxy",
+    "crates/arima-agents",
+    "crates/arima-server",
+    "crates/arima-shim",
+]
+
+[workspace.package]
+version = "2.0.0-alpha.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+rust-version = "1.85"
+
+[workspace.dependencies]
+aes-gcm = "0.10"
+argon2 = "0.5"
+arima-core = { path = "crates/arima-core" }
+arima-db = { path = "crates/arima-db" }
+arima-auth = { path = "crates/arima-auth" }
+arima-proxy = { path = "crates/arima-proxy" }
+arima-agents = { path = "crates/arima-agents" }
+axum = { version = "0.8", features = ["ws"] }
+base32 = "0.5"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+futures-util = "0.3"
+hex = "0.4"
+hmac = "0.12"
+mime_guess = "2"
+percent-encoding = "2"
+qrcode = "0.14"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+subtle = "2.6"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ts-rs = { version = "10", features = ["serde-json-impl", "chrono-impl"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+webauthn-rs = "0.5"

@@ -1,0 +1,500 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+use std::sync::atomic::AtomicU64;
+
+use chrono::Utc;
+use rusqlite::Connection;
+
+use crate::{run_savepoint, DbError, Result};
+
+struct Migration {
+    version: i64,
+    name: &'static str,
+    sql: &'static str,
+}
+
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "001_initial_v2_schema",
+        sql: INITIAL_V2_SCHEMA,
+    },
+    Migration {
+        version: 2,
+        name: "002_meetings_schema",
+        sql: MEETINGS_V2_SCHEMA,
+    },
+    Migration {
+        version: 3,
+        name: "003_auth_throttle_schema",
+        sql: AUTH_THROTTLE_V2_SCHEMA,
+    },
+    Migration {
+        version: 4,
+        name: "004_m4_beta_schema",
+        sql: M4_BETA_V2_SCHEMA,
+    },
+    Migration {
+        version: 5,
+        name: "005_m5_ga_schema",
+        sql: M5_GA_V2_SCHEMA,
+    },
+];
+
+const INITIAL_V2_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS users (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash   TEXT NOT NULL,
+    role            TEXT NOT NULL CHECK (role IN ('owner', 'operator', 'viewer')),
+    disabled        INTEGER NOT NULL DEFAULT 0,
+    totp_secret_enc TEXT,
+    totp_enabled    INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+    id              TEXT PRIMARY KEY,
+    slug            TEXT NOT NULL UNIQUE,
+    name            TEXT NOT NULL,
+    root_path       TEXT NOT NULL,
+    template_id     TEXT,
+    config_json     TEXT NOT NULL DEFAULT '{}',
+    paused          INTEGER NOT NULL DEFAULT 0,
+    archived        INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_project_roles (
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL CHECK (role IN ('owner', 'operator', 'viewer')),
+    created_at      INTEGER NOT NULL,
+    PRIMARY KEY (user_id, project_id)
+);
+
+CREATE TABLE IF NOT EXISTS device_sessions (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash      TEXT NOT NULL UNIQUE,
+    label           TEXT NOT NULL,
+    origin          TEXT,
+    remote          INTEGER NOT NULL DEFAULT 0,
+    elevated_until  INTEGER,
+    last_seen_at    INTEGER NOT NULL,
+    expires_at      INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions (user_id);
+
+CREATE TABLE IF NOT EXISTS passkeys (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_json TEXT NOT NULL,
+    label           TEXT NOT NULL,
+    created_at      INTEGER NOT NULL,
+    last_used_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_passkeys_user ON passkeys (user_id);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id   TEXT,
+    actor_name      TEXT NOT NULL,
+    actor_role      TEXT,
+    project_id      TEXT,
+    action          TEXT NOT NULL,
+    target          TEXT,
+    summary         TEXT NOT NULL,
+    remote          INTEGER NOT NULL DEFAULT 0,
+    allowed         INTEGER NOT NULL DEFAULT 1,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS boards (
+    id              TEXT NOT NULL,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    spec_version    INTEGER NOT NULL DEFAULT 0,
+    spec_markdown   TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS goals (
+    id              TEXT NOT NULL,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title           TEXT NOT NULL,
+    metric          TEXT NOT NULL,
+    target_value    REAL NOT NULL,
+    current_value   REAL NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL,
+    created_at      INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id               TEXT NOT NULL,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    board_id         TEXT NOT NULL,
+    goal_id          TEXT,
+    stage_id         TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    title            TEXT NOT NULL,
+    owner_id         TEXT,
+    pr_number        INTEGER,
+    template_id      TEXT,
+    template_version INTEGER,
+    data_json        TEXT NOT NULL DEFAULT '{}',
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id),
+    FOREIGN KEY (project_id, board_id) REFERENCES boards(project_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id, goal_id) REFERENCES goals(project_id, id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks (project_id, board_id, status);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id         TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    stage_id        TEXT,
+    owner_id        TEXT,
+    at              INTEGER NOT NULL,
+    FOREIGN KEY (project_id, task_id) REFERENCES tasks(project_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_task_events_lookup ON task_events (project_id, task_id, at);
+
+CREATE TABLE IF NOT EXISTS gate_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id         TEXT NOT NULL,
+    gate_id         TEXT NOT NULL,
+    state           TEXT NOT NULL CHECK (state IN ('passed', 'failed', 'reset')),
+    by_id           TEXT NOT NULL,
+    note            TEXT,
+    url             TEXT,
+    at              INTEGER NOT NULL,
+    FOREIGN KEY (project_id, task_id) REFERENCES tasks(project_id, id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_gate_events_lookup ON gate_events (project_id, task_id, at);
+
+CREATE TABLE IF NOT EXISTS scores (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_id         TEXT NOT NULL,
+    scorer          TEXT NOT NULL,
+    pass            INTEGER NOT NULL,
+    reason          TEXT NOT NULL,
+    cost_usd        REAL NOT NULL DEFAULT 0,
+    at              INTEGER NOT NULL,
+    FOREIGN KEY (project_id, task_id) REFERENCES tasks(project_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS action_answers (
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    id              TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    decision        TEXT NOT NULL,
+    at              INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS visual_decisions (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    from_id         TEXT NOT NULL,
+    task_id         TEXT,
+    title           TEXT NOT NULL,
+    details         TEXT NOT NULL,
+    waiting         INTEGER NOT NULL DEFAULT 0,
+    owner_only      INTEGER NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL CHECK (status IN ('open', 'resolved', 'dismissed')),
+    payload_json    TEXT NOT NULL,
+    note            TEXT,
+    created_at      INTEGER NOT NULL,
+    closed_at       INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_visual_decisions_project ON visual_decisions (project_id, status, created_at);
+
+CREATE TABLE IF NOT EXISTS visual_feedback (
+    id                  TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    author_user_id      TEXT NOT NULL,
+    target_id           TEXT,
+    source_kind         TEXT NOT NULL,
+    page_url            TEXT NOT NULL,
+    viewport_width      INTEGER NOT NULL,
+    viewport_height     INTEGER NOT NULL,
+    note                TEXT NOT NULL,
+    selection_json      TEXT,
+    console_errors_json TEXT NOT NULL DEFAULT '[]',
+    image_path          TEXT NOT NULL,
+    workspace_rel_dir   TEXT NOT NULL,
+    route_json          TEXT NOT NULL,
+    created_at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_visual_feedback_project ON visual_feedback (project_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    from_id         TEXT NOT NULL,
+    to_id           TEXT NOT NULL,
+    task_id         TEXT,
+    tag             TEXT,
+    body            TEXT NOT NULL,
+    decision_id     TEXT REFERENCES visual_decisions(id) ON DELETE SET NULL,
+    feedback_id     TEXT REFERENCES visual_feedback(id) ON DELETE SET NULL,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_messages_project ON messages (project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS agent_outbox (
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id        TEXT NOT NULL,
+    epoch           INTEGER NOT NULL,
+    seq             INTEGER NOT NULL,
+    kind            TEXT NOT NULL,
+    payload_json    TEXT NOT NULL,
+    created_at      INTEGER NOT NULL,
+    acked_at        INTEGER,
+    PRIMARY KEY (project_id, agent_id, epoch, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_outbox_pending ON agent_outbox (project_id, agent_id, acked_at, epoch, seq);
+
+CREATE TABLE IF NOT EXISTS usage_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id          TEXT NOT NULL,
+    task_id           TEXT,
+    account_id        TEXT,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    input_tokens      INTEGER NOT NULL DEFAULT 0,
+    output_tokens     INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd          REAL NOT NULL DEFAULT 0,
+    at                INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_usage_events_project ON usage_events (project_id, at);
+
+CREATE TABLE IF NOT EXISTS memories (
+    id              TEXT NOT NULL,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    mem_type        TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    certified       INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL,
+    last_used_at    INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_about (
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    memory_id       TEXT NOT NULL,
+    about           TEXT NOT NULL,
+    PRIMARY KEY (project_id, memory_id, about),
+    FOREIGN KEY (project_id, memory_id) REFERENCES memories(project_id, id) ON DELETE CASCADE
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+    id UNINDEXED,
+    project_id UNINDEXED,
+    text,
+    tokenize = 'porter unicode61'
+);
+
+CREATE TABLE IF NOT EXISTS findings (
+    id              TEXT NOT NULL,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title           TEXT NOT NULL,
+    severity        TEXT NOT NULL,
+    cvss_score      REAL,
+    asset           TEXT,
+    status          TEXT NOT NULL,
+    verified        INTEGER NOT NULL DEFAULT 0,
+    data_json       TEXT NOT NULL DEFAULT '{}',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    PRIMARY KEY (project_id, id)
+);
+"#;
+
+const MEETINGS_V2_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS meetings (
+    id                   TEXT PRIMARY KEY,
+    project_id           TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind                 TEXT NOT NULL CHECK (kind IN ('standup', 'discussion', 'kickoff', 'review')),
+    status               TEXT NOT NULL CHECK (status IN ('requested', 'live', 'paused', 'minutes-review', 'closed', 'declined')),
+    urgency              TEXT NOT NULL CHECK (urgency IN ('low', 'normal', 'high')),
+    title                TEXT NOT NULL,
+    moderator_id         TEXT NOT NULL,
+    participant_ids_json TEXT NOT NULL DEFAULT '[]',
+    requested_by         TEXT NOT NULL,
+    voice_enabled        INTEGER NOT NULL DEFAULT 0,
+    voice_provider       TEXT NOT NULL DEFAULT 'browser-web-speech',
+    agenda_json          TEXT NOT NULL DEFAULT '[]',
+    minutes_json         TEXT,
+    created_at           INTEGER NOT NULL,
+    started_at           INTEGER,
+    closed_at            INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_meetings_project ON meetings (project_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS meeting_turns (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    meeting_id      TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    speaker_id      TEXT NOT NULL,
+    speaker_role    TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    body_markdown   TEXT NOT NULL,
+    decision_id     TEXT REFERENCES visual_decisions(id) ON DELETE SET NULL,
+    spoken_text     TEXT,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_meeting_turns_meeting ON meeting_turns (meeting_id, created_at ASC);
+"#;
+
+const AUTH_THROTTLE_V2_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS auth_throttle (
+    bucket       TEXT PRIMARY KEY,
+    failures     INTEGER NOT NULL DEFAULT 0,
+    window_start INTEGER NOT NULL,
+    locked_until INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS totp_used_steps (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    step    INTEGER NOT NULL,
+    used_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, step)
+);
+
+CREATE TABLE IF NOT EXISTS bootstrap_sessions (
+    id             TEXT PRIMARY KEY,
+    token_hash     TEXT NOT NULL UNIQUE,
+    label          TEXT NOT NULL,
+    origin         TEXT,
+    remote         INTEGER NOT NULL DEFAULT 0,
+    elevated_until INTEGER,
+    last_seen_at   INTEGER NOT NULL,
+    expires_at     INTEGER NOT NULL,
+    created_at     INTEGER NOT NULL
+);
+"#;
+
+const M4_BETA_V2_SCHEMA: &str = r#"
+ALTER TABLE memories ADD COLUMN conflict_id TEXT;
+ALTER TABLE memories ADD COLUMN promoted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE memories ADD COLUMN superseded_by TEXT;
+
+CREATE TABLE IF NOT EXISTS promoted_lessons (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source_memory_id TEXT,
+    template_id      TEXT NOT NULL,
+    mem_type         TEXT NOT NULL,
+    text             TEXT NOT NULL,
+    created_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_promoted_lessons_template
+    ON promoted_lessons (template_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS vault_secrets (
+    id          TEXT PRIMARY KEY,
+    scope       TEXT NOT NULL,
+    provider    TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    secret_enc  TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_vault_secrets_provider
+    ON vault_secrets (provider);
+"#;
+
+const M5_GA_V2_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS improvement_proposals (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    rationale   TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    diff_hint   TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'dismissed')),
+    note        TEXT,
+    created_at  INTEGER NOT NULL,
+    decided_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_improvement_proposals_project
+    ON improvement_proposals (project_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS benchmark_runs (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name           TEXT NOT NULL,
+    pass_rate      REAL NOT NULL,
+    avg_score      REAL NOT NULL,
+    avg_latency_ms REAL NOT NULL,
+    cases_json     TEXT NOT NULL DEFAULT '[]',
+    created_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_benchmark_runs_project
+    ON benchmark_runs (project_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tool_connections (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    endpoint    TEXT NOT NULL,
+    secret_enc  TEXT,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS server_settings (
+    key         TEXT PRIMARY KEY,
+    value_json  TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+"#;
+
+pub fn migrate(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            applied_at  INTEGER NOT NULL
+        );",
+    )?;
+
+    let current: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )?;
+
+    let sp_seq = AtomicU64::new(10_000);
+    for m in MIGRATIONS {
+        if m.version <= current {
+            continue;
+        }
+        run_savepoint(conn, &sp_seq, |c| {
+            c.execute_batch(m.sql)?;
+            c.execute(
+                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![m.version, m.name, Utc::now().timestamp_millis()],
+            )?;
+            Ok::<_, DbError>(())
+        })?;
+    }
+
+    Ok(())
+}
