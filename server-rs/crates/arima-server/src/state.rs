@@ -102,6 +102,7 @@ pub struct AppStateInner {
     pub gates: GatesRepo,
     pub usage: UsageRepo,
     pub supervisor: AgentSupervisor,
+    pub runtime: crate::runtime::AgentRuntime,
     pub mcp: McpRegistry,
     pub standups: StandupScheduler,
     pub github: GithubSyncService,
@@ -134,6 +135,7 @@ impl AppState {
         let gates = GatesRepo::new(db.clone());
         let usage = UsageRepo::new(db.clone());
         let supervisor = AgentSupervisor::new(db.clone(), 1);
+        let runtime = crate::runtime::AgentRuntime::new(crate::runtime::RuntimeConfig::from_env(config.data_root.as_deref()));
         let mcp = McpRegistry::new();
         let standups = StandupScheduler::new();
         let github = GithubSyncService::new(db.clone());
@@ -160,6 +162,7 @@ impl AppState {
                 gates,
                 usage,
                 supervisor,
+                runtime,
                 mcp,
                 standups,
                 github,

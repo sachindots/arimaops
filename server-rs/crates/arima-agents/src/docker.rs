@@ -82,6 +82,21 @@ pub struct DockerEngineLauncher {
     ip_allocations: Arc<Mutex<HashMap<String, Ipv4Addr>>>,
 }
 
+/// The launch checks every agent container shares: no shell interpolation and no secrets on the command line.
+pub fn validate_launch(program: &str, args: &[String]) -> Result<()> {
+    let prog = program.trim();
+    if prog.is_empty() || matches!(prog, "sh" | "/bin/sh" | "bash" | "/bin/bash") && args.first().map(String::as_str) == Some("-c") {
+        return Err(AgentError::SecurityViolation("shell interpolation ('sh -c' / 'bash -c') is forbidden in container specs".into()));
+    }
+    for arg in args {
+        let lower = arg.to_ascii_lowercase();
+        if let Some(pat) = FORBIDDEN_ARGV_TOKENS.iter().find(|p| lower.contains(*p)) {
+            return Err(AgentError::SecurityViolation(format!("secret/token pattern '{pat}' is forbidden on container argv")));
+        }
+    }
+    Ok(())
+}
+
 impl DockerEngineLauncher {
     #[must_use]
     pub fn new() -> Self {

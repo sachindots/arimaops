@@ -1,43 +1,21 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# ArimaOps v2.0 — Multi-Arch Agent Container Image baking native arima-shim (amd64 / arm64)
+# ArimaOps v2 agent image: the CLIs an agent runs, plus git and the usual tools.
+# HQ starts it with the workspace's owner as the container user and HOME inside the workspace, so nothing here
+# depends on a fixed user id. Published by .github/workflows/agent-image.yml.
+FROM node:22-bookworm-slim
 
-FROM --platform=$BUILDPLATFORM rust:1.85-slim-bookworm AS shim-builder
-ARG TARGETARCH
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config gcc g++ ca-certificates \
-    gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
-    gcc-x86-64-linux-gnu libc6-dev-amd64-cross \
-    && rm -rf /var/lib/apt/lists/* \
-    && rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git gh curl ca-certificates python3 python3-pip python3-venv ripgrep jq less openssh-client procps \
+ && rm -rf /var/lib/apt/lists/*
 
-COPY server-rs ./server-rs
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli @github/copilot opencode-ai \
+ && npm cache clean --force
 
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc
+RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh \
+ && bash /tmp/agy-install.sh --dir /usr/local/bin \
+ && rm /tmp/agy-install.sh
 
-RUN set -eux; \
-    case "${TARGETARCH:-amd64}" in \
-      arm64) RUST_TARGET="aarch64-unknown-linux-gnu" ;; \
-      amd64|*) RUST_TARGET="x86_64-unknown-linux-gnu" ;; \
-    esac; \
-    cargo build --release --manifest-path server-rs/Cargo.toml --target "${RUST_TARGET}" --bin arima-shim; \
-    cp "server-rs/target/${RUST_TARGET}/release/arima-shim" /tmp/arima-shim
+RUN git config --system credential.https://github.com.helper '!gh auth git-credential' \
+ && git config --system --add safe.directory '*'
 
-FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git jq ripgrep tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10002 agent \
-    && useradd --uid 10002 --gid 10002 --create-home --shell /bin/bash agent \
-    && mkdir -p /workspace /run/arima/secrets \
-    && chown -R agent:agent /workspace /run/arima
-
-COPY --from=shim-builder /tmp/arima-shim /usr/local/bin/arima-shim
-RUN chmod 0755 /usr/local/bin/arima-shim
-
-USER agent:agent
+ENV NODE_USE_ENV_PROXY=1
 WORKDIR /workspace
-
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/arima-shim"]
-CMD ["--version"]

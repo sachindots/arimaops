@@ -238,6 +238,12 @@ async fn handle_socket(
     // Send initial OfficeSnapshot including visualDecisions, meetings, meetingTurns, pullRequests.
     let init_snap = build_initial_snapshot(&state, requested_project.as_deref());
     let _ = tx.try_send(WsOutbound::Text(init_snap.to_string()));
+    if let Some(project) = init_snap["snapshot"]["config"]["project"]["id"].as_str() {
+        for (agent, data) in state.inner.runtime.scrollbacks(project) {
+            let event = json!({ "type": "terminal.output", "agentId": agent, "data": data });
+            let _ = tx.try_send(WsOutbound::Text(event.to_string()));
+        }
+    }
 
     while let Some(Ok(frame)) = stream.next().await {
         let Message::Text(raw_text) = frame else {
@@ -604,6 +610,10 @@ async fn execute_ws_command(
                 .start_agent(project_id, agent_id, None)
                 .await
                 .map_err(|e| e.to_string())?;
+            if let Err(e) = state.inner.runtime.start(state, project_id, agent_id).await {
+                let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
+                return Err(e);
+            }
             state
                 .inner
                 .ws_hub
@@ -612,7 +622,19 @@ async fn execute_ws_command(
                     state: "running".into(),
                     note: None,
                 });
+            let snapshot = build_initial_snapshot(state, Some(project_id));
+            state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
             Ok(())
+        }
+        "sendTerminalInput" => {
+            let id = args.first().and_then(Value::as_str).unwrap_or("");
+            let data = args.get(1).and_then(Value::as_str).unwrap_or("");
+            state.inner.runtime.send_input(project_id, id, data).await
+        }
+        "resizeTerminal" => {
+            let id = args.first().and_then(Value::as_str).unwrap_or("");
+            let dim = |i: usize| args.get(i).and_then(Value::as_u64).and_then(|n| u16::try_from(n).ok()).unwrap_or(0);
+            state.inner.runtime.resize(project_id, id, dim(1), dim(2)).await
         }
         "stopAgent" => {
             let agent_id = args
@@ -625,6 +647,7 @@ async fn execute_ws_command(
                 .stop_agent(project_id, agent_id)
                 .await
                 .map_err(|e| e.to_string())?;
+            let stopped = state.inner.runtime.stop(state, project_id, agent_id).await;
             state
                 .inner
                 .ws_hub
@@ -633,7 +656,9 @@ async fn execute_ws_command(
                     state: "stopped".into(),
                     note: None,
                 });
-            Ok(())
+            let snapshot = build_initial_snapshot(state, Some(project_id));
+            state.inner.ws_hub.broadcast_raw_json(&snapshot.to_string());
+            stopped
         }
         "createBoard" => {
             let title = args
@@ -1356,7 +1381,18 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
     let team_model = crate::team::load(state, project_id);
     let team: Vec<Value> = team_model.as_ref().map(|m| m.team.clone()).unwrap_or_default();
     let agent_ids: Vec<String> = team.iter().filter_map(|a| a["id"].as_str().map(str::to_owned)).collect();
-    let agents: Vec<Value> = team.iter().filter_map(|a| a["id"].as_str()).map(crate::team::fresh_status).collect();
+    let agents: Vec<Value> = team
+        .iter()
+        .filter_map(|a| a["id"].as_str())
+        .map(|id| {
+            let mut status = crate::team::fresh_status(id);
+            status["session"] = state.inner.runtime.session_info(project_id, id);
+            if state.inner.runtime.is_running(project_id, id) {
+                status["note"] = json!("Session running");
+            }
+            status
+        })
+        .collect();
     let rules = team_model.as_ref().map_or_else(
         || json!({
             "findings": !findings.is_empty(),

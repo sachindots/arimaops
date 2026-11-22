@@ -191,6 +191,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = AppState::new(db, vault, config);
     state.configure_cloud_proxy(public_origin.clone(), preview_domain.clone());
+    {
+        let rt = &state.inner.runtime.config;
+        if rt.enabled {
+            info!("agent runtime: on (image {}, network {}, workspaces {})", rt.image, rt.network, rt.workspaces_root.display());
+        } else {
+            info!("agent runtime: off (Docker socket not reachable; agents can't start)");
+        }
+    }
     let cwd = env::current_dir()?;
     let project_name = cwd
         .file_name()

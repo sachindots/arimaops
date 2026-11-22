@@ -81,3 +81,26 @@ It pulls the image, recreates the HQ (and the demo HQ if present), waits for `/a
 images. Set `ARIMA_HQ_IMAGE=ghcr.io/sachindots/arimaops-v2:latest` in `/opt/arimaops/.env` once. To roll back,
 set it to an earlier `sha-<commit>` tag and run the script again. Data lives in Docker volumes and survives
 updates; database migrations run automatically on start.
+
+## Agent runtime (running agents in containers)
+
+HQ starts each agent's CLI in its own container with a terminal HQ can show and type into. It needs the Docker
+socket, so it is opt-in through `compose.runtime.yaml`:
+
+```bash
+# in /opt/arimaops/.env
+DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+ARIMA_WORKSPACES_DIR=/opt/arimaops/workspaces     # a host path; owned by the HQ user (uid 10001)
+sudo /opt/arimaops/update.sh                      # picks compose.runtime.yaml up when DOCKER_GID is set
+```
+
+- **Security:** the Docker socket is root on the host. Turn this on only where HQ's owner and users are trusted
+  (a private network such as Tailscale). The demo HQ does not get it.
+- **Image:** agents run `ghcr.io/sachindots/arimaops-agent:latest` (built from `docker/agent.v2.Dockerfile`),
+  pulled on first start.
+- **Mode:** agents start in **container** mode only. New teams default to it when the socket is reachable; for an
+  older team use Settings → Sandbox.
+- **Sign-in:** an agent signs in through its terminal (Claude Code and the others prompt there), or use an API-key
+  account in Settings → Accounts and select it for the agent.
+- **Limits today:** no egress filtering for agents (they share HQ's Docker network), no extra shells beside the
+  agent's own terminal, and agents' HQ tools only for Claude Code.

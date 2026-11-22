@@ -1,0 +1,21 @@
+# Turns the agent runtime on: HQ gets the Docker socket and starts agents in containers beside it.
+# SECURITY: access to the Docker socket is root on this host. Use it only on a host you trust HQ with
+# (private network, owner-only access). Without this file HQ runs but agents can't start.
+#
+#   docker compose -f compose.aws.yaml -f compose.runtime.yaml --env-file .env up -d arima-hq
+#
+# .env needs DOCKER_GID (stat -c %g /var/run/docker.sock) and ARIMA_WORKSPACES_DIR (a host path).
+services:
+  arima-hq:
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID to the docker group id of this host}"
+    environment:
+      ARIMA_AGENT_IMAGE: "${ARIMA_AGENT_IMAGE:-ghcr.io/sachindots/arimaops-agent:latest}"
+      # Agents join HQ's own network so they can reach its MCP tools by service name.
+      ARIMA_AGENT_NETWORK: "${ARIMA_AGENT_NETWORK:-arimaops_default}"
+      ARIMA_AGENT_HQ_URL: "${ARIMA_AGENT_HQ_URL:-http://arima-hq:7420}"
+      ARIMA_WORKSPACES_ROOT: /workspaces
+      # The same folder as the Docker daemon sees it, for the agents' bind mounts.
+      ARIMA_WORKSPACES_HOST_ROOT: "${ARIMA_WORKSPACES_DIR:-/opt/arimaops/workspaces}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

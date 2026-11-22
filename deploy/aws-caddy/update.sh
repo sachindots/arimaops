@@ -15,8 +15,11 @@ PORT="${HQ_HOST_PORT:-7420}"
 echo "Pulling ${IMAGE}"
 docker pull "$IMAGE"
 
+COMPOSE=(-f compose.aws.yaml)
+[[ -f compose.runtime.yaml && -n "${DOCKER_GID:-}" ]] && COMPOSE+=(-f compose.runtime.yaml)
+
 echo "Restarting HQ"
-docker compose -f compose.aws.yaml --env-file .env up -d arima-hq
+docker compose "${COMPOSE[@]}" --env-file .env up -d arima-hq
 if [[ -f compose.demo.yaml ]]; then
   echo "Restarting demo HQ"
   docker compose -p arimaops-demo -f compose.demo.yaml --env-file .env up -d

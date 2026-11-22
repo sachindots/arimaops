@@ -68,7 +68,7 @@ fn drop_setting(state: &AppState, key: &str) -> Result<(), String> {
 #[must_use]
 pub fn unsupported(cmd: &str) -> Option<&'static str> {
     Some(match cmd {
-        "openShell" | "openHostShell" | "closeShell" | "closeHostShell" | "sendTerminalInput" | "resizeTerminal" => "Terminals aren't available in this HQ build yet.",
+        "openShell" | "openHostShell" | "closeShell" | "closeHostShell" => "Extra shells beside an agent's own terminal aren't available in this HQ build yet.",
         "forwardPort" | "unforwardPort" => "Port forwarding needs the sandbox runtime, which this HQ build doesn't have yet.",
         "openWorkspace" | "inspectWorkspace" => "Workspace inspection needs the agent runtime, which this HQ build doesn't have yet.",
         "recreateSandbox" | "runSetupFix" => "Sandbox setup checks and fixes need the sandbox runtime, which this HQ build doesn't have yet.",

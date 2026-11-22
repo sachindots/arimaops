@@ -14,6 +14,7 @@ pub mod memory_cmds;
 pub mod planning;
 pub mod preview;
 pub mod routes;
+pub mod runtime;
 pub mod secrets;
 pub(crate) mod routes_m4;
 pub(crate) mod routes_m5;

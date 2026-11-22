@@ -141,9 +141,20 @@ pub(crate) fn flow_mode(template: &Value) -> &'static str {
     if waits_for_merge { "github-pr" } else { "deliverables" }
 }
 
-/// Where new agents can run: containers when the Docker socket is mounted, else on HQ's own host.
-fn default_agent_mode() -> &'static str {
-    if std::path::Path::new("/var/run/docker.sock").exists() { "container" } else { "local" }
+/// Where new agents can run: containers when HQ can reach Docker, else on HQ's own host.
+fn default_agent_mode(state: &AppState) -> &'static str {
+    if state.inner.runtime.config.enabled { "container" } else { "local" }
+}
+
+/// A project's folder-safe name.
+#[must_use]
+pub fn project_slug(state: &AppState, project_id: &str) -> Option<String> {
+    state
+        .inner
+        .db
+        .read(|conn| conn.query_row("SELECT slug FROM projects WHERE id = ?1", [project_id], |r| r.get::<_, String>(0)).optional().map_err(DbError::from))
+        .ok()
+        .flatten()
 }
 
 /// `AgentStatus` for an agent that has not started.
@@ -286,7 +297,7 @@ pub fn complete_welcome(state: &AppState, project_id: &str, args: &[Value]) -> R
 
     let review_tool = input["reviewTool"].as_str().filter(|t| ["coderabbit", "greptile", "copilot", "human", "custom"].contains(t)).unwrap_or("human");
     let review_enabled = input["reviewEnabled"].as_bool().unwrap_or(true);
-    let seats = seats_for(template, default_agent_mode());
+    let seats = seats_for(template, default_agent_mode(state));
     let model = TeamModel {
         template: template.clone(),
         team: seats.iter().map(|s| resolve_seat(template, s)).collect(),

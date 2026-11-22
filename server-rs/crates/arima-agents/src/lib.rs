@@ -7,6 +7,7 @@
 //! - Incremental byte-offset JSONL usage tailer (`usage`) with truncation/rotation detection
 
 pub mod docker;
+pub mod engine;
 pub mod providers;
 pub mod sbx;
 pub mod supervisor;
@@ -14,6 +15,7 @@ pub mod usage;
 
 use thiserror::Error;
 
+pub use engine::{ContainerState, DockerEngine};
 pub use docker::{ContainerLaunchSpec, ContainerSpecInput, DockerEngineLauncher, SecretDelivery};
 pub use providers::{
     estimate_cost_usd, ChatMessage, ExtractedToolCall, HttpSseModelRunner, ModelRequest,
@@ -42,6 +44,8 @@ pub enum AgentError {
     InvalidConfig(String),
     #[error("security violation: {0}")]
     SecurityViolation(String),
+    #[error("docker engine: {0}")]
+    Engine(String),
 }
 
 pub type Result<T> = std::result::Result<T, AgentError>;
