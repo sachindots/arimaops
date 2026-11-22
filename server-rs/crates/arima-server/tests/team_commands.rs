@@ -225,3 +225,72 @@ async fn memory_lessons_and_findings_commands() {
     let after = state.inner.findings.get_finding(&pid, &finding.id).unwrap().unwrap();
     assert_eq!((after.status.as_str(), after.verified), ("confirmed", true));
 }
+
+#[tokio::test]
+async fn secrets_accounts_and_proxy_never_expose_values() {
+    use arima_server::secrets as sec;
+    let (state, pid) = state();
+    team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+    let snap = || arima_server::ws::build_initial_snapshot(&state, Some(&pid)).to_string();
+
+    sec::set_env_var(&state, &pid, &[Value::Null, json!("DATABASE_URL"), json!("postgres://hunter2-project")]).unwrap();
+    sec::set_env_var(&state, &pid, &[json!("cipher"), json!("DATABASE_URL"), json!("postgres://hunter2-cipher")]).unwrap();
+    sec::set_secret(&state, &pid, &[Value::Null, json!("github"), json!("ghp_supersecretvalue123")]).unwrap();
+    assert!(sec::set_env_var(&state, &pid, &[Value::Null, json!("PATH"), json!("/evil")]).is_err());
+    assert!(sec::set_env_var(&state, &pid, &[json!("nobody"), json!("X"), json!("v")]).is_err());
+    assert!(sec::set_env_var(&state, &pid, &[Value::Null, json!("EMPTY"), json!("")]).is_err());
+    assert!(sec::set_secret(&state, &pid, &[Value::Null, json!("not-a-service"), json!("v")]).is_err());
+
+    let raw: String = state.inner.db.read(|c| c.query_row("SELECT group_concat(value_enc) FROM agent_secrets", [], |r| r.get(0)).map_err(arima_db::DbError::from)).unwrap();
+    assert!(!raw.contains("hunter2") && !raw.contains("ghp_"), "values are encrypted at rest");
+    let json_snap = snap();
+    assert!(!json_snap.contains("hunter2") && !json_snap.contains("ghp_super"), "snapshots carry names only");
+    let s: Value = serde_json::from_str(&json_snap).unwrap();
+    let sbx = &s["snapshot"]["sbx"];
+    assert_eq!(sbx["projectEnv"]["keys"], json!(["DATABASE_URL"]));
+    assert_eq!(sbx["globalKeys"], json!(["github"]));
+    assert_eq!(sbx["agents"]["cipher"]["envFile"]["keys"], json!(["DATABASE_URL"]));
+
+    let env = sec::env_for(&state, &pid, "cipher");
+    assert_eq!(env["DATABASE_URL"], "postgres://hunter2-cipher", "an agent's own value wins");
+    assert_eq!(env["GH_TOKEN"], "ghp_supersecretvalue123");
+    assert_eq!(sec::env_for(&state, &pid, "zero")["DATABASE_URL"], "postgres://hunter2-project");
+    sec::remove_env_var(&state, &pid, &[json!("cipher"), json!("DATABASE_URL")]).unwrap();
+    assert_eq!(sec::env_for(&state, &pid, "cipher")["DATABASE_URL"], "postgres://hunter2-project");
+    sec::remove_secret(&state, &pid, &[Value::Null, json!("github")]).unwrap();
+    assert!(!sec::env_for(&state, &pid, "zero").contains_key("GH_TOKEN"));
+
+    assert!(sec::save_account(&state, &pid, &[json!({ "id": "work", "provider": "anthropic" })]).is_err(), "a new account needs a key");
+    assert!(sec::save_account(&state, &pid, &[json!({ "id": "bad id!", "provider": "anthropic", "secret": "sk-ant-aaaaaaaaaaaa" })]).is_err());
+    assert!(sec::save_account(&state, &pid, &[json!({ "id": "bed", "provider": "bedrock", "secret": "not json" })]).is_err());
+    sec::save_account(&state, &pid, &[json!({ "id": "work", "provider": "anthropic", "label": "Work", "secret": "sk-ant-api03-abcdWXYZ", "fields": { "region": "x" } })]).unwrap();
+    sec::save_account(&state, &pid, &[json!({ "id": "bed", "provider": "bedrock", "secret": "{\"accessKeyId\":\"A\",\"secretAccessKey\":\"B\"}", "fields": { "region": "ap-southeast-2", "junk": "no" } })]).unwrap();
+    let accounts = sec::accounts_state(&state);
+    let list = accounts["list"].as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    let work = list.iter().find(|a| a["id"] == "work").unwrap();
+    assert_eq!((work["secret"]["last4"].as_str(), work["auth"].as_str(), work["fields"].as_object().unwrap().len()), (Some("WXYZ"), Some("api-key"), 0));
+    let bed = list.iter().find(|a| a["id"] == "bed").unwrap();
+    assert_eq!(bed["fields"], json!({ "region": "ap-southeast-2" }));
+    assert!(!accounts.to_string().contains("sk-ant-api03") && !accounts.to_string().contains("secretAccessKey"));
+    sec::save_account(&state, &pid, &[json!({ "id": "work", "provider": "anthropic", "label": "Renamed" })]).unwrap();
+    let after = sec::accounts_state(&state);
+    let work = after["list"].as_array().unwrap().iter().find(|a| a["id"] == "work").unwrap().clone();
+    assert_eq!((work["label"].as_str(), work["secret"]["last4"].as_str()), (Some("Renamed"), Some("WXYZ")), "an update without a key keeps the key");
+    assert!(sec::save_account(&state, &pid, &[json!({ "id": "work", "provider": "openai" })]).is_err());
+    sec::remove_account(&state, &pid, &[json!("work")]).unwrap();
+    assert!(sec::remove_account(&state, &pid, &[json!("work")]).is_err());
+    assert_eq!(sec::accounts_state(&state)["list"].as_array().unwrap().len(), 1);
+
+    assert!(sec::set_proxy(&state, &pid, &[json!("ftp://x")]).is_err());
+    sec::set_proxy(&state, &pid, &[json!("http://proxy:3128")]).unwrap();
+    assert_eq!(sec::sbx_state(&state, &pid, &[], "now")["proxy"], "http://proxy:3128");
+    sec::set_proxy(&state, &pid, &[json!("")]).unwrap();
+    assert_eq!(sec::sbx_state(&state, &pid, &[], "now")["proxy"], Value::Null);
+    assert!(sec::open_env_file().is_err());
+
+    sec::set_env_var(&state, &pid, &[json!("zero"), json!("TMP"), json!("v")]).unwrap();
+    edit::remove_agent(&state, &pid, &[json!("zero")]).await.unwrap();
+    let left: i64 = state.inner.db.read(|c| c.query_row("SELECT COUNT(*) FROM agent_secrets WHERE agent_id = 'zero'", [], |r| r.get(0)).map_err(arima_db::DbError::from)).unwrap();
+    assert_eq!(left, 0, "removing an agent removes its variables");
+}

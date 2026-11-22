@@ -4,7 +4,8 @@ import { writeFileSync } from "node:fs";
 import { BUILTIN_TEMPLATES } from "../src/data/templates";
 import { LEAD_NAME, WORKER_NAMES } from "../src/data/names";
 import { agentPalette } from "../src/theme/tokens";
+import { PROVIDER_SPECS } from "../src/data/providers";
 
 const out = process.argv[2] ?? "server-rs/crates/arima-server/assets/team-data.json";
-writeFileSync(out, `${JSON.stringify({ templates: BUILTIN_TEMPLATES, leadName: LEAD_NAME, workerNames: WORKER_NAMES, palette: agentPalette }, null, 1)}\n`);
+writeFileSync(out, `${JSON.stringify({ templates: BUILTIN_TEMPLATES, leadName: LEAD_NAME, workerNames: WORKER_NAMES, palette: agentPalette, providers: Object.fromEntries(Object.entries(PROVIDER_SPECS).map(([id, p]) => [id, { label: p.label, auth: p.auth, fields: p.fields.map((f) => f.id) }])) }, null, 1)}\n`);
 console.log(`${BUILTIN_TEMPLATES.length} templates -> ${out}`);

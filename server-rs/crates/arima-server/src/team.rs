@@ -33,6 +33,12 @@ pub fn template_library() -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// The model providers an account can be for, with the non-secret fields each needs.
+#[must_use]
+pub fn provider_specs() -> &'static Value {
+    &data()["providers"]
+}
+
 fn template_by_id(id: &str) -> Option<&'static Value> {
     data()["templates"].as_array()?.iter().find(|t| t["id"] == id)
 }

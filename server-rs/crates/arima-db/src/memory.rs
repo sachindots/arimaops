@@ -1154,6 +1154,19 @@ impl VaultSecretRepo {
         })
     }
 
+    /// Loads one secret row by id, or `None` when unknown.
+    pub fn get_by_id(&self, id: &str) -> Result<Option<VaultSecretRecord>> {
+        self.db.read(|conn| {
+            conn.query_row(
+                "SELECT id, scope, provider, label, secret_enc FROM vault_secrets WHERE id = ?1",
+                [id],
+                |r| Ok(VaultSecretRecord { id: r.get(0)?, scope: r.get(1)?, provider: r.get(2)?, label: r.get(3)?, secret_enc: r.get(4)? }),
+            )
+            .optional()
+            .map_err(DbError::from)
+        })
+    }
+
     pub fn get_by_provider(&self, provider: &str) -> Result<Option<VaultSecretRecord>> {
         let clean = provider.trim().to_ascii_lowercase();
         self.db.read(|conn| {

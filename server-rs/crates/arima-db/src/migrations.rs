@@ -44,7 +44,25 @@ const MIGRATIONS: &[Migration] = &[
         name: "006_goal_text",
         sql: GOAL_TEXT_SCHEMA,
     },
+    Migration {
+        version: 7,
+        name: "007_agent_secrets",
+        sql: AGENT_SECRETS_SCHEMA,
+    },
 ];
+
+/// App variables and service keys, encrypted with the vault key. `agent_id` is '' for "every agent".
+const AGENT_SECRETS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS agent_secrets (
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id    TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL CHECK (kind IN ('env', 'key')),
+    name        TEXT NOT NULL,
+    value_enc   TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    PRIMARY KEY (project_id, agent_id, kind, name)
+);
+"#;
 
 /// Goals carry free-text target and current values ("$5k"), not just numbers.
 const GOAL_TEXT_SCHEMA: &str = r#"

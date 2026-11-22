@@ -482,7 +482,7 @@ async fn process_ws_command(
     )
     .await;
 
-    let redacted_args = redact_json_value(&Value::Array(args));
+    let redacted_args = audit_args(&cmd, &args);
     let _ = record_audit(
         &state.inner.db,
         AuditWrite {
@@ -503,6 +503,15 @@ async fn process_ws_command(
         Err(err) => send_ack(tx, &msg.id, false, Some(err)),
     }
     true
+}
+
+/// Arguments as the audit log may keep them. Commands that carry secret values log only who and what, never the value.
+fn audit_args(cmd: &str, args: &[Value]) -> Value {
+    match cmd {
+        "setEnvVar" | "setSecret" => json!([args.first(), args.get(1), "[REDACTED]"]),
+        "saveAccount" => json!([{ "id": args.first().and_then(|a| a.get("id")), "provider": args.first().and_then(|a| a.get("provider")) }]),
+        _ => redact_json_value(&Value::Array(args.to_vec())),
+    }
 }
 
 fn send_ack(tx: &mpsc::Sender<WsOutbound>, id: &str, ok: bool, error: Option<String>) {
@@ -534,6 +543,14 @@ async fn execute_ws_command(
         "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
         "addAgent" => crate::team_edit::add_agent(state, project_id, args),
         "removeAgent" => crate::team_edit::remove_agent(state, project_id, args).await,
+        "setEnvVar" => crate::secrets::set_env_var(state, project_id, args),
+        "removeEnvVar" => crate::secrets::remove_env_var(state, project_id, args),
+        "setSecret" => crate::secrets::set_secret(state, project_id, args),
+        "removeSecret" => crate::secrets::remove_secret(state, project_id, args),
+        "openEnvFile" => crate::secrets::open_env_file(),
+        "saveAccount" => crate::secrets::save_account(state, project_id, args),
+        "removeAccount" => crate::secrets::remove_account(state, project_id, args),
+        "setProxy" => crate::secrets::set_proxy(state, project_id, args),
         "setTeamMode" => crate::team_edit::set_team_mode(state, project_id, args),
         "updateWorkflow" => crate::team_edit::update_workflow(state, project_id, args),
         "updateProject" => crate::team_edit::update_project(state, project_id, args),
@@ -1328,6 +1345,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
     let now = Utc::now().to_rfc3339();
     let team_model = crate::team::load(state, project_id);
     let team: Vec<Value> = team_model.as_ref().map(|m| m.team.clone()).unwrap_or_default();
+    let agent_ids: Vec<String> = team.iter().filter_map(|a| a["id"].as_str().map(str::to_owned)).collect();
     let agents: Vec<Value> = team.iter().filter_map(|a| a["id"].as_str()).map(crate::team::fresh_status).collect();
     let rules = team_model.as_ref().map_or_else(
         || json!({
@@ -1371,13 +1389,8 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
                 "containerReady": false,
                 "checkedAt": now
             },
-            "sbx": {
-                "basePolicy": "balanced",
-                "proxy": null,
-                "globalKeys": [],
-                "agents": {},
-                "checkedAt": now
-            },
+            "sbx": crate::secrets::sbx_state(state, project_id, &agent_ids, &now),
+            "accounts": crate::secrets::accounts_state(state),
             "config": {
                 "project": project,
                 "team": team,
@@ -1423,4 +1436,20 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
 
 pub fn role_can_operate(role: ServerRole) -> bool {
     matches!(role, ServerRole::Owner | ServerRole::Operator)
+}
+
+#[cfg(test)]
+mod audit_tests {
+    use super::*;
+
+    #[test]
+    fn secret_values_never_reach_the_audit_log() {
+        let a = audit_args("setEnvVar", &[json!("cipher"), json!("TOKEN"), json!("s3cret-value")]);
+        assert!(!a.to_string().contains("s3cret"));
+        assert_eq!(a[1], "TOKEN");
+        let b = audit_args("setSecret", &[Value::Null, json!("github"), json!("ghp_abc")]);
+        assert!(!b.to_string().contains("ghp_"));
+        let c = audit_args("saveAccount", &[json!({ "id": "work", "provider": "anthropic", "secret": "sk-ant-zzz", "fields": { "region": "x" } })]);
+        assert!(!c.to_string().contains("sk-ant") && c.to_string().contains("work"));
+    }
 }

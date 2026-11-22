@@ -1555,5 +1555,57 @@
   "#94a3b8",
   "#67c5a3",
   "#d4a5f5"
- ]
+ ],
+ "providers": {
+  "anthropic": {
+   "label": "Anthropic API",
+   "auth": "api-key",
+   "fields": []
+  },
+  "openai": {
+   "label": "OpenAI API",
+   "auth": "api-key",
+   "fields": []
+  },
+  "google": {
+   "label": "Google AI Studio",
+   "auth": "api-key",
+   "fields": []
+  },
+  "openrouter": {
+   "label": "OpenRouter",
+   "auth": "api-key",
+   "fields": []
+  },
+  "nvidia": {
+   "label": "NVIDIA NIM",
+   "auth": "api-key",
+   "fields": []
+  },
+  "amd": {
+   "label": "AMD Token Lab",
+   "auth": "api-key",
+   "fields": []
+  },
+  "deepseek": {
+   "label": "DeepSeek",
+   "auth": "api-key",
+   "fields": []
+  },
+  "bedrock": {
+   "label": "AWS Bedrock",
+   "auth": "cloud",
+   "fields": [
+    "region"
+   ]
+  },
+  "vertex": {
+   "label": "Google Vertex AI",
+   "auth": "cloud",
+   "fields": [
+    "projectId",
+    "region"
+   ]
+  }
+ }
 }
