@@ -49,6 +49,8 @@ interface OfficeState {
   templateImport: { ok: boolean; message: string; id?: string } | null;
   connection: ConnectionStatus;
   lastCommandError: string | null;
+  /** Bumps on every failed command so the toast re-shows an identical message. */
+  commandErrorSeq: number;
   source: OfficeDataSource;
 }
 
@@ -164,6 +166,7 @@ export const useOffice = create<OfficeState>(() => ({
   templateImport: null,
   connection: "connecting",
   lastCommandError: null,
+  commandErrorSeq: 0,
   source,
 }));
 
@@ -300,7 +303,10 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
 
 function handle(e: OfficeEvent) {
   if (e.type === "command.ack") {
-    useOffice.setState({ lastCommandError: e.ok ? null : (e.error ?? "Command failed.") });
+    useOffice.setState((s) => ({
+      lastCommandError: e.ok ? null : (e.error ?? "Command failed."),
+      commandErrorSeq: e.ok ? s.commandErrorSeq : s.commandErrorSeq + 1,
+    }));
     return;
   }
   if (e.type === "terminal.output") {
@@ -324,7 +330,12 @@ function handle(e: OfficeEvent) {
     useOffice.setState({ templateImport: { ok: e.ok, message: e.message, id: e.id } });
     return;
   }
-  if (e.type === "snapshot") clearTerminals();
+  // Terminals reset only on the first snapshot of a connection: the server replays scrollback right after it.
+  // Later snapshots (any edit, any agent start or stop) must not wipe a live terminal.
+  if (e.type === "snapshot" && resetTerminals) {
+    clearTerminals();
+    resetTerminals = false;
+  }
   useOffice.setState((s) => {
     const base = s.snap ?? (e.type === "snapshot" ? e.snapshot : null);
     if (!base) return {};
@@ -337,11 +348,15 @@ function handle(e: OfficeEvent) {
   });
 }
 
+let resetTerminals = true;
 let disconnect: (() => void) | null = null;
 
 export function connectOffice() {
   if (disconnect) return disconnect;
-  disconnect = source.connect(handle, (connection) => useOffice.setState({ connection }));
+  disconnect = source.connect(handle, (connection) => {
+    if (connection !== "open") resetTerminals = true;
+    useOffice.setState({ connection });
+  });
   return () => {
     disconnect?.();
     disconnect = null;

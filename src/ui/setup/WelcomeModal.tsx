@@ -75,6 +75,7 @@ export function WelcomeModal() {
       <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
           <div>
+            <p className="m-0 mb-1 text-[12px] font-semibold text-accent">Step 1 of 4 · Team</p>
             <h2 className="m-0 font-display text-[20px] font-semibold tracking-tight text-ink">
               Welcome to <span className="text-accent">{BRAND.name}</span>
             </h2>

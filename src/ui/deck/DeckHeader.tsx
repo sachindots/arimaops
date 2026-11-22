@@ -150,6 +150,18 @@ export function DeckHeader({
           </button>
         )}
 
+        {live && !snap.welcome && !isViewer && !snap.agents.some((a) => a.session.state === "running") && (
+          <button
+            type="button"
+            onClick={() => ui.openWizard()}
+            className="deck-pill flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold text-accent sm:px-3 sm:py-1.5"
+            title="Sign in, check this machine and start your first agent"
+          >
+            <Icon name="rocket_launch" size={16} />
+            <span className="hidden sm:inline">Guided setup</span>
+          </button>
+        )}
+
         {setup > 0 && (
           <button
             type="button"

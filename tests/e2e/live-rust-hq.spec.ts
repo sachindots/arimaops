@@ -354,6 +354,12 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     const teamDialog = page.getByRole("dialog", { name: /Welcome to ArimaOps/i });
     await teamDialog.getByRole("button", { name: "Create team" }).click();
     await expect(teamDialog).toBeHidden();
+    // First-run continues in the setup wizard: sign-in choice, readiness, first Start.
+    const wizard = page.getByRole("dialog", { name: /Set up ArimaOps/i });
+    await expect(wizard.getByRole("heading", { name: "How do your agents sign in?" })).toBeVisible();
+    await wizard.getByRole("button", { name: "Finish later" }).click();
+    await expect(wizard).toBeHidden();
+    await expect(page.locator("header").getByRole("button", { name: /Guided setup/i })).toBeVisible();
     await expect(page.locator("header").getByRole("button", { name: /Pick team/i })).toBeHidden();
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("dialog", { name: /Welcome to ArimaOps/i })).toBeHidden();

@@ -40,6 +40,8 @@ interface UiState {
   zoomRequest: { delta: number; nonce: number } | null;
   debugOpen: boolean;
   setupOpen: boolean;
+  /** Steps 2 to 4 of first-run (src/ui/setup/SetupWizard.tsx). */
+  wizardOpen: boolean;
   welcomeDismissed: boolean;
   /** Active top-level workspace preserved across desktop <-> tablet resize. */
   workspace: WorkspaceId;
@@ -151,6 +153,7 @@ export const useUi = create<UiState>(() => ({
   zoomRequest: null,
   debugOpen: false,
   setupOpen: false,
+  wizardOpen: false,
   welcomeDismissed: (() => {
     try {
       return sessionStorage.getItem("arima.welcomeDismissed") === "1";
@@ -378,6 +381,12 @@ export const ui = {
   },
   closeSetup() {
     useUi.setState({ setupOpen: false });
+  },
+  openWizard() {
+    useUi.setState({ wizardOpen: true });
+  },
+  closeWizard() {
+    useUi.setState({ wizardOpen: false });
   },
   dismissWelcome() {
     try {

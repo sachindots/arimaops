@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { OfficeSnapshot } from "./data/types";
-import { connectOffice, officeActions, useOffice } from "./store/office";
+import { connectOffice, isViewer, officeActions, useOffice } from "./store/office";
 import { GITHUB_STATE_KEY } from "./data/githubApp";
 import { checkAuth, useAuth } from "./store/auth";
 import { prefKey } from "./lib/prefs";
@@ -8,8 +8,10 @@ import { SignIn } from "./ui/auth/SignIn";
 import { OwnerPrompt } from "./ui/auth/OwnerPrompt";
 import { ui, useUi } from "./store/ui";
 import { DrawerHost } from "./ui/drawers/Drawer";
+import { CommandToast } from "./ui/hud/CommandToast";
 import { ConnectionBanner } from "./ui/hud/ConnectionBanner";
 import { SetupChecklist } from "./ui/setup/SetupChecklist";
+import { SetupWizard } from "./ui/setup/SetupWizard";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
 import { useProjectTheme } from "./ui/theme/projectTheme";
 import { Deck } from "./ui/deck/Deck";
@@ -54,6 +56,18 @@ function useKeyboard() {
       window.removeEventListener("keydown", onKey);
       delete window.__arimaBack;
     };
+  }, []);
+}
+
+/** The team was just created in this browser (welcome went from open to done): continue with sign-in, readiness and the first Start. */
+function useWizardAfterWelcome() {
+  useEffect(() => {
+    let was = false;
+    return useOffice.subscribe((s) => {
+      const now = s.live && !!s.snap?.welcome;
+      if (was && s.live && s.snap && !s.snap.welcome && !isViewer) ui.openWizard();
+      was = now;
+    });
   }, []);
 }
 
@@ -167,9 +181,13 @@ export function App() {
   useGithubAppReturn();
   useKeyboard();
   useSetupPrompt();
+  useWizardAfterWelcome();
   useProjectTheme(useOffice((s) => s.snap)); // <html data-theme>: the accent follows the open project
   const ready = useOffice((s) => s.snap !== null);
   const setupOpen = useUi((s) => s.setupOpen);
+  const wizardOpen = useUi((s) => s.wizardOpen);
+  // A server somebody else could reach: the owner sign-in comes first, on top of the welcome.
+  const remoteHost = !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
   const welcome = useOffice((s) => s.live && !!s.snap?.welcome);
   const showWelcome = welcome && !welcomeDismissed;
   const readOnly = useOffice((s) => s.live && !!s.snap && !s.snap.welcome && !s.snap.config.template);
@@ -199,6 +217,7 @@ export function App() {
     return (
       <>
         <ConnectionBanner />
+        <CommandToast />
         {ready && (
           <>
             {solo.kind === "agent" ? (
@@ -212,7 +231,8 @@ export function App() {
               </>
             )}
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
-            {!showWelcome && !setupOpen && <OwnerPrompt />}
+            {(remoteHost || (!showWelcome && !setupOpen && !wizardOpen)) && <OwnerPrompt />}
+            {wizardOpen && !showWelcome && <SetupWizard />}
             <DialogHost />
           </>
         )}
@@ -223,6 +243,7 @@ export function App() {
     return (
       <>
         <ConnectionBanner />
+        <CommandToast />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
         {readOnly && (
           <div role="status" className="pointer-events-none fixed bottom-[70px] left-1/2 z-10 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-navy/85 px-3 py-1 text-center text-[12px] text-muted backdrop-blur-md min-[1000px]:bottom-3.5">
@@ -233,8 +254,8 @@ export function App() {
           <>
             <Deck />
             {/* One dialog at a time: the owner sign-in waits for the welcome and the setup checklist. */}
-            {!showWelcome && !setupOpen && <OwnerPrompt />}
-            {showWelcome ? <WelcomeModal /> : setupOpen && <SetupChecklist />}
+            {showWelcome ? <WelcomeModal /> : wizardOpen ? <SetupWizard /> : setupOpen && <SetupChecklist />}
+            {(remoteHost || (!showWelcome && !setupOpen && !wizardOpen)) && <OwnerPrompt />}
             <DialogHost />
           </>
         )}
