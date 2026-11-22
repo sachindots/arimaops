@@ -760,6 +760,27 @@ impl MemoryRepo {
         })
     }
 
+    /// Removes a promoted lesson and clears the `promoted` flag on the memory it came from. Returns false when it is unknown.
+    pub fn delete_promoted_lesson(&self, project_id: &str, lesson_id: &str) -> Result<bool> {
+        self.db.transaction(|conn| {
+            let source: Option<Option<String>> = conn
+                .query_row(
+                    "SELECT source_memory_id FROM promoted_lessons WHERE project_id = ?1 AND id = ?2",
+                    rusqlite::params![project_id, lesson_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(source) = source else {
+                return Ok::<_, DbError>(false);
+            };
+            conn.execute("DELETE FROM promoted_lessons WHERE project_id = ?1 AND id = ?2", rusqlite::params![project_id, lesson_id])?;
+            if let Some(memory_id) = source {
+                conn.execute("UPDATE memories SET promoted = 0 WHERE project_id = ?1 AND id = ?2", rusqlite::params![project_id, memory_id])?;
+            }
+            Ok(true)
+        })
+    }
+
     /// Lists promoted lessons for `project_id`, newest first.
     pub fn list_promoted_lessons(&self, project_id: &str) -> Result<Vec<PromotedLesson>> {
         self.db.read(|conn| {

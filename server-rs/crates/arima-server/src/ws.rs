@@ -538,6 +538,13 @@ async fn execute_ws_command(
         "updateWorkflow" => crate::team_edit::update_workflow(state, project_id, args),
         "updateProject" => crate::team_edit::update_project(state, project_id, args),
         "assignTask" => crate::team_edit::assign_task(state, project_id, args),
+        "keepOutOfMemory" => crate::memory_cmds::keep_out_of_memory(state, project_id, args),
+        "setMemoryExtraction" => crate::memory_cmds::set_memory_extraction(state, project_id, args),
+        "decideMemories" => crate::memory_cmds::decide_memories(state, project_id, args),
+        "promoteLessons" => crate::memory_cmds::promote_lessons(state, project_id),
+        "removeLesson" => crate::memory_cmds::remove_lesson(state, project_id, args),
+        "setLessonPromotion" => crate::memory_cmds::set_lesson_promotion(state, project_id, args),
+        "updateFinding" => crate::memory_cmds::update_finding(state, project_id, args),
         "updateRole" => crate::team_edit::update_role(state, project_id, args),
         "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args),
         "addGoal" => crate::planning::add_goal(state, project_id, args),
@@ -1397,7 +1404,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             },
             "lessons": {
                 "templateId": "default",
-                "enabled": true,
+                "enabled": project.get("lessonsEnabled").and_then(Value::as_bool).unwrap_or(true),
                 "running": false,
                 "pending": 0,
                 "approved": promoted_lessons.iter().map(|l| json!({

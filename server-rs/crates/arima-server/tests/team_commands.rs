@@ -174,3 +174,54 @@ async fn role_and_template_edits_reach_every_seat() {
     assert!(edit::update_project_template(&state, &pid, &[next]).is_err(), "a role still in use can't be removed");
     assert!(edit::update_project_template(&state, &pid, &[json!({ "roles": [] })]).is_err());
 }
+
+#[tokio::test]
+async fn memory_lessons_and_findings_commands() {
+    use arima_db::{CreateFindingInput, CreateMemoryInput};
+    use arima_server::memory_cmds as mem;
+    let (state, pid) = state();
+    let new_mem = |id: &str, mem_type: &str, text: &str, certified: bool| {
+        state
+            .inner
+            .memory
+            .insert(&pid, CreateMemoryInput { id: Some(id.into()), mem_type: mem_type.into(), text: text.into(), about: vec![], certified, created_at_ms: None, last_used_at_ms: None })
+            .unwrap();
+    };
+    new_mem("M-1", "Lesson", "Run migrations before the seed", false);
+    new_mem("M-2", "Lesson", "Pin the toolchain", false);
+    new_mem("M-3", "Decision", "Staging is eu-west", true);
+
+    mem::decide_memories(&state, &pid, &[json!("item"), json!({ "M-1": "certify", "M-2": "reject", "bad id!": "certify", "M-3": "maybe" })]).unwrap();
+    assert!(state.inner.memory.get(&pid, "M-1").unwrap().unwrap().certified);
+    assert!(state.inner.memory.get(&pid, "M-2").unwrap().is_none(), "a rejected memory is deleted");
+    assert!(mem::decide_memories(&state, &pid, &[json!("item")]).is_err());
+
+    mem::promote_lessons(&state, &pid).unwrap();
+    let lessons = state.inner.memory.list_promoted_lessons(&pid).unwrap();
+    assert_eq!(lessons.len(), 1, "only the certified lesson is promoted, not the decision: {lessons:?}");
+    mem::promote_lessons(&state, &pid).unwrap();
+    assert_eq!(state.inner.memory.list_promoted_lessons(&pid).unwrap().len(), 1, "promoting twice adds nothing");
+    mem::remove_lesson(&state, &pid, &[json!(lessons[0].id)]).unwrap();
+    assert!(state.inner.memory.list_promoted_lessons(&pid).unwrap().is_empty());
+    assert!(!state.inner.memory.get(&pid, "M-1").unwrap().unwrap().promoted, "removing a lesson frees its memory");
+    assert!(mem::remove_lesson(&state, &pid, &[json!("les-nope")]).is_err());
+
+    assert!(mem::keep_out_of_memory(&state, &pid, &[json!("x")]).is_err());
+    mem::keep_out_of_memory(&state, &pid, &[json!("Acme Corp")]).unwrap();
+    mem::set_memory_extraction(&state, &pid, &[json!({ "enabled": true, "account": "work" })]).unwrap();
+    let settings = state.inner.memory.get_settings(&pid).unwrap();
+    assert_eq!((settings.keep_out.clone(), settings.extraction.enabled, settings.extraction.account.as_str()), (vec!["Acme Corp".to_owned()], true, "work"));
+
+    team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+    mem::set_lesson_promotion(&state, &pid, &[json!(false)]).unwrap();
+    assert_eq!(team::load(&state, &pid).unwrap().project["lessonsEnabled"], false);
+
+    let finding = state
+        .inner
+        .findings
+        .create_finding(&pid, CreateFindingInput { title: "XSS".into(), target: "app".into(), ..CreateFindingInput::default() })
+        .unwrap();
+    mem::update_finding(&state, &pid, &[json!(finding.id), json!({ "status": "confirmed", "verified": true, "bogus": 1 })]).unwrap();
+    let after = state.inner.findings.get_finding(&pid, &finding.id).unwrap().unwrap();
+    assert_eq!((after.status.as_str(), after.verified), ("confirmed", true));
+}
