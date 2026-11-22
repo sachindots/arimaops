@@ -1,0 +1,71 @@
+# ArimaOps v2.0 — AWS EC2 Production Compose Stack (Localhost HQ + Caddy Wildcard HTTPS)
+#
+# Usage:
+#   cp .env.aws.example .env && chmod 600 .env
+#   # Edit .env with your domain and email, then:
+#   docker compose -f compose.aws.yaml --env-file .env up -d
+
+services:
+  arima-hq:
+    image: ${ARIMA_HQ_IMAGE:-ghcr.io/sachindots/arimaops-v2:latest}
+    build:
+      context: ../..
+      dockerfile: docker/hq.v2.Dockerfile
+    container_name: arimaops-hq-v2
+    restart: unless-stopped
+    environment:
+      ARIMA_HOME: /data
+      HQ_HOST: 0.0.0.0
+      HQ_PORT: "7420"
+      HQ_PREVIEW_PORT: "7421"
+      HQ_TRUST_PROXY: "true"
+      HQ_PUBLIC_ORIGIN: "https://hq.${ARIMA_DOMAIN}"
+      HQ_PREVIEW_DOMAIN: "${ARIMA_DOMAIN}"
+      ARIMA_GITHUB_WEBHOOK_SECRET: "${ARIMA_GITHUB_WEBHOOK_SECRET:-}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    ports:
+      # Strictly bound to loopback so external traffic MUST pass through Caddy TLS.
+      - "127.0.0.1:7420:7420"
+      - "127.0.0.1:7421:7421"
+    volumes:
+      - arima_data:/data
+      - ${ARIMA_WORKSPACES_DIR:-/opt/arimaops/workspaces}:/workspaces
+    cpus: 4.0
+    mem_limit: 4g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7420/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2.9-alpine}
+    container_name: arimaops-caddy
+    restart: unless-stopped
+    # Host network lets Caddy terminate :80/:443 and proxy directly to 127.0.0.1:7420 & :7421.
+    network_mode: host
+    depends_on:
+      arima-hq:
+        condition: service_healthy
+    environment:
+      ARIMA_DOMAIN: "${ARIMA_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  arima_data:
+  caddy_data:
+  caddy_config:

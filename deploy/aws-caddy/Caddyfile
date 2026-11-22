@@ -1,0 +1,76 @@
+# ArimaOps v2.0 — Production Caddy v2 Reverse Proxy for AWS EC2
+#
+# Routes:
+#   https://hq.{$ARIMA_DOMAIN}         -> 127.0.0.1:7420 (ArimaOps HQ HTTP + WebSocket)
+#   https://preview-*.{$ARIMA_DOMAIN}  -> 127.0.0.1:7421 (Isolated Live Preview Proxy + HMR WS)
+#
+# Wildcard TLS options:
+#   Option A (Default below): Zero-plugin On-Demand TLS (each preview-<slug> subdomain obtains
+#     a Let's Encrypt cert automatically on first request, gated by Caddy's `ask` check).
+#   Option B (DNS-01 Wildcard): Build Caddy with `caddy-dns/cloudflare` or `caddy-dns/route53`
+#     and replace the `tls { on_demand }` block with `tls { dns cloudflare {env.CLOUDFLARE_API_TOKEN} }`
+#     (or `dns route53`).
+
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://127.0.0.1:7421/__arima_preview/health
+	}
+}
+
+# Primary ArimaOps HQ Control Plane
+hq.{$ARIMA_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy 127.0.0.1:7420 {
+		header_up Host {http.request.host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {http.request.host}
+		flush_interval -1
+	}
+}
+
+# Origin-Isolated Live Preview Subdomains (preview-<slug>.<domain>)
+# Separate origin from hq.<domain> guarantees untrusted preview apps can never read hq_sid
+# or issue authenticated requests to HQ /api/*.
+*.{$ARIMA_DOMAIN} {
+	@preview_sub host_regexp preview ^preview-[a-z0-9-]+\.
+	tls {
+		on_demand
+		# DNS-01 wildcard alternative (requires custom Caddy DNS module):
+		# dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		# dns route53 {
+		#   region {$AWS_REGION:us-east-1}
+		# }
+	}
+
+	handle @preview_sub {
+		header {
+			Strict-Transport-Security "max-age=31536000"
+			Referrer-Policy "no-referrer"
+			-Server
+		}
+
+		reverse_proxy 127.0.0.1:7421 {
+			header_up Host {http.request.host}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {http.request.host}
+			flush_interval -1
+		}
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}
