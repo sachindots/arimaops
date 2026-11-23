@@ -603,9 +603,11 @@ mod tests {
         assert!(role.contains("Second role text") && !role.contains("First role text") && role.contains("Notes the agent kept"), "{role}");
 
         // A blocked server (a pack server whose tools changed) isn't given to the agent.
-        let mut servers = int::tool_servers(&state, &pid);
-        servers[0].blocked = Some("tools changed".into());
-        int::save_tool_servers(&state, &pid, &servers).unwrap();
+        int::update_tool_servers(&state, &pid, |servers| {
+            servers[0].blocked = Some("tools changed".into());
+            Ok(())
+        })
+        .unwrap();
         rt.plan(&state, &pid, &id).unwrap();
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
         assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"]);

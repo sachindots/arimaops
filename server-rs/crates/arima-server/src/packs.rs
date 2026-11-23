@@ -425,24 +425,25 @@ fn block_reason(approved: Option<&String>, live: Option<&String>) -> Option<Stri
 /// Makes the project's tool-server list match an approved entry: this pack's servers, keeping keys and checks,
 /// blocked while their tools differ from the approved ones. Servers the pack no longer has leave every seat.
 fn apply_servers(state: &AppState, project_id: &str, id: &str, entry: &PackEntry) -> Result<(), String> {
-    let mut servers = int::tool_servers(state, project_id);
     let ours = |s: &ToolServer| matches!(&s.source, ToolServerSource::Pack { pack_id, .. } if pack_id == id);
-    let old: Vec<ToolServer> = servers.iter().filter(|s| ours(s)).cloned().collect();
-    servers.retain(|s| !ours(s));
-    for (name, ts) in &entry.tool_servers {
-        let prev = old.iter().find(|s| s.name == *name);
-        let live = prev.and_then(|p| p.tools_sha256.clone()).or_else(|| ts.tools_sha256.clone());
-        servers.push(ToolServer {
-            name: name.clone(),
-            transport: ts.transport.clone(),
-            has_key: prev.is_some_and(|p| p.has_key),
-            source: ToolServerSource::Pack { pack_id: id.to_owned(), commit: entry.source.commit.clone() },
-            check: prev.and_then(|p| p.check.clone()),
-            blocked: block_reason(ts.tools_sha256.as_ref(), live.as_ref()),
-            tools_sha256: live,
-        });
-    }
-    int::save_tool_servers(state, project_id, &servers)?;
+    let old = int::update_tool_servers(state, project_id, |servers| {
+        let old: Vec<ToolServer> = servers.iter().filter(|s| ours(s)).cloned().collect();
+        servers.retain(|s| !ours(s));
+        for (name, ts) in &entry.tool_servers {
+            let prev = old.iter().find(|s| s.name == *name);
+            let live = prev.and_then(|p| p.tools_sha256.clone()).or_else(|| ts.tools_sha256.clone());
+            servers.push(ToolServer {
+                name: name.clone(),
+                transport: ts.transport.clone(),
+                has_key: prev.is_some_and(|p| p.has_key),
+                source: ToolServerSource::Pack { pack_id: id.to_owned(), commit: entry.source.commit.clone() },
+                check: prev.and_then(|p| p.check.clone()),
+                blocked: block_reason(ts.tools_sha256.as_ref(), live.as_ref()),
+                tools_sha256: live,
+            });
+        }
+        Ok(old)
+    })?;
     let gone: Vec<String> = old.into_iter().map(|s| s.name).filter(|n| !entry.tool_servers.contains_key(n)).collect();
     if !gone.is_empty() {
         int::drop_servers(state, project_id, &gone)?;
@@ -940,9 +941,11 @@ mod tests {
         assert_eq!(review(&state, &pid, &id).id, card.id, "the same change files one card");
 
         // A blocked server isn't given to agents: the runtime skips it.
-        let mut servers = int::tool_servers(&state, &pid);
-        servers[0] = server.clone();
-        int::save_tool_servers(&state, &pid, &servers).unwrap();
+        int::update_tool_servers(&state, &pid, |servers| {
+            servers[0] = server.clone();
+            Ok(())
+        })
+        .unwrap();
         answer(&state, &card.id, DecisionStatus::Resolved);
         let after = int::tool_servers(&state, &pid)[0].clone();
         assert!(after.blocked.is_none(), "approving the new list unblocks it");

@@ -219,8 +219,19 @@ pub fn tool_servers(state: &AppState, project_id: &str) -> Vec<ToolServer> {
     setting(state, &servers_key(project_id)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
 }
 
-pub fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer]) -> Result<(), String> {
+fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer]) -> Result<(), String> {
     save_setting(state, &servers_key(project_id), &json!(servers))
+}
+
+/// The only way to change a project's tool-server list: reads, edits and saves it under one lock, so concurrent
+/// writers can't drop each other's change. Nothing is saved when `edit` fails. `edit` must not await or call back
+/// into this function (the lock isn't reentrant).
+pub fn update_tool_servers<R>(state: &AppState, project_id: &str, edit: impl FnOnce(&mut Vec<ToolServer>) -> Result<R, String>) -> Result<R, String> {
+    let _guard = state.inner.tool_servers_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut servers = tool_servers(state, project_id);
+    let out = edit(&mut servers)?;
+    save_tool_servers(state, project_id, &servers)?;
+    Ok(out)
 }
 
 pub(crate) fn live_projects(state: &AppState) -> Vec<(String, String)> {
@@ -261,15 +272,16 @@ pub fn migrate_hq_wide_tool_servers(state: &AppState) -> Result<(), String> {
         })
         .collect();
     for (pid, _) in live_projects(state) {
-        let mut servers = tool_servers(state, &pid);
-        for entry in &entries {
-            if entry.has_key {
-                copy_secret(state, &format!("mcp-{}", entry.name), &mcp_secret_id(&pid, &entry.name), &entry.name)?;
-            }
-            servers.retain(|s| s.name != entry.name);
-            servers.push(entry.clone());
+        for entry in entries.iter().filter(|e| e.has_key) {
+            copy_secret(state, &format!("mcp-{}", entry.name), &mcp_secret_id(&pid, &entry.name), &entry.name)?;
         }
-        save_tool_servers(state, &pid, &servers)?;
+        update_tool_servers(state, &pid, |servers| {
+            for entry in &entries {
+                servers.retain(|s| s.name != entry.name);
+                servers.push(entry.clone());
+            }
+            Ok(())
+        })?;
     }
     for s in &old {
         if let Some(name) = s["name"].as_str() {
@@ -293,16 +305,17 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
     }
     let url = text(&input["url"], 500);
     check_endpoint(&url)?;
-    let mut servers = tool_servers(state, project_id);
-    if servers.iter().any(|s| s.name == name) {
-        return Err(format!("A server named \"{name}\" already exists."));
-    }
     let key = text(&input["apiKey"], 4000);
-    if !key.is_empty() {
-        state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
-    }
-    servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None, tools_sha256: None, blocked: None });
-    save_tool_servers(state, project_id, &servers)?;
+    update_tool_servers(state, project_id, |servers| {
+        if servers.iter().any(|s| s.name == name) {
+            return Err(format!("A server named \"{name}\" already exists."));
+        }
+        if !key.is_empty() {
+            state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
+        }
+        servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None, tools_sha256: None, blocked: None });
+        Ok(())
+    })?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -319,13 +332,14 @@ pub fn copy_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<()
     if matches!(entry.source, ToolServerSource::Pack { .. }) {
         return Err(format!("\"{name}\" comes from a pack. Install the pack in this project instead."));
     }
-    let mut servers = tool_servers(state, project_id);
-    if servers.iter().any(|s| s.name == name) {
-        return Err(format!("A server named \"{name}\" already exists."));
-    }
-    let has_key = entry.has_key && copy_secret(state, &mcp_secret_id(&from, &name), &mcp_secret_id(project_id, &name), &name)?;
-    servers.push(ToolServer { has_key, check: None, ..entry });
-    save_tool_servers(state, project_id, &servers)?;
+    update_tool_servers(state, project_id, |servers| {
+        if servers.iter().any(|s| s.name == name) {
+            return Err(format!("A server named \"{name}\" already exists."));
+        }
+        let has_key = entry.has_key && copy_secret(state, &mcp_secret_id(&from, &name), &mcp_secret_id(project_id, &name), &name)?;
+        servers.push(ToolServer { has_key, check: None, ..entry });
+        Ok(())
+    })?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -345,9 +359,10 @@ pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<
 
 /// Removes these servers from the project's list, their keys from the vault, and their names from every seat.
 pub(crate) fn drop_servers(state: &AppState, project_id: &str, names: &[String]) -> Result<(), String> {
-    let mut servers = tool_servers(state, project_id);
-    servers.retain(|s| !names.contains(&s.name));
-    save_tool_servers(state, project_id, &servers)?;
+    update_tool_servers(state, project_id, |servers| {
+        servers.retain(|s| !names.contains(&s.name));
+        Ok(())
+    })?;
     for name in names {
         let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, name));
     }
@@ -366,15 +381,16 @@ pub(crate) fn drop_servers(state: &AppState, project_id: &str, names: &[String])
 pub fn set_tool_server_key(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let name = text(args.first().unwrap_or(&Value::Null), 40);
     let key = text(args.get(1).unwrap_or(&Value::Null), 4000);
-    let mut servers = tool_servers(state, project_id);
-    let entry = servers.iter_mut().find(|s| s.name == name).ok_or_else(|| format!("No MCP server \"{name}\"."))?;
-    if key.is_empty() {
-        let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, &name));
-    } else {
-        state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
-    }
-    entry.has_key = !key.is_empty();
-    save_tool_servers(state, project_id, &servers)?;
+    update_tool_servers(state, project_id, |servers| {
+        let entry = servers.iter_mut().find(|s| s.name == name).ok_or_else(|| format!("No MCP server \"{name}\"."))?;
+        if key.is_empty() {
+            let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, &name));
+        } else {
+            state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
+        }
+        entry.has_key = !key.is_empty();
+        Ok(())
+    })?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -452,17 +468,27 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
         .collect()
         .await;
     let at = Utc::now().to_rfc3339();
-    // Re-read after the probes so a server added or removed meanwhile isn't lost or brought back.
-    let mut servers = tool_servers(state, project_id);
-    for s in &mut servers {
-        if let Some((_, result)) = results.iter().find(|(n, _)| s.name == *n) {
-            s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.as_ref().err().cloned(), at: at.clone() });
-            if let Ok(tools) = result {
-                crate::packs::on_tools_listed(state, project_id, s, tools);
+    // on_tools_listed may file a review that rewrites this list, so it runs on copies outside the lock.
+    let listed: Vec<ToolServer> = tool_servers(state, project_id)
+        .into_iter()
+        .filter_map(|mut s| {
+            let Some((_, Ok(tools))) = results.iter().find(|(n, _)| s.name == *n) else { return None };
+            crate::packs::on_tools_listed(state, project_id, &mut s, tools);
+            Some(s)
+        })
+        .collect();
+    // Re-read under the lock so a server added or removed meanwhile isn't lost or brought back.
+    update_tool_servers(state, project_id, |servers| {
+        for s in servers.iter_mut() {
+            if let Some((_, result)) = results.iter().find(|(n, _)| s.name == *n) {
+                s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.as_ref().err().cloned(), at: at.clone() });
+            }
+            if let Some(l) = listed.iter().find(|l| l.name == s.name) {
+                (s.blocked, s.tools_sha256) = (l.blocked.clone(), l.tools_sha256.clone());
             }
         }
-    }
-    save_tool_servers(state, project_id, &servers)?;
+        Ok(())
+    })?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -560,13 +586,15 @@ pub(crate) async fn guarded_client(endpoint: &str, timeout: std::time::Duration)
 /// Records how a call through HQ to one of the project's servers went, the same way a live check does. A success
 /// is written only over a failed check, so working calls don't rewrite the setting each time.
 pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) {
-    let mut servers = tool_servers(state, project_id);
-    let Some(s) = servers.iter_mut().find(|s| s.name == name) else { return };
-    if result.is_ok() && s.check.as_ref().is_none_or(|c| c.ok) {
-        return;
-    }
-    s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.err(), at: Utc::now().to_rfc3339() });
-    if save_tool_servers(state, project_id, &servers).is_ok() {
+    let changed = update_tool_servers(state, project_id, |servers| {
+        let Some(s) = servers.iter_mut().find(|s| s.name == name) else { return Err(String::new()) };
+        if result.is_ok() && s.check.as_ref().is_none_or(|c| c.ok) {
+            return Err(String::new());
+        }
+        s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.err(), at: Utc::now().to_rfc3339() });
+        Ok(())
+    });
+    if changed.is_ok() {
         broadcast(state, project_id);
     }
 }
@@ -753,6 +781,30 @@ mod tests {
         let sse = format!("event: message\ndata: {plain}\n\n");
         assert_eq!(parse_tools(&sse).len(), 1);
         assert!(parse_tools("garbage").is_empty());
+    }
+
+    #[test]
+    fn concurrent_tool_server_updates_are_all_kept() {
+        let (state, pid, _) = two_projects();
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let (state, pid) = (state.clone(), pid.clone());
+                std::thread::spawn(move || {
+                    for i in 0..25 {
+                        update_tool_servers(&state, &pid, |servers| {
+                            let url = "https://example.com/mcp".to_owned();
+                            servers.push(ToolServer { name: format!("s-{t}-{i}"), transport: ToolServerTransport::Http { url }, has_key: false, source: ToolServerSource::Manual, check: None, tools_sha256: None, blocked: None });
+                            Ok(())
+                        })
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(tool_servers(&state, &pid).len(), 200, "no concurrent update is lost");
     }
 
     /// Two projects, each with a team, plus an archived third one.

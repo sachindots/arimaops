@@ -129,16 +129,21 @@ async fn forwarding_attaches_the_key_and_refuses_what_the_agent_was_not_given() 
     call(&app, &docs, &token, rpc("tools/list")).await;
     assert!(check(&state, &pid, "docs").unwrap().ok, "a working call clears the failure");
 
-    let mut servers = int::tool_servers(&state, &pid);
-    servers[0].blocked = Some("its tool list changed".into());
-    int::save_tool_servers(&state, &pid, &servers).unwrap();
+    int::update_tool_servers(&state, &pid, |servers| {
+        servers[0].blocked = Some("its tool list changed".into());
+        Ok(())
+    })
+    .unwrap();
     let calls = seen.lock().unwrap().len();
     let (st, _, body) = call(&app, &docs, &token, rpc("tools/list")).await;
     assert_eq!(st, StatusCode::FORBIDDEN, "a blocked server isn't forwarded, even to an agent started before the block");
     assert!(body.contains("Inbox"), "{body}");
     assert_eq!(seen.lock().unwrap().len(), calls);
-    servers[0].blocked = None;
-    int::save_tool_servers(&state, &pid, &servers).unwrap();
+    int::update_tool_servers(&state, &pid, |servers| {
+        servers[0].blocked = None;
+        Ok(())
+    })
+    .unwrap();
 
     // A server whose address is a cloud metadata address, which the guard refuses with or without the opt-in.
     let mut servers = int::tool_servers(&state, &pid);
