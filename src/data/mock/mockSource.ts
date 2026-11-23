@@ -590,25 +590,22 @@ export function createMockSource(): OfficeDataSource {
     addMcp(input) {
       const m = world.snap.mcp;
       const name = input.name.trim().toLowerCase();
-      if (!m || !name || m.servers.some((s) => s.name === name)) return;
-      m.servers.push({ name, transport: "remote http", status: input.apiKey ? "ready" : "needs-auth", error: null, checkedAt: new Date().toISOString(), nextStep: null });
-      world.activity("config", null, `Added MCP server ${name}`);
+      if (!m || !("others" in m) || !name || m.servers.some((s) => s.name === name)) return;
+      m.servers.push({ name, transport: { kind: "http", url: input.url ?? "" }, hasKey: !!input.apiKey, source: { kind: "manual" }, check: { ok: true, error: null, at: new Date().toISOString() } });
+      world.activity("config", null, `Added tool server ${name}`);
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },
 
-    authMcp(name) {
+    copyMcp(_fromProjectId, name) {
       const m = world.snap.mcp;
-      const s = m?.servers.find((x) => x.name === name);
-      if (!m || !s) return;
-      listener?.({ type: "terminal.output", agentId: `setup:mcp-auth-${name}`, data: `\x1b[2m$ sbx mcp auth ${name}\x1b[0m\r\nOpening your browser to sign in… (demo)\r\n\x1b[32m✓ Done\x1b[0m\r\n` });
-      s.status = "ready";
-      s.nextStep = null;
+      if (!m || !("others" in m) || m.servers.some((s) => s.name === name)) return;
+      m.servers.push({ name, transport: { kind: "http", url: `https://${name}.example.com/mcp` }, hasKey: false, source: { kind: "manual" }, check: null });
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },
 
     removeMcp(name) {
       const m = world.snap.mcp;
-      if (!m) return;
+      if (!m || !("others" in m)) return;
       m.servers = m.servers.filter((s) => s.name !== name);
       for (const a of world.snap.config.team) if (a.mcp?.includes(name)) a.mcp = a.mcp.filter((n) => n !== name);
       for (const id of Object.keys(m.attached)) m.attached[id] = m.attached[id].filter((n) => n !== name);

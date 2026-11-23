@@ -14,7 +14,7 @@ use arima_core::{
     MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PasskeyInfo, PermissionPayload,
     PreviewMode, PreviewTarget, PreviewTargetStatus, ProjectRole, ProposedDecision, ProposedTask,
     QuestionAnswer, QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload,
-    ServerRole, VisualDecision, VisualFeedback, VoiceProvider, WsClientMessage, WsCommandAck,
+    ServerRole, ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport, VisualDecision, VisualFeedback, VoiceProvider, WsClientMessage, WsCommandAck,
     WsServerEvent,
 };
 use ts_rs::TS;
@@ -85,6 +85,12 @@ pub fn render_typescript() -> String {
     // Durable Outbox
     push_decl::<OutboxMessageKind>(&mut out);
     push_decl::<OutboxMessage>(&mut out);
+
+    // Tool servers, one list per project
+    push_decl::<ToolServerTransport>(&mut out);
+    push_decl::<ToolServerSource>(&mut out);
+    push_decl::<ToolServerCheck>(&mut out);
+    push_decl::<ToolServer>(&mut out);
 
     // Correlated WS Protocol
     push_decl::<WsClientMessage>(&mut out);

@@ -115,6 +115,7 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "recreateSandbox"
             | "addMcp"
             | "removeMcp"
+            | "copyMcp"
     );
 
     if ctx.remote && needs_step_up && !ctx.elevated {
@@ -148,5 +149,8 @@ mod tests {
         assert_eq!(authorize_command("refreshMcp", &ctx(ServerRole::Operator)), CommandVerdict::Allowed);
         assert!(matches!(authorize_command("addMcp", &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)));
         assert_eq!(authorize_command("addMcp", &ctx(ServerRole::Owner)), CommandVerdict::Allowed);
+        for cmd in ["copyMcp", "removeMcp", "setAgentMcp"] {
+            assert!(matches!(authorize_command(cmd, &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)), "{cmd} is owner-only");
+        }
     }
 }

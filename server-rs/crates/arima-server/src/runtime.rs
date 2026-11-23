@@ -129,16 +129,16 @@ fn write_private(path: &std::path::Path, body: &str) -> Result<(), String> {
     file.write_all(body.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn vault_secret(state: &AppState, id: &str) -> Result<Option<String>, String> {
+pub(crate) fn vault_secret(state: &AppState, id: &str) -> Result<Option<String>, String> {
     let Some(row) = state.inner.vault_secrets.get_by_id(id).map_err(|e| e.to_string())? else { return Ok(None) };
     let secret = state.inner.auth.vault().decrypt(format!("vault-secret:{id}").as_bytes(), &row.secret_enc).map_err(|e| e.to_string())?;
     Ok(Some(String::from_utf8_lossy(&secret).into_owned()))
 }
 
-/// The registered servers this agent was given in Settings. One that is gone or whose key is missing is skipped,
+/// The project's servers this agent was given in Settings. One that is gone or whose key is missing is skipped,
 /// so a stale selection never stops the agent from starting.
-fn selected_servers(state: &AppState, agent: &Value) -> Vec<McpServer> {
-    let registry = crate::integrations::mcp_servers(state);
+fn selected_servers(state: &AppState, project_id: &str, agent: &Value) -> Vec<McpServer> {
+    let registry = crate::integrations::tool_servers(state, project_id);
     let agent_id = agent["id"].as_str().unwrap_or("");
     agent["mcp"]
         .as_array()
@@ -146,12 +146,12 @@ fn selected_servers(state: &AppState, agent: &Value) -> Vec<McpServer> {
         .flatten()
         .filter_map(Value::as_str)
         .filter_map(|name| {
-            let Some(entry) = registry.iter().find(|s| s["name"] == name).filter(|_| name != "arima") else {
+            let Some(entry) = registry.iter().find(|s| s.name == name).filter(|_| name != "arima") else {
                 tracing::warn!(agent = agent_id, server = name, "skipping an MCP server that isn't registered");
                 return None;
             };
-            let token = if entry["hasKey"] == true {
-                match vault_secret(state, &format!("mcp-{name}")) {
+            let token = if entry.has_key {
+                match vault_secret(state, &crate::integrations::mcp_secret_id(project_id, name)) {
                     Ok(Some(secret)) => Some((mcp_token_env(name), secret)),
                     _ => {
                         tracing::warn!(agent = agent_id, server = name, "skipping an MCP server whose key can't be read");
@@ -161,7 +161,8 @@ fn selected_servers(state: &AppState, agent: &Value) -> Vec<McpServer> {
             } else {
                 None
             };
-            Some(McpServer { name: name.to_owned(), url: entry["url"].as_str().unwrap_or("").to_owned(), token })
+            let arima_core::ToolServerTransport::Http { url } = &entry.transport;
+            Some(McpServer { name: name.to_owned(), url: url.clone(), token })
         })
         .collect()
 }
@@ -387,7 +388,7 @@ impl AgentRuntime {
             url: format!("{}/api/projects/{project_id}/mcp", url.trim_end_matches('/')),
             token: Some(("ARIMA_MCP_TOKEN".to_owned(), state.inner.mcp.issue_agent_token(project_id, agent_id))),
         }).collect();
-        servers.extend(selected_servers(state, agent));
+        servers.extend(selected_servers(state, project_id, agent));
         let mcp = (adapter.mcp)(&servers);
         if let Some((path, cfg)) = &mcp.file {
             write_private(&dir.join(path), &serde_json::to_string_pretty(cfg).unwrap_or_default())?;

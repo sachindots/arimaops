@@ -182,6 +182,9 @@ impl AppState {
             }),
         };
         state.sync_all_persisted_scopes_to_proxy();
+        if let Err(e) = crate::integrations::migrate_hq_wide_tool_servers(&state) {
+            tracing::warn!(error = %e, "couldn't move HQ-wide tool servers into projects; retrying at next start");
+        }
         state
     }
 

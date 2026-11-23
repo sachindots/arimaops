@@ -79,6 +79,26 @@ export type OutboxMessageKind = "text" | "reset" | "decision-answer" | "visual-f
 
 export type OutboxMessage = { projectId: string, agentId: string, epoch: number, seq: number, kind: OutboxMessageKind, payloadJson: string, createdAt: number, ackedAt: number | null, };
 
+export type ToolServerTransport = { "kind": "http", url: string, };
+
+export type ToolServerSource = { "kind": "manual" } | { "kind": "pack", packId: string, commit: string, };
+
+export type ToolServerCheck = { ok: boolean, error: string | null, 
+/**
+ * RFC 3339 time of the check.
+ */
+at: string, };
+
+export type ToolServer = { 
+/**
+ * Lowercase letters, digits and dashes; "arima" is HQ's own server and never stored here.
+ */
+name: string, transport: ToolServerTransport, hasKey: boolean, source: ToolServerSource, 
+/**
+ * The last live check; none before the first one.
+ */
+check: ToolServerCheck | null, };
+
 export type WsClientMessage = { id: string, cmd: string, args: Array<JsonValue>, };
 
 export type WsCommandAck = { id: string, ok: boolean, error: string | null, };

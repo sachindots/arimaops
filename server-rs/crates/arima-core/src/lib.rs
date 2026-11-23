@@ -9,6 +9,7 @@ pub mod feedback;
 pub mod meeting;
 pub mod outbox;
 pub mod protocol;
+pub mod tool_server;
 
 pub use auth::{AuthUser, AuditEntry, DeviceSession, PasskeyInfo, ProjectRole, ServerRole};
 pub use decision::{
@@ -25,3 +26,4 @@ pub use meeting::{
 };
 pub use outbox::{OutboxMessage, OutboxMessageKind};
 pub use protocol::{WsClientMessage, WsCommandAck, WsServerEvent};
+pub use tool_server::{ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport};

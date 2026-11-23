@@ -1,6 +1,7 @@
 // Team template validation: every rule in templateErrors, and dependency loops.
 // Run: npx tsx scripts/model-test.ts
 import { needsCycle, type TeamTemplate, templateErrors } from "../src/data/model";
+import { getsToolServers } from "../src/data/types";
 
 let fails = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -90,6 +91,9 @@ check("a diamond is not a loop", needsCycle([
   { id: "c", needs: ["d"] },
   { id: "d", needs: [] },
 ]) === null);
+
+const seats = [{ mode: "container" as const }, { mode: "sandbox" as const }, { mode: "local" as const }];
+check("tool servers go to the container agents HQ starts", seats.filter(getsToolServers).map((a) => a.mode).join() === "container");
 
 if (fails) {
   console.error(`\n${fails} failed`);

@@ -6,6 +6,7 @@
 //! Commands that need a live terminal, sandbox or OAuth runtime (see [`unsupported`]) answer with a plain
 //! error, so the UI shows why nothing happened instead of waiting.
 
+use arima_core::{ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport};
 use arima_db::DbError;
 use chrono::Utc;
 use rusqlite::OptionalExtension;
@@ -203,8 +204,80 @@ async fn resolve_endpoint(url: &url::Url) -> Result<Option<(String, Vec<std::net
     Ok(Some((host.to_owned(), addrs)))
 }
 
-pub(crate) fn mcp_servers(state: &AppState) -> Vec<Value> {
-    setting(state, "mcpServers").and_then(|v| v.as_array().cloned()).unwrap_or_default()
+fn servers_key(project_id: &str) -> String {
+    format!("mcpServers:{project_id}")
+}
+
+/// The vault id of a project's tool-server key.
+#[must_use]
+pub fn mcp_secret_id(project_id: &str, name: &str) -> String {
+    format!("mcp:{project_id}:{name}")
+}
+
+/// This project's tool servers.
+#[must_use]
+pub fn tool_servers(state: &AppState, project_id: &str) -> Vec<ToolServer> {
+    setting(state, &servers_key(project_id)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
+}
+
+fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer]) -> Result<(), String> {
+    save_setting(state, &servers_key(project_id), &json!(servers))
+}
+
+fn live_projects(state: &AppState) -> Vec<(String, String)> {
+    state
+        .inner
+        .db
+        .read(|conn| {
+            let mut stmt = conn.prepare("SELECT id, name FROM projects WHERE archived = 0 ORDER BY created_at ASC")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+        })
+        .unwrap_or_default()
+}
+
+/// Copies one vault secret to a new id. `Ok(false)` when there was none to copy.
+fn copy_secret(state: &AppState, from: &str, to: &str, label: &str) -> Result<bool, String> {
+    let Some(key) = crate::runtime::vault_secret(state, from)? else { return Ok(false) };
+    state.store_vault_secret(Some(to), "mcp", "mcp", label, &key).map_err(db_err)?;
+    Ok(true)
+}
+
+/// Moves the old HQ-wide `mcpServers` list and its `mcp-{name}` keys into every live project. Safe to rerun:
+/// each copy overwrites the same entry, and the old data goes only after every copy has succeeded.
+pub fn migrate_hq_wide_tool_servers(state: &AppState) -> Result<(), String> {
+    let Some(old) = setting(state, "mcpServers").and_then(|v| v.as_array().cloned()) else { return Ok(()) };
+    let entries: Vec<ToolServer> = old
+        .iter()
+        .filter_map(|s| {
+            let name = s["name"].as_str().filter(|n| valid_name(n) && *n != "arima")?.to_owned();
+            let url = s["url"].as_str()?.to_owned();
+            let status = s["status"].as_str().unwrap_or("");
+            let check = s["checkedAt"].as_str().filter(|_| matches!(status, "ready" | "error")).map(|at| ToolServerCheck {
+                ok: status == "ready",
+                error: s["error"].as_str().map(str::to_owned),
+                at: at.to_owned(),
+            });
+            Some(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: s["hasKey"] == true, source: ToolServerSource::Manual, check })
+        })
+        .collect();
+    for (pid, _) in live_projects(state) {
+        let mut servers = tool_servers(state, &pid);
+        for entry in &entries {
+            if entry.has_key {
+                copy_secret(state, &format!("mcp-{}", entry.name), &mcp_secret_id(&pid, &entry.name), &entry.name)?;
+            }
+            servers.retain(|s| s.name != entry.name);
+            servers.push(entry.clone());
+        }
+        save_tool_servers(state, &pid, &servers)?;
+    }
+    for s in &old {
+        if let Some(name) = s["name"].as_str() {
+            let _ = state.inner.vault_secrets.delete(&format!("mcp-{name}"));
+        }
+    }
+    drop_setting(state, "mcpServers")
 }
 
 pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
@@ -221,30 +294,53 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
     }
     let url = text(&input["url"], 500);
     check_endpoint(&url)?;
-    let mut servers = mcp_servers(state);
-    if servers.iter().any(|s| s["name"] == name) {
+    let mut servers = tool_servers(state, project_id);
+    if servers.iter().any(|s| s.name == name) {
         return Err(format!("A server named \"{name}\" already exists."));
     }
     let key = text(&input["apiKey"], 4000);
     if !key.is_empty() {
-        state.store_vault_secret(Some(&format!("mcp-{name}")), "mcp", "mcp", &name, &key).map_err(db_err)?;
+        state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
     }
-    servers.push(json!({ "name": name, "url": url, "hasKey": !key.is_empty() }));
-    save_setting(state, "mcpServers", &json!(servers))?;
+    servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None });
+    save_tool_servers(state, project_id, &servers)?;
+    broadcast(state, project_id);
+    Ok(())
+}
+
+/// Copies another project's server, and its key without revealing it, into this project.
+/// Args: the source project id, then the server name.
+pub fn copy_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    let from = text(args.first().unwrap_or(&Value::Null), 80);
+    let name = text(args.get(1).unwrap_or(&Value::Null), 40);
+    if from == project_id || !live_projects(state).iter().any(|(id, _)| *id == from) {
+        return Err("Pick another project to copy from.".into());
+    }
+    let entry = tool_servers(state, &from).into_iter().find(|s| s.name == name).ok_or_else(|| format!("That project has no server \"{name}\"."))?;
+    if matches!(entry.source, ToolServerSource::Pack { .. }) {
+        return Err(format!("\"{name}\" comes from a pack. Install the pack in this project instead."));
+    }
+    let mut servers = tool_servers(state, project_id);
+    if servers.iter().any(|s| s.name == name) {
+        return Err(format!("A server named \"{name}\" already exists."));
+    }
+    let has_key = entry.has_key && copy_secret(state, &mcp_secret_id(&from, &name), &mcp_secret_id(project_id, &name), &name)?;
+    servers.push(ToolServer { has_key, check: None, ..entry });
+    save_tool_servers(state, project_id, &servers)?;
     broadcast(state, project_id);
     Ok(())
 }
 
 pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let name = text(args.first().unwrap_or(&Value::Null), 40);
-    let mut servers = mcp_servers(state);
+    let mut servers = tool_servers(state, project_id);
     let before = servers.len();
-    servers.retain(|s| s["name"] != name);
+    servers.retain(|s| s.name != name);
     if servers.len() == before {
         return Err(format!("No MCP server \"{name}\"."));
     }
-    save_setting(state, "mcpServers", &json!(servers))?;
-    let _ = state.inner.vault_secrets.delete(&format!("mcp-{name}"));
+    save_tool_servers(state, project_id, &servers)?;
+    let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, &name));
     let _ = crate::team_edit::mutate(state, project_id, |model, _| {
         for agent in &mut model.team {
             if let Some(list) = agent["mcp"].as_array_mut() {
@@ -259,7 +355,7 @@ pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<
 
 pub fn set_agent_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let id = text(args.first().unwrap_or(&Value::Null), 80);
-    let known: Vec<String> = mcp_servers(state).iter().filter_map(|s| s["name"].as_str().map(str::to_owned)).collect();
+    let known: Vec<String> = tool_servers(state, project_id).into_iter().map(|s| s.name).collect();
     let mut chosen: Vec<String> = Vec::new();
     for n in args.get(1).and_then(Value::as_array).into_iter().flatten().take(50) {
         let n = text(n, 40);
@@ -273,24 +369,18 @@ pub fn set_agent_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Resu
     })
 }
 
-/// The MCP section of the snapshot.
+/// The tool-server section of a project's snapshot: its own list, plus other projects' servers it can copy.
 #[must_use]
-pub fn mcp_state(state: &AppState, team: &[Value], checked_at: &str) -> Value {
-    let servers: Vec<Value> = mcp_servers(state)
-        .iter()
-        .map(|s| {
-            json!({ "name": s["name"], "transport": "remote http", "status": s["status"].as_str().unwrap_or("unchecked"),
-                "error": s.get("error").cloned().unwrap_or(Value::Null), "checkedAt": s.get("checkedAt").cloned().unwrap_or(Value::Null), "nextStep": null })
+pub fn mcp_state(state: &AppState, project_id: &str, team: &[Value], checked_at: &str) -> Value {
+    let attached: Map<String, Value> = team.iter().filter_map(|a| Some((a["id"].as_str()?.to_owned(), a["mcp"].clone()))).collect();
+    let others: Vec<Value> = live_projects(state)
+        .into_iter()
+        .filter(|(id, _)| id != project_id)
+        .flat_map(|(id, project)| {
+            tool_servers(state, &id).into_iter().filter(|s| s.source == ToolServerSource::Manual).map(move |s| json!({ "projectId": id, "project": project, "name": s.name }))
         })
         .collect();
-    let attached: Map<String, Value> = team.iter().filter_map(|a| Some((a["id"].as_str()?.to_owned(), a["mcp"].clone()))).collect();
-    json!({ "servers": servers, "attached": attached, "error": null, "checkedAt": checked_at })
-}
-
-fn mcp_key(state: &AppState, name: &str) -> Option<String> {
-    let row = state.inner.vault_secrets.get_by_id(&format!("mcp-{name}")).ok().flatten()?;
-    let raw = state.inner.auth.vault().decrypt(format!("vault-secret:{}", row.id).as_bytes(), &row.secret_enc).ok()?;
-    Some(String::from_utf8_lossy(&raw).into_owned())
+    json!({ "servers": tool_servers(state, project_id), "attached": attached, "others": others, "error": null, "checkedAt": checked_at })
 }
 
 const MCP_CHECKS_PER_MINUTE: u32 = 10;
@@ -310,38 +400,40 @@ fn take_mcp_check(state: &AppState, project_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Probes the named MCP server, or every one when no name is given, and records each result for the snapshot.
+/// Probes the project's named server, or every one when no name is given, and records each result for the snapshot.
 pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     use futures_util::StreamExt;
     let only = args.first().map(|v| text(v, 40)).filter(|n| !n.is_empty());
-    let targets: Vec<(String, String)> = mcp_servers(state)
-        .iter()
-        .filter(|s| only.as_ref().is_none_or(|n| s["name"] == n.as_str()))
-        .filter_map(|s| Some((s["name"].as_str()?.to_owned(), s["url"].as_str()?.to_owned())))
+    let targets: Vec<(String, String, bool)> = tool_servers(state, project_id)
+        .into_iter()
+        .filter(|s| only.as_ref().is_none_or(|n| s.name == *n))
+        .map(|s| {
+            let ToolServerTransport::Http { url } = s.transport;
+            (s.name, url, s.has_key)
+        })
         .collect();
     if let (Some(n), true) = (&only, targets.is_empty()) {
         return Err(format!("No MCP server \"{n}\"."));
     }
     take_mcp_check(state, project_id)?;
     let results: Vec<(String, Result<Vec<Value>, String>)> = futures_util::stream::iter(targets)
-        .map(|(name, url)| async move {
-            let result = probe(&name, &url, mcp_key(state, &name)).await;
+        .map(|(name, url, has_key)| async move {
+            let key = if has_key { crate::runtime::vault_secret(state, &mcp_secret_id(project_id, &name)).ok().flatten() } else { None };
+            let result = probe(&name, &url, key).await;
             (name, result)
         })
         .buffer_unordered(4)
         .collect()
         .await;
-    let now = Utc::now().to_rfc3339();
+    let at = Utc::now().to_rfc3339();
     // Re-read after the probes so a server added or removed meanwhile isn't lost or brought back.
-    let mut servers = mcp_servers(state);
+    let mut servers = tool_servers(state, project_id);
     for s in &mut servers {
-        if let Some((_, result)) = results.iter().find(|(n, _)| s["name"] == n.as_str()) {
-            s["status"] = json!(if result.is_ok() { "ready" } else { "error" });
-            s["error"] = result.as_ref().err().map_or(Value::Null, |e| json!(e));
-            s["checkedAt"] = json!(now);
+        if let Some((_, result)) = results.iter().find(|(n, _)| s.name == *n) {
+            s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.as_ref().err().cloned(), at: at.clone() });
         }
     }
-    save_setting(state, "mcpServers", &json!(servers))?;
+    save_tool_servers(state, project_id, &servers)?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -603,6 +695,135 @@ mod tests {
         let sse = format!("event: message\ndata: {plain}\n\n");
         assert_eq!(parse_tools(&sse).len(), 1);
         assert!(parse_tools("garbage").is_empty());
+    }
+
+    /// Two projects, each with a team, plus an archived third one.
+    fn two_projects() -> (AppState, String, String) {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([3u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("Alpha", "alpha", "/w/alpha").unwrap();
+        state
+            .inner
+            .db
+            .transaction(|c| {
+                c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-beta', 'beta', 'Beta', '/w/beta', 1, 1)", [])?;
+                c.execute("INSERT INTO projects (id, slug, name, root_path, archived, created_at, updated_at) VALUES ('proj-old', 'old', 'Old', '/w/old', 1, 2, 2)", [])?;
+                Ok::<_, DbError>(())
+            })
+            .unwrap();
+        for pid in ["proj-alpha", "proj-beta"] {
+            crate::team::complete_welcome(&state, pid, &[json!({ "templateId": "dev" })]).unwrap();
+        }
+        (state, "proj-alpha".into(), "proj-beta".into())
+    }
+
+    fn first_seat(state: &AppState, pid: &str) -> Value {
+        crate::team::load(state, pid).unwrap().team[0].clone()
+    }
+
+    fn tick(state: &AppState, pid: &str, names: Value) {
+        let id = first_seat(state, pid)["id"].as_str().unwrap().to_owned();
+        crate::team_edit::edit_seat(state, pid, &id, |seat| {
+            seat["mcp"] = names;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn key(state: &AppState, pid: &str, name: &str) -> Option<String> {
+        crate::runtime::vault_secret(state, &mcp_secret_id(pid, name)).unwrap()
+    }
+
+    #[test]
+    fn boot_migration_copies_every_hq_wide_server_and_key_into_every_live_project() {
+        let (state, a, b) = two_projects();
+        let old = json!([
+            { "name": "docs", "url": "https://docs.example/mcp", "hasKey": true, "status": "ready", "error": null, "checkedAt": "2026-11-01T00:00:00Z" },
+            { "name": "open", "url": "https://open.example/mcp", "hasKey": false },
+        ]);
+        save_setting(&state, "mcpServers", &old).unwrap();
+        state.store_vault_secret(Some("mcp-docs"), "mcp", "mcp", "docs", "docs-key").unwrap();
+        tick(&state, &a, json!(["docs"]));
+
+        migrate_hq_wide_tool_servers(&state).unwrap();
+        for pid in [&a, &b] {
+            let servers = tool_servers(&state, pid);
+            assert_eq!(servers.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["docs", "open"], "every server reaches {pid}");
+            assert_eq!(servers[0].check, Some(ToolServerCheck { ok: true, error: None, at: "2026-11-01T00:00:00Z".into() }), "the last check carries over");
+            assert!(servers[0].has_key && !servers[1].has_key);
+            assert_eq!(key(&state, pid, "docs").as_deref(), Some("docs-key"), "the key is copied to {pid}");
+        }
+        assert!(tool_servers(&state, "proj-old").is_empty(), "archived projects are skipped");
+        assert!(setting(&state, "mcpServers").is_none(), "the HQ-wide list is gone");
+        assert!(state.inner.vault_secrets.get_by_id("mcp-docs").unwrap().is_none(), "the HQ-wide key is gone");
+        assert_eq!(first_seat(&state, &a)["mcp"], json!(["docs"]), "seat selections are untouched");
+
+        let before = tool_servers(&state, &a);
+        migrate_hq_wide_tool_servers(&state).unwrap();
+        assert_eq!(tool_servers(&state, &a), before, "a second run changes nothing");
+    }
+
+    #[test]
+    fn boot_migration_keeps_the_hq_wide_data_when_a_key_copy_fails() {
+        let (state, a, _) = two_projects();
+        save_setting(&state, "mcpServers", &json!([{ "name": "docs", "url": "https://docs.example/mcp", "hasKey": true }])).unwrap();
+        state.inner.vault_secrets.upsert("mcp-docs", "mcp", "mcp", "docs", "not-a-sealed-value").unwrap();
+
+        assert!(migrate_hq_wide_tool_servers(&state).is_err());
+        assert!(setting(&state, "mcpServers").is_some() && state.inner.vault_secrets.get_by_id("mcp-docs").unwrap().is_some(), "nothing old is deleted");
+
+        state.store_vault_secret(Some("mcp-docs"), "mcp", "mcp", "docs", "docs-key").unwrap();
+        migrate_hq_wide_tool_servers(&state).unwrap();
+        assert_eq!(key(&state, &a, "docs").as_deref(), Some("docs-key"), "the rerun at next boot finishes the move");
+        assert_eq!(tool_servers(&state, &a).len(), 1, "the rerun doesn't duplicate entries");
+    }
+
+    #[test]
+    fn removing_a_server_touches_only_its_own_project() {
+        // Bug: removal used to clear only the current project's seats, leaving dangling names elsewhere that a
+        // later server with the same name would silently fill.
+        let (state, a, b) = two_projects();
+        add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://a.example/mcp", "apiKey": "key-a" })]).unwrap();
+        add_mcp(&state, &b, &[json!({ "name": "docs", "url": "https://b.example/mcp", "apiKey": "key-b" })]).unwrap();
+        tick(&state, &a, json!(["docs"]));
+        tick(&state, &b, json!(["docs"]));
+
+        remove_mcp(&state, &a, &[json!("docs")]).unwrap();
+        assert_eq!(first_seat(&state, &a)["mcp"], json!([]), "the removed name leaves this project's seats");
+        assert_eq!(key(&state, &a, "docs"), None, "and its key goes");
+        add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://new.example/mcp" })]).unwrap();
+        assert_eq!(first_seat(&state, &a)["mcp"], json!([]), "a new server with the old name isn't picked up silently");
+        assert_eq!(first_seat(&state, &b)["mcp"], json!(["docs"]), "the other project keeps its selection");
+        assert_eq!(tool_servers(&state, &b)[0].transport, ToolServerTransport::Http { url: "https://b.example/mcp".into() }, "and its own server");
+        assert_eq!(key(&state, &b, "docs").as_deref(), Some("key-b"));
+    }
+
+    #[test]
+    fn adding_a_server_shows_only_in_its_own_project() {
+        // Bug: add and remove refreshed only the current project's snapshot while changing a list every project read.
+        let (state, a, b) = two_projects();
+        add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://a.example/mcp" })]).unwrap();
+        let mcp = |pid: &str| crate::ws::build_initial_snapshot(&state, Some(pid))["snapshot"]["mcp"].clone();
+        assert_eq!(mcp(&a)["servers"][0]["name"], "docs");
+        assert_eq!(mcp(&a)["others"], json!([]), "a project doesn't offer its own servers for copying");
+        assert_eq!(mcp(&b)["servers"], json!([]), "the other project's list is unchanged");
+        assert_eq!(mcp(&b)["others"], json!([{ "projectId": a, "project": "Alpha", "name": "docs" }]), "but it can copy the server");
+        assert!(set_agent_mcp(&state, &b, &[first_seat(&state, &b)["id"].clone(), json!(["docs"])]).is_ok());
+        assert_eq!(first_seat(&state, &b)["mcp"], json!([]), "a seat can't tick another project's server");
+    }
+
+    #[test]
+    fn copy_from_project_brings_the_entry_and_its_key() {
+        let (state, a, b) = two_projects();
+        add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://a.example/mcp", "apiKey": "key-a" })]).unwrap();
+        copy_mcp(&state, &b, &[json!(a), json!("docs")]).unwrap();
+        let copied = &tool_servers(&state, &b)[0];
+        assert_eq!((copied.name.as_str(), copied.has_key, copied.check.is_none()), ("docs", true, true));
+        assert_eq!(key(&state, &b, "docs").as_deref(), Some("key-a"));
+        assert!(copy_mcp(&state, &b, &[json!(a), json!("docs")]).is_err(), "names stay unique");
+        assert!(copy_mcp(&state, &a, &[json!(a), json!("docs")]).is_err(), "a project can't copy from itself");
+        assert!(copy_mcp(&state, &b, &[json!("proj-old"), json!("docs")]).is_err(), "archived projects aren't a source");
+        remove_mcp(&state, &a, &[json!("docs")]).unwrap();
+        assert_eq!(key(&state, &b, "docs").as_deref(), Some("key-a"), "the copy owns its key");
     }
 
     #[test]

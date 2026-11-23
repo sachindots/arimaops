@@ -44,7 +44,7 @@ const GROUPS: { label: string; items: { id: SettingsTab; label: string; hint: st
   {
     label: "Integrations & Data",
     items: [
-      { id: "mcp", label: "MCP and connections", hint: "Servers and services for agents" },
+      { id: "mcp", label: "Tool servers and connections", hint: "Servers and services for agents" },
       { id: "memory", label: "Memory", hint: "Extraction, keep-out, backups" },
     ],
   },

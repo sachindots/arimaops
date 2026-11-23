@@ -643,6 +643,7 @@ async fn execute_ws_command(
             crate::integrations::refresh_mcp(state, project_id, &[args.first().map_or(Value::Null, |a| a["name"].clone())]).await
         }
         "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
+        "copyMcp" => crate::integrations::copy_mcp(state, project_id, args),
         "setAgentMcp" => crate::integrations::set_agent_mcp(state, project_id, args),
         "saveConnection" => crate::integrations::save_connection(state, project_id, args),
         "removeConnection" => crate::integrations::remove_connection(state, project_id, args),
@@ -1457,7 +1458,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "welcome": team_model.is_none(),
             "templateLibrary": crate::integrations::template_library(state),
             "skillPacks": crate::skills::pack_views(state),
-            "mcp": crate::integrations::mcp_state(state, &team, &now),
+            "mcp": crate::integrations::mcp_state(state, project_id, &team, &now),
             "connections": crate::integrations::connections_state(state),
             "setup": crate::integrations::setup_state(state, &now),
             "features": { "shell": false, "sandboxTab": false },

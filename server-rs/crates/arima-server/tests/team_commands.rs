@@ -326,7 +326,7 @@ async fn sandbox_mcp_connections_and_template_library() {
     assert_eq!(snap["snapshot"]["mcp"]["attached"]["cipher"], json!(["docs"]));
     assert!(!snap.to_string().contains("mcp-secret-key"));
     int::remove_mcp(&state, &pid, &[json!("docs")]).unwrap();
-    assert_eq!(team::load(&state, &pid).unwrap().team[0]["mcp"], json!([]), "removing a server detaches it everywhere");
+    assert_eq!(team::load(&state, &pid).unwrap().team[0]["mcp"], json!([]), "removing a server detaches it from the project's seats");
     assert!(int::remove_mcp(&state, &pid, &[json!("docs")]).is_err());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -367,14 +367,14 @@ async fn sandbox_mcp_connections_and_template_library() {
     });
     int::add_mcp(&state, &pid, &[json!({ "name": "probe", "url": format!("http://127.0.0.1:{port}/mcp"), "apiKey": "mcp-key-7" })]).unwrap();
     let server = |state: &AppState| arima_server::ws::build_initial_snapshot(state, Some(&pid))["snapshot"]["mcp"]["servers"][0].clone();
-    assert_eq!((server(&state)["status"].as_str(), server(&state)["checkedAt"].is_null()), (Some("unchecked"), true), "an unprobed server isn't reported ready");
+    assert!(server(&state)["check"].is_null(), "an unprobed server isn't reported ready");
     int::refresh_mcp(&state, &pid, &[json!("probe")]).await.unwrap();
     let failed = server(&state);
-    assert_eq!(failed["status"], "error");
-    assert!(failed["error"].as_str().unwrap().contains("503") && failed["checkedAt"].is_string(), "the failure and its time are reported");
+    assert_eq!(failed["check"]["ok"], false);
+    assert!(failed["check"]["error"].as_str().unwrap().contains("503") && failed["check"]["at"].is_string(), "the failure and its time are reported");
     int::refresh_mcp(&state, &pid, &[]).await.unwrap();
     let ok = server(&state);
-    assert_eq!((ok["status"].as_str(), ok["error"].is_null()), (Some("ready"), true), "a later refresh replaces the failure");
+    assert_eq!((ok["check"]["ok"].as_bool(), ok["check"]["error"].is_null()), (Some(true), true), "a later refresh replaces the failure");
     assert!(int::refresh_mcp(&state, &pid, &[json!("ghost")]).await.is_err());
     for _ in 0..8 {
         int::refresh_mcp(&state, &pid, &[]).await.unwrap();

@@ -29,6 +29,7 @@ import type {
   QuestionPayload,
   QuestionPrompt,
   SecondOpinionPayload,
+  ToolServer,
   VisualDecision,
   VisualFeedback,
   VoiceProvider,
@@ -149,6 +150,8 @@ export interface SandboxSettings {
 /** sandbox = Docker Sandboxes (sbx microVM); container = plain Docker behind HQ's allowlist proxy (VMs); local = on the host. */
 export type AgentMode = "sandbox" | "container" | "local";
 export const isAgentMode = (v: unknown): v is AgentMode => v === "sandbox" || v === "container" || v === "local";
+/** HQ starts only container-mode agents, so only they can be given tool servers. */
+export const getsToolServers = (a: { mode: AgentMode }) => a.mode === "container";
 
 /** Which coding or autonomous agent CLI runs in the sandbox or locally. */
 export const AGENT_CLIS = ["claude", "codex", "agy", "opencode", "gemini", "copilot"] as const;
@@ -223,22 +226,28 @@ export interface AgentConfig {
   engine?: AgentEngine;
 }
 
-/** An MCP server registered with Docker Sandboxes (`sbx mcp ls`). */
+/** Frozen v1 server only: a server in the sandbox runtime's registry. */
 export interface McpServer {
   name: string;
-  transport: string; // "remote http" | "local stdio" | …
-  status: string; // "ready" | "error" | "unchecked" | "needs-auth" | …
-  /** Rust HQ: why the last check failed; null when it passed or hasn't run. */
-  error?: string | null;
-  /** Rust HQ: when the server was last checked (ISO time); null before the first check. */
-  checkedAt?: string | null;
-  nextStep: string | null; // e.g. "sbx mcp auth arcjet"
+  transport: string;
+  status: string;
+  nextStep: string | null;
 }
 
+/** Frozen v1 server only. The UI reads {@link ToolServerState}. */
 export interface McpState {
   servers: McpServer[];
-  /** Per agent: servers attached to its sandbox right now (sbx can't detach one; recreating the sandbox does). */
   attached: Record<string, string[]>;
+  error: string | null;
+  checkedAt: string;
+}
+
+/** This project's tool servers, and other projects' hand-added ones it can copy. */
+export interface ToolServerState {
+  servers: ToolServer[];
+  /** Per agent: the servers it gets at its next start. */
+  attached: Record<string, string[]>;
+  others: { projectId: string; project: string; name: string }[];
   error: string | null;
   checkedAt: string;
 }
@@ -748,7 +757,8 @@ export interface OfficeSnapshot {
   messages: AgentMessage[]; // newest first, last 100
   activity: ActivityEvent[]; // newest first, last 50
   accessRequests?: AccessRequest[];
-  mcp?: McpState;
+  /** The frozen v1 server sends {@link McpState}; the Rust HQ sends {@link ToolServerState}. */
+  mcp?: ToolServerState | McpState;
   /** Machine-wide sign-ins agents can use (API keys, cloud). Never contains secret values. */
   accounts?: AccountsState;
   memory?: MemoryState;

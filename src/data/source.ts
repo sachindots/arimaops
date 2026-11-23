@@ -11,6 +11,7 @@ import type {
   FindingStatus,
   Severity,
   McpState,
+  ToolServerState,
   NewMcpServer,
   ActivityEvent,
   AgentMessage,
@@ -75,7 +76,7 @@ export type OfficeEvent =
   | { type: "activity"; event: ActivityEvent }
   | { type: "terminal.output"; agentId: string; data: string }
   | { type: "access.updated"; request: AccessRequest }
-  | { type: "mcp.updated"; mcp: McpState }
+  | { type: "mcp.updated"; mcp: ToolServerState | McpState }
   | { type: "accounts.updated"; accounts: AccountsState }
   | { type: "memory.updated"; memory: MemoryState }
   | { type: "company.updated"; company: string }
@@ -227,14 +228,14 @@ export interface OfficeDataSource {
   decideMemories(itemId: string, decisions: Record<string, "certify" | "reject">): void;
   keepOutOfMemory(name: string): void;
 
-  // MCP servers (Docker Sandboxes' registry)
+  // Tool servers: this project's own list
   refreshMcp(): void;
   addMcp(input: NewMcpServer): void;
-  /** Runs `sbx mcp auth <name>` in a visible terminal (id `setup:mcp-auth-<name>`). */
-  authMcp(name: string): void;
-  /** Unregisters a server from sbx (affects every sandbox on this machine). */
+  /** Copies another project's server, and its key, into this project. */
+  copyMcp(fromProjectId: string, name: string): void;
+  /** Removes a server from this project and from its agents. */
   removeMcp(name: string): void;
-  /** Which servers an agent gets. New ones are attached right away if it's running. */
+  /** Which servers an agent gets at its next start. */
   setAgentMcp(agentId: string, names: string[]): void;
   /** Answers requests an agent's sandbox blocked (sbx's approval queue). "all" with dismiss clears them all. */
   answerApproval(agentId: string, approvalId: string, decision: "allow" | "dismiss"): void;
