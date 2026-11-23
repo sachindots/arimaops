@@ -36,6 +36,7 @@ mime_guess = "2"
 percent-encoding = "2"
 qrcode = "0.14"
 rand = "0.8"
+regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
