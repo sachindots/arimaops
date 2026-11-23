@@ -509,19 +509,38 @@ fn parse_tools(body: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// A client for `endpoint` that passed the endpoint guard: it connects only to the addresses checked here and
+/// follows no redirects, so neither a changed DNS answer nor a redirect can reach a blocked address.
+pub(crate) async fn guarded_client(endpoint: &str, timeout: std::time::Duration) -> Result<(url::Url, reqwest::Client), String> {
+    let url = check_endpoint(endpoint)?;
+    let pinned = resolve_endpoint(&url).await?;
+    let mut builder = reqwest::Client::builder().timeout(timeout).connect_timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
+    if let Some((host, addrs)) = pinned {
+        builder = builder.resolve_to_addrs(&host, &addrs);
+    }
+    Ok((url, builder.build().map_err(db_err)?))
+}
+
+/// Records how a call through HQ to one of the project's servers went, the same way a live check does. A success
+/// is written only over a failed check, so working calls don't rewrite the setting each time.
+pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) {
+    let mut servers = tool_servers(state, project_id);
+    let Some(s) = servers.iter_mut().find(|s| s.name == name) else { return };
+    if result.is_ok() && s.check.as_ref().is_none_or(|c| c.ok) {
+        return;
+    }
+    s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.err(), at: Utc::now().to_rfc3339() });
+    if save_tool_servers(state, project_id, &servers).is_ok() {
+        broadcast(state, project_id);
+    }
+}
+
 /// One `tools/list` call through the endpoint guard, connecting only to the addresses that passed it.
 async fn probe(name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
-    let url = check_endpoint(endpoint)?;
     let call = async {
-        let pinned = resolve_endpoint(&url).await?;
-        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
-        if let Some((host, addrs)) = pinned {
-            builder = builder.resolve_to_addrs(&host, &addrs);
-        }
-        let mut req = builder
-            .build()
-            .map_err(db_err)?
-            .post(url.clone())
+        let (url, client) = guarded_client(endpoint, std::time::Duration::from_secs(8)).await?;
+        let mut req = client
+            .post(url)
             .header("Accept", "application/json, text/event-stream")
             .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
         if let Some(key) = bearer {

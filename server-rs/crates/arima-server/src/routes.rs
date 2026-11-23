@@ -291,6 +291,10 @@ pub fn router_with_state(state: AppState) -> Router {
         )
         .route("/mcp", post(mcp_root_endpoint))
         .route("/api/projects/{id}/mcp", post(mcp_project_endpoint))
+        .route(
+            "/api/projects/{id}/mcp/{server}",
+            post(crate::mcp_forward::forward).get(crate::mcp_forward::forward).delete(crate::mcp_forward::forward).layer(axum::extract::DefaultBodyLimit::max(crate::mcp_forward::MAX_REQUEST_BYTES)),
+        )
         .route("/api/webhooks/github", post(github_webhook_root))
         .route("/api/github/webhook", post(github_webhook_root))
         .route(
@@ -2020,15 +2024,25 @@ fn resolve_mcp_caller(
     peer_ip: IpAddr,
     path_project_id: Option<&str>,
 ) -> Result<McpCaller, ApiError> {
-    let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
-    let host = headers.get(HOST).and_then(|v| v.to_str().ok());
-    if !state.is_allowed_origin(origin, host) {
-        return Err(ApiError::new(StatusCode::FORBIDDEN, "Origin not allowed."));
-    }
     if let Some(version) = headers.get("mcp-protocol-version") {
         if version.as_bytes() != MCP_PROTOCOL_VERSION.as_bytes() {
             return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Unsupported MCP protocol version; this server speaks {MCP_PROTOCOL_VERSION}.")));
         }
+    }
+    agent_caller(state, headers, peer_ip, path_project_id)
+}
+
+/// The agent behind an MCP bearer token, refused when the token is unknown or belongs to another project.
+pub(crate) fn agent_caller(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer_ip: IpAddr,
+    path_project_id: Option<&str>,
+) -> Result<McpCaller, ApiError> {
+    let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
+    let host = headers.get(HOST).and_then(|v| v.to_str().ok());
+    if !state.is_allowed_origin(origin, host) {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "Origin not allowed."));
     }
     let bearer = headers
         .get(AUTHORIZATION)

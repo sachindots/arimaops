@@ -8,12 +8,15 @@ use serde_json::{json, Value};
 /// The agent's home inside its container (`HOME`).
 pub const AGENT_HOME: &str = "/workspace/.agent-home";
 
-/// An HTTP tool server an agent connects to. `token` is the env var that carries its bearer token, and the token.
+/// The env var that carries the agent's HQ token, the only tool-server secret in its container.
+pub const TOKEN_ENV: &str = "ARIMA_MCP_TOKEN";
+
+/// A tool server an agent connects to. Every one is on HQ (its own, or a project server HQ forwards to), so every
+/// one takes the agent's HQ token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpServer {
     pub name: String,
     pub url: String,
-    pub token: Option<(String, String)>,
 }
 
 /// How one CLI is told about its tool servers: a file written under the agent's folder, extra arguments, extra env.
@@ -36,7 +39,8 @@ pub struct CliAdapter {
     /// Provider id to the env vars that carry an API-key account's secret.
     pub provider_env: &'static [(&'static str, &'static [&'static str])],
     /// The CLI's MCP config, holding exactly the given servers and, where the CLI allows it, nothing from the workspace.
-    pub mcp: fn(&[McpServer]) -> McpLaunch,
+    /// The second argument is the agent's HQ token.
+    pub mcp: fn(&[McpServer], &str) -> McpLaunch,
     /// The user-level folder inside the container where the CLI discovers Agent Skills; None without skills support.
     pub skills_dir: Option<&'static str>,
 }
@@ -128,84 +132,65 @@ fn clean_model(model: &Value) -> Option<String> {
     (!m.is_empty() && m.len() <= 80 && !m.starts_with('-') && m.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/' | b':' | b'@'))).then(|| m.to_owned())
 }
 
-// Claude, Codex and OpenCode read the token from the env var; the others don't expand env vars in headers, so
-// their file (inside the agent's private home, never the workspace root) holds it.
-fn server_map(servers: &[McpServer], entry: impl Fn(&McpServer, Value) -> Value, auth: impl Fn(&str, &str) -> String) -> Value {
-    servers
-        .iter()
-        .map(|s| {
-            let headers = s.token.as_ref().map_or_else(|| json!({}), |(var, secret)| json!({ "Authorization": auth(var, secret) }));
-            (s.name.clone(), entry(s, headers))
-        })
-        .collect::<serde_json::Map<_, _>>()
-        .into()
-}
-
-fn env_ref(var: &str, _: &str) -> String {
-    format!("Bearer ${{{var}}}")
-}
-
-fn literal(_: &str, secret: &str) -> String {
-    format!("Bearer {secret}")
+// Claude, Codex and OpenCode read the HQ token from the env var; the others don't expand env vars in headers, so
+// their file (inside the agent's private home, never the workspace root) holds it. No upstream key is ever here.
+fn server_map(servers: &[McpServer], entry: impl Fn(&McpServer, Value) -> Value, authorization: &str) -> Value {
+    servers.iter().map(|s| (s.name.clone(), entry(s, json!({ "Authorization": authorization })))).collect::<serde_json::Map<_, _>>().into()
 }
 
 fn in_home(path: &str) -> String {
     format!("/workspace/{path}")
 }
 
-fn mcp_claude(servers: &[McpServer]) -> McpLaunch {
+fn mcp_claude(servers: &[McpServer], _: &str) -> McpLaunch {
     McpLaunch {
-        file: Some((".mcp.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "type": "http", "url": s.url, "headers": h }), env_ref) }))),
+        file: Some((".mcp.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "type": "http", "url": s.url, "headers": h }), &format!("Bearer ${{{TOKEN_ENV}}}")) }))),
         args: ["--strict-mcp-config", "--mcp-config", ".mcp.json"].map(str::to_owned).to_vec(),
         env: Vec::new(),
     }
 }
 
-fn mcp_codex(servers: &[McpServer]) -> McpLaunch {
+fn mcp_codex(servers: &[McpServer], _: &str) -> McpLaunch {
     McpLaunch {
         // `-c` values parse as TOML; a JSON string is a valid TOML basic string.
         args: servers
             .iter()
-            .flat_map(|s| {
-                let url = ["-c".to_owned(), format!("mcp_servers.{}.url={}", s.name, json!(s.url))];
-                let token = s.token.iter().flat_map(|(var, _)| ["-c".to_owned(), format!("mcp_servers.{}.bearer_token_env_var={}", s.name, json!(var))]);
-                url.into_iter().chain(token).collect::<Vec<_>>()
-            })
+            .flat_map(|s| ["-c".to_owned(), format!("mcp_servers.{}.url={}", s.name, json!(s.url)), "-c".to_owned(), format!("mcp_servers.{}.bearer_token_env_var={}", s.name, json!(TOKEN_ENV))])
             .collect(),
         ..McpLaunch::default()
     }
 }
 
-fn mcp_gemini(servers: &[McpServer]) -> McpLaunch {
+fn mcp_gemini(servers: &[McpServer], token: &str) -> McpLaunch {
     const PATH: &str = ".agent-home/.arima/gemini-settings.json";
     let names: Vec<&str> = servers.iter().map(|s| s.name.as_str()).collect();
     McpLaunch {
-        file: Some((PATH, json!({ "mcpServers": server_map(servers, |s, h| json!({ "httpUrl": s.url, "headers": h }), literal), "mcp": { "allowed": names } }))),
+        file: Some((PATH, json!({ "mcpServers": server_map(servers, |s, h| json!({ "httpUrl": s.url, "headers": h }), &format!("Bearer {token}")), "mcp": { "allowed": names } }))),
         // The system settings file outranks the user's and the workspace's settings.
         env: vec![("GEMINI_CLI_SYSTEM_SETTINGS_PATH".to_owned(), in_home(PATH))],
         ..McpLaunch::default()
     }
 }
 
-fn mcp_copilot(servers: &[McpServer]) -> McpLaunch {
+fn mcp_copilot(servers: &[McpServer], token: &str) -> McpLaunch {
     McpLaunch {
-        file: Some((".agent-home/.copilot/mcp-config.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "type": "http", "url": s.url, "headers": h, "tools": ["*"] }), literal) }))),
+        file: Some((".agent-home/.copilot/mcp-config.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "type": "http", "url": s.url, "headers": h, "tools": ["*"] }), &format!("Bearer {token}")) }))),
         ..McpLaunch::default()
     }
 }
 
-fn mcp_opencode(servers: &[McpServer]) -> McpLaunch {
+fn mcp_opencode(servers: &[McpServer], _: &str) -> McpLaunch {
     const PATH: &str = ".agent-home/.arima/opencode.json";
     McpLaunch {
-        file: Some((PATH, json!({ "mcp": { "servers": server_map(servers, |s, h| json!({ "type": "remote", "url": s.url, "headers": h }), |var, _| format!("Bearer {{env:{var}}}")) } }))),
+        file: Some((PATH, json!({ "mcp": { "servers": server_map(servers, |s, h| json!({ "type": "remote", "url": s.url, "headers": h }), &format!("Bearer {{env:{TOKEN_ENV}}}")) } }))),
         env: vec![("OPENCODE_CONFIG".to_owned(), in_home(PATH))],
         ..McpLaunch::default()
     }
 }
 
-fn mcp_agy(servers: &[McpServer]) -> McpLaunch {
+fn mcp_agy(servers: &[McpServer], token: &str) -> McpLaunch {
     McpLaunch {
-        file: Some((".agent-home/.gemini/config/mcp_config.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "serverUrl": s.url, "headers": h }), literal) }))),
+        file: Some((".agent-home/.gemini/config/mcp_config.json", json!({ "mcpServers": server_map(servers, |s, h| json!({ "serverUrl": s.url, "headers": h }), &format!("Bearer {token}")) }))),
         ..McpLaunch::default()
     }
 }
@@ -238,55 +223,64 @@ mod tests {
 
     fn two_servers() -> Vec<McpServer> {
         vec![
-            McpServer { name: "arima".into(), url: "http://hq/api/projects/p/mcp".into(), token: Some(("ARIMA_MCP_TOKEN".into(), "tok-1".into())) },
-            McpServer { name: "docs".into(), url: "https://docs.example/mcp".into(), token: None },
+            McpServer { name: "arima".into(), url: "http://hq/api/projects/p/mcp".into() },
+            McpServer { name: "docs".into(), url: "http://hq/api/projects/p/mcp/docs".into() },
         ]
     }
 
     fn mcp(cli: &str, servers: &[McpServer]) -> McpLaunch {
-        (adapter(cli).unwrap().mcp)(servers)
+        (adapter(cli).unwrap().mcp)(servers, "tok-1")
     }
 
     #[test]
-    fn every_cli_gets_its_own_mcp_config_with_every_server() {
+    fn every_cli_gets_its_own_mcp_config_with_every_server_on_the_hq_token() {
         let s = two_servers();
         let claude = mcp("claude", &s);
         assert_eq!(claude.args, ["--strict-mcp-config", "--mcp-config", ".mcp.json"]);
         let (path, cfg) = claude.file.unwrap();
         assert_eq!(path, ".mcp.json");
         assert_eq!(cfg["mcpServers"]["arima"], json!({ "type": "http", "url": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer ${ARIMA_MCP_TOKEN}" } }));
-        assert_eq!(cfg["mcpServers"]["docs"]["headers"], json!({}));
+        assert_eq!(cfg["mcpServers"]["docs"], json!({ "type": "http", "url": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer ${ARIMA_MCP_TOKEN}" } }));
         assert!(!cfg.to_string().contains("tok-1"), "Claude reads the token from the environment, not the file");
 
         let codex = mcp("codex", &s);
         assert!(codex.file.is_none());
         assert_eq!(
             codex.args,
-            ["-c", "mcp_servers.arima.url=\"http://hq/api/projects/p/mcp\"", "-c", "mcp_servers.arima.bearer_token_env_var=\"ARIMA_MCP_TOKEN\"", "-c", "mcp_servers.docs.url=\"https://docs.example/mcp\""]
+            [
+                "-c",
+                "mcp_servers.arima.url=\"http://hq/api/projects/p/mcp\"",
+                "-c",
+                "mcp_servers.arima.bearer_token_env_var=\"ARIMA_MCP_TOKEN\"",
+                "-c",
+                "mcp_servers.docs.url=\"http://hq/api/projects/p/mcp/docs\"",
+                "-c",
+                "mcp_servers.docs.bearer_token_env_var=\"ARIMA_MCP_TOKEN\""
+            ]
         );
         assert!(arima_agents::docker::validate_launch("codex", &codex.args).is_ok(), "no secret on argv");
 
         let gemini = mcp("gemini", &s);
         let (path, cfg) = gemini.file.unwrap();
         assert_eq!(gemini.env, [("GEMINI_CLI_SYSTEM_SETTINGS_PATH".to_owned(), format!("/workspace/{path}"))]);
-        assert_eq!(cfg["mcpServers"]["arima"], json!({ "httpUrl": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer tok-1" } }));
+        assert_eq!(cfg["mcpServers"]["docs"], json!({ "httpUrl": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer tok-1" } }));
         assert_eq!(cfg["mcp"]["allowed"], json!(["arima", "docs"]));
 
         let (path, cfg) = mcp("copilot", &s).file.unwrap();
         assert_eq!(path, ".agent-home/.copilot/mcp-config.json");
-        assert_eq!(cfg["mcpServers"]["docs"], json!({ "type": "http", "url": "https://docs.example/mcp", "headers": {}, "tools": ["*"] }));
+        assert_eq!(cfg["mcpServers"]["docs"], json!({ "type": "http", "url": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer tok-1" }, "tools": ["*"] }));
 
         let opencode = mcp("opencode", &s);
         let (path, cfg) = opencode.file.unwrap();
         assert_eq!(opencode.env, [("OPENCODE_CONFIG".to_owned(), format!("/workspace/{path}"))]);
-        assert_eq!(cfg["mcp"]["servers"]["arima"], json!({ "type": "remote", "url": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer {env:ARIMA_MCP_TOKEN}" } }));
+        assert_eq!(cfg["mcp"]["servers"]["docs"], json!({ "type": "remote", "url": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer {env:ARIMA_MCP_TOKEN}" } }));
 
         let (path, cfg) = mcp("agy", &s).file.unwrap();
         assert_eq!(path, ".agent-home/.gemini/config/mcp_config.json");
-        assert_eq!(cfg["mcpServers"]["arima"], json!({ "serverUrl": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer tok-1" } }));
+        assert_eq!(cfg["mcpServers"]["docs"], json!({ "serverUrl": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer tok-1" } }));
 
         for a in ADAPTERS.iter().filter(|a| a.id != "codex") {
-            assert!((a.mcp)(&[]).file.is_some(), "{}: an empty selection still writes a config, replacing any earlier one", a.id);
+            assert!((a.mcp)(&[], "tok-1").file.is_some(), "{}: an empty selection still writes a config, replacing any earlier one", a.id);
         }
     }
 

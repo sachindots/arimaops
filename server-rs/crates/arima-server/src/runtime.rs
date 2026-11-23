@@ -97,12 +97,6 @@ pub struct AgentRuntime {
     status: Mutex<RuntimeStatus>,
 }
 
-/// The env var that carries a registered server's key into the container.
-#[must_use]
-pub fn mcp_token_env(name: &str) -> String {
-    format!("ARIMA_MCP_KEY_{}", name.to_ascii_uppercase().replace('-', "_"))
-}
-
 /// Rewrites only HQ's marked section of the role file, so notes an agent or the owner adds outside it survive.
 /// A file without the markers is HQ's own output from before they existed and is replaced whole.
 #[must_use]
@@ -117,7 +111,7 @@ pub fn refresh_role(existing: Option<&str>, role: &str) -> String {
     }
 }
 
-/// Some MCP files hold a key, so only the owner (HQ's user, which is also the container's user) can read them.
+/// Some MCP files hold the agent's HQ token, so only the owner (HQ's user, which is also the container's user) can read them.
 fn write_private(path: &std::path::Path, body: &str) -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -135,35 +129,20 @@ pub(crate) fn vault_secret(state: &AppState, id: &str) -> Result<Option<String>,
     Ok(Some(String::from_utf8_lossy(&secret).into_owned()))
 }
 
-/// The project's servers this agent was given in Settings. One that is gone or whose key is missing is skipped,
-/// so a stale selection never stops the agent from starting.
-fn selected_servers(state: &AppState, project_id: &str, agent: &Value) -> Vec<McpServer> {
+/// HQ's own server at `base`, then the project's servers this agent was given in Settings, each reached through
+/// HQ at `base/{name}` (HQ attaches its key). One that is gone is skipped, so a stale selection never stops a start.
+fn hq_servers(state: &AppState, project_id: &str, agent: &Value, base: &str) -> Vec<McpServer> {
     let registry = crate::integrations::tool_servers(state, project_id);
     let agent_id = agent["id"].as_str().unwrap_or("");
-    agent["mcp"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter_map(|name| {
-            let Some(entry) = registry.iter().find(|s| s.name == name).filter(|_| name != "arima") else {
-                tracing::warn!(agent = agent_id, server = name, "skipping an MCP server that isn't registered");
-                return None;
-            };
-            let token = if entry.has_key {
-                match vault_secret(state, &crate::integrations::mcp_secret_id(project_id, name)) {
-                    Ok(Some(secret)) => Some((mcp_token_env(name), secret)),
-                    _ => {
-                        tracing::warn!(agent = agent_id, server = name, "skipping an MCP server whose key can't be read");
-                        return None;
-                    }
-                }
-            } else {
-                None
-            };
-            let arima_core::ToolServerTransport::Http { url } = &entry.transport;
-            Some(McpServer { name: name.to_owned(), url: url.clone(), token })
-        })
+    let selected = agent["mcp"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|name| {
+        let known = *name != "arima" && registry.iter().any(|s| s.name == *name);
+        if !known {
+            tracing::warn!(agent = agent_id, server = name, "skipping an MCP server that isn't registered");
+        }
+        known
+    });
+    std::iter::once(McpServer { name: "arima".to_owned(), url: base.to_owned() })
+        .chain(selected.map(|name| McpServer { name: name.to_owned(), url: format!("{base}/{name}") }))
         .collect()
 }
 
@@ -383,13 +362,15 @@ impl AgentRuntime {
         let body = refresh_role(std::fs::read_to_string(&role_path).ok().as_deref(), &role);
         std::fs::write(&role_path, body).map_err(|e| e.to_string())?;
 
-        let mut servers: Vec<McpServer> = self.config.hq_url.iter().map(|url| McpServer {
-            name: "arima".to_owned(),
-            url: format!("{}/api/projects/{project_id}/mcp", url.trim_end_matches('/')),
-            token: Some(("ARIMA_MCP_TOKEN".to_owned(), state.inner.mcp.issue_agent_token(project_id, agent_id))),
-        }).collect();
-        servers.extend(selected_servers(state, project_id, agent));
-        let mcp = (adapter.mcp)(&servers);
+        // Without HQ's address the agent can reach neither HQ's server nor the ones HQ forwards to.
+        let (servers, token) = match &self.config.hq_url {
+            Some(url) => {
+                let base = format!("{}/api/projects/{project_id}/mcp", url.trim_end_matches('/'));
+                (hq_servers(state, project_id, agent, &base), Some(state.inner.mcp.issue_agent_token(project_id, agent_id)))
+            }
+            None => (Vec::new(), None),
+        };
+        let mcp = (adapter.mcp)(&servers, token.as_deref().unwrap_or(""));
         if let Some((path, cfg)) = &mcp.file {
             write_private(&dir.join(path), &serde_json::to_string_pretty(cfg).unwrap_or_default())?;
         }
@@ -399,7 +380,7 @@ impl AgentRuntime {
         let mut env: HashMap<String, String> = crate::secrets::env_for(state, project_id, agent_id);
         env.extend([("TERM".to_owned(), "xterm-256color".to_owned()), ("HOME".to_owned(), crate::cli::AGENT_HOME.to_owned())]);
         env.extend(mcp.env);
-        env.extend(servers.into_iter().filter_map(|s| s.token));
+        env.extend(token.map(|t| (crate::cli::TOKEN_ENV.to_owned(), t)));
         if let Some(account) = agent["account"].as_str().filter(|a| !a.is_empty()) {
             let row = state.inner.vault_secrets.get_by_id(&format!("acct-{account}")).ok().flatten().ok_or_else(|| format!("The account \"{account}\" this agent uses doesn't exist."))?;
             let secret = state.inner.auth.vault().decrypt(format!("vault-secret:{}", row.id).as_bytes(), &row.secret_enc).map_err(|e| e.to_string())?;
@@ -516,11 +497,28 @@ mod tests {
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
         let names: Vec<&String> = cfg["mcpServers"].as_object().unwrap().keys().collect();
         assert_eq!(names, ["arima", "docs", "open-web"], "HQ's server plus the selected ones; the unknown id is skipped");
-        assert_eq!(cfg["mcpServers"]["docs"]["headers"]["Authorization"], "Bearer ${ARIMA_MCP_KEY_DOCS}");
-        assert!(!cfg.to_string().contains("docs-key-1"), "the key isn't written to the workspace");
+        assert_eq!(cfg["mcpServers"]["docs"], json!({ "type": "http", "url": format!("http://hq:7420/api/projects/{pid}/mcp/docs"), "headers": { "Authorization": "Bearer ${ARIMA_MCP_TOKEN}" } }));
         let env: Vec<&str> = plan.body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-        assert!(env.contains(&"ARIMA_MCP_KEY_DOCS=docs-key-1") && env.iter().any(|e| e.starts_with("ARIMA_MCP_TOKEN=mcp_")), "{env:?}");
+        assert!(env.iter().any(|e| e.starts_with("ARIMA_MCP_TOKEN=mcp_")), "{env:?}");
         assert!(plan.body["Cmd"].as_array().unwrap().contains(&json!("--strict-mcp-config")));
+
+        for cli in crate::cli::ADAPTERS.iter().map(|a| a.id) {
+            edit::update_role(&state, &pid, &[json!(role_id), json!({ "cli": cli })]).unwrap();
+            let plan = rt.plan(&state, &pid, &id).unwrap();
+            assert!(!plan.body.to_string().contains("docs-key-1") && !plan.body.to_string().contains("ARIMA_MCP_KEY"), "{cli}: no upstream key in the container's env or command");
+            let mut stack = vec![dir.clone()];
+            while let Some(d) = stack.pop() {
+                for entry in std::fs::read_dir(&d).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.is_dir() {
+                        stack.push(path);
+                    } else {
+                        assert!(!std::fs::read_to_string(&path).unwrap_or_default().contains("docs-key-1"), "{cli}: {} holds an upstream key", path.display());
+                    }
+                }
+            }
+        }
+        edit::update_role(&state, &pid, &[json!(role_id), json!({ "cli": "claude" })]).unwrap();
         assert!(std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap().contains("First role text"));
 
         std::fs::write(dir.join("CLAUDE.md"), format!("{}\nNotes the agent kept\n", std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap())).unwrap();

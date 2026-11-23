@@ -11,6 +11,7 @@ pub mod integrations;
 pub mod key_test;
 pub mod license;
 pub mod mcp;
+pub mod mcp_forward;
 pub mod meetings;
 pub mod memory;
 pub mod memory_cmds;
