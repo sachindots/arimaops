@@ -116,6 +116,8 @@ pub struct AppStateInner {
     pub active_voice_provider: RwLock<VoiceProvider>,
     pub fallback_backups_dir: PathBuf,
     pub backup_retention: usize,
+    /// MCP live checks per project in the current minute: (window start, count).
+    pub mcp_checks: std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, u32)>>,
 }
 
 impl AppState {
@@ -176,6 +178,7 @@ impl AppState {
                 active_voice_provider: RwLock::new(VoiceProvider::BrowserWebSpeech),
                 fallback_backups_dir,
                 backup_retention: DEFAULT_BACKUP_RETENTION,
+                mcp_checks: std::sync::Mutex::default(),
             }),
         };
         state.sync_all_persisted_scopes_to_proxy();

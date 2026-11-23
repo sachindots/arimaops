@@ -238,6 +238,15 @@ fn second_opinion_schema() -> Value {
     )
 }
 
+/// Snake-case words in a prompt are read as tool names; returns the ones this tool server doesn't run.
+#[must_use]
+pub fn unknown_tool_names(text: &str) -> Vec<&str> {
+    text.split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
+        .filter(|w| w.contains('_') && !w.starts_with('_') && !w.ends_with('_'))
+        .filter(|w| !TOOLS.iter().any(|t| t.name == *w))
+        .collect()
+}
+
 pub const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "ask_user",
