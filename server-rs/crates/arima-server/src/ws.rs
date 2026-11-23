@@ -622,7 +622,8 @@ async fn execute_ws_command(
         }
         "ping" | "refreshSbx" => Ok(()),
         "refreshMcp" => crate::integrations::refresh_mcp(state, project_id, args).await,
-        "completeWelcome" => crate::team::complete_welcome(state, project_id, args),
+        "completeWelcome" => crate::team::complete_welcome(state, project_id, args)
+            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
         "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
         "addAgent" => crate::team_edit::add_agent(state, project_id, args),
         "removeAgent" => crate::team_edit::remove_agent(state, project_id, args).await,
@@ -659,8 +660,10 @@ async fn execute_ws_command(
         "removeLesson" => crate::memory_cmds::remove_lesson(state, project_id, args),
         "setLessonPromotion" => crate::memory_cmds::set_lesson_promotion(state, project_id, args),
         "updateFinding" => crate::memory_cmds::update_finding(state, project_id, args),
-        "updateRole" => crate::team_edit::update_role(state, project_id, args),
-        "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args),
+        "updateRole" => crate::team_edit::update_role(state, project_id, args)
+            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
+        "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args)
+            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
         "addGoal" => crate::planning::add_goal(state, project_id, args),
         "updateGoal" => crate::planning::update_goal(state, project_id, args),
         "setTaskGoal" => crate::planning::set_task_goal(state, project_id, args),
@@ -869,6 +872,8 @@ pub fn exec_answer_decision(
         );
         let _ = handle_meeting_action(state, meeting_id, Some(act), None, actor_role);
     }
+
+    crate::skills::on_decision(state, &resolved);
 
     // If this was a SecondOpinion / Disagreement card and the owner chose "waive-gate", record the gate waiver.
     if let DecisionPayload::SecondOpinion(ref so) | DecisionPayload::Disagreement(ref so) =
@@ -1451,6 +1456,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         "snapshot": {
             "welcome": team_model.is_none(),
             "templateLibrary": crate::integrations::template_library(state),
+            "skillPacks": crate::skills::pack_views(state),
             "mcp": crate::integrations::mcp_state(state, &team, &now),
             "connections": crate::integrations::connections_state(state),
             "setup": crate::integrations::setup_state(state, &now),

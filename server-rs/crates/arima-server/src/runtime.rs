@@ -21,6 +21,8 @@ use crate::state::AppState;
 const SCROLLBACK_BYTES: usize = 256 * 1024;
 const DEFAULT_IMAGE: &str = "ghcr.io/sachindots/arimaops-agent:latest";
 const DEFAULT_NETWORK: &str = "arima-agents";
+/// Approved skills as agents get them, under the workspaces root but outside every agent's own folder.
+const SKILLS_FOLDER: &str = ".arima-skills";
 
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
@@ -360,7 +362,7 @@ impl AgentRuntime {
         state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
     }
 
-    fn plan(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<Plan, String> {
+    pub(crate) fn plan(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<Plan, String> {
         let model = crate::team::load(state, project_id).ok_or("This project has no team yet. Pick a team first.")?;
         let agent = model.team.iter().find(|a| a["id"] == agent_id).ok_or_else(|| format!("No agent \"{agent_id}\"."))?;
         let mode = agent["mode"].as_str().unwrap_or("local");
@@ -419,6 +421,16 @@ impl AgentRuntime {
         let cpus = res["cpus"].as_f64().filter(|c| *c >= 1.0).unwrap_or(f64::from(DEFAULT_CONTAINER_CPUS));
         let memory_mb = res["memoryGb"].as_f64().filter(|m| *m >= 0.5).map_or(u64::from(DEFAULT_CONTAINER_MEMORY_MB), |g| (g * 1024.0).round() as u64);
         let workspace_host = self.config.workspaces_host_root.join(&slug).join(agent_id).display().to_string();
+        let mut binds = vec![format!("{workspace_host}:/workspace:rw")];
+        // Copied outside every agent's /workspace and mounted read-only, so an agent can't edit a skill it was given.
+        if let Some(skills_dir) = adapter.skills_dir {
+            let role_id = agent["roleId"].as_str().unwrap_or_default();
+            for skill in crate::skills::approved_skills(state, project_id, role_id) {
+                crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
+                let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
+                binds.push(format!("{}:{skills_dir}/{}:ro", host.display(), skill.name));
+            }
+        }
         let mut env_list: Vec<String> = env.into_iter().map(|(k, v)| format!("{k}={v}")).collect();
         env_list.sort();
         let body = json!({
@@ -431,7 +443,7 @@ impl AgentRuntime {
             "User": format!("{uid}:{gid}"),
             "Labels": { "arimaops.project": project_id, "arimaops.agent": agent_id, "arimaops.hq": self.config.workspaces_root.display().to_string() },
             "HostConfig": {
-                "Binds": [format!("{workspace_host}:/workspace:rw")],
+                "Binds": binds,
                 "NanoCpus": (cpus * 1e9).round() as i64,
                 "Memory": memory_mb * 1024 * 1024,
                 "PidsLimit": 512,
@@ -447,9 +459,9 @@ impl AgentRuntime {
     }
 }
 
-struct Plan {
+pub(crate) struct Plan {
     container: String,
-    body: Value,
+    pub(crate) body: Value,
     workspace_host: String,
 }
 

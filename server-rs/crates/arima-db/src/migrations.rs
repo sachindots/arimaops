@@ -54,7 +54,31 @@ const MIGRATIONS: &[Migration] = &[
         name: "008_mcp_tokens",
         sql: MCP_TOKENS_SCHEMA,
     },
+    Migration {
+        version: 9,
+        name: "009_skill_pins",
+        sql: SKILL_PINS_SCHEMA,
+    },
 ];
+
+/// Agent Skills pinned HQ-wide: one row per skill ref, at one commit, with the hash of its files.
+/// `decision_id` is the Inbox card for the current hash; only that card can approve it.
+const SKILL_PINS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS skill_pins (
+    skill_ref     TEXT PRIMARY KEY,
+    url           TEXT NOT NULL,
+    path          TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    description   TEXT NOT NULL,
+    commit_sha    TEXT NOT NULL,
+    content_hash  TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'blocked')),
+    decision_id   TEXT,
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    created_at    INTEGER NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+"#;
 
 /// One HQ tool-server bearer token per agent, stored as a SHA-256 hex digest so it survives an HQ restart.
 const MCP_TOKENS_SCHEMA: &str = r#"

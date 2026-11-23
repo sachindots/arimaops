@@ -23,6 +23,7 @@ pub(crate) mod routes_m4;
 pub(crate) mod routes_m5;
 pub mod security;
 pub mod skill_scan;
+pub mod skills;
 pub mod state;
 pub mod usage_watch;
 pub mod team;
