@@ -7,6 +7,7 @@ pub mod delivery;
 pub mod factory;
 pub mod github;
 pub mod integrations;
+pub mod key_test;
 pub mod license;
 pub mod mcp;
 pub mod meetings;

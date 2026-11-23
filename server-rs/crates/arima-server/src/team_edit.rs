@@ -82,7 +82,7 @@ pub(crate) fn mutate(
             other => other.to_string(),
         })?;
     let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
     Ok(())
 }
 
@@ -156,7 +156,7 @@ pub fn add_agent(state: &AppState, project_id: &str, args: &[Value]) -> Result<(
         );
         let seat = json!({
             "id": id, "name": name, "roleId": role["id"], "color": crate::team::free_color(role["color"].as_str().unwrap_or("#818cf8"), &taken),
-            "mode": if is_mode(&input["mode"]) { input["mode"].clone() } else { json!("sandbox") },
+            "mode": if is_mode(&input["mode"]) { input["mode"].clone() } else { model.team.first().map_or_else(|| json!("container"), |lead| lead["mode"].clone()) },
             "account": "", "workspacePath": null, "sandbox": sandbox, "mcp": []
         });
         model.team.push(resolve_seat(&model.template, &seat));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -54,7 +55,20 @@ struct ClientEntry {
 pub struct WsHub {
     seq: AtomicU64,
     clients: Mutex<HashMap<String, Vec<ClientEntry>>>,
+    /// The latest serialized snapshot per project (or connect key), so a burst of new connections builds it once.
+    /// Any event that is not itself a snapshot clears it, so a new connection never starts from older state than the last change.
+    snapshots: Mutex<HashMap<String, CachedSnapshot>>,
 }
+
+#[derive(Debug, Clone)]
+struct CachedSnapshot {
+    at: Instant,
+    project: String,
+    payload: String,
+}
+
+/// A safety net: even if some change forgot to clear the cache, a snapshot is never older than this.
+const SNAPSHOT_TTL: Duration = Duration::from_secs(5);
 
 impl WsHub {
     #[must_use]
@@ -109,9 +123,43 @@ impl WsHub {
         self.broadcast_raw_json(&payload);
     }
 
-    /// Sends a frame only to sockets showing `project_id`.
+    /// Sends a frame only to sockets showing `project_id`. It describes a change, so the cached snapshot is dropped.
     pub fn broadcast_project(&self, project_id: &str, payload: &str) {
+        self.forget_snapshots();
         self.send_where(payload, |e| e.project == project_id);
+    }
+
+    /// Sends a full snapshot to the project's sockets and keeps it for the next connection.
+    pub fn broadcast_snapshot(&self, project_id: &str, snapshot: &Value) {
+        let payload = snapshot.to_string();
+        if let Ok(mut cache) = self.snapshots.lock() {
+            cache.clear();
+            cache.insert(project_id.to_owned(), CachedSnapshot { at: Instant::now(), project: project_id.to_owned(), payload: payload.clone() });
+        }
+        self.send_where(&payload, |e| e.project == project_id);
+    }
+
+    fn forget_snapshots(&self) {
+        if let Ok(mut cache) = self.snapshots.lock() {
+            cache.clear();
+        }
+    }
+
+    /// The first frame for a new connection: the cached snapshot if there is a fresh one, else `build()` it (once, even if
+    /// hundreds of connections arrive together) and keep it. Returns the project's canonical id and the serialized frame.
+    fn snapshot_for_connect(&self, key: &str, build: impl FnOnce() -> Value) -> (String, String) {
+        let Ok(mut cache) = self.snapshots.lock() else {
+            let v = build();
+            return (v["snapshot"]["config"]["project"]["id"].as_str().unwrap_or("").to_owned(), v.to_string());
+        };
+        if let Some(hit) = cache.get(key).filter(|c| c.at.elapsed() < SNAPSHOT_TTL) {
+            return (hit.project.clone(), hit.payload.clone());
+        }
+        let v = build();
+        let project = v["snapshot"]["config"]["project"]["id"].as_str().unwrap_or("").to_owned();
+        let payload = v.to_string();
+        cache.insert(key.to_owned(), CachedSnapshot { at: Instant::now(), project: project.clone(), payload: payload.clone() });
+        (project, payload)
     }
 
     /// Like `broadcast_project`, but skips viewers: for live terminal output.
@@ -133,6 +181,7 @@ impl WsHub {
     /// Broadcasts an arbitrary pre-serialized JSON frame to every active subscriber, in every project.
     /// Only for frames that belong to no project (decisions and meetings carry their own ids).
     pub fn broadcast_raw_json(&self, payload: &str) {
+        self.forget_snapshots();
         let Ok(guard) = self.clients.lock() else {
             return;
         };
@@ -214,7 +263,12 @@ pub async fn ws_handler(
     let remote = !state.is_local_origin(origin.as_deref(), peer_ip, host_hdr.as_deref());
     let requested_project = query.project;
 
-    ws.on_upgrade(move |socket| {
+    // tungstenite keeps a 128 KiB read and a 128 KiB write buffer per socket by default. Snapshots are tens of KB, so
+    // 16 KiB each is plenty and brings a connection from about 430 KB to a fraction of that (see docs/benchmarks.md).
+    ws.read_buffer_size(16 * 1024)
+        .write_buffer_size(16 * 1024)
+        .max_write_buffer_size(4 * 1024 * 1024)
+        .on_upgrade(move |socket| {
         handle_socket(
             socket,
             state,
@@ -239,8 +293,7 @@ async fn handle_socket(
     let (tx, mut rx) = mpsc::channel::<WsOutbound>(CLIENT_QUEUE_CAP);
 
     // Send initial OfficeSnapshot including visualDecisions, meetings, meetingTurns, pullRequests.
-    let init_snap = build_initial_snapshot(&state, requested_project.as_deref());
-    let project = init_snap["snapshot"]["config"]["project"]["id"].as_str().unwrap_or("").to_owned();
+    let (project, init_frame) = state.inner.ws_hub.snapshot_for_connect(requested_project.as_deref().unwrap_or(""), || build_initial_snapshot(&state, requested_project.as_deref()));
     let streams = state
         .inner
         .auth
@@ -275,7 +328,7 @@ async fn handle_socket(
         }
     });
 
-    let _ = tx.try_send(WsOutbound::Text(init_snap.to_string()));
+    let _ = tx.try_send(WsOutbound::Text(init_frame));
     if streams {
         for (agent, data) in state.inner.runtime.scrollbacks(&project) {
             let event = json!({ "type": "terminal.output", "projectId": project, "agentId": agent, "data": data });
@@ -553,6 +606,7 @@ async fn process_ws_command(
 fn audit_args(cmd: &str, args: &[Value]) -> Value {
     match cmd {
         "setEnvVar" | "setSecret" => json!([args.first(), args.get(1), "[REDACTED]"]),
+        "testAccountKey" => json!([args.first(), "[REDACTED]", args.get(2)]),
         "saveAccount" => json!([{ "id": args.first().and_then(|a| a.get("id")), "provider": args.first().and_then(|a| a.get("provider")) }]),
         _ => redact_json_value(&Value::Array(args.to_vec())),
     }
@@ -585,7 +639,7 @@ async fn execute_ws_command(
         "recheckSetup" => {
             state.inner.runtime.refresh().await;
             let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
             Ok(())
         }
         "ping" | "refreshSbx" | "refreshMcp" => Ok(()),
@@ -599,6 +653,7 @@ async fn execute_ws_command(
         "removeSecret" => crate::secrets::remove_secret(state, project_id, args),
         "openEnvFile" => crate::secrets::open_env_file(),
         "saveAccount" => crate::secrets::save_account(state, project_id, args),
+        "testAccountKey" => crate::key_test::run(state, project_id, args).await,
         "removeAccount" => crate::secrets::remove_account(state, project_id, args),
         "setProxy" => crate::secrets::set_proxy(state, project_id, args),
         "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
@@ -663,7 +718,7 @@ async fn execute_ws_command(
             }
             state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "running", "note": null }).to_string());
             let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
             crate::delivery::kick_after_start(state, project_id, agent_id);
             crate::usage_watch::watch(state, project_id, agent_id);
             Ok(())
@@ -692,7 +747,7 @@ async fn execute_ws_command(
             let stopped = state.inner.runtime.stop(state, project_id, agent_id).await;
             state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "stopped", "note": null }).to_string());
             let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
             stopped
         }
         "createBoard" => {
@@ -1439,6 +1494,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "mcp": crate::integrations::mcp_state(state, &team, &now),
             "connections": crate::integrations::connections_state(state),
             "setup": crate::integrations::setup_state(state, &now),
+            "features": { "shell": false, "sandboxTab": false },
             "sbx": crate::secrets::sbx_state(state, project_id, &agent_ids, &now),
             "accounts": crate::secrets::accounts_state(state),
             "config": {
@@ -1501,5 +1557,7 @@ mod audit_tests {
         assert!(!b.to_string().contains("ghp_"));
         let c = audit_args("saveAccount", &[json!({ "id": "work", "provider": "anthropic", "secret": "sk-ant-zzz", "fields": { "region": "x" } })]);
         assert!(!c.to_string().contains("sk-ant") && c.to_string().contains("work"));
+        let d = audit_args("testAccountKey", &[json!("anthropic"), json!("sk-ant-secret-value"), json!("req-1")]);
+        assert!(!d.to_string().contains("sk-ant") && d.to_string().contains("anthropic"));
     }
 }

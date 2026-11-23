@@ -292,6 +292,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/mcp", post(mcp_root_endpoint))
         .route("/api/projects/{id}/mcp", post(mcp_project_endpoint))
         .route("/api/webhooks/github", post(github_webhook_root))
+        .route("/api/github/webhook", post(github_webhook_root))
         .route(
             "/api/projects/{id}/github/webhook",
             post(github_webhook_project),

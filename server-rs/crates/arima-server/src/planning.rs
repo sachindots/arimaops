@@ -22,7 +22,7 @@ fn text(v: &Value, max: usize) -> String {
 
 fn broadcast(state: &AppState, project_id: &str) {
     let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
 }
 
 fn write(state: &AppState, project_id: &str, f: impl FnOnce(&rusqlite::Connection) -> Result<(), String>) -> Result<(), String> {

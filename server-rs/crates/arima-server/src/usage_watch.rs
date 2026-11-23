@@ -107,7 +107,7 @@ pub async fn enforce_caps(state: &AppState, project_id: &str) {
     }
     if stopped {
         let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-        state.inner.ws_hub.broadcast_project(project_id, &snapshot.to_string());
+        state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
     }
 }
 
