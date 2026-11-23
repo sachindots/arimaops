@@ -68,7 +68,7 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
     errors.assertClean("m5-factory-benchmarks");
   });
 
-  test("Settings -> MCP and connections: add and remove vaulted tool connection without echoing secret", async ({
+  test("Settings -> Tool servers and connections: add and remove vaulted tool connection without echoing secret", async ({
     page,
   }) => {
     const errors = attachErrorCollector(page);
@@ -77,7 +77,7 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
     await openSettings(page);
     await page
       .getByRole("navigation", { name: "Settings sections" })
-      .getByRole("button", { name: "MCP and connections" })
+      .getByRole("button", { name: "Tool servers and connections" })
       .click();
 
     const connSection = page.getByRole("region", { name: "Tool connections through HQ" });
