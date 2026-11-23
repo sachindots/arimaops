@@ -203,7 +203,7 @@ async fn resolve_endpoint(url: &url::Url) -> Result<Option<(String, Vec<std::net
     Ok(Some((host.to_owned(), addrs)))
 }
 
-fn mcp_servers(state: &AppState) -> Vec<Value> {
+pub(crate) fn mcp_servers(state: &AppState) -> Vec<Value> {
     setting(state, "mcpServers").and_then(|v| v.as_array().cloned()).unwrap_or_default()
 }
 
