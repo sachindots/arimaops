@@ -206,7 +206,7 @@ pub fn set_team_mode(state: &AppState, project_id: &str, args: &[Value]) -> Resu
 }
 
 
-const AGENT_CLIS: [&str; 6] = ["claude", "codex", "agy", "opencode", "gemini", "copilot"];
+pub(crate) const AGENT_CLIS: [&str; 6] = ["claude", "codex", "agy", "opencode", "gemini", "copilot"];
 
 fn is_cli(v: &Value) -> bool {
     v.as_str().is_some_and(|c| AGENT_CLIS.contains(&c))
