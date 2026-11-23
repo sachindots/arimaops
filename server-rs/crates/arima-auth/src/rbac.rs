@@ -118,6 +118,9 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "addMcp"
             | "removeMcp"
             | "copyMcp"
+            | "setToolServerKey"
+            | "addPack"
+            | "removePack"
     );
 
     if ctx.remote && needs_step_up && !ctx.elevated {
@@ -151,7 +154,7 @@ mod tests {
         assert_eq!(authorize_command("refreshMcp", &ctx(ServerRole::Operator)), CommandVerdict::Allowed);
         assert!(matches!(authorize_command("addMcp", &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)));
         assert_eq!(authorize_command("addMcp", &ctx(ServerRole::Owner)), CommandVerdict::Allowed);
-        for cmd in ["copyMcp", "removeMcp", "setAgentMcp"] {
+        for cmd in ["copyMcp", "removeMcp", "setAgentMcp", "setToolServerKey", "addPack", "checkPackUpdates", "removePack"] {
             assert!(matches!(authorize_command(cmd, &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)), "{cmd} is owner-only");
         }
     }

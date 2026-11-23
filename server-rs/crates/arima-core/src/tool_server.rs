@@ -18,6 +18,12 @@ pub struct ToolServer {
     /// The last live check; none before the first one.
     #[serde(default)]
     pub check: Option<ToolServerCheck>,
+    /// The hash of the tool list at the last live check.
+    #[serde(default)]
+    pub tools_sha256: Option<String>,
+    /// Why HQ won't give this server to agents (a pack server whose tools differ from the approved ones).
+    #[serde(default)]
+    pub blocked: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]

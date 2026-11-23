@@ -25,7 +25,8 @@ pub fn classify_owner_only(payload: &DecisionPayload, explicit: bool) -> bool {
         | DecisionPayload::SendProposal { .. }
         | DecisionPayload::MemoryReview { .. }
         | DecisionPayload::SpendAlert { .. }
-        | DecisionPayload::SkillScan { .. } => true,
+        | DecisionPayload::SkillScan { .. }
+        | DecisionPayload::PackReview { .. } => true,
         DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {
             so.can_waive_gate
         }
@@ -67,6 +68,7 @@ fn payload_kind_str(payload: &DecisionPayload) -> &'static str {
         DecisionPayload::MemoryReview { .. } => "memory-review",
         DecisionPayload::SpendAlert { .. } => "spend-alert",
         DecisionPayload::SkillScan { .. } => "skill-scan",
+        DecisionPayload::PackReview { .. } => "pack-review",
         DecisionPayload::OverflowFallback { .. } => "overflow-fallback",
         DecisionPayload::Info { .. } => "info",
     }

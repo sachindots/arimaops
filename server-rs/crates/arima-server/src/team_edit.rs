@@ -63,6 +63,22 @@ fn rebuild(model: &mut TeamModel, idx: usize, seat: &Value) {
     model.team[idx] = resolved;
 }
 
+/// Takes the skills `drop` matches off every role, and off the agents that copy them.
+pub(crate) fn drop_role_skills(state: &AppState, project_id: &str, drop: impl Fn(&str) -> bool) -> Result<(), String> {
+    mutate(state, project_id, |model, _| {
+        for role in model.template["roles"].as_array_mut().into_iter().flatten() {
+            if let Some(skills) = role["skills"].as_array_mut() {
+                skills.retain(|s| !s.as_str().is_some_and(|s| drop(s.trim())));
+            }
+        }
+        for idx in 0..model.team.len() {
+            let seat = seat_of(&model.team[idx]);
+            rebuild(model, idx, &seat);
+        }
+        Ok(())
+    })
+}
+
 /// Loads, edits, saves and broadcasts. `f` may also run SQL on `conn`, inside the same transaction.
 pub(crate) fn mutate(
     state: &AppState,

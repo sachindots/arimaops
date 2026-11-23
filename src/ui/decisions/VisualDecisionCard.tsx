@@ -6,6 +6,7 @@ import { ui } from "../../store/ui";
 import { Icon } from "../deck/Icon";
 import { ago, Dot, useNow } from "../kit";
 import { MeetingRequestCard } from "./MeetingRequestCard";
+import { PackReviewBody } from "./PackReviewBody";
 import { PermissionCard } from "./PermissionCard";
 import { QuestionCard } from "./QuestionCard";
 import { SecondOpinionCard } from "./SecondOpinionCard";
@@ -122,6 +123,7 @@ const KIND_META: Record<string, { icon: string; badge: string; color: string }> 
   "memory-review": { icon: "neurology", badge: "Memory Review", color: "var(--accent)" },
   "spend-alert": { icon: "payments", badge: "Spend Alert", color: "var(--color-red)" },
   "skill-scan": { icon: "extension", badge: "Skill Scan", color: "var(--accent)" },
+  "pack-review": { icon: "extension", badge: "Pack review", color: "var(--accent)" },
   "overflow-fallback": { icon: "swap_horiz", badge: "Model Fallback", color: "var(--color-amber)" },
   info: { icon: "info", badge: "Update", color: "var(--color-muted)" },
 };
@@ -224,6 +226,7 @@ export function VisualDecisionCard({
               <SafeMarkdown markdown={decision.payload.markdown} />
             </div>
           )}
+          {decision.payload.kind === "pack-review" && <PackReviewBody payload={decision.payload} />}
           {decision.payload.kind === "gate-approval" && (
             <div className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3 text-[13px]">
               <div>

@@ -88,6 +88,9 @@ fn target(state: &AppState, caller: &McpCaller, server: &str) -> Result<(String,
     let Some(entry) = entry else {
         return Err(ApiError::new(StatusCode::FORBIDDEN, format!("This agent isn't given the tool server \"{server}\".")));
     };
+    if let Some(why) = &entry.blocked {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, format!("The tool server \"{server}\" is blocked until the owner approves it in the Inbox: {why}")));
+    }
     let key = if entry.has_key {
         let key = crate::runtime::vault_secret(state, &mcp_secret_id(&caller.project_id, server)).ok().flatten();
         Some(key.ok_or_else(|| ApiError::new(StatusCode::BAD_GATEWAY, format!("HQ couldn't read the key for \"{server}\".")))?)

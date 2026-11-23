@@ -243,6 +243,16 @@ export interface OfficeDataSource {
   removeMcp(name: string): void;
   /** Which servers an agent gets at its next start. */
   setAgentMcp(agentId: string, names: string[]): void;
+  /** Stores (or, when empty, clears) a tool server's key. */
+  setToolServerKey(name: string, key: string): void;
+
+  // Packs: skills and tool servers from a git catalog, approved per project in the Inbox
+  /** Reads the pack at the repo's newest commit and files its install review. `plugin` names one pack in a catalog. */
+  addPack(url: string, plugin?: string): void;
+  /** Reads each installed pack (or one) again; a change waits for approval before the pin moves. */
+  checkPackUpdates(id?: string): void;
+  /** Removes the pack's skills and tool servers from this project. */
+  removePack(id: string): void;
   /** Answers requests an agent's sandbox blocked (sbx's approval queue). "all" with dismiss clears them all. */
   answerApproval(agentId: string, approvalId: string, decision: "allow" | "dismiss"): void;
   /** Re-reads policy rules, keys and proxy from sbx. */

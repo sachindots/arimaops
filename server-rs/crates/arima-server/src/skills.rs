@@ -95,7 +95,7 @@ pub fn valid_skill_name(name: &str) -> bool {
         && !name.contains("--")
 }
 
-fn safe_repo_path(path: &str) -> bool {
+pub(crate) fn safe_repo_path(path: &str) -> bool {
     !path.is_empty() && path.split('/').all(|p| !p.is_empty() && p != "." && p != ".." && !p.starts_with(".git"))
 }
 
@@ -124,7 +124,7 @@ pub fn parse_ref(skill_ref: &str) -> Result<SkillSource, String> {
     }
 }
 
-fn sha_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
@@ -160,7 +160,7 @@ fn frontmatter(md: &str) -> Option<(String, String)> {
 }
 
 /// Checks a skill folder against the Agent Skills spec. Returns the description.
-fn validate(folder: &str, files: &[(String, Vec<u8>)]) -> Result<String, String> {
+pub(crate) fn validate(folder: &str, files: &[(String, Vec<u8>)]) -> Result<String, String> {
     let md = files.iter().find(|(p, _)| p == "SKILL.md").ok_or("the folder has no SKILL.md")?;
     let (name, description) = frontmatter(&String::from_utf8_lossy(&md.1)).ok_or("SKILL.md has no frontmatter with name and description")?;
     if !valid_skill_name(&name) || name != folder {
@@ -191,18 +191,65 @@ fn git(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
-/// Fetches the newest commit of `src` into a scratch bare repo and reads the skill folder out of it.
-fn fetch(scratch: &Path, src: &SkillSource) -> Result<Fetched, String> {
-    if src.url.starts_with('-') {
+/// One commit of a repo, fetched into a scratch bare repo: its full listing, read without a checkout.
+pub(crate) struct Tree<'a> {
+    scratch: &'a Path,
+    pub commit: String,
+    /// `(mode, kind, oid, path)` for every entry.
+    entries: Vec<(String, String, String, String)>,
+}
+
+impl Tree<'_> {
+    /// Every path in the commit.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.entries.iter().map(|e| e.3.as_str())
+    }
+
+    /// One plain file's bytes; none when it is missing or a link.
+    pub fn file(&self, path: &str) -> Option<Vec<u8>> {
+        let (_, _, oid, _) = self.entries.iter().find(|(mode, kind, _, p)| p == path && kind == "blob" && mode != "120000")?;
+        git(self.scratch, &["cat-file", "blob", oid]).ok()
+    }
+
+    /// Every file under `dir`, relative to it, refusing links, submodules and unsafe paths.
+    pub fn folder(&self, dir: &str) -> Result<Vec<(String, Vec<u8>)>, String> {
+        let prefix = format!("{dir}/");
+        let mut files = Vec::new();
+        let mut bytes = 0u64;
+        for (mode, kind, oid, path) in self.entries.iter().filter(|e| e.3.starts_with(&prefix)) {
+            if kind != "blob" || mode == "120000" {
+                return Err(format!("{path} is a link or submodule; skills may hold plain files only"));
+            }
+            let rel = &path[prefix.len()..];
+            if !safe_repo_path(rel) {
+                return Err(format!("refusing the path {path}"));
+            }
+            let content = git(self.scratch, &["cat-file", "blob", oid])?;
+            bytes += content.len() as u64;
+            if bytes > MAX_SKILL_BYTES {
+                return Err(format!("the {dir} skill is over {} MB", MAX_SKILL_BYTES >> 20));
+            }
+            files.push((rel.to_owned(), content));
+        }
+        Ok(files)
+    }
+}
+
+/// Fetches `rev` (`HEAD` or a full commit) of `url` into the scratch folder and lists it.
+pub(crate) fn fetch_tree<'a>(scratch: &'a Path, url: &str, rev: &str) -> Result<Tree<'a>, String> {
+    if url.starts_with('-') || rev.starts_with('-') {
         return Err("bad git URL".into());
     }
     std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
     git(scratch, &["init", "--bare", "-q"])?;
-    git(scratch, &["fetch", "--depth", "1", "--no-tags", "-q", &src.url, "HEAD"])?;
+    git(scratch, &["fetch", "--depth", "1", "--no-tags", "-q", url, rev])?;
     let commit = String::from_utf8_lossy(&git(scratch, &["rev-parse", "FETCH_HEAD^{commit}"])?).trim().to_owned();
-    // Each entry: "<mode> <type> <oid> <size>\t<path>".
-    let listing = git(scratch, &["ls-tree", "-r", "-l", "-z", "--full-tree", &commit])?;
-    let entries: Vec<(String, String, String, String)> = listing
+    if rev != "HEAD" && commit != rev {
+        return Err(format!("the repo answered commit {commit}, not {rev}"));
+    }
+    // Each entry: "<mode> <type> <oid>\t<path>".
+    let listing = git(scratch, &["ls-tree", "-r", "-z", "--full-tree", &commit])?;
+    let entries = listing
         .split(|b| *b == 0)
         .filter(|e| !e.is_empty())
         .filter_map(|e| {
@@ -212,40 +259,30 @@ fn fetch(scratch: &Path, src: &SkillSource) -> Result<Fetched, String> {
             Some((m.next()?.to_owned(), m.next()?.to_owned(), m.next()?.to_owned(), path.to_owned()))
         })
         .collect();
+    Ok(Tree { scratch, commit, entries })
+}
+
+/// Fetches the newest commit of `src` into a scratch bare repo and reads the skill folder out of it.
+fn fetch(scratch: &Path, src: &SkillSource) -> Result<Fetched, String> {
+    let tree = fetch_tree(scratch, &src.url, "HEAD")?;
+    let commit = tree.commit.clone();
     let dir = match &src.path {
         Some(p) => p.clone(),
-        None => entries
-            .iter()
-            .filter_map(|(_, _, _, p)| p.strip_suffix("/SKILL.md"))
+        None => tree
+            .paths()
+            .filter_map(|p| p.strip_suffix("/SKILL.md"))
             .filter(|d| d.rsplit('/').next() == Some(src.name.as_str()))
             .min_by_key(|d| d.matches('/').count())
             .ok_or_else(|| format!("no folder named {} with a SKILL.md at {}", src.name, &commit[..7.min(commit.len())]))?
             .to_owned(),
     };
-    let prefix = format!("{dir}/");
-    let mut files = Vec::new();
-    let mut bytes = 0u64;
-    for (mode, kind, oid, path) in entries.iter().filter(|e| e.3.starts_with(&prefix)) {
-        if kind != "blob" || mode == "120000" {
-            return Err(format!("{path} is a link or submodule; skills may hold plain files only"));
-        }
-        let rel = &path[prefix.len()..];
-        if !safe_repo_path(rel) {
-            return Err(format!("refusing the path {path}"));
-        }
-        let content = git(scratch, &["cat-file", "blob", oid])?;
-        bytes += content.len() as u64;
-        if bytes > MAX_SKILL_BYTES {
-            return Err(format!("the {dir} skill is over {} MB", MAX_SKILL_BYTES >> 20));
-        }
-        files.push((rel.to_owned(), content));
-    }
+    let files = tree.folder(&dir)?;
     let folder = dir.rsplit('/').next().unwrap_or(&dir);
     let description = validate(folder, &files)?;
     Ok(Fetched { commit, path: dir, description, files })
 }
 
-fn data_root(state: &AppState) -> Result<PathBuf, String> {
+pub(crate) fn data_root(state: &AppState) -> Result<PathBuf, String> {
     state.inner.config.data_root.as_ref().map(|d| d.join("skills")).ok_or_else(|| "HQ has no data folder for skills".into())
 }
 
@@ -272,7 +309,7 @@ pub fn store(root: &Path, hash: &str, name: &str, files: &[(String, Vec<u8>)]) -
 }
 
 /// Every file under a stored skill folder, relative to it. A link anywhere makes the folder unusable.
-fn read_stored(dir: &Path) -> Option<Vec<(String, Vec<u8>)>> {
+pub(crate) fn read_stored(dir: &Path) -> Option<Vec<(String, Vec<u8>)>> {
     fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Option<()> {
         for entry in std::fs::read_dir(dir).ok()? {
             let entry = entry.ok()?;
@@ -530,8 +567,8 @@ pub fn on_decision(state: &AppState, decision: &VisualDecision) {
     }
 }
 
-/// The skill refs a project's role names (strings that parse as refs; built-in ids are skipped).
-fn role_refs(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<String> {
+/// Every skill a project's role names: built-in ids, refs and pack skills.
+fn role_skills(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<String> {
     let Some(model) = crate::team::load(state, project_id) else { return vec![] };
     let mut refs: Vec<String> = model.template["roles"]
         .as_array()
@@ -540,10 +577,16 @@ fn role_refs(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<S
         .filter(|r| role_id.is_none_or(|id| r["id"] == id))
         .flat_map(|r| r["skills"].as_array().cloned().unwrap_or_default())
         .filter_map(|s| s.as_str().map(|s| s.trim().to_owned()))
-        .filter(|s| parse_ref(s).is_ok())
         .collect();
     refs.dedup();
     refs
+}
+
+/// The standalone skill refs a project's roles name. A skill from a pack installed in the project goes through the
+/// pack's review instead.
+fn role_refs(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<String> {
+    let packs = crate::packs::lock(state, project_id);
+    role_skills(state, project_id, role_id).into_iter().filter(|s| parse_ref(s).is_ok() && crate::packs::owner_of(&packs, s).is_none()).collect()
 }
 
 /// Pins every skill ref the project's roles name that HQ hasn't pinned yet. Returns one message per failure.
@@ -575,14 +618,22 @@ pub struct ApprovedSkill {
 #[must_use]
 pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec<ApprovedSkill> {
     let Ok(root) = data_root(state) else { return vec![] };
+    let packs = crate::packs::lock(state, project_id);
     let mut out = Vec::new();
-    for r in role_refs(state, project_id, Some(role_id)) {
-        let Some(p) = get_pin(state, &r).filter(|p| p.status == SkillStatus::Approved) else {
+    for r in role_skills(state, project_id, Some(role_id)) {
+        let approved = if crate::packs::owner_of(&packs, &r).is_some() {
+            crate::packs::approved_skill(&packs, &r)
+        } else if parse_ref(&r).is_ok() {
+            get_pin(state, &r).filter(|p| p.status == SkillStatus::Approved).map(|p| (p.name, p.hash))
+        } else {
+            continue; // a built-in skill
+        };
+        let Some((name, hash)) = approved else {
             tracing::warn!(project_id, role_id, skill = r, "skill not mounted: it isn't approved");
             continue;
         };
-        match read_stored(&root.join(&p.hash).join(&p.name)) {
-            Some(files) if skill_hash(&files) == p.hash => out.push(ApprovedSkill { name: p.name, hash: p.hash, files }),
+        match read_stored(&root.join(&hash).join(&name)) {
+            Some(files) if skill_hash(&files) == hash => out.push(ApprovedSkill { name, hash, files }),
             _ => tracing::warn!(project_id, role_id, skill = r, "skill not mounted: its stored files changed since approval"),
         }
     }

@@ -39,7 +39,7 @@ export type MeetingSession = { id: string, projectId: string, kind: MeetingKind,
 
 export type DecisionStatus = "open" | "resolved" | "dismissed";
 
-export type DecisionKind = "question" | "second-opinion" | "disagreement" | "permission" | "meeting-request" | "spec-approval" | "plan-approval" | "gate-approval" | "send-proposal" | "memory-review" | "spend-alert" | "skill-scan" | "overflow-fallback" | "info";
+export type DecisionKind = "question" | "second-opinion" | "disagreement" | "permission" | "meeting-request" | "spec-approval" | "plan-approval" | "gate-approval" | "send-proposal" | "memory-review" | "spend-alert" | "skill-scan" | "pack-review" | "overflow-fallback" | "info";
 
 export type QuestionOption = { id: string, label: string, description: string | null, recommended: boolean, };
 
@@ -55,7 +55,29 @@ export type SecondOpinionPayload = { taskId: string | null, gateId: string | nul
 
 export type PermissionPayload = { toolName: string, commandOrPath: string, reason: string, scopeHint: string | null, resolution: string | null, };
 
-export type DecisionPayload = { "kind": "question" } & QuestionPayload | { "kind": "second-opinion" } & SecondOpinionPayload | { "kind": "disagreement" } & SecondOpinionPayload | { "kind": "permission" } & PermissionPayload | { "kind": "meeting-request", meetingId: string, meetingKind: MeetingKind, urgency: MeetingUrgency, participantIds: Array<string>, agendaPreview: Array<string>, } | { "kind": "spec-approval", boardId: string, version: number, markdown: string, } | { "kind": "plan-approval", markdown: string, } | { "kind": "gate-approval", taskId: string, gateId: string, reason: string, deliverablePreview: string | null, } | { "kind": "send-proposal", connection: string, tool: string, args: JsonValue, sentAt: string | null, error: string | null, } | { "kind": "memory-review", memories: JsonValue, } | { "kind": "spend-alert", dailyUsd: number, capUsd: number, paused: boolean, } | { "kind": "skill-scan", pack: string, findings: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, };
+export type PackChange = { 
+/**
+ * "skill" or "toolServer".
+ */
+kind: string, name: string, 
+/**
+ * The SKILL.md or tool descriptions as approved; none when new.
+ */
+before: string | null, 
+/**
+ * None when the item goes away.
+ */
+after: string | null, };
+
+export type DecisionPayload = { "kind": "question" } & QuestionPayload | { "kind": "second-opinion" } & SecondOpinionPayload | { "kind": "disagreement" } & SecondOpinionPayload | { "kind": "permission" } & PermissionPayload | { "kind": "meeting-request", meetingId: string, meetingKind: MeetingKind, urgency: MeetingUrgency, participantIds: Array<string>, agendaPreview: Array<string>, } | { "kind": "spec-approval", boardId: string, version: number, markdown: string, } | { "kind": "plan-approval", markdown: string, } | { "kind": "gate-approval", taskId: string, gateId: string, reason: string, deliverablePreview: string | null, } | { "kind": "send-proposal", connection: string, tool: string, args: JsonValue, sentAt: string | null, error: string | null, } | { "kind": "memory-review", memories: JsonValue, } | { "kind": "spend-alert", dailyUsd: number, capUsd: number, paused: boolean, } | { "kind": "skill-scan", pack: string, findings: Array<string>, } | { "kind": "pack-review", pack: string, 
+/**
+ * The approved commit; none on first install.
+ */
+from: string | null, to: string, changed: Array<PackChange>, egress: Array<string>, secrets: Array<string>, ignored: Array<string>, 
+/**
+ * Scan findings, blocking ones first.
+ */
+findings: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, };
 
 export type VisualDecision = { id: string, projectId: string, fromId: string, taskId: string | null, title: string, details: string, waiting: boolean, ownerOnly: boolean, status: DecisionStatus, payload: DecisionPayload, note: string | null, createdAt: string, closedAt: string | null, };
 
@@ -97,7 +119,89 @@ name: string, transport: ToolServerTransport, hasKey: boolean, source: ToolServe
 /**
  * The last live check; none before the first one.
  */
-check: ToolServerCheck | null, };
+check: ToolServerCheck | null, 
+/**
+ * The hash of the tool list at the last live check.
+ */
+toolsSha256: string | null, 
+/**
+ * Why HQ won't give this server to agents (a pack server whose tools differ from the approved ones).
+ */
+blocked: string | null, };
+
+export type PackSource = { 
+/**
+ * An https git URL.
+ */
+repo: string, 
+/**
+ * A full 40-hex commit.
+ */
+commit: string, 
+/**
+ * The plugin's folder in the repo; none for a whole-repo pack.
+ */
+path: string | null, };
+
+export type PackSkill = { 
+/**
+ * The skill folder, relative to the repo root.
+ */
+path: string, 
+/**
+ * The hash of the folder's files.
+ */
+sha256: string, };
+
+export type PackToolServer = { transport: ToolServerTransport, 
+/**
+ * The hash of its normalised `tools/list`; none while HQ couldn't list its tools.
+ */
+toolsSha256: string | null, 
+/**
+ * The normalised tool list the hash covers, kept so a change can be shown as a diff.
+ */
+tools: Array<JsonValue>, };
+
+export type PackScan = { 
+/**
+ * Findings that block a skill, as `path:line why`.
+ */
+blocked: Array<string>, warnings: Array<string>, };
+
+export type PackApproval = { by: string, 
+/**
+ * RFC 3339.
+ */
+at: string, };
+
+export type PackEntry = { source: PackSource, version: string | null, skills: { [key in string]?: PackSkill }, toolServers: { [key in string]?: PackToolServer }, 
+/**
+ * Hosts the pack says it reaches (its manifest's `network.hosts`).
+ */
+egress: Array<string>, 
+/**
+ * Secrets the pack asks for (its `userConfig` entries marked sensitive).
+ */
+secrets: Array<string>, 
+/**
+ * Parts HQ doesn't install: hooks, commands, subagents and command (stdio) tool servers.
+ */
+ignored: Array<string>, scan: PackScan, 
+/**
+ * None until the owner approves this entry; an import never carries it over.
+ */
+approved: PackApproval | null, 
+/**
+ * The open review card for this entry or its `update`.
+ */
+review: string | null, 
+/**
+ * A newer state waiting for approval; agents keep this entry until then.
+ */
+update: PackEntry | null, };
+
+export type PackLock = { v: number, packs: { [key in string]?: PackEntry }, };
 
 export type WsClientMessage = { id: string, cmd: string, args: Array<JsonValue>, };
 

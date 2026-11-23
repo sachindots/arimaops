@@ -7,7 +7,7 @@ import { ago, Field, SectionTitle, useNow } from "../kit";
 import { Select } from "../primitives/Select";
 
 const status = (s: ToolServer): [string, string] =>
-  !s.check ? ["Not checked", "var(--color-muted)"] : s.check.ok ? ["Ready", "var(--color-green)"] : ["Can't connect", "var(--color-red)"];
+  s.blocked ? ["Blocked", "var(--color-red)"] : !s.check ? ["Not checked", "var(--color-muted)"] : s.check.ok ? ["Ready", "var(--color-green)"] : ["Can't connect", "var(--color-red)"];
 
 /** This project's tool servers, their last check, and which agents get them. */
 export function McpSettings() {
@@ -103,6 +103,7 @@ export function McpSettings() {
                       Delete…
                     </button>
                   )}
+                  {s.blocked && <p className="m-0 w-full text-[12px] text-red">Not given to agents: {s.blocked}</p>}
                   {s.check?.error && <p className="m-0 w-full text-[12px] text-red">{s.check.error}</p>}
                 </div>
               );

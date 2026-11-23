@@ -165,11 +165,15 @@ fn hq_servers(state: &AppState, project_id: &str, agent: &Value, base: &str) -> 
     let registry = crate::integrations::tool_servers(state, project_id);
     let agent_id = agent["id"].as_str().unwrap_or("");
     let selected = agent["mcp"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|name| {
-        let known = *name != "arima" && registry.iter().any(|s| s.name == *name);
-        if !known {
+        let Some(entry) = registry.iter().find(|s| s.name == *name).filter(|_| *name != "arima") else {
             tracing::warn!(agent = agent_id, server = name, "skipping an MCP server that isn't registered");
+            return false;
+        };
+        if let Some(why) = &entry.blocked {
+            tracing::warn!(agent = agent_id, server = name, "skipping a blocked MCP server: {why}");
+            return false;
         }
-        known
+        true
     });
     std::iter::once(McpServer { name: "arima".to_owned(), url: base.to_owned() })
         .chain(selected.map(|name| McpServer { name: name.to_owned(), url: format!("{base}/{name}") }))
@@ -597,6 +601,14 @@ mod tests {
         rt.plan(&state, &pid, &id).unwrap();
         let role = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
         assert!(role.contains("Second role text") && !role.contains("First role text") && role.contains("Notes the agent kept"), "{role}");
+
+        // A blocked server (a pack server whose tools changed) isn't given to the agent.
+        let mut servers = int::tool_servers(&state, &pid);
+        servers[0].blocked = Some("tools changed".into());
+        int::save_tool_servers(&state, &pid, &servers).unwrap();
+        rt.plan(&state, &pid, &id).unwrap();
+        let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
+        assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"]);
     }
 
 }
