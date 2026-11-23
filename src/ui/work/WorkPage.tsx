@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "framer-motion";
 import { useOffice } from "../../store/office";
 import { ui, useUi, type WorkTab } from "../../store/ui";
 import { GoalsPage } from "../deck/GoalsPage";
@@ -9,6 +10,7 @@ import { PrDrawer } from "../drawers/PrDrawer";
 import { projectTheme } from "../theme/projectTheme";
 
 export function WorkPage() {
+  const reduce = useReducedMotion();
   const snap = useOffice((s) => s.snap);
   const workTab = useUi((s) => s.workTab);
   const drawer = useUi((s) => s.drawer);
@@ -22,7 +24,6 @@ export function WorkPage() {
   const openPrs = snap.pullRequests.filter((p) => !p.merged && !p.closed).length;
   const openFindings = (snap.findings ?? []).filter((f) => f.status === "open" || f.status === "confirmed").length;
   const activeGoals = (snap.goals ?? []).filter((g) => g.status === "active").length;
-  const stagesCount = snap.config.template?.flow.stages.length ?? 0;
 
   const effectiveTab: WorkTab =
     drawer?.kind === "boards"
@@ -44,7 +45,7 @@ export function WorkPage() {
       : []),
     { id: "prs", label: "PRs", icon: "merge_type", count: openPrs },
     { id: "goals", label: "Goals", icon: "flag", count: activeGoals },
-    { id: "flow", label: "Flow", icon: "account_tree", count: stagesCount || undefined },
+    { id: "flow", label: "Flow", icon: "account_tree" }, // a stage count would read as unread items
   ];
 
   const boardArgs =
@@ -66,16 +67,22 @@ export function WorkPage() {
               type="button"
               aria-current={active ? "page" : undefined}
               onClick={() => ui.setWorkTab(t.id)}
-              className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-                active
-                  ? "bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] font-semibold text-ink"
-                  : "font-medium text-muted hover:bg-cream-2 hover:text-ink"
+              className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                active ? "font-semibold text-ink" : "font-medium text-muted hover:bg-cream-2 hover:text-ink"
               }`}
             >
-              <Icon name={t.icon} size={17} className={`shrink-0 ${active ? "text-accent" : "text-muted"}`} />
-              <span>{t.label}</span>
+              {active && (
+                <motion.span
+                  layoutId="work-tab"
+                  aria-hidden
+                  className="absolute inset-0 rounded-lg bg-[color-mix(in_srgb,var(--accent)_14%,transparent)]"
+                  transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 38 }}
+                />
+              )}
+              <Icon name={t.icon} size={17} className={`relative shrink-0 ${active ? "text-accent" : "text-muted"}`} />
+              <span className="relative">{t.label}</span>
               {t.count !== undefined && (
-                <span className="shrink-0 whitespace-nowrap rounded-full bg-cream-3 px-1.5 py-px text-[12px] text-muted">{t.count}</span>
+                <span className="relative shrink-0 whitespace-nowrap rounded-full bg-cream-3 px-1.5 py-px text-[12px] text-muted">{t.count}</span>
               )}
             </button>
           );

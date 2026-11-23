@@ -11,6 +11,8 @@ import { DrawerHost } from "./ui/drawers/Drawer";
 import { CommandToast } from "./ui/hud/CommandToast";
 import { ConnectionBanner } from "./ui/hud/ConnectionBanner";
 import { SetupChecklist } from "./ui/setup/SetupChecklist";
+import { AnimatePresence } from "framer-motion";
+import { BootScreen } from "./ui/brand/BootScreen";
 import { SetupWizard } from "./ui/setup/SetupWizard";
 import { WelcomeModal } from "./ui/setup/WelcomeModal";
 import { useProjectTheme } from "./ui/theme/projectTheme";
@@ -18,7 +20,6 @@ import { Deck } from "./ui/deck/Deck";
 import { ask, DialogHost } from "./ui/dialog";
 import { CommandView } from "./ui/command/CommandView";
 import { AgentDrawer } from "./ui/drawers/AgentDrawer";
-import { Logo } from "./ui/kit";
 import { closeTopPanel, useNativePush } from "./lib/native";
 
 
@@ -169,11 +170,36 @@ function useDeepLink() {
   }, [open]);
 }
 
+/** Connects and signs in behind the boot screen, then hands over to the app once the team has loaded. */
 export function App() {
   useEffect(() => connectOffice(), []);
   useEffect(() => void checkAuth(), []);
   const auth = useAuth((s) => s.status);
   const live = useOffice((s) => s.live);
+  const loaded = useOffice((s) => s.epoch > 0); // the first snapshot from HQ (before it, the store only holds demo data)
+  const forceMock = new URLSearchParams(location.search).get("mock") === "1";
+  const booting = !forceMock && (auth === "checking" || (auth !== "signed-out" && !loaded && (live || auth === "signed-in")));
+  return (
+    <>
+      <AnimatePresence>
+        {booting && (
+          <BootScreen
+            key="boot"
+            stages={[
+              { label: "Reaching HQ", done: auth !== "checking" },
+              { label: "Signing in this device", done: auth === "signed-in" || auth === "none" },
+              { label: "Loading your team", done: loaded },
+            ]}
+          />
+        )}
+      </AnimatePresence>
+      {!booting && <AppBody />}
+    </>
+  );
+}
+
+function AppBody() {
+  const auth = useAuth((s) => s.status);
   const welcomeDismissed = useUi((s) => s.welcomeDismissed);
   const forceMock = new URLSearchParams(location.search).get("mock") === "1";
   const pushError = useNativePush(auth === "signed-in");
@@ -195,20 +221,13 @@ export function App() {
   const compact = useUi((s) => s.compact);
   const solo = useUi((s) => s.solo);
   const agentName = useOffice((s) => (solo?.kind === "agent" ? s.snap?.config.team.find((a) => a.id === solo.agentId)?.name : undefined));
+  const workspace = useUi((s) => s.workspace);
+  const projectName = useOffice((s) => (s.live ? s.snap?.config.project.name : undefined)); // not the demo data behind the sign-in screen
   useEffect(() => {
     if (solo) document.title = solo.kind === "agent" ? `${agentName ?? "Agent"} · ArimaOps` : "Command · ArimaOps";
-  }, [solo, agentName]);
+    else document.title = `${workspace[0].toUpperCase()}${workspace.slice(1)}${projectName ? ` · ${projectName}` : ""} · ArimaOps`;
+  }, [solo, agentName, workspace, projectName]);
   useEffect(() => void (document.body.style.minWidth = ""), []);
-  if (auth === "checking" && !forceMock && !live) {
-    return (
-      <div className="deck-grid fixed inset-0 flex items-center justify-center bg-[var(--color-grass)] text-ink">
-        <div className="panel flex items-center gap-3 rounded-xl px-5 py-4 text-[13px] font-medium text-muted">
-          <Logo size={32} />
-          <span>Connecting to HQ…</span>
-        </div>
-      </div>
-    );
-  }
   // A real HQ that doesn't know this device: sign in first (not the demo data).
   if (!forceMock && auth === "signed-out") return <SignIn />;
 
@@ -246,7 +265,7 @@ export function App() {
         <CommandToast />
         {pushError && <div role="status" className="bg-panel px-4 py-2 text-sm text-muted">{pushError}</div>}
         {readOnly && (
-          <div role="status" className="pointer-events-none fixed bottom-[70px] left-1/2 z-10 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-2xl border border-white/10 bg-navy/85 px-3 py-1 text-center text-[12px] text-muted backdrop-blur-md min-[1000px]:bottom-3.5">
+          <div role="status" className="pointer-events-none fixed bottom-[70px] left-1/2 z-10 w-max max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-xl border border-white/10 bg-navy/85 px-3 py-1 text-center text-[12px] text-muted backdrop-blur-md min-[1000px]:bottom-3.5">
             {readOnlyNote}
           </div>
         )}

@@ -46,13 +46,13 @@ export function SecondOpinionCard({
         <div className="flex flex-col gap-2">
           <div className="flex items-start justify-between gap-2">
             <span className="text-[13px] font-semibold text-ink">{side.label}</span>
-            <span className="shrink-0 rounded-md bg-cream-2 px-2 py-0.5 text-[12px] text-muted">
+            <span className="shrink-0 rounded-lg bg-cream-2 px-2 py-0.5 text-[12px] text-muted">
               {who(side.authorId)}
             </span>
           </div>
           <p className="m-0 text-[13px] font-medium text-ink">{side.summary}</p>
           {!compact && side.rationaleMarkdown && (
-            <div className="rounded-md bg-cream-2/50 p-2.5 text-[12px] text-ink">
+            <div className="rounded-lg bg-cream-2/50 p-2.5 text-[12px] text-ink">
               <SafeMarkdown markdown={side.rationaleMarkdown} />
             </div>
           )}
@@ -100,7 +100,7 @@ export function SecondOpinionCard({
           <button
             type="button"
             onClick={() => ui.openTask(payload.taskId!)}
-            className="rounded bg-cream-2 px-2 py-0.5 text-[12px] font-medium text-accent hover:underline"
+            className="rounded-lg bg-cream-2 px-2 py-0.5 text-[12px] font-medium text-accent hover:underline"
           >
             {payload.taskId}
           </button>

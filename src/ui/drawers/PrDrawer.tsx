@@ -215,7 +215,7 @@ function Summary({ pr, mobileDetail, onBack }: { pr: PullRequest; mobileDetail?:
                         type="button"
                         onClick={() => setAnnotating({ url, label: s.label })}
                         className="btn min-h-[26px] shrink-0 px-2 py-0.5 text-[12px]"
-                        title="Freeze & Draw feedback on this evidence screenshot"
+                        title="Freeze and draw feedback on this evidence screenshot"
                       >
                         <Icon name="draw" size={14} />
                         Annotate

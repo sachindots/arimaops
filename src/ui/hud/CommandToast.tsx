@@ -23,14 +23,14 @@ export function CommandToast() {
   return (
     <div
       role="alert"
-      className="fixed bottom-20 left-1/2 z-[60] flex w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 items-start gap-2 rounded-lg border border-red/40 bg-[var(--surface-card)] px-3 py-2 text-[13px] text-ink shadow-lg backdrop-blur-xs"
+      className="toast-in fixed bottom-20 left-1/2 z-[60] flex w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 items-start gap-2 rounded-lg border border-red/40 bg-[var(--surface-card)] px-3 py-2 text-[13px] text-ink shadow-lg backdrop-blur-xs"
     >
       <Icon name="error" size={18} className="mt-0.5 shrink-0 text-red" />
       <span className="min-w-0 flex-1 break-words">{error}</span>
       <button
         type="button"
         aria-label="Dismiss"
-        className="cursor-pointer rounded p-0.5 text-muted hover:text-ink"
+        className="cursor-pointer rounded-lg p-0.5 text-muted hover:text-ink"
         onClick={() => {
           setShownSeq(seq);
           officeActions.clearCommandError();

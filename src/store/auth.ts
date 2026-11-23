@@ -79,6 +79,7 @@ export async function checkAuth() {
       people: number;
       passkeysAvailable?: boolean;
     };
+    const was = useAuth.getState().status;
     useAuth.setState({
       status: "signed-in",
       role: me.role,
@@ -86,6 +87,7 @@ export async function checkAuth() {
       people: me.people,
       passkeysAvailable: Boolean(me.passkeysAvailable),
     });
+    if (was !== "signed-in") window.dispatchEvent(new Event("arima:signed-in"));
     // The rest of the UI reads the role at load (session first, then saved). The server's answer wins:
     // a viewer link must never show owner controls, so a mismatch is stored everywhere and the page reloads once.
     const read = (k: "sessionStorage" | "localStorage") => {

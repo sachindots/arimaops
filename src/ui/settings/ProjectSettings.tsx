@@ -21,7 +21,7 @@ function SpendCaps() {
   const dirty = d !== caps.dailyUsd || m !== caps.monthlyUsd;
   const bar = (used: number, cap: number) => {
     const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
-    const color = pct >= 100 ? "#ff2a4b" : pct >= 80 ? "#ffb020" : "#3fb950";
+    const color = pct >= 100 ? "#ef4444" : pct >= 80 ? "#f59e0b" : "#10b981";
     return (
       <div className="mt-1 h-3 rounded-lg border border-white/10 bg-cream-3" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
         <div className="h-full" style={{ width: `${pct}%`, background: color }} />
@@ -32,7 +32,7 @@ function SpendCaps() {
     <section className="panel p-3">
       <SectionTitle>Spend caps</SectionTitle>
       {spend?.paused && (
-        <div className="mb-2 rounded-lg border border-white/10 bg-[#ff2a4b] px-2 py-1 text-[13px] font-semibold text-white" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#ef4444] px-2 py-1 text-[13px] font-semibold text-white" role="status">
           Paused: the {spend.paused === "day" ? "daily" : "monthly"} cap is reached. Workers are stopped until {spend.paused === "day" ? "midnight" : "next month"}, or raise the cap.
         </div>
       )}
@@ -80,7 +80,7 @@ function ScopeEditor() {
     <section className="panel p-3">
       <SectionTitle>Scope</SectionTitle>
       {rulesCfg?.labMode && (
-        <div className="mb-2 rounded-lg border border-white/10 bg-[#ffb020] px-2 py-1 text-[13px] font-semibold text-ink" role="status">
+        <div className="mb-2 rounded-lg border border-white/10 bg-[#f59e0b] px-2 py-1 text-[13px] font-semibold text-ink" role="status">
           Lab mode is on: agents start without a scope. Use it only for CTFs and practice ranges you're allowed to attack.
         </div>
       )}
@@ -146,7 +146,7 @@ export function Goals({ headed = true }: { headed?: boolean } = {}) {
                   {g.done} of {g.total} tasks done · ${g.usd.toFixed(2)} spent
                 </div>
               </div>
-              <div className="h-1.5 w-20 overflow-hidden rounded bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+              <div className="h-1.5 w-20 overflow-hidden rounded-lg bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
                 <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
               </div>
               <Select
@@ -202,7 +202,7 @@ export function ProjectSettings() {
         <Field label="Local path">
           <CommitInput className="field font-term text-[13px]" value={project.path} onCommit={(v) => v.trim() && officeActions.updateProject({ path: v.trim() })} />
         </Field>
-        <Field label="HQ port" hint="Sandboxes reach HQ at host.docker.internal on this port.">
+        <Field label="HQ port" hint="Agents reach HQ on this port.">
           <CommitInput
             className="field font-term text-[13px]"
             value={String(project.hqPort)}
@@ -266,28 +266,25 @@ export function ProjectSettings() {
         <SectionTitle>Plan</SectionTitle>
         <Toggle checked={!!project.exportPlan} onChange={(v) => officeActions.updateProject({ exportPlan: v })} label="Export plan to docs/plan.md" />
         <p className="mt-1 text-[13px] text-muted">
-          {BRAND.name} keeps the plan in .arima/arima.db. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
+          {BRAND.name} keeps the plan in its database. With this on, it also writes a readable copy to docs/plan.md every time the plan changes, so you can commit it or read it on GitHub. Edits to that file are overwritten.
         </p>
       </section>
       <section className="panel p-3 text-[13px]">
-        <SectionTitle>Multi-Project &amp; Multi-Team Operations</SectionTitle>
+        <SectionTitle>Multiple projects and teams</SectionTitle>
         <Toggle checked={!!project.crossProject} onChange={(v) => officeActions.updateProject({ crossProject: v })} label="Let the lead see and change other projects' tasks" />
         <p className="mt-1 text-muted">Off by default. With it on, this project's lead can list the other projects on this machine and create or update their tasks. Only the owner can change it; agents pick it up on their next session.</p>
         <p className="mt-1 text-muted">
-          Every project gets its own isolated team config (<code>&lt;repo&gt;/.arima/arima.db</code>), agent workspaces (<code>~/.arima/{project.id}/&lt;agent&gt;</code>), and sandbox/tmux session names (<code>hq-{project.id}-&lt;agent&gt;</code>). You can run multiple teams across multiple projects simultaneously by assigning each a different port:
+          Every project has its own team, agent workspaces and containers (named <code>hq-{project.id}-&lt;agent&gt;</code>). Agents in one project can&apos;t see another&apos;s files.
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-cream-2 p-2 font-term text-[12px] text-ink">
-          {`# Project 1 (port ${project.hqPort})\nnpx arimaops --repo ${project.path} --port ${project.hqPort}\n\n# Project 2 (port ${project.hqPort + 1}, runs concurrently in its own sandboxes/tmux)\nnpx arimaops --repo ~/missions/second-project --port ${project.hqPort + 1}`}
-        </pre>
       </section>
       <section className="text-[13px] text-muted">
         <SectionTitle>Security</SectionTitle>
         <ul className="list-disc pl-5">
-          <li>HQ binds 127.0.0.1 unless you start it with --host or --remote.</li>
+          <li>HQ only listens where you expose it. On a server, keep it behind Tailscale or a firewall.</li>
           <li>The link token changes on every start. Opening it signs this device in for 30 days (revoke it by signing out there, or by disabling the person).</li>
           <li>Each agent has its own token for hooks and the Team MCP, and can&apos;t act as another agent or use the projects API.</li>
           <li>From a remote device, risky actions need an authenticator code once a day.</li>
-          <li>HQ never reads .env files. Sandboxes get keys from Docker's secret store.</li>
+          <li>HQ never reads .env files. Keys you add are encrypted in HQ&apos;s vault and sent only to the agent that uses them.</li>
         </ul>
       </section>
     </div>

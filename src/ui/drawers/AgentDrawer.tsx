@@ -180,9 +180,9 @@ export function AgentDrawer({ id, initialTab }: { id: string; initialTab?: Agent
           onChange={setTab}
           tabs={[
             { id: "terminal", label: "Terminal" },
-            { id: "shell", label: "Shell" },
+            ...(snap.features?.shell === false ? [] : [{ id: "shell" as const, label: "Shell" }]),
             { id: "task", label: "Task" },
-            { id: "sandbox", label: "Sandbox" },
+            ...(snap.features?.sandboxTab === false ? [] : [{ id: "sandbox" as const, label: "Sandbox" }]),
             { id: "messages", label: `Messages${unread ? ` · ${unread}` : ""}` },
             { id: "usage", label: "Usage" },
           ]}
@@ -320,7 +320,7 @@ function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentCo
   );
 }
 
-const SESSION_COLOR = { running: "#3fb950", starting: "#818cf8", stopped: "#6b7280", failed: "#ff2a4b" } as const;
+const SESSION_COLOR = { running: "#10b981", starting: "#818cf8", stopped: "#6b7280", failed: "#ef4444" } as const;
 
 /** Session state + Start/Stop + the agent's folder. */
 function SessionBar({ agent, status }: { agent: AgentConfig; status: AgentStatus }) {
@@ -577,7 +577,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
   const setDraft = (next: string) => ui.setChatDraft(agent.id, next);
   const list = snap.messages.filter((m) => m.fromId === agent.id || m.toId === agent.id);
   const who = (id: string) =>
-    id === HUMAN_ID ? { name: "You", color: "#3fb950" } : id === "hq" ? { name: BRAND.name, color: "#3b82f6" } : snap.config.team.find((a) => a.id === id);
+    id === HUMAN_ID ? { name: "You", color: "#10b981" } : id === "hq" ? { name: BRAND.name, color: "#3b82f6" } : snap.config.team.find((a) => a.id === id);
   const running = snap.agents.find((a) => a.agentId === agent.id)?.session.state === "running";
   const send = () => {
     if (!draft.trim()) return;
@@ -605,7 +605,7 @@ export function MessagesTab({ snap, agent }: { snap: OfficeSnapshot; agent: Agen
                   {!out && m.delivered && (
                     <span
                       className="text-[12px]"
-                      style={{ color: m.delivered === "queued" ? "#ffb020" : m.delivered === "dropped" ? "#6b7280" : "#3fb950" }}
+                      style={{ color: m.delivered === "queued" ? "#f59e0b" : m.delivered === "dropped" ? "#6b7280" : "#10b981" }}
                       title={m.delivered === "queued" ? `Waiting until ${agent.name} is free (kept across HQ restarts)` : m.delivered === "dropped" ? "Not sent: the task was reassigned or finished while it waited" : m.delivered === "typed" ? `Typed into ${agent.name}'s prompt` : `Handed over when ${agent.name}'s turn ended`}
                     >
                       {m.delivered === "queued" ? "◷ queued" : m.delivered === "dropped" ? "– not sent" : "✓ delivered"}

@@ -225,7 +225,7 @@ export function AnnotateModal({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             aria-label="Close annotation modal"
           >
             <Icon name="close" size={18} />

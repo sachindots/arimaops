@@ -43,7 +43,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
     await expect(intentInput).toBeVisible();
     await intentInput.fill("open preview");
     await page.locator('section[aria-label="Tell the team or run a quick action"] button[type="submit"]').click();
-    await expect(page.getByRole("heading", { name: "Live Preview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Live preview" })).toBeVisible();
 
     // Return to Home and run "start a standup"
     await gotoWorkspace(page, "Home");
@@ -194,7 +194,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
 
     // Open 1-Click Meeting Minutes Commit modal & commit decisions/tasks
     await page.getByRole("button", { name: /Commit Minutes/i }).first().click();
-    const modal = page.getByRole("dialog", { name: "Commit Meeting Minutes" });
+    const modal = page.getByRole("dialog", { name: "Commit meeting minutes" });
     await expect(modal).toBeVisible();
     await expect(modal.getByText(/Decisions → Certified Team Memory/i)).toBeVisible();
     await expect(modal.getByText(/Proposed Tasks → Board/i)).toBeVisible();
@@ -215,7 +215,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
 
     // 1. Live Preview viewport switcher & Freeze & Draw
     await gotoWorkspace(page, "Preview");
-    await expect(page.getByRole("heading", { name: "Live Preview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Live preview" })).toBeVisible();
 
     const vpGroup = page.getByRole("group", { name: "Viewport size" });
     await vpGroup.getByRole("button", { name: "Tablet" }).click();
@@ -229,7 +229,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
 
     // Switch to Freeze & Draw and verify dimension label stays single-line
     const modeGroup = page.getByRole("group", { name: "Preview interaction mode" });
-    await modeGroup.getByRole("button", { name: "Freeze & Draw" }).click();
+    await modeGroup.getByRole("button", { name: "Freeze and draw" }).click();
     await expect(page.getByRole("toolbar", { name: "Annotation tools" })).toBeVisible();
 
     const dimHeight = await page.getByText("1280 × 640").evaluate((el) => el.getBoundingClientRect().height);
@@ -242,7 +242,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
 
     // Open Submit Feedback modal and submit
     await page.getByRole("button", { name: /Send Feedback/i }).click();
-    const feedbackDialog = page.getByRole("dialog", { name: "Send Visual Feedback" });
+    const feedbackDialog = page.getByRole("dialog", { name: "Send visual feedback" });
     await expect(feedbackDialog).toBeVisible();
     await assertZeroNativeSelects(page, "SubmitFeedbackModal");
 

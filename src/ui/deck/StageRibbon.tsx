@@ -47,11 +47,11 @@ export function StageRibbon({ snap, theme }: { snap: OfficeSnapshot; theme: Them
               <button
                 type="button"
                 onClick={() => ui.openBoards(undefined, s.id)}
-                className={`deck-stage flex shrink-0 cursor-pointer items-center gap-1 rounded px-2.5 py-1 text-[12px] ${raised ? "is-raised px-3" : "text-muted"}`}
+                className={`deck-stage flex shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] ${raised ? "is-raised px-3" : "text-muted"}`}
                 aria-label={`${s.name}: ${here.length} open task${here.length === 1 ? "" : "s"}. Open on the board`}
               >
                 <span>{s.name}</span>
-                <span>
+                <span key={`${here.length}:${busy.length}`} className="deck-count">
                   ({busy.length > 0 ? `${busy.length} active` : here.length})
                 </span>
               </button>

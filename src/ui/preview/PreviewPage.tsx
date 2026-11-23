@@ -396,11 +396,11 @@ export function PreviewPage() {
       <header className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[var(--border-hairline)] bg-cream-2/50 px-4 py-2.5 md:px-5">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
           <PageTitle
-            title="Live Preview"
+            title="Live preview"
             context={
               <>
                 <span className="hidden sm:inline">
-                  Isolated preview ({originPortLabel}) · DOM element picker &amp; Freeze &amp; Draw annotations
+                  Isolated preview ({originPortLabel}) · DOM element picker and freeze-and-draw annotations
                 </span>
                 <span className="sm:hidden">Isolated ({originPortLabel})</span>
               </>
@@ -443,7 +443,7 @@ export function PreviewPage() {
                   type="button"
                   aria-pressed={on}
                   onClick={() => setViewport(k)}
-                  className={`flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                  className={`flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors ${
                     on ? "bg-cream-2 text-ink" : "text-muted hover:text-ink"
                   }`}
                 >
@@ -459,8 +459,8 @@ export function PreviewPage() {
             {(
               [
                 { id: "browse", label: "Browse", icon: "ads_click" },
-                { id: "pick", label: "Pick Element", icon: "select_all" },
-                { id: "draw", label: "Freeze & Draw", icon: "draw" },
+                { id: "pick", label: "Pick element", icon: "select_all" },
+                { id: "draw", label: "Freeze and draw", icon: "draw" },
               ] as const
             ).map((m) => {
               const on = mode === m.id;
@@ -470,7 +470,7 @@ export function PreviewPage() {
                   type="button"
                   aria-pressed={on}
                   onClick={() => handleModeSwitch(m.id)}
-                  className={`flex cursor-pointer items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                  className={`flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-medium transition-colors ${
                     on
                       ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] font-semibold text-ink"
                       : "text-muted hover:text-ink"
@@ -694,7 +694,7 @@ export function PreviewPage() {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-1.5">
                           <span className="text-[13px] font-semibold text-ink">{el.textSnippet}</span>
-                          <code className="max-w-full truncate rounded bg-[var(--surface-card)] px-1.5 py-0.5 text-[12px] text-accent">
+                          <code className="max-w-full truncate rounded-lg bg-[var(--surface-card)] px-1.5 py-0.5 text-[12px] text-accent">
                             {el.componentHint}
                           </code>
                         </div>
@@ -782,7 +782,7 @@ export function PreviewPage() {
                   </div>
                 ) : (
                   <>
-                    Switch to <strong className="font-semibold text-ink">Pick Element</strong> and click any component in the preview
+                    Switch to <strong className="font-semibold text-ink">Pick element</strong> and click any component in the preview
                     {!live ? ", or pick one below:" : "."}
                     {!live && (
                       <div className="mt-2 flex flex-col gap-1.5">
@@ -848,7 +848,7 @@ export function PreviewPage() {
             </h3>
             {recentFeedback.length === 0 ? (
               <p className="m-0 text-[12px] text-muted">
-                Submitted annotations sync to <code>.arima/feedback/&lt;id&gt;/</code> in the target agent's workspace.
+                Submitted annotations are saved with the project and sent to the target agent.
               </p>
             ) : (
               <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -862,7 +862,7 @@ export function PreviewPage() {
                         src={feedbackImageUrl(projectId, fb.id)}
                         alt={fb.note}
                         loading="lazy"
-                        className="aspect-[16/10] w-full rounded border border-[var(--border-hairline)] bg-cream-2 object-cover object-top"
+                        className="aspect-[16/10] w-full rounded-lg border border-[var(--border-hairline)] bg-cream-2 object-cover object-top"
                       />
                     )}
                     <span className="font-semibold text-ink">{fb.note}</span>
@@ -1004,16 +1004,16 @@ function SubmitFeedbackModal({
       className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
-      aria-label="Send Visual Feedback"
+      aria-label="Send visual feedback"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="hud-drawer flex w-full max-w-[520px] flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)]">
         <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-5 py-3.5">
-          <h2 className="m-0 text-[20px] font-semibold text-ink">Route Visual Feedback</h2>
+          <h2 className="m-0 text-[20px] font-semibold text-ink">Route visual feedback</h2>
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-muted hover:bg-cream-2 hover:text-ink"
             aria-label="Close"
           >
             <Icon name="close" size={18} />

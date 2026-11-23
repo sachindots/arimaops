@@ -143,7 +143,7 @@ export function SettingsPage() {
         </button>
         <h2 className="m-0 flex-1 text-[15px] font-semibold text-ink">Settings</h2>
         <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
-          <i className="h-1.5 w-1.5 rounded-full bg-green" />
+          <i className="saved-dot h-1.5 w-1.5 rounded-full bg-green" />
           Saved as you go
         </span>
         <button type="button" className="btn text-[13px]" onClick={() => ui.closeSettings()}>
@@ -186,12 +186,12 @@ export function SettingsModal() {
         <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] px-5 py-3">
           <h2 className="m-0 flex-1 text-[15px] font-semibold text-ink">Settings</h2>
           <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex">
-            <i className="h-1.5 w-1.5 rounded-full bg-green" />
+            <i className="saved-dot h-1.5 w-1.5 rounded-full bg-green" />
             Saved as you go
           </span>
           <button
             type="button"
-            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             aria-label="Close settings"
             onClick={() => ui.closeSettings()}
           >

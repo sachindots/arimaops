@@ -204,7 +204,7 @@ export function FlowDrawer() {
                   </div>
                   <button
                     type="button"
-                    className="flex items-center gap-1.5 self-start rounded-md text-[13px] text-muted hover:text-ink"
+                    className="flex items-center gap-1.5 self-start rounded-lg text-[13px] text-muted hover:text-ink"
                     onClick={(e) => (e.stopPropagation(), ui.openBoards(undefined, stage.id))}
                     title="Open the board filtered to this stage"
                   >

@@ -12,9 +12,9 @@ import { ActivityPanel, HomeIntentBar, NeedsYouPanel } from "./HomePanels";
 
 const MODE_COLOR: Record<Mode, string> = {
   working: "#3b82f6",
-  cheer: "#3fb950",
-  "needs-input": "#ffb020",
-  alert: "#ff2a4b",
+  cheer: "#10b981",
+  "needs-input": "#f59e0b",
+  alert: "#ef4444",
   starting: "#818cf8",
   idle: "#8b9bb4",
   stopped: "#475569",

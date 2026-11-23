@@ -4,11 +4,12 @@ import { CLI_LABEL } from "../../data/types";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ago, Field, SectionTitle, useNow } from "../kit";
 import { Select } from "../primitives/Select";
+import { GET_KEY_URL, KeyTestStatus, useKeyTest } from "../setup/useKeyTest";
 
 const MASTER: Record<"env" | "keychain" | "file", [string, string]> = {
-  env: ["Master key from ARIMA_MASTER_KEY", "#3fb950"],
-  keychain: ["Master key in this computer's keychain", "#3fb950"],
-  file: ["Master key in a file beside the vault", "#ffb020"],
+  env: ["Master key from ARIMA_MASTER_KEY", "#10b981"],
+  keychain: ["Master key in this computer's keychain", "#10b981"],
+  file: ["Master key in a file beside the vault", "#f59e0b"],
 };
 
 const EMPTY = { id: "", provider: "anthropic" as Provider, label: "", fields: {} as Record<string, string>, secret: "" };
@@ -23,6 +24,7 @@ export function AccountsSettings() {
   const [removing, setRemoving] = useState<string | null>(null);
   const list = state?.list ?? [];
   const spec = PROVIDER_SPECS[form.provider];
+  const keyTest = useKeyTest(form.provider, spec.auth === "cloud" ? "" : form.secret);
   const name = form.id.trim().toLowerCase();
   const canSave = /^[a-z0-9][a-z0-9-]{0,31}$/.test(name) && name !== "default" && (editing ? true : !!form.secret.trim()) && spec.fields.every((f) => f.id !== "projectId" || form.fields[f.id]?.trim());
 
@@ -56,7 +58,7 @@ export function AccountsSettings() {
       <section>
         <SectionTitle>Accounts</SectionTitle>
         {list.length === 0 ? (
-          <p className="text-[13px] text-muted">No accounts yet. Agents use your CLI subscriptions until you add one.</p>
+          <p className="text-[13px] text-muted">No accounts yet. Agents sign in with your CLI subscription in their terminal until you add one.</p>
         ) : (
           <div className="rounded-lg border border-white/10">
             {list.map((a) => {
@@ -101,9 +103,9 @@ export function AccountsSettings() {
       </section>
 
       {!isViewer && (
-        <section className="flex max-w-[560px] flex-col gap-3">
+        <section className="flex max-w-[720px] flex-col gap-3">
           <SectionTitle>{editing ? `Edit ${editing}` : "Add an account"}</SectionTitle>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-3">
             <Field label="Provider">
               <Select
                 value={form.provider}
@@ -139,7 +141,17 @@ export function AccountsSettings() {
               <input className="field font-mono" type="password" value={form.secret} autoComplete="new-password" onChange={(e) => setForm({ ...form, secret: e.target.value })} />
             )}
           </Field>
-          <p className="m-0 text-[12px] text-muted">Works with: {clisFor(form.provider).map((c) => CLI_LABEL[c]).join(", ")}. Local and Container mode.</p>
+          {spec.auth !== "cloud" && (
+            <div className="flex flex-col gap-2">
+              {GET_KEY_URL[form.provider] && (
+                <a className="w-fit text-[13px] font-medium text-accent underline" href={GET_KEY_URL[form.provider]} target="_blank" rel="noreferrer">
+                  Where do I get a key?
+                </a>
+              )}
+              <KeyTestStatus state={keyTest.state} message={keyTest.message} onCheck={keyTest.check} hasKey={form.secret.trim().length > 0} />
+            </div>
+          )}
+          <p className="m-0 text-[12px] text-muted">Works with: {clisFor(form.provider).map((c) => CLI_LABEL[c]).join(", ")}. Agents pick an account in their panel; the sign-in on first Start is the alternative.</p>
           <div className="flex gap-2">
             <button className="btn border-green text-green" disabled={!canSave} onClick={save}>
               {editing ? "Save" : "Add account"}

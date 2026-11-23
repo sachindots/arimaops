@@ -13,9 +13,9 @@ const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done",
 const STATUS_BADGE: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: "TODO", color: "#8b9bb4" },
   "in-progress": { label: "DOING", color: "#818cf8" },
-  "in-review": { label: "REVIEW", color: "#a371f7" },
-  done: { label: "DONE", color: "#3fb950" },
-  blocked: { label: "BLOCKED", color: "#ff2a4b" },
+  "in-review": { label: "REVIEW", color: "#8b5cf6" },
+  done: { label: "DONE", color: "#10b981" },
+  blocked: { label: "BLOCKED", color: "#ef4444" },
 };
 
 function getBrowserToken(): string {
@@ -335,7 +335,7 @@ export function CtoDrawer() {
                           Viewing
                         </span>
                       ) : p.online ? (
-                        <span className="chip text-[12px]" style={{ ["--c" as string]: p.paused ? "#8b9bb4" : "#3fb950" }}>{p.paused ? "Paused" : "Running"}</span>
+                        <span className="chip text-[12px]" style={{ ["--c" as string]: p.paused ? "#8b9bb4" : "#10b981" }}>{p.paused ? "Paused" : "Running"}</span>
                       ) : (
                         <span className="chip text-[12px]" style={{ ["--c" as string]: "#8b9bb4" }} title="Its data is in .arima/arima.db in the folder">
                           Not loaded
@@ -396,7 +396,7 @@ export function CtoDrawer() {
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-cream-3">
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#3fb950" : "var(--accent)" }}
+                      style={{ width: `${pct}%`, backgroundColor: pct === 100 ? "#10b981" : "var(--accent)" }}
                     />
                   </div>
 
@@ -404,7 +404,7 @@ export function CtoDrawer() {
                     <div className="flex flex-wrap gap-2.5">
                       <span className="text-muted">To do {p.counts.todo}</span>
                       <span className="text-[#818cf8]">Doing {p.counts.inProgress}</span>
-                      <span className="text-[#a371f7]">Review {p.counts.inReview}</span>
+                      <span className="text-[#8b5cf6]">Review {p.counts.inReview}</span>
                       <span className="text-green">Done {p.counts.done}</span>
                       {p.counts.blocked > 0 && <span className="text-red">Blocked {p.counts.blocked}</span>}
                       {p.spend && <span className="text-muted">Today ${p.spend.day.usd.toFixed(2)} · month ${p.spend.month.usd.toFixed(2)}{p.spend.paused ? " · paused" : ""}</span>}
@@ -414,7 +414,7 @@ export function CtoDrawer() {
                       {p.team.slice(0, 6).map((m) => (
                         <span
                           key={m.id}
-                          className="inline-flex items-center gap-1 rounded-md border border-white/10 px-1.5 py-0.5 text-[12px]"
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-1.5 py-0.5 text-[12px]"
                           title={`${m.name} — ${m.role} (${m.cli}${m.model ? `:${m.model}` : ""})`}
                         >
                           <span>{m.name}</span>
@@ -662,7 +662,7 @@ function CompanyStrip({ projects }: { projects: ProjectOverview[] }) {
                 <b>{g.title}</b> <span className="text-muted">· {g.project}</span>
               </div>
               <div className="mt-1 flex items-center gap-2 text-muted">
-                <div className="h-1 flex-1 overflow-hidden rounded bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
+                <div className="h-1 flex-1 overflow-hidden rounded-lg bg-cream-3" role="img" aria-label={`${g.done} of ${g.total} tasks done`}>
                   <div className="h-full bg-accent" style={{ width: `${g.total ? Math.round((g.done / g.total) * 100) : 0}%` }} />
                 </div>
                 <span>

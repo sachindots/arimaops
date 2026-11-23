@@ -30,13 +30,13 @@ export function PermissionCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
             <Icon name="terminal" size={16} className="text-amber" />
-            Tool: <code className="rounded bg-[var(--surface-card)] px-1.5 py-0.5 text-[12px]">{payload.toolName}</code>
+            Tool: <code className="rounded-lg bg-[var(--surface-card)] px-1.5 py-0.5 text-[12px]">{payload.toolName}</code>
           </span>
           {payload.scopeHint && (
             <span className="text-[12px] text-muted">{payload.scopeHint}</span>
           )}
         </div>
-        <pre className="m-0 mt-2 overflow-x-auto whitespace-pre-wrap rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2 text-[13px] font-medium text-ink">
+        <pre className="m-0 mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2 text-[13px] font-medium text-ink">
           {payload.commandOrPath}
         </pre>
         {payload.reason && (

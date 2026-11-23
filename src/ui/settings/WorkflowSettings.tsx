@@ -88,7 +88,7 @@ function GitHubAppSection() {
           <p className="mb-2 text-[13px] text-muted">
             Without an App, HQ polls GitHub about once a minute. With one, GitHub tells HQ about PR changes in seconds. You create it on GitHub in one click; HQ keeps its key in the vault and reads only (pull requests, checks, contents).
           </p>
-          <Field label="Webhook address (Tailscale Funnel)" hint={`Run deploy/github-webhook.sh on the server first: it makes only ${WEBHOOK_PATH} public, on port 8443. GitHub posts there.`}>
+          <Field label="Webhook address" hint={`GitHub posts PR events to this address, at ${WEBHOOK_PATH}. It must be reachable from the internet; without it HQ polls about once a minute.`}>
             <input className="field font-term text-[12px]" value={hookBase} placeholder="https://hq.your-tailnet.ts.net" onChange={(e) => setHookBase(e.target.value)} />
           </Field>
           <Field label="Organization (optional)" hint="Leave empty to create the App on your own account.">

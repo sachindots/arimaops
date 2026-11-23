@@ -69,7 +69,7 @@ test.describe("Responsive Shell, Visual Invariants & Controls (?mock=1)", () => 
 
       // Preview
       await gotoWorkspace(page, "Preview");
-      await expect(page.getByRole("heading", { name: "Live Preview" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Live preview" })).toBeVisible();
       await assertZeroNativeSelects(page, `${vp.name}:Preview`);
       await assertNoHorizontalOverflow(page, `${vp.name}:Preview`);
 

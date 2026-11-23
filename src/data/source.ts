@@ -90,6 +90,7 @@ export type OfficeEvent =
   /** Answer to exportTemplate: the file to download (only the device that asked saves it). */
   | { type: "template.file"; file: TemplateFile }
   | { type: "template.imported"; ok: boolean; message: string; id?: string }
+  | { type: "key.tested"; requestId: string; provider: string; ok: boolean | null; message: string }
   /** Memories to check: the daily digest, or at once when one may contradict a certified memory (`urgent`). For push only. */
   | { type: "memory.digest"; key: string; count: number; urgent: string | null }
   | { type: "action.updated"; item: ActionItem }
@@ -200,6 +201,8 @@ export interface OfficeDataSource {
 
   // Accounts (machine-wide): API keys and cloud credentials, stored encrypted on the server
   saveAccount(input: AccountInput): void;
+  /** Asks the provider whether this key works. The answer comes back as a `key.tested` event with the same requestId. The key is never stored. */
+  testAccountKey(provider: string, secret: string, requestId: string): void;
   removeAccount(id: string): void;
   setMemoryExtraction(input: { enabled: boolean; account: string }): void;
   /** Owner only: lifts the scope requirement for CTFs and practice ranges. */

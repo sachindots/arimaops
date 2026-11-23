@@ -448,7 +448,7 @@ export function MeetingRoom({
                       <button
                         type="button"
                         onClick={() => speakText(turn.spokenText || turn.bodyMarkdown, turn.speakerId)}
-                        className="rounded p-1 text-muted hover:bg-cream-2 hover:text-ink"
+                        className="rounded-lg p-1 text-muted hover:bg-cream-2 hover:text-ink"
                         title="Read turn aloud"
                         aria-label={`Read ${speaker.name}'s turn aloud`}
                       >
@@ -556,7 +556,7 @@ export function MeetingRoom({
           {meeting.minutes && (
             <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--surface-card)] p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[13px] font-semibold text-ink">Draft Minutes</span>
+                <span className="text-[13px] font-semibold text-ink">Draft minutes</span>
                 <span className="text-[12px] text-muted">
                   {meeting.minutes.decisions.length} decisions · {meeting.minutes.proposedTasks.length} tasks
                 </span>
@@ -621,7 +621,7 @@ function CommitMinutesModal({
       className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
-      aria-label="Commit Meeting Minutes"
+      aria-label="Commit meeting minutes"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="hud-drawer flex max-h-[90dvh] w-full max-w-[680px] flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)]">
@@ -635,7 +635,7 @@ function CommitMinutesModal({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-muted hover:bg-cream-2 hover:text-ink"
             aria-label="Close modal"
           >
             <Icon name="close" size={18} />
@@ -708,7 +708,7 @@ function CommitMinutesModal({
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="text-[13px] font-semibold text-ink">{t.title}</span>
-                        <span className="rounded bg-cream-2 px-1.5 py-0.5 text-[12px] text-muted">
+                        <span className="rounded-lg bg-cream-2 px-1.5 py-0.5 text-[12px] text-muted">
                           {who(t.assigneeId)} · {t.stageId ?? "build"}
                         </span>
                       </span>

@@ -53,7 +53,7 @@ export function DrawerHeader({ children }: { children: ReactNode }) {
       {showControls && (
         <button
           type="button"
-          className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+          className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-muted transition-colors hover:bg-cream-2 hover:text-ink"
           aria-label="Close"
           onClick={() => ui.closeDrawer()}
         >
@@ -70,7 +70,7 @@ function MaximizeButton() {
   return (
     <button
       type="button"
-      className={`grid h-8 w-8 cursor-pointer place-items-center rounded-md transition-colors ${max ? "bg-cream-2 text-ink" : "text-muted hover:bg-cream-2 hover:text-ink"}`}
+      className={`grid h-8 w-8 cursor-pointer place-items-center rounded-lg transition-colors ${max ? "bg-cream-2 text-ink" : "text-muted hover:bg-cream-2 hover:text-ink"}`}
       aria-label={label}
       title={label}
       aria-pressed={max}

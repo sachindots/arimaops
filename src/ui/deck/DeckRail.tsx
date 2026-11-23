@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { switchServer, useIsNativeClient } from "../../lib/native";
 import { signOut, useAuth } from "../../store/auth";
@@ -41,6 +42,7 @@ export function DeckRail({
   const snap = useOffice((s) => s.snap);
   const liveMeetings = (snap?.meetings ?? []).filter((m) => m.status === "live" || m.status === "requested").length;
   const railWidth = expanded ? DECK.railExpanded : DECK.rail;
+  const reduce = useReducedMotion();
 
   return (
     <aside
@@ -63,6 +65,14 @@ export function DeckRail({
               aria-label={badge ? `${n.label}, ${badge} waiting` : n.label}
               onClick={() => onGo(n.id)}
             >
+              {on && (
+                <motion.span
+                  layoutId="rail-bar"
+                  aria-hidden
+                  className="absolute -left-1.5 bottom-2 top-2 w-[3px] rounded-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent)]"
+                  transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36 }}
+                />
+              )}
               <Icon name={n.icon} size={20} className={on ? "text-accent" : ""} />
               <span className={`truncate text-[12px] ${on ? "font-semibold text-ink" : "font-medium"}`}>
                 {n.label}
@@ -188,7 +198,7 @@ export function OpsMenu({ expanded = false, activeUsage = false }: { expanded?: 
               }}
             >
               <Icon name="terminal" size={18} />
-              <span>Host Terminal</span>
+              <span>Host terminal</span>
             </button>
           )}
 
@@ -230,7 +240,7 @@ export function OpsMenu({ expanded = false, activeUsage = false }: { expanded?: 
             }}
           >
             <Icon name="checklist" size={18} />
-            <span>Setup Checklist</span>
+            <span>Setup checklist</span>
           </button>
         </div>
       )}
@@ -367,6 +377,7 @@ export function DeckBottomNav({
 }) {
   const snap = useOffice((s) => s.snap);
   const settingsOpen = useUi((s) => s.settings !== null);
+  const reduce = useReducedMotion();
   const liveMeetings = (snap?.meetings ?? []).filter((m) => m.status === "live" || m.status === "requested").length;
 
   return (
@@ -393,6 +404,14 @@ export function DeckBottomNav({
             aria-label={badge ? `${n.label}, ${badge} waiting` : n.label}
             onClick={() => onGo(n.id)}
           >
+            {on && (
+              <motion.span
+                layoutId="nav-bar"
+                aria-hidden
+                className="absolute inset-x-3 top-0 h-[3px] rounded-full bg-[var(--accent)] shadow-[0_0_10px_var(--accent)]"
+                transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36 }}
+              />
+            )}
             <Icon name={n.icon} size={20} className={on ? "text-accent" : ""} />
             <span className="truncate">{n.label}</span>
             {badge > 0 && (

@@ -258,15 +258,15 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       <div className="flex items-start gap-2">
         <h2 className="m-0 flex-1 text-[20px] font-semibold leading-snug text-ink">{item.title}</h2>
         {item.kind === "plan" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>plan · needs approval</span>}
-        {item.kind === "lesson" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>lesson · for the template</span>}
-        {item.kind === "gate" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
+        {item.kind === "lesson" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#8b5cf6" }}>lesson · for the template</span>}
+        {item.kind === "gate" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "var(--color-amber)" }}>{item.gate?.reason === "outbound" ? "send · you send it" : `${item.gate?.reason ?? "gate"} · needs approval`}</span>}
         {item.kind === "spec" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>spec · needs approval</span>}
-        {item.kind === "skills" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>skills · scan</span>}
+        {item.kind === "skills" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#8b5cf6" }}>skills · scan</span>}
         {item.kind === "overflow" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#818cf8" }}>usage limit</span>}
-        {item.kind === "send" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>send · {item.send?.connection}</span>}
-        {item.kind === "spend" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ff2a4b" }}>spend</span>}
-        {item.kind === "approval" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>lead approved · undoable</span>}
-        {item.waiting && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>waiting</span>}
+        {item.kind === "send" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "var(--color-amber)" }}>send · {item.send?.connection}</span>}
+        {item.kind === "spend" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "var(--color-red)" }}>spend</span>}
+        {item.kind === "approval" && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "var(--color-amber)" }}>lead approved · undoable</span>}
+        {item.waiting && <span className="chip shrink-0 text-[12px]" style={{ ["--c" as string]: "#8b5cf6" }}>waiting</span>}
       </div>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] text-muted">
         {from && <Dot color={from.color} size={8} />}
@@ -381,7 +381,7 @@ function SendProposal({ item, send }: { item: ActionItem; send: NonNullable<Acti
   );
 }
 
-const TYPE_COLOR: Record<string, string> = { Decision: "#818cf8", Lesson: "#3fb950", DeadEnd: "#ff4d6d" };
+const TYPE_COLOR: Record<string, string> = { Decision: "#818cf8", Lesson: "#10b981", DeadEnd: "#ff4d6d" };
 
 /** New memories from one task: certify or reject each, or certify them all at once. */
 function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
@@ -404,7 +404,7 @@ function MemoryItem({ item, now }: { item: ActionItem; now: number }) {
         {list.map((m) => (
           <li key={m.id} className="flex flex-col gap-2 py-3">
             <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-              <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#a371f7" }}>
+              <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: TYPE_COLOR[m.type] ?? "#8b5cf6" }}>
                 {m.type}
               </span>
               <span className="font-mono text-muted">{m.id}</span>

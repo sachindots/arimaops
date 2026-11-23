@@ -329,13 +329,29 @@ export function HomeIntentBar({ snap, inline = false }: { snap: OfficeSnapshot; 
 
       <div className="flex flex-wrap items-center justify-between gap-1.5 px-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
+          {!isViewer && !snap.agents.some((a) => a.session.state === "running") && snap.config.team.some((a) => a.isLead) && (
+            <button
+              type="button"
+              onClick={() => {
+                const lead = snap.config.team.find((a) => a.isLead);
+                if (lead) {
+                  officeActions.startAgent(lead.id);
+                  ui.openAgent(lead.id, "terminal");
+                }
+              }}
+              className="deck-pill flex cursor-pointer items-center gap-1.5 rounded-full border-[var(--accent)] px-2.5 py-1 text-[12px] font-semibold text-accent"
+            >
+              <Icon name="play_arrow" size={15} />
+              <span>Start {snap.config.team.find((a) => a.isLead)?.name}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => runIntent("start a standup")}
             className="deck-pill flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium text-ink hover:border-[var(--accent)]"
           >
             <Icon name="groups" size={15} className="text-accent" />
-            <span>Standup Room</span>
+            <span>Standup room</span>
           </button>
           <button
             type="button"
@@ -343,7 +359,7 @@ export function HomeIntentBar({ snap, inline = false }: { snap: OfficeSnapshot; 
             className="deck-pill flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium text-ink hover:border-[var(--accent)]"
           >
             <Icon name="preview" size={15} className="text-accent" />
-            <span>Live Preview</span>
+            <span>Live preview</span>
           </button>
           <button
             type="button"
@@ -431,7 +447,7 @@ export function NeedsYouPanel({
     >
       <Heading
         count={totalCount}
-        action={totalCount > 0 ? { label: "Open Inbox", onClick: () => ui.openActions() } : undefined}
+        action={totalCount > 0 ? { label: "Open inbox", onClick: () => ui.openActions() } : undefined}
       >
         Waiting on you
       </Heading>
@@ -486,7 +502,7 @@ export function NeedsYouPanel({
                 key={g.id}
                 type="button"
                 onClick={onGoals}
-                className="cursor-pointer rounded-md text-left hover:opacity-80"
+                className="cursor-pointer rounded-lg text-left hover:opacity-80"
                 title={`${g.done} of ${g.total} tasks done · $${g.usd.toFixed(2)} spent`}
               >
                 <span className="flex items-baseline justify-between gap-2 text-[13px]">

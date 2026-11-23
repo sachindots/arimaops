@@ -31,7 +31,7 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
       { id: "agents", label: "Team — Agents Roster", sub: `${snap.config.team.length} agents in project`, tag: "TEAM", run: () => ui.setTeamTab("agents") },
       { id: "chat", label: "Team — Chat", sub: "Direct & team channels", tag: "TEAM", run: () => ui.openChat() },
       { id: "meetings", label: "Team — Standup & Meetings Room", sub: "Moderated standups, voice call & 1-click minutes", tag: "MEET", run: () => ui.openMeetings() },
-      { id: "preview", label: "Live Preview & Annotation Studio", sub: "Viewport switcher, DOM picker & Freeze & Draw canvas", tag: "VIEW", run: () => ui.openPreview() },
+      { id: "preview", label: "Live preview and annotation studio", sub: "Viewport switcher, DOM picker and freeze and draw canvas", tag: "VIEW", run: () => ui.openPreview() },
       { id: "usage", label: "Ops — Usage & Budgets", sub: "Tokens, cost & role caps", tag: "OPS", run: () => ui.openUsage() },
       { id: "projects", label: "Switch / Manage Projects", sub: "Switch, create, pause, archive or delete", tag: "HQ", run: () => ui.openCto() },
       {
@@ -48,7 +48,7 @@ export function CommandBar({ snap }: { snap: OfficeSnapshot }) {
     if (!isViewer) {
       base.push(
         { id: "terminal", label: "Ops — Host Terminal", sub: "Host shell & logs", tag: "OPS", run: () => ui.openTerminal() },
-        { id: "settings", label: "System Settings", sub: "Project, team & workflow, access & security, integrations", tag: "CFG", run: () => ui.openSettings("project") },
+        { id: "settings", label: "System settings", sub: "Project, team & workflow, access & security, integrations", tag: "CFG", run: () => ui.openSettings("project") },
       );
     }
     for (const a of snap.config.team) {

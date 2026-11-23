@@ -107,8 +107,19 @@ code,
 kbd,
 pre:not(.xterm *) {
   font-family: var(--font-ui);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  font-variant-numeric: tabular-nums slashed-zero;
+  /* Inter's disambiguation set: l, I and 1 differ and 0 is slashed, so keys, ids and commands stay readable without a monospace font. */
+  font-feature-settings: "ss02", "zero", "calt";
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+/* Bare inline code reads as a small chip instead of plain text. */
+code:not([class]) {
+  padding: 0.05em 0.4em;
+  border-radius: 8px;
+  border: 1px solid var(--border-hairline);
+  background: var(--cream-2);
+  font-size: 0.92em;
 }
 
 /* Material Symbols, bundled with the app. */
@@ -584,4 +595,94 @@ pre:not(.xterm *) {
 }
 @media (prefers-reduced-motion: reduce) {
   .deck-count, .deck-float { animation: none; }
+}
+
+/* ---------------------------------------------------------------- motion
+   Entrances and live glow. Everything here is switched off for people who ask for reduced motion. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.975); }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 16px) scale(0.96); }
+}
+@keyframes run-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent, var(--card-shadow); }
+  50% { box-shadow: 0 0 22px 1px var(--accent-glow), var(--card-shadow); }
+}
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes boot-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 10px var(--accent-glow)); }
+  50% { transform: scale(1.06); filter: drop-shadow(0 0 28px var(--accent)); }
+}
+@keyframes boot-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+@keyframes step-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.rise-in { animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.dialog-in { animation: dialog-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.backdrop-in { animation: backdrop-in 0.25s ease-out both; }
+.toast-in { animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.run-glow { animation: run-glow 3.2s ease-in-out infinite; }
+.boot-ring { animation: boot-spin 2.4s linear infinite; }
+.boot-lion { animation: boot-breathe 2.6s ease-in-out infinite; }
+.boot-bar::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--accent), transparent); animation: boot-sweep 1.4s ease-in-out infinite; }
+.step-pop { animation: step-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rise-in, .dialog-in, .backdrop-in, .toast-in, .run-glow, .boot-ring, .boot-lion, .step-pop { animation: none; }
+  .boot-bar::after { animation: none; }
+}
+
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); background-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+}
+@keyframes card-in {
+  from { opacity: 0; transform: scale(0.94); }
+}
+@keyframes state-flash {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+.msg-in { animation: msg-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.card-in { animation: card-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.state-flash { animation: state-flash 0.9s ease-out; }
+.btn:not(:disabled):active { transform: translateY(1px) scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .msg-in, .card-in, .state-flash { animation: none; }
+  .btn:not(:disabled):active { transform: none; }
+}
+
+@keyframes spark-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes spark-fade {
+  from { opacity: 0; }
+}
+@keyframes saved-pulse {
+  0% { box-shadow: 0 0 0 0 var(--color-green); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+.spark-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: spark-draw 1s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.spark-fade { animation: spark-fade 1.2s ease-out both; }
+.saved-dot { animation: saved-pulse 2.4s ease-out infinite; }
+/* Pills and chips lift a little under the pointer (not whole panels: a big box that moves is distracting). */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .deck-pill { transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease; }
+  .deck-pill:hover { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spark-draw, .spark-fade, .saved-dot { animation: none; }
 }

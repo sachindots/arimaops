@@ -16,7 +16,7 @@ export function StageStrip({ snap, compact = false }: { snap: OfficeSnapshot; co
         type="button"
         onClick={() => ui.openFlow()}
         title="Open the flow"
-        className="hud-glass no-scrollbar pointer-events-auto flex max-w-full cursor-pointer items-center gap-0.5 overflow-x-auto rounded-2xl px-1.5 py-1.5 transition-colors hover:border-accent/45"
+        className="hud-glass no-scrollbar pointer-events-auto flex max-w-full cursor-pointer items-center gap-0.5 overflow-x-auto rounded-xl px-1.5 py-1.5 transition-colors hover:border-accent/45"
       >
         {stages.map((s, i) => {
           const here = open.filter((t) => t.stageId === s.id);

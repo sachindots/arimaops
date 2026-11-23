@@ -24,7 +24,7 @@ export function SlideOver({ title, onClose, children, width = 440 }: { title: Re
       <div ref={panel} tabIndex={-1} className="hud-drawer scroll-thin relative flex h-full w-full flex-col gap-4 overflow-y-auto border-l border-[var(--border-hairline)] p-5 outline-none" style={{ maxWidth: width }}>
         <div className="flex items-start gap-2">
           <h2 className="m-0 min-w-0 flex-1 text-[15px] font-semibold leading-snug text-ink">{title}</h2>
-          <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink" aria-label="Close" onClick={onClose}>
+          <button type="button" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-cream-2 hover:text-ink" aria-label="Close" onClick={onClose}>
             <Icon name="close" size={18} />
           </button>
         </div>

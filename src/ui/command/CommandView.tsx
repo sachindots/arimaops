@@ -16,10 +16,10 @@ import { FactoryCard } from "./Factory";
 import { agentMode } from "../hud/theme";
 
 const MODE_COLOR: Record<Mode, string> = {
-  "needs-input": "#ffb020",
-  alert: "#ff2a4b",
+  "needs-input": "#f59e0b",
+  alert: "#ef4444",
   working: "#3b82f6",
-  cheer: "#3fb950",
+  cheer: "#10b981",
   starting: "#818cf8",
   idle: "#8b9bb4",
   stopped: "#475569",
@@ -126,7 +126,7 @@ export function CommandView() {
 
   return (
     <div className="hud-void scroll-thin fixed inset-0 z-[5] flex flex-col gap-3 p-4 max-[1099px]:overflow-y-auto max-[640px]:p-2.5" aria-label="Command center">
-      <div className="hud-glass flex flex-wrap items-center gap-2.5 rounded-2xl px-4 py-2.5">
+      <div className="hud-glass flex flex-wrap items-center gap-2.5 rounded-xl px-4 py-2.5">
         {!solo && (
           <button className="btn min-h-[34px] px-3 text-[12px]" onClick={() => ui.setView("office", false)} title="Back to Home (o)">
             ← Home
@@ -182,7 +182,7 @@ export function CommandView() {
       <FactoryCard projects={projects.filter((p) => !projectsOff.has(p.id))} live={live} defaultOpen={false} />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 max-[1099px]:flex-none min-[1100px]:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-auto rounded-2xl p-3 max-[1099px]:max-h-[50vh]" aria-label="Agents">
+        <section className="hud-glass scroll-thin flex min-h-0 flex-col overflow-auto rounded-xl p-3 max-[1099px]:max-h-[50vh]" aria-label="Agents">
           {shown.length === 0 ? (
             <p className="m-0 px-2 py-6 text-center text-[13px] text-muted">{all.length ? "No agents match this filter." : "No agents yet. Add a team in Settings → Team."}</p>
           ) : (
@@ -221,7 +221,7 @@ export function CommandView() {
             onHide={() => toggleHidden(focus.key)}
           />
         ) : (
-          <section className="hud-glass grid place-items-center rounded-2xl p-8 text-[13px] text-muted">Pick an agent on the left.</section>
+          <section className="hud-glass grid place-items-center rounded-xl p-8 text-[13px] text-muted">Pick an agent on the left.</section>
         )}
       </div>
     </div>
@@ -244,7 +244,7 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
 
   return (
     <section
-      className="hud-glass flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl"
+      className="hud-glass flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-xl"
       style={{ borderColor: urgent ? color : undefined }}
       aria-label={`${r.agent.name}, ${r.mode}`}
     >
@@ -255,7 +255,7 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
             <h2 className="m-0 font-display text-[20px] font-semibold text-ink">{r.agent.name}</h2>
             {r.status && <StateChip state={r.status.state} session={r.status.session.state} blink={false} />}
             {multi && <span className="chip text-[12px]">{r.projectName}</span>}
-            {agentMode(r.agent) === "redteam" && <span className="rounded border border-red/40 px-1.5 text-[12px] text-red">Red team</span>}
+            {agentMode(r.agent) === "redteam" && <span className="rounded-lg border border-red/40 px-1.5 text-[12px] text-red">Red team</span>}
           </div>
           <div className="truncate text-[12px] text-muted">
             {r.agent.role} · {CLI_LABEL[r.agent.cli] ?? r.agent.cli}

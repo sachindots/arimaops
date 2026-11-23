@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { type BoardStatus, type Task, type TaskStatus } from "../../data/types";
 import { officeActions, useOffice } from "../../store/office";
+import { ui } from "../../store/ui";
 import { readPref, writePref } from "../../lib/prefs";
 import { ago, Dot, Meter, Portrait, TokensChip, useNow } from "../kit";
 import { Icon } from "../deck/Icon";
@@ -11,9 +12,9 @@ import { TaskSheet } from "./TaskSheet";
 const COLUMNS: { id: TaskStatus; label: string; color: string }[] = [
   { id: "todo", label: "To do", color: "#6b7280" },
   { id: "in-progress", label: "Doing", color: "#818cf8" },
-  { id: "in-review", label: "Review", color: "#a371f7" },
-  { id: "done", label: "Done", color: "#3fb950" },
-  { id: "blocked", label: "Blocked", color: "#ff2a4b" },
+  { id: "in-review", label: "Review", color: "#8b5cf6" },
+  { id: "done", label: "Done", color: "#10b981" },
+  { id: "blocked", label: "Blocked", color: "#ef4444" },
 ];
 
 const STATUS_LABEL: Record<BoardStatus, string> = { active: "Active", planned: "Planned", done: "Done" };
@@ -193,7 +194,7 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
                 if (c.id === "done") list.reverse();
                 return (
                   <div key={c.id} className="flex min-h-[48px] min-w-0 flex-col gap-1.5 rounded-xl bg-cream-2/60 p-1.5">
-                    {!list.length && !byAgent && <p className="m-0 py-3 text-center text-[12px] text-muted">Nothing here</p>}
+                    {!list.length && !byAgent && onBoard.length > 0 && <p className="m-0 py-3 text-center text-[12px] text-muted">Nothing here</p>}
                     {list.map((t) => (
                       <TaskCard key={t.id} task={t} now={now} onOpen={() => setOpenTask(t.id)} />
                     ))}
@@ -203,7 +204,14 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
             </div>
           </section>
         ))}
-        {onBoard.length === 0 && <p className="m-0 p-6 text-center text-[13px] text-muted">No tasks on this board yet. The lead adds tasks when a board is active.</p>}
+        {onBoard.length === 0 && (
+          <div className="flex flex-col items-center gap-3 p-6 text-center">
+            <p className="m-0 text-[13px] text-muted">No tasks yet. Tell the lead what to build and it will plan the work onto this board. The lead needs to be started first.</p>
+            <button type="button" className="btn btn-primary" onClick={() => ui.openChat()}>
+              Tell the lead what to build
+            </button>
+          </div>
+        )}
         {onBoard.length > 0 && tasks.length === 0 && <p className="m-0 p-6 text-center text-[13px] text-muted">No task matches these filters.</p>}
       </div>
       {openTask && <TaskSheet taskId={openTask} onClose={() => setOpenTask(null)} />}
@@ -221,7 +229,7 @@ function TaskCard({ task, now, onOpen }: { task: Task; now: number; onOpen: () =
   const done = task.status === "done";
   return (
     <button
-      className="group w-full cursor-pointer rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)] focus-visible:border-[var(--accent)]"
+      className="card-in group w-full cursor-pointer rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)] focus-visible:border-[var(--accent)]"
       onClick={onOpen}
       aria-label={`${task.id} ${task.title}: open`}
     >
@@ -234,7 +242,7 @@ function TaskCard({ task, now, onOpen }: { task: Task; now: number; onOpen: () =
             <Portrait name={owner.name} color={owner.color} lead={owner.isLead} size={20} />
           </span>
         ) : (
-          <span className="grid h-5 w-5 place-items-center rounded-md border border-dashed border-[var(--border-strong)]" title="Unassigned">
+          <span className="grid h-5 w-5 place-items-center rounded-lg border border-dashed border-[var(--border-strong)]" title="Unassigned">
             <Icon name="person" size={12} />
           </span>
         )}

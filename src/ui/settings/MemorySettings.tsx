@@ -307,10 +307,10 @@ export function MemorySettings() {
   return (
     <div className="flex flex-col gap-6">
       {/* 1. SQLite FTS5 Team Memory Explorer */}
-      <section className="panel flex flex-col gap-3.5 p-4 sm:p-5" aria-label="Team Memory Explorer">
+      <section className="panel flex flex-col gap-3.5 p-4 sm:p-5" aria-label="Team memory explorer">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <SectionTitle>Team Memory Explorer · FTS5</SectionTitle>
+            <SectionTitle>Team memory explorer · FTS5</SectionTitle>
             <p className="m-0 text-[12px] text-muted">
               Full-text indexed decisions, lessons, and dead ends. Uncertified items decay after 30 days; contradictions are flagged before certification.
             </p>
@@ -433,7 +433,7 @@ export function MemorySettings() {
                       {m.about.map((tag) => (
                         <code
                           key={tag}
-                          className="rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-1.5 py-0.5 font-term text-[12px] text-muted"
+                          className="rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-1.5 py-0.5 font-term text-[12px] text-muted"
                         >
                           {tag}
                         </code>
@@ -482,11 +482,11 @@ export function MemorySettings() {
       </section>
 
       {/* 2. Encrypted Backup & Restore Card (M4.3) */}
-      <section className="panel flex flex-col gap-3.5 p-4 sm:p-5" aria-label="Encrypted Backups and Restore">
+      <section className="panel flex flex-col gap-3.5 p-4 sm:p-5" aria-label="Encrypted backups and restore">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <SectionTitle>Encrypted Backups &amp; Restore</SectionTitle>
+              <SectionTitle>Encrypted backups and restore</SectionTitle>
               <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--color-green)" }}>
                 <Icon name="lock" size={14} /> AES-256-GCM
               </span>
@@ -575,7 +575,7 @@ export function MemorySettings() {
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
                     <span>{new Date(b.createdAt).toLocaleString()}</span>
                     {b.includes.map((inc) => (
-                      <span key={inc} className="rounded bg-[var(--surface-card)] px-1.5 py-px font-term text-[12px] text-muted">
+                      <span key={inc} className="rounded-lg bg-[var(--surface-card)] px-1.5 py-px font-term text-[12px] text-muted">
                         {inc}
                       </span>
                     ))}
@@ -748,12 +748,12 @@ function RestoreConfirmModal({
     >
       <div className="hud-drawer flex w-full max-w-[460px] flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)]">
         <header className="flex items-center justify-between border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
-          <h2 className="m-0 text-[15px] font-semibold text-ink">Restore Encrypted Backup</h2>
+          <h2 className="m-0 text-[15px] font-semibold text-ink">Restore encrypted backup</h2>
           <button
             type="button"
             disabled={busy}
             onClick={onClose}
-            className="grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-muted hover:bg-cream-2 hover:text-ink"
             aria-label="Close restore dialog"
           >
             <Icon name="close" size={18} />

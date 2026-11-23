@@ -71,8 +71,8 @@ export function WelcomeModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
-      <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
+    <div className="backdrop-in fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Welcome to ${BRAND.name}`}>
+      <div className="dialog-in hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(860px,100%)] flex-col overflow-hidden rounded-xl border">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
           <div>
             <p className="m-0 mb-1 text-[12px] font-semibold text-accent">Step 1 of 4 · Team</p>
@@ -88,7 +88,7 @@ export function WelcomeModal() {
             onClick={() => ui.dismissWelcome()}
             aria-label="Close"
             title="Skip for now"
-            className="cursor-pointer rounded-md p-1 text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="cursor-pointer rounded-lg p-1 text-muted transition-colors hover:bg-cream-2 hover:text-ink"
           >
             <Icon name="close" size={18} />
           </button>
@@ -113,8 +113,8 @@ export function WelcomeModal() {
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <b className="text-[13px]">{t.name}</b>
-                    {!builtin && <span className="chip text-[12px]" style={{ ["--c" as string]: "#a371f7" }}>yours · v{t.version}</span>}
-                    {problems.length > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>waits for you</span>}
+                    {!builtin && <span className="chip text-[12px]" style={{ ["--c" as string]: "#8b5cf6" }}>yours · v{t.version}</span>}
+                    {problems.length > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--color-amber)" }}>waits for you</span>}
                   </span>
                   <span className="text-[12px] leading-snug text-muted">{t.description}</span>
                   <span className="flex flex-wrap gap-1">
@@ -126,7 +126,7 @@ export function WelcomeModal() {
               ))}
             </div>
             {entry.problems.length > 0 && (
-              <p className="mt-2 border-l border-[#ffb020] pl-2 text-[13px]">
+              <p className="mt-2 border-l border-[#f59e0b] pl-2 text-[13px]">
                 {template.name} can't be used yet: {entry.problems.join("; ")}.
               </p>
             )}

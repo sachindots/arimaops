@@ -477,6 +477,7 @@ export function createMockSource(): OfficeDataSource {
     },
 
     saveAccount() {},
+    testAccountKey() {},
     removeAccount() {},
     setMemoryExtraction() {},
     setTeamMode(mode) {

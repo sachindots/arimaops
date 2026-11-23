@@ -3,7 +3,7 @@ import { isViewer, selectAttention, setupToDo, useOffice } from "../../store/off
 import { ui, useUi } from "../../store/ui";
 import { useAgentUsage } from "../../store/usage";
 import { CommandBar } from "../hud/CommandBar";
-import { fmtUsd, Logo } from "../kit";
+import { fmtUsd, Logo, Num } from "../kit";
 import type { Theme } from "../theme/projectTheme";
 import { DECK } from "./frame";
 import { Icon } from "./Icon";
@@ -85,7 +85,7 @@ export function DeckHeader({
                 ui.closeDrawer();
                 ui.setView("command", false);
               }}
-              title="Open Multi-Project Command Grid"
+              title="Open the multi-project command grid"
               className="deck-pill hidden cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12px] font-medium text-ink transition-colors hover:bg-cream-2 sm:flex"
             >
               <Icon name="grid_view" size={16} className="text-muted" />
@@ -114,11 +114,11 @@ export function DeckHeader({
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
         <div className="hidden items-center gap-2.5 text-[12px] text-muted xl:flex">
           <span>
-            <strong className="font-semibold text-ink">{workingCount}</strong> Working
+            <strong className="font-semibold text-ink"><Num value={workingCount} /></strong> Working
           </span>
           <span className="text-muted/40">·</span>
           <span>
-            Burn: <strong className="font-semibold text-ink">{fmtUsd(cost)}</strong>
+            Burn: <strong className="font-semibold text-ink"><Num value={cost} format={fmtUsd} /></strong>
           </span>
         </div>
 

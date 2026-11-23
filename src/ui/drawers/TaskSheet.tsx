@@ -17,9 +17,9 @@ import { Select } from "../primitives/Select";
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: "To do", color: "#6b7280" },
   "in-progress": { label: "Doing", color: "#818cf8" },
-  "in-review": { label: "Review", color: "#a371f7" },
-  done: { label: "Done", color: "#3fb950" },
-  blocked: { label: "Blocked", color: "#ff2a4b" },
+  "in-review": { label: "Review", color: "#8b5cf6" },
+  done: { label: "Done", color: "#10b981" },
+  blocked: { label: "Blocked", color: "#ef4444" },
 };
 
 /** What a gate asks for, in words. */
@@ -136,7 +136,7 @@ function Stepper({ task }: { task: Task }) {
             {current.gates.map((g) => {
               const rec = recorded.find((r) => r.gateId === g.id);
               return (
-                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2.5 py-2">
+                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2.5 py-2">
                   <span className="flex items-center gap-1.5 text-[13px] text-ink">
                     <span className={rec ? "text-green" : "text-muted"}>{rec ? "✓" : "○"}</span>
                     <span>{gateText(g)}</span>
@@ -196,7 +196,7 @@ function Checks({ scores }: { scores: TaskScore[] }) {
     <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px]">
       {scores.map((x) => (
         <li key={x.scorer} className="flex items-baseline gap-2">
-          <span className={x.pass ? "text-green" : "text-[#ffb020]"} aria-label={x.pass ? "passed" : "failed"}>
+          <span className={x.pass ? "text-green" : "text-[#f59e0b]"} aria-label={x.pass ? "passed" : "failed"}>
             {x.pass ? "✓" : "✗"}
           </span>
           <span className="min-w-0">
@@ -221,7 +221,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
     <>
       <p className="m-0 mb-2 text-[12px] text-muted">
         {verifier} at <span className="font-mono">{ev.sha.slice(0, 7)}</span>, {ago(ev.at, now)} ago
-        {stale && <span className="ml-1 text-[#ffb020]">· the PR has new commits: the verifier takes it again</span>}
+        {stale && <span className="ml-1 text-[#f59e0b]">· the PR has new commits: the verifier takes it again</span>}
       </p>
       <div className="grid grid-cols-2 gap-2">
         {ev.shots.map((s) => {
@@ -259,7 +259,7 @@ function Evidence({ task, projectId }: { task: Task; projectId: string }) {
                     type="button"
                     onClick={() => setAnnotating({ url, label: s.label })}
                     className="btn min-h-[26px] shrink-0 px-2 py-0.5 text-[12px]"
-                    title="Freeze & Draw feedback on this screenshot"
+                    title="Freeze and draw feedback on this screenshot"
                   >
                     <Icon name="draw" size={14} />
                     Annotate
@@ -295,7 +295,7 @@ function Timeline({ history, name }: { history: History; name: (id: string | nul
   const now = useNow(30_000);
   const rows = [
     ...history.events.map((e) => ({ at: e.at, dot: STATUS[e.status as TaskStatus]?.color ?? "#8b9bb4", text: `${STATUS[e.status as TaskStatus]?.label ?? e.status}${e.ownerId ? ` · ${name(e.ownerId)}` : ""}` })),
-    ...history.gates.map((g) => ({ at: g.at, dot: g.state === "failed" ? "#ff2a4b" : g.state === "passed" ? "#3fb950" : "#8b9bb4", text: `Gate ${g.gateId} ${g.state} by ${name(g.by)}${g.note ? `: ${g.note}` : ""}` })),
+    ...history.gates.map((g) => ({ at: g.at, dot: g.state === "failed" ? "#ef4444" : g.state === "passed" ? "#10b981" : "#8b9bb4", text: `Gate ${g.gateId} ${g.state} by ${name(g.by)}${g.note ? `: ${g.note}` : ""}` })),
   ].sort((a, b) => b.at - a.at);
   if (!rows.length) return <p className="m-0 text-[12px] text-muted">No history: this task is older than HQ's task history.</p>;
   return (
@@ -431,15 +431,15 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
             <h2 className="m-0 mt-1 font-display text-[20px] font-semibold leading-snug">{task.title}</h2>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <span className="chip text-[12px]" style={{ ["--c" as string]: st.color }}>{st.label}</span>
-              {failed > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ffb020" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
+              {failed > 0 && <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--color-amber)" }}>{failed} check{failed === 1 ? "" : "s"} failed</span>}
               {task.evidence && <span className="chip text-[12px]" style={{ ["--c" as string]: "#4fb3c4" }}>evidence</span>}
               {task.benchmark && <span className="chip text-[12px]" style={{ ["--c" as string]: "#9085e9" }}>in suite</span>}
-              {task.highStakes && <span className="chip text-[12px]" style={{ ["--c" as string]: "#ff2a4b" }}>high-stakes</span>}
+              {task.highStakes && <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--color-red)" }}>high-stakes</span>}
             </div>
           </div>
           <button
             type="button"
-            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             onClick={onClose}
             aria-label="Close the task"
           >
@@ -474,7 +474,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {(task.files?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {task.files!.map((f) => (
-                    <code key={f} className="rounded-md border border-[var(--border-hairline)] bg-cream-2 px-1.5 py-0.5 text-[12px] text-ink">{f}</code>
+                    <code key={f} className="rounded-lg border border-[var(--border-hairline)] bg-cream-2 px-1.5 py-0.5 text-[12px] text-ink">{f}</code>
                   ))}
                 </div>
               )}
@@ -517,7 +517,7 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
               {task.benchmark ? (
                 <p className="m-0 text-[12px] text-muted">
                   In the suite. Replay it on other models from a terminal (paid, asks first):
-                  <code className="mt-1 block break-all rounded-md border border-[var(--border-hairline)] bg-cream-2 px-2 py-1 text-[12px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
+                  <code className="mt-1 block break-all rounded-lg border border-[var(--border-hairline)] bg-cream-2 px-2 py-1 text-[12px] text-ink">pnpm bench task:{task.benchmark} --run --models &lt;role&gt;=&lt;cli&gt;/&lt;model&gt;</code>
                 </p>
               ) : isViewer ? null : (
                 <button className="btn min-h-[40px] px-3 text-[12px]" onClick={() => officeActions.addToSuite(task.id)} title="Save this task (brief, base commit, template, checks) to ~/.arima-bench/suite so it can be replayed on other models. Free.">

@@ -217,12 +217,12 @@ function Conversation({
                   <span className="h-px flex-1 bg-[var(--border-hairline)]" />
                 </div>
               )}
-              <article className={`group flex gap-3 rounded-lg px-2 ${grouped ? "py-0.5" : "mt-2 py-1.5"} hover:bg-cream-2/50 ${view.tag === "disagree" ? "bg-amber/[0.05]" : ""}`}>
+              <article className={`${Date.now() - Date.parse(m.at) < 4000 ? "msg-in " : ""}group flex gap-3 rounded-lg px-2 ${grouped ? "py-0.5" : "mt-2 py-1.5"} hover:bg-cream-2/50 ${view.tag === "disagree" ? "bg-amber/[0.05]" : ""}`}>
                 <div className="w-9 shrink-0">
                   {grouped ? (
                     <span className="hidden pt-1 text-[12px] text-muted group-hover:block">{clock(m.at)}</span>
                   ) : m.fromId === HUMAN_ID || m.fromId === "hq" ? (
-                    <span className="grid h-9 w-9 place-items-center rounded-md text-[13px] font-semibold text-white" style={{ background: from.color }} aria-hidden>
+                    <span className="grid h-9 w-9 place-items-center rounded-lg text-[13px] font-semibold text-white" style={{ background: from.color }} aria-hidden>
                       {m.fromId === "hq" ? <Icon name="hub" size={18} /> : "Y"}
                     </span>
                   ) : (
@@ -243,7 +243,7 @@ function Conversation({
                       <span className="mt-0.5 flex shrink-0 items-center gap-1.5">
                         {view.tag && <TagChip tag={view.tag} />}
                         {m.taskId && (
-                          <button type="button" className="rounded px-1 text-[12px] font-medium text-accent hover:underline" onClick={() => ui.openTask(m.taskId!)}>
+                          <button type="button" className="rounded-lg px-1 text-[12px] font-medium text-accent hover:underline" onClick={() => ui.openTask(m.taskId!)}>
                             {m.taskId}
                           </button>
                         )}
@@ -333,7 +333,7 @@ function Composer({ snap, thread }: { snap: OfficeSnapshot; thread: string }) {
               <button
                 type="button"
                 onMouseDown={(e) => (e.preventDefault(), take(a.name))}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ${i === pick ? "bg-cream-2" : ""}`}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] ${i === pick ? "bg-cream-2" : ""}`}
               >
                 <Portrait name={a.name} color={a.color} lead={a.isLead} size={22} />
                 <span className="font-medium text-ink">{a.name}</span>

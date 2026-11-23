@@ -6,8 +6,8 @@ import { TerminalView } from "../drawers/TerminalView";
 import { ask } from "../dialog";
 
 const STATUS: Record<string, [string, string]> = {
-  ready: ["Ready", "#3fb950"],
-  "needs-auth": ["Needs sign-in", "#a371f7"],
+  ready: ["Ready", "#10b981"],
+  "needs-auth": ["Needs sign-in", "#8b5cf6"],
 };
 
 /** MCP servers from Docker Sandboxes' registry, and which agents get them. */
@@ -43,8 +43,7 @@ export function McpSettings() {
   return (
     <div className="flex flex-col gap-5">
       <p className="m-0 text-[13px] text-muted">
-        MCP servers come from Docker Sandboxes' registry. Each one runs through sbx's gateway, so its sign-in or key never enters a sandbox. Tick a server
-        for an agent and it's attached right away if the agent is running; agents don't need a restart.
+        MCP servers HQ hands to your agents. This build supports servers with a URL. Tick a server for an agent and it gets it at its next start.
       </p>
 
       <section>
@@ -207,7 +206,7 @@ export function McpSettings() {
               <input className="field w-full font-term text-[13px]" value={form.args} placeholder="-y, @supabase/mcp-server" onChange={(e) => setForm({ ...form, args: e.target.value })} />
             </Field>
           ) : (
-            <Field label="API key (optional)" hint="Sent as a Bearer token. Stored by Docker Sandboxes, never by HQ. Leave empty to sign in instead.">
+            <Field label="API key (optional)" hint="Sent as a Bearer token. Stored encrypted in HQ's vault and never shown again. Leave empty if the server needs none.">
               <input
                 type="password"
                 autoComplete="off"
@@ -223,9 +222,6 @@ export function McpSettings() {
         <div className="mt-3 flex items-center gap-3">
           <button className="btn" disabled={!canAdd} onClick={add}>
             Add server
-          </button>
-          <button className="min-h-[40px] px-1 text-[12px] underline" onClick={() => setForm({ ...form, local: !form.local })}>
-            {form.local ? "Use a URL instead" : "Local server (command)…"}
           </button>
         </div>
       </section>

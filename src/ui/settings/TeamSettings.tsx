@@ -26,16 +26,15 @@ export function CliSelect({ value, onChange }: { value: AgentCli; onChange: (v: 
 }
 
 function ModeSelect({ value, onChange }: { value: AgentMode; onChange: (v: AgentMode) => void }) {
+  const setup = useOffice((s) => s.snap?.setup);
+  // Only modes this server can run, plus the one already chosen (so it never shows as blank).
+  const can = (m: AgentMode) => m === value || m === "container" || (m === "sandbox" ? !!setup?.sandboxReady : !!setup?.localReady);
   return (
     <Select
       value={value}
       onChange={(v) => onChange(v as AgentMode)}
       ariaLabel="Runs in"
-      options={[
-        { value: "sandbox", label: "Sandbox" },
-        { value: "container", label: "Container" },
-        { value: "local", label: "Local" },
-      ]}
+      options={(["sandbox", "container", "local"] as const).filter(can).map((m) => ({ value: m, label: MODE_LABEL[m] }))}
     />
   );
 }
@@ -118,7 +117,7 @@ export function TeamSettings() {
           ))}
         </div>
       </section>
-      <AddAgent roles={template.roles.filter((r) => !r.isLead)} defaultMode={snap.setup.sandboxReady ? "sandbox" : "local"} />
+      <AddAgent roles={template.roles.filter((r) => !r.isLead)} defaultMode={snap.config.team[0]?.mode ?? "container"} />
       <section>
         <SectionTitle>Template file</SectionTitle>
         <p className="mb-2 text-[13px] text-muted">
@@ -279,7 +278,7 @@ function SeatRow({ agent, roles, expanded, onToggle, onRemove }: { agent: AgentC
                 <button
                   key={c}
                   className="h-6 w-6 rounded-lg border border-white/10"
-                  style={{ background: c, outline: c === agent.color ? "2px solid #3fb950" : undefined, outlineOffset: 1 }}
+                  style={{ background: c, outline: c === agent.color ? "2px solid #10b981" : undefined, outlineOffset: 1 }}
                   aria-label={`Colour ${c}`}
                   onClick={() => set({ color: c })}
                 />

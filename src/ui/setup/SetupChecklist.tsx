@@ -6,10 +6,10 @@ import { ui } from "../../store/ui";
 import { TerminalView } from "../drawers/TerminalView";
 
 const ICON: Record<SetupStatus, [string, string]> = {
-  ok: ["✓", "#3fb950"],
-  missing: ["✗", "#ff2a4b"],
-  unsupported: ["✗", "#ff2a4b"],
-  warning: ["!", "#a371f7"],
+  ok: ["✓", "#10b981"],
+  missing: ["✗", "#ef4444"],
+  unsupported: ["✗", "#ef4444"],
+  warning: ["!", "#8b5cf6"],
 };
 
 const NEEDED: Record<SetupCheck["neededFor"], string> = {
@@ -79,8 +79,8 @@ export function SetupChecklist() {
   if (!setup) return null;
 
   return (
-    <div className="fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="Setup checklist">
-      <div className="hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col overflow-hidden rounded-xl border">
+    <div className="backdrop-in fixed inset-0 z-40 grid grid-cols-[minmax(0,1fr)] place-items-center bg-black/45 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label="Setup checklist">
+      <div className="dialog-in hud-drawer flex max-h-[calc(100dvh-2rem)] w-[min(760px,100%)] flex-col overflow-hidden rounded-xl border">
         <div className="flex items-center gap-3 border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3">
           <h2 className="m-0 flex-1 font-display text-[20px] font-semibold tracking-tight text-ink">Get {BRAND.name} ready</h2>
           <button className="btn text-[13px]" onClick={() => officeActions.recheckSetup()}>
@@ -89,14 +89,14 @@ export function SetupChecklist() {
         </div>
         <div className="scroll-thin min-h-0 overflow-y-auto px-4 py-2">
           <div className="mb-2 flex flex-wrap gap-2 text-[13px]">
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#3fb950" : "#ff2a4b" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.sandboxReady ? "#10b981" : "#ef4444" }}>
               Sandboxes {setup.sandboxReady ? "ready" : "not ready"}
             </span>
-            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#3fb950" : "#6b7280" }}>
+            <span className="chip chip-dot" style={{ ["--c" as string]: setup.localReady ? "#10b981" : "#6b7280" }}>
               Local mode {setup.localReady ? "ready" : "not ready"}
             </span>
             {setup.checks.some((c) => c.neededFor === "container") && (
-              <span className="chip chip-dot" style={{ ["--c" as string]: setup.containerReady ? "#3fb950" : "#ff2a4b" }}>
+              <span className="chip chip-dot" style={{ ["--c" as string]: setup.containerReady ? "#10b981" : "#ef4444" }}>
                 Containers {setup.containerReady ? "ready" : "not ready"}
               </span>
             )}

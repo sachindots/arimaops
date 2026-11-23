@@ -68,7 +68,7 @@ export function RosterTable({
               {group[0].current && <span className="font-normal"> · this project</span>}
             </div>
           )}
-          {group.map((r) => {
+          {group.map((r, ri) => {
             const u = usageOf(r);
             const free = freeSourceOf(r.agent.model);
             const on = r.key === selected;
@@ -82,8 +82,8 @@ export function RosterTable({
                 aria-selected={on || undefined}
                 onClick={() => onPick(r)}
                 onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onPick(r))}
-                className={`grid cursor-pointer items-center gap-3 border-b border-[var(--border-hairline)] px-3 py-2.5 outline-none transition-colors focus-visible:bg-cream-2 ${on ? "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" : urgent ? "bg-amber/[0.06] hover:bg-amber/[0.1]" : "hover:bg-cream-2/70"}`}
-                style={{ gridTemplateColumns: cols }}
+                className={`rise-in grid cursor-pointer items-center gap-3 border-b border-[var(--border-hairline)] px-3 py-2.5 outline-none transition-colors focus-visible:bg-cream-2 ${on ? "bg-[color-mix(in_srgb,var(--accent)_10%,transparent)]" : urgent ? "bg-amber/[0.06] hover:bg-amber/[0.1]" : "hover:bg-cream-2/70"}`}
+                style={{ gridTemplateColumns: cols, ['--i' as string]: ri }}
               >
                 <span role="cell" className="flex min-w-0 items-center gap-2.5">
                   <span className="relative shrink-0">

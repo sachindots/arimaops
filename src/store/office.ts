@@ -47,6 +47,8 @@ interface OfficeState {
   templateExportAsked: boolean;
   /** The last template import's answer, for the dialog that sent it. */
   templateImport: { ok: boolean; message: string; id?: string } | null;
+  /** Results of "does this key work", by request id (see useKeyTest). Holds the provider's verdict only, never a key. */
+  keyTests: Record<string, { ok: boolean | null; message: string }>;
   connection: ConnectionStatus;
   lastCommandError: string | null;
   /** Bumps on every failed command so the toast re-shows an identical message. */
@@ -164,6 +166,7 @@ export const useOffice = create<OfficeState>(() => ({
   workspaceInfo: {},
   templateExportAsked: false,
   templateImport: null,
+  keyTests: {},
   connection: "connecting",
   lastCommandError: null,
   commandErrorSeq: 0,
@@ -250,6 +253,7 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, lessons: e.lessons };
     case "template.file":
     case "template.imported":
+    case "key.tested":
       return snap;
     case "memory.digest":
       return snap;
@@ -324,6 +328,10 @@ function handle(e: OfficeEvent) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(e.file, null, 2)], { type: "application/json" }));
     Object.assign(document.createElement("a"), { href: url, download: `${e.file.template.id}.arimaops-template.json` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
+  }
+  if (e.type === "key.tested") {
+    useOffice.setState((s) => ({ keyTests: { ...s.keyTests, [e.requestId]: { ok: e.ok, message: e.message } } }));
     return;
   }
   if (e.type === "template.imported") {
@@ -417,6 +425,7 @@ export const officeActions = {
   updateStack: (stack: StackConfig | null) => source.updateStack(stack),
   resolveActionItem: (id: string, decision: "done" | "dismissed", note?: string) => source.resolveActionItem(id, decision, note),
   saveAccount: (input: AccountInput) => source.saveAccount(input),
+  testAccountKey: (provider: string, secret: string, requestId: string) => source.testAccountKey(provider, secret, requestId),
   removeAccount: (id: string) => source.removeAccount(id),
   setMemoryExtraction: (input: { enabled: boolean; account: string }) => source.setMemoryExtraction(input),
   setLabMode: (on: boolean) => source.setLabMode(on),

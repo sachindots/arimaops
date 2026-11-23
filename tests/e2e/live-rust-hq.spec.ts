@@ -446,7 +446,7 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
 
     // 6. Real Browser Preview Workspace -> Freeze & Draw -> Submit Feedback -> Verify disk sync
     await gotoWorkspace(page, "Preview");
-    await expect(page.getByRole("heading", { name: "Live Preview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Live preview" })).toBeVisible();
 
     // Select our mock target explicitly in case another local dev port (like :5173) was also discovered
     const targetCombobox = page.locator('button[role="combobox"][aria-label="Preview target"]');
@@ -471,14 +471,14 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     );
 
     // Switch to Freeze & Draw, draw a stroke, submit feedback
-    await page.getByRole("group", { name: "Preview interaction mode" }).getByRole("button", { name: "Freeze & Draw" }).click();
+    await page.getByRole("group", { name: "Preview interaction mode" }).getByRole("button", { name: "Freeze and draw" }).click();
     const canvas = page.locator('canvas[aria-label="Annotation drawing canvas"]');
     await drawCanvasStroke(page, canvas);
     await expect(page.getByText(/Annotations · 1 stroke\b/i)).toBeVisible();
 
     const feedbackNote = "Live Rust HQ E2E visual feedback check";
     await page.getByRole("button", { name: /Send Feedback/i }).click();
-    const modal = page.getByRole("dialog", { name: "Send Visual Feedback" });
+    const modal = page.getByRole("dialog", { name: "Send visual feedback" });
     await expect(modal).toBeVisible();
     await modal.locator("textarea").fill(feedbackNote);
     await modal.getByRole("button", { name: /Create Task with Screenshot/i }).click();
@@ -605,7 +605,7 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     // 7c. Encrypted Backup -> Verify -> Restore live UI + API guard round-trip
     await openSettings(page);
     await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Memory" }).click();
-    const backupSection = page.getByRole("region", { name: "Encrypted Backups and Restore" });
+    const backupSection = page.getByRole("region", { name: "Encrypted backups and restore" });
     await expect(backupSection).toBeVisible();
 
     await backupSection.getByRole("button", { name: /Create encrypted backup/i }).click();

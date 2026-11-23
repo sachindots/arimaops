@@ -38,7 +38,7 @@ function StackedBars({ rows, agents, rangeLabel }: { rows: AgentUsage[]; agents:
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted" aria-label="Legend">
         {rows.map((r) => (
           <span key={r.agentId} className="flex items-center gap-1.5">
-            <i className="h-2.5 w-2.5 rounded-sm" style={{ background: who(r.agentId)?.color ?? "#64748b" }} aria-hidden="true" />
+            <i className="h-2.5 w-2.5 rounded-lg" style={{ background: who(r.agentId)?.color ?? "#64748b" }} aria-hidden="true" />
             {who(r.agentId)?.name ?? r.agentId}
           </span>
         ))}
@@ -64,7 +64,7 @@ function StackedBars({ rows, agents, rangeLabel }: { rows: AgentUsage[]; agents:
                   />
                 );
               })}
-              <span className="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-1.5 py-0.5 text-[12px] text-[var(--surface-card)] group-hover:block">
+              <span className="pointer-events-none absolute -top-6 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-1.5 py-0.5 text-[12px] text-[var(--surface-card)] group-hover:block">
                 {fmtTokens(t)}
               </span>
             </div>

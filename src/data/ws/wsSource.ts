@@ -40,6 +40,7 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
     updateSandbox: "Changing sandbox rules",
     setSecret: "Saving a key",
     saveAccount: "Saving an account",
+    testAccountKey: "Checking a key",
     removeAccount: "Removing an account",
     setMemoryExtraction: "Saving the memory extraction setting",
     setLabMode: "Switching lab mode",
@@ -151,7 +152,18 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
       };
       open();
 
+      // Signing in while the socket is waiting out a retry: connect now instead of up to 5 seconds later.
+      const nudge = () => {
+        if (!active || (socket && socket.readyState <= WebSocket.OPEN)) return; // connecting or open already
+        if (timer) window.clearTimeout(timer);
+        timer = null;
+        retry = 0;
+        open();
+      };
+      window.addEventListener("arima:signed-in", nudge);
+
       return () => {
+        window.removeEventListener("arima:signed-in", nudge);
         active = false;
         if (timer) window.clearTimeout(timer);
         // Closing mid-handshake logs a browser warning; onopen closes it instead.
@@ -208,6 +220,7 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
     updateStack: (stack) => send("updateStack", stack),
     resolveActionItem: (id, decision, note) => send("resolveActionItem", id, decision, note),
     saveAccount: (input) => send("saveAccount", input),
+    testAccountKey: (provider, secret, requestId) => send("testAccountKey", provider, secret, requestId),
     removeAccount: (id) => send("removeAccount", id),
     setMemoryExtraction: (input) => send("setMemoryExtraction", input),
     setLabMode: (on) => send("setLabMode", on),

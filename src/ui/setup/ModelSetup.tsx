@@ -56,7 +56,7 @@ export function ModelSetup() {
               </td>
               <td className="py-2 pr-3">
                 {CLI_LABEL[p.cli]} · <span className="font-term">{p.model || "default"}</span>
-                {p.free && <span className="ml-1.5 rounded-full bg-[var(--color-ok-soft,rgba(63,185,80,0.12))] px-1.5 text-[12px] text-[#3fb950]">free</span>}
+                {p.free && <span className="ml-1.5 rounded-full bg-[var(--color-ok-soft,rgba(63,185,80,0.12))] px-1.5 text-[12px] text-[#10b981]">free</span>}
               </td>
               <td className="py-2 text-muted">{p.fallback ? `${CLI_LABEL[p.fallback.cli]} · ${p.fallback.model}` : "waits"}</td>
             </tr>
@@ -69,7 +69,7 @@ export function ModelSetup() {
       </p>
       {proposal.install.length > 0 && (
         <p className="text-[13px]">
-          Run first: <code className="rounded border border-[var(--border-hairline)] px-1.5 font-term text-[12px]">{proposal.install.join(" && ")}</code>
+          Run first: <code className="rounded-lg border border-[var(--border-hairline)] px-1.5 font-term text-[12px]">{proposal.install.join(" && ")}</code>
         </p>
       )}
       {proposal.keysToAdd.length > 0 && (

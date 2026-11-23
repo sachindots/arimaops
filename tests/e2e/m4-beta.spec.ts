@@ -17,7 +17,7 @@ test.describe("Milestone 4 (v2.0-beta): Memory FTS5, Encrypted Backups, Voice Ad
 
     await openSettings(page);
     await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Memory" }).click();
-    await expect(page.getByRole("region", { name: "Team Memory Explorer" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Team memory explorer" })).toBeVisible();
     await assertZeroNativeSelects(page, "Settings/Memory");
     await assertNoHorizontalOverflow(page, "Settings/Memory");
 
@@ -68,7 +68,7 @@ test.describe("Milestone 4 (v2.0-beta): Memory FTS5, Encrypted Backups, Voice Ad
     await expect(m42Card.getByText("Promoted lesson")).toBeVisible();
 
     // Encrypted Backups & Restore section
-    const backupSection = page.getByRole("region", { name: "Encrypted Backups and Restore" });
+    const backupSection = page.getByRole("region", { name: "Encrypted backups and restore" });
     await expect(backupSection).toBeVisible();
     const archiveList = backupSection.getByRole("list", { name: "Encrypted backup archives" });
     const beforeCount = await archiveList.locator("li").count();

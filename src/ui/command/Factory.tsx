@@ -1,4 +1,4 @@
-// Factory Metrics, Native Scorers, Nightly Improvement Proposals & Replay Benchmark Harness (M5.1).
+// Factory Metrics, Native Scorers, Nightly improvement proposals & Replay benchmark harness (M5.1).
 // Exposes both the full FactoryPage workspace (from Ops -> Factory & Benchmarks) and compact FactoryCard (CommandView).
 
 import { useCallback, useEffect, useState } from "react";
@@ -248,7 +248,7 @@ function MetricBox({
   );
 }
 
-/** Full Factory Metrics, Native Scorers, Nightly Improvement Proposals & Replay Benchmark Harness workspace. */
+/** Full Factory Metrics, Native Scorers, Nightly improvement proposals & Replay benchmark harness workspace. */
 export function FactoryPage() {
   const snap = useOffice((s) => s.snap);
   const live = useOffice((s) => s.live);
@@ -567,16 +567,16 @@ export function FactoryPage() {
             </div>
           </section>
 
-          {/* 2. Nightly Improvement Proposals + Replay Benchmark Harness */}
+          {/* 2. Nightly improvement proposals + Replay benchmark harness */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            {/* Nightly Improvement Proposals */}
+            {/* Nightly improvement proposals */}
             <section
               className="panel flex flex-col gap-3 p-4 sm:p-5"
               aria-label="Nightly improvement proposals"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="m-0 text-[15px] font-semibold text-ink">Nightly Improvement Proposals</h2>
+                  <h2 className="m-0 text-[15px] font-semibold text-ink">Nightly improvement proposals</h2>
                   <p className="m-0 text-[12px] text-muted">
                     Automated workflow and cost tuning generated from score &amp; rework telemetry.
                   </p>
@@ -656,14 +656,14 @@ export function FactoryPage() {
               )}
             </section>
 
-            {/* Replay Benchmark Harness */}
+            {/* Replay benchmark harness */}
             <section
               className="panel flex flex-col gap-3 p-4 sm:p-5"
               aria-label="Replay benchmark harness"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="m-0 text-[15px] font-semibold text-ink">Replay Benchmark Harness</h2>
+                  <h2 className="m-0 text-[15px] font-semibold text-ink">Replay benchmark harness</h2>
                   <p className="m-0 text-[12px] text-muted">
                     Replay golden regression prompts to measure pass rate, score, and latency.
                   </p>
@@ -728,7 +728,7 @@ export function FactoryPage() {
 
           {/* 3. Recent Task Scores */}
           <section className="panel flex flex-col gap-3 p-4 sm:p-5" aria-label="Recent task scores">
-            <h2 className="m-0 text-[15px] font-semibold text-ink">Recent Task Scores · {data.scores.length}</h2>
+            <h2 className="m-0 text-[15px] font-semibold text-ink">Recent task scores · {data.scores.length}</h2>
             {data.scores.length === 0 ? (
               <p className="m-0 text-[13px] text-muted">No tasks scored yet.</p>
             ) : (
@@ -807,7 +807,7 @@ export function FactoryCard({
 
   return (
     <section
-      className={`hud-glass flex flex-col gap-2.5 rounded-2xl px-4 ${open ? "py-3" : "py-1.5"}`}
+      className={`hud-glass flex flex-col gap-2.5 rounded-xl px-4 ${open ? "py-3" : "py-1.5"}`}
       aria-label="Factory"
     >
       <div className="flex items-center gap-2">

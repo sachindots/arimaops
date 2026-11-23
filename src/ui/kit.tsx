@@ -1,5 +1,6 @@
 // Small shared HUD pieces.
 
+import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AgentState, ReviewState, SessionState, Tokens } from "../data/types";
 import { reviewStyle, sessionLabel, stateStyle } from "../theme/tokens";
@@ -9,7 +10,7 @@ import { Lion } from "./brand/Lion";
 export function RoleBadge({ role, color, compact = false }: { role: string; color: string; compact?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center truncate rounded-md border font-medium ${
+      className={`inline-flex items-center truncate rounded-lg border font-medium ${
         compact ? "max-w-full px-1 py-0 text-[12px] leading-[14px]" : "max-w-[18ch] px-1.5 py-0.5 text-[12px] leading-tight"
       }`}
       style={{ color, borderColor: `${color}66`, backgroundColor: `${color}18` }}
@@ -24,7 +25,7 @@ export function RoleBadge({ role, color, compact = false }: { role: string; colo
 export function StateChip({ state, session, blink = true }: { state: AgentState; session?: SessionState; blink?: boolean }) {
   if (session && session !== "running")
     return (
-      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ff2a4b" : "#6b7280" }}>
+      <span className="chip chip-dot" style={{ ["--c" as string]: session === "failed" ? "#ef4444" : "#6b7280" }}>
         {sessionLabel[session]}
       </span>
     );
@@ -50,7 +51,7 @@ export function Logo({ size = 32 }: { size?: number }) {
   return <Lion size={size} className="text-accent" />;
 }
 
-/** An agent's avatar: crisp rounded square badge with its initial. */
+/** An agent's avatar: crisp rounded-lg square badge with its initial. */
 export function Portrait({ color, lead, size = 32, name }: { color: string; lead: boolean; size?: number; name?: string }) {
   return (
     <span
@@ -98,6 +99,8 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode }[]; value: T; onChange: (id: T) => void }) {
+  const pill = useId();
+  const reduce = useReducedMotion();
   return (
     <div role="tablist" className="no-scrollbar inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-1">
       {tabs.map((t) => (
@@ -105,12 +108,15 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
           key={t.id}
           role="tab"
           aria-selected={value === t.id}
-          className={`shrink-0 cursor-pointer whitespace-nowrap rounded-md px-3 py-1 text-[12px] font-semibold transition-colors ${
-            value === t.id ? "bg-cream text-ink shadow-2xs" : "text-muted hover:text-ink"
+          className={`relative shrink-0 cursor-pointer whitespace-nowrap rounded-lg px-3 py-1 text-[12px] font-semibold transition-colors ${
+            value === t.id ? "text-ink" : "text-muted hover:text-ink"
           }`}
           onClick={() => onChange(t.id)}
         >
-          {t.label}
+          {value === t.id && (
+            <motion.span layoutId={pill} aria-hidden className="absolute inset-0 rounded-lg bg-cream shadow-2xs" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 38 }} />
+          )}
+          <span className="relative">{t.label}</span>
         </button>
       ))}
     </div>
@@ -179,8 +185,29 @@ export function useCountUp(value: number): number {
   return shown;
 }
 
+/** A number that counts to its new value (see useCountUp). */
+export function Num({ value, format = (n: number) => String(Math.round(n)) }: { value: number; format?: (n: number) => string }) {
+  return <>{format(useCountUp(value))}</>;
+}
+
+/** True for about a second after `value` changes (not on the first render): for a one-off ring when something just happened. */
+export function useFlash(value: unknown): boolean {
+  const [on, setOn] = useState(false);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    setOn(true);
+    const t = window.setTimeout(() => setOn(false), 1000);
+    return () => window.clearTimeout(t);
+  }, [value]);
+  return on;
+}
+
 /** A small line-and-area chart of `data` (oldest first). */
-export function Sparkline({ data, color = "#3b82f6", width = 96, height = 24, label }: { data: number[]; color?: string; width?: number; height?: number; label?: string }) {
+export function Sparkline({ data, color = "var(--accent)", width = 96, height = 24, label }: { data: number[]; color?: string; width?: number; height?: number; label?: string }) {
   const id = useId();
   const max = Math.max(1, ...data);
   const step = data.length > 1 ? width / (data.length - 1) : width;
@@ -190,18 +217,18 @@ export function Sparkline({ data, color = "#3b82f6", width = 96, height = 24, la
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label ?? "Activity"} className="shrink-0 overflow-visible">
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity="0.35" />
-          <stop offset="1" stopColor={color} stopOpacity="0" />
+          <stop offset="0" style={{ stopColor: color }} stopOpacity="0.35" />
+          <stop offset="1" style={{ stopColor: color }} stopOpacity="0" />
         </linearGradient>
       </defs>
-      {pts.length > 1 && <path d={`${line} L${width},${height} L0,${height} Z`} fill={`url(#${id})`} />}
-      {pts.length > 1 && <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />}
+      {pts.length > 1 && <path d={`${line} L${width},${height} L0,${height} Z`} fill={`url(#${id})`} className="spark-fade" />}
+      {pts.length > 1 && <path d={line} fill="none" style={{ stroke: color }} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" pathLength={1} className="spark-draw" />}
     </svg>
   );
 }
 
 /** A thin glowing bar: `value` of `max`. */
-export function Meter({ value, max, color = "#3b82f6", label }: { value: number; max: number; color?: string; label: string }) {
+export function Meter({ value, max, color = "var(--accent)", label }: { value: number; max: number; color?: string; label: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="hud-meter" role="meter" aria-label={label} aria-valuenow={Math.round(value)} aria-valuemin={0} aria-valuemax={Math.round(max)} style={{ ["--c" as string]: color }}>

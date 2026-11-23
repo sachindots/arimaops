@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { BRAND } from "../../data/brand";
 import { clisFor, PROVIDER_SPECS, PROVIDERS, type Provider } from "../../data/providers";
@@ -7,6 +8,7 @@ import { ui } from "../../store/ui";
 import { PasswordInput } from "../auth/PasswordInput";
 import { Icon } from "../deck/Icon";
 import { Select } from "../primitives/Select";
+import { GET_KEY_URL, KeyTestStatus, useKeyTest, type KeyState } from "./useKeyTest";
 
 type Way = "login" | "key";
 interface Choice {
@@ -29,6 +31,9 @@ export function SetupWizard() {
   const [step, setStep] = useState(1);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [starting, setStarting] = useState(false);
+  const [keyStates, setKeyStates] = useState<Record<string, KeyState>>({});
+  const [anyway, setAnyway] = useState<Record<string, boolean>>({});
+  const reduce = useReducedMotion();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -46,7 +51,13 @@ export function SetupWizard() {
   const lead = team.find((a) => a.isLead) ?? team[0];
   const choice = (cli: AgentCli): Choice => choices[cli] ?? { way: "login", provider: keyProviders(cli)[0] ?? "anthropic", secret: "" };
   const set = (cli: AgentCli, patch: Partial<Choice>) => setChoices({ ...choices, [cli]: { ...choice(cli), ...patch } });
-  const keyReady = (cli: AgentCli) => choice(cli).way === "login" || choice(cli).secret.trim().length > 0;
+  const keyReady = (cli: AgentCli) => {
+    const c = choice(cli);
+    if (c.way === "login") return true;
+    if (!c.secret.trim()) return false;
+    const st = keyStates[cli];
+    return st !== "checking" && (st !== "bad" || !!anyway[cli]); // a key the provider rejected needs "Save anyway"
+  };
 
   const saveSignIn = () => {
     for (const cli of clis) {
@@ -56,6 +67,8 @@ export function SetupWizard() {
       for (const a of team.filter((t) => t.cli === cli)) officeActions.updateAgent(a.id, { account: c.provider });
     }
     setChoices({}); // the keys have left this page
+    setKeyStates({});
+    setAnyway({});
     setStep(2);
   };
 
@@ -68,9 +81,9 @@ export function SetupWizard() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Set up ${BRAND.name}`}>
+    <div className="backdrop-in fixed inset-0 z-50 overflow-y-auto bg-black/45 backdrop-blur-xs" role="dialog" aria-modal="true" aria-label={`Set up ${BRAND.name}`}>
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="hud-drawer flex w-[min(720px,100%)] flex-col overflow-hidden rounded-xl border">
+        <div className="dialog-in hud-drawer flex w-[min(720px,100%)] flex-col overflow-hidden rounded-xl border">
           <div className="border-b border-[var(--border-hairline)] bg-cream-2/50 px-5 py-3.5">
             <ol className="m-0 mb-2 flex list-none flex-wrap items-center gap-x-3 gap-y-1 p-0 text-[12px]">
               {STEPS.map((name, i) => (
@@ -87,7 +100,15 @@ export function SetupWizard() {
             </h2>
           </div>
 
-          <div className="flex flex-col gap-3 px-5 py-4">
+          <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={step}
+            className="flex flex-col gap-3 px-5 py-4"
+            initial={reduce ? false : { opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, x: -24 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
             {step === 1 && (
               <>
                 <p className="m-0 text-[13px] text-muted">
@@ -126,21 +147,14 @@ export function SetupWizard() {
                         ))}
                       </div>
                       {c.way === "key" && (
-                        <div className="mt-2 grid gap-2 sm:grid-cols-[200px_minmax(0,1fr)]">
-                          <Select
-                            value={c.provider}
-                            aria-label="Provider"
-                            options={providers.map((p) => ({ value: p, label: PROVIDER_SPECS[p].label }))}
-                            onChange={(v) => set(cli, { provider: v as Provider })}
-                          />
-                          <PasswordInput
-                            placeholder={PROVIDER_SPECS[c.provider].secretHint}
-                            aria-label={`${PROVIDER_SPECS[c.provider].label} ${PROVIDER_SPECS[c.provider].secretLabel}`}
-                            value={c.secret}
-                            autoComplete="off"
-                            onChange={(e) => set(cli, { secret: e.target.value })}
-                          />
-                        </div>
+                        <KeyEntry
+                          choice={c}
+                          providers={providers}
+                          onChange={(patch) => set(cli, patch)}
+                          onState={(st) => setKeyStates((m) => (m[cli] === st ? m : { ...m, [cli]: st }))}
+                          allowAnyway={!!anyway[cli]}
+                          onAnyway={() => setAnyway({ ...anyway, [cli]: true })}
+                        />
                       )}
                     </section>
                   );
@@ -165,7 +179,8 @@ export function SetupWizard() {
                 </ul>
               </>
             )}
-          </div>
+          </motion.div>
+          </AnimatePresence>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.08] px-4 py-2.5">
             <button type="button" className="btn" onClick={() => ui.closeWizard()}>
@@ -253,5 +268,56 @@ function ReadyStep({ checks, ready }: { checks: SetupCheck[]; ready: boolean }) 
         </button>
       </div>
     </>
+  );
+}
+
+/** The provider, the key field, where to get a key, and whether the key works. */
+function KeyEntry({
+  choice,
+  providers,
+  onChange,
+  onState,
+  allowAnyway,
+  onAnyway,
+}: {
+  choice: Choice;
+  providers: Provider[];
+  onChange: (patch: Partial<Choice>) => void;
+  onState: (s: KeyState) => void;
+  allowAnyway: boolean;
+  onAnyway: () => void;
+}) {
+  const { state, message, check } = useKeyTest(choice.provider, choice.secret);
+  useEffect(() => onState(state), [state, onState]);
+  const url = GET_KEY_URL[choice.provider];
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <div className="grid gap-2 sm:grid-cols-[200px_minmax(0,1fr)]">
+        <Select
+          value={choice.provider}
+          aria-label="Provider"
+          options={providers.map((p) => ({ value: p, label: PROVIDER_SPECS[p].label }))}
+          onChange={(v) => onChange({ provider: v as Provider })}
+        />
+        <PasswordInput
+          placeholder={PROVIDER_SPECS[choice.provider].secretHint}
+          aria-label={`${PROVIDER_SPECS[choice.provider].label}: ${PROVIDER_SPECS[choice.provider].secretLabel}`}
+          value={choice.secret}
+          autoComplete="off"
+          onChange={(e) => onChange({ secret: e.target.value })}
+        />
+      </div>
+      {url && (
+        <a className="w-fit text-[13px] font-medium text-accent underline" href={url} target="_blank" rel="noreferrer">
+          Where do I get a key?
+        </a>
+      )}
+      <KeyTestStatus state={state} message={message} onCheck={check} hasKey={choice.secret.trim().length > 0} />
+      {state === "bad" && !allowAnyway && (
+        <button type="button" className="btn w-fit px-2 text-[12px]" onClick={onAnyway}>
+          Save it anyway
+        </button>
+      )}
+    </div>
   );
 }

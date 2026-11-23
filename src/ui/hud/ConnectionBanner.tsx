@@ -22,7 +22,7 @@ export function ConnectionBanner() {
         <button
           type="button"
           onClick={() => markSignedOut()}
-          className="rounded border border-white/30 bg-white/15 px-2 py-0.5 text-[12px] font-semibold text-white hover:bg-white/25"
+          className="rounded-lg border border-white/30 bg-white/15 px-2 py-0.5 text-[12px] font-semibold text-white hover:bg-white/25"
         >
           Sign in
         </button>

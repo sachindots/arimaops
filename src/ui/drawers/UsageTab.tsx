@@ -28,7 +28,7 @@ export function UsageTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentCo
   const parts = [
     { label: "Fresh input", value: mine?.input ?? 0, color: "#3b82f6" },
     { label: "From cache", value: mine?.cached ?? 0, color: "#818cf8" },
-    { label: "Output", value: mine?.output ?? 0, color: "#ffb020" },
+    { label: "Output", value: mine?.output ?? 0, color: "#f59e0b" },
   ];
 
   return (
@@ -41,7 +41,7 @@ export function UsageTab({ snap, agent }: { snap: OfficeSnapshot; agent: AgentCo
         ))}
       </div>
 
-      <section className="hud-glass hud-corners rounded-2xl p-4" aria-label="Totals">
+      <section className="hud-glass hud-corners rounded-xl p-4" aria-label="Totals">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
           <div>
             <div className="text-[12px] text-muted">Tokens · {range.label.toLowerCase()}</div>

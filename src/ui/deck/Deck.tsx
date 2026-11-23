@@ -196,9 +196,9 @@ export function Deck() {
         {showMainArea && (
           <motion.main
             key={mainKey}
-            initial={reduce ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             className="fixed right-0 z-10 flex min-w-0 bg-[var(--color-grass)] transition-[left] duration-150"
             style={{
               top: DECK.header,

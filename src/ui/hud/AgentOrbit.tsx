@@ -3,7 +3,7 @@ import { CLI_LABEL, type AgentConfig, type AgentStatus, type Task } from "../../
 import { modeOf, type Mode } from "../../data/mode";
 import { isViewer, officeActions, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
-import { fmtTokens, fmtUsd, Portrait, useCountUp } from "../kit";
+import { fmtTokens, fmtUsd, Portrait, useCountUp, useFlash } from "../kit";
 import { useAgentUsage, type AgentUsage } from "../../store/usage";
 import { DECK, homeSides } from "../deck/frame";
 import { Icon } from "../deck/Icon";
@@ -99,7 +99,8 @@ export function AgentOrbit({
   const railW = railExpanded ? DECK.railExpanded : DECK.rail;
   const stages = snap?.config.template?.flow.stages;
   const f = hudFrame(w, h, compact, (stages?.length ?? 0) > 1, team.length, railW);
-  const kind = compact && w < 640 ? "node" : team.length > 6 ? "pill" : "card";
+  // Cards need about 150px of height per row on the ring; below that they overlap each other and the dock, so use pills.
+  const kind = compact && w < 640 ? "node" : team.length > 6 || f.height < 760 ? "pill" : "card";
   const half = HALF[kind];
   const rx = Math.min(f.width * 0.33, f.width / 2 - half.x - 16);
   const ry = Math.min(kind === "node" ? rx * 1.35 : f.height * 0.37, f.height / 2 - half.y - 12);
@@ -130,6 +131,38 @@ export function AgentOrbit({
         </>
       )}
 
+      {/* Live links: a flowing line from the core to every agent that is working, amber and pulsing for one that needs you */}
+      {w > 0 && !compact && (
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
+          {slots.map(({ m, x, y }) => {
+            const mode = modeOf(m.status);
+            const running = m.status.session.state === "running";
+            if (!running && mode !== "needs-input") return null;
+            const dx = x - f.cx;
+            const dy = y - f.cy;
+            const len = Math.hypot(dx, dy) || 1;
+            const sx = f.cx + (dx / len) * f.r;
+            const sy = f.cy + (dy / len) * f.r;
+            const alert = mode === "needs-input";
+            return (
+              <line
+                key={m.config.id}
+                x1={sx}
+                y1={sy}
+                x2={x}
+                y2={y}
+                stroke={alert ? "#fbbf24" : "var(--accent)"}
+                strokeWidth={alert ? 2 : 1.5}
+                strokeOpacity={alert ? 0.8 : 0.55}
+                strokeDasharray="6 6"
+                strokeLinecap="round"
+                className={alert ? "hud-link-pulse" : "hud-link-flow"}
+              />
+            );
+          })}
+        </svg>
+      )}
+
       {/* Active Project Status Badge centered near the Particle Orb */}
       {w > 0 && (
         <div
@@ -151,6 +184,7 @@ export function AgentOrbit({
             const selected = activeAgentId === m.config.id;
             return (
               <div key={m.config.id} className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2" style={{ left: x, top: y }}>
+                <div className="rise-in" style={{ ["--i" as string]: i }}>
                 <div className={kind === "node" ? "" : "deck-float"} style={{ animationDelay: `${-(i * 1.2) % 5}s`, animationDuration: `${5 + (i % 3) * 0.4}s` }}>
                   {kind === "node" ? (
                     <NodeCard m={m} selected={selected} use={usage.byId.get(m.config.id)} />
@@ -159,6 +193,7 @@ export function AgentOrbit({
                   ) : (
                     <AgentCard m={m} task={task} stage={stages?.find((s) => s.id === task?.stageId)?.name} selected={selected} use={usage.byId.get(m.config.id)} />
                   )}
+                </div>
                 </div>
               </div>
             );
@@ -181,13 +216,14 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
   const mode = modeOf(status);
   const st = STATE[mode];
   const running = status.session.state === "running";
+  const flash = useFlash(status.session.state);
   const tokens = use ? use.input + use.cached + use.output : 0;
   const shown = useCountUp(tokens);
   const line = task ? `${stage ? `${stage} · ` : ""}${task.id} · ${task.title}` : status.note ?? "No task right now";
 
   return (
     <div
-      className={`w-[300px] rounded-xl border bg-[var(--surface-card)] p-4 shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${cardBorder(mode, selected)}`}
+      className={`w-[300px] rounded-xl border bg-[var(--surface-card)] p-4 shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${running ? "run-glow" : ""} ${flash ? "state-flash" : ""} ${cardBorder(mode, selected)}`}
     >
       {/* Header row: avatar + name/role on left, status badge on right */}
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -205,7 +241,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
             </span>
           </span>
         </button>
-        <span className={`inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[12px] ${st.badge}`}>
+        <span className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-1.5 py-0.5 text-[12px] ${st.badge}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
           <span>{st.label}</span>
         </span>
@@ -222,7 +258,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
           <button
             type="button"
             onClick={() => ui.openActions()}
-            className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded bg-amber-500 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600"
+            className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-600"
           >
             <Icon name="check" size={14} />
             <span>Answer</span>
@@ -230,7 +266,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
           <button
             type="button"
             onClick={() => ui.openAgent(config.id)}
-            className="cursor-pointer rounded border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+            className="cursor-pointer rounded-lg border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] font-medium text-muted transition-colors hover:bg-cream-2 hover:text-ink"
           >
             Details
           </button>
@@ -242,14 +278,14 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
             <button
               type="button"
               onClick={() => ui.openAgent(config.id, "messages")}
-              className="cursor-pointer rounded px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+              className="cursor-pointer rounded-lg px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             >
               Chat
             </button>
             <button
               type="button"
               onClick={() => ui.openAgent(config.id, "terminal")}
-              className="cursor-pointer rounded px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
+              className="cursor-pointer rounded-lg px-1.5 py-0.5 text-[12px] text-muted transition-colors hover:bg-cream-2 hover:text-ink"
             >
               Terminal
             </button>
@@ -257,7 +293,7 @@ function AgentCard({ m, task, stage, selected, use }: { m: Member; task?: Task; 
               <button
                 type="button"
                 onClick={() => (running ? officeActions.stopAgent(config.id) : officeActions.startAgent(config.id))}
-                className={`cursor-pointer rounded px-1.5 py-0.5 text-[12px] font-medium transition-colors ${running ? "text-red hover:bg-red/10" : "text-accent hover:bg-cream-2"}`}
+                className={`cursor-pointer rounded-lg px-1.5 py-0.5 text-[12px] font-medium transition-colors ${running ? "text-red hover:bg-red/10" : "text-accent hover:bg-cream-2"}`}
               >
                 {running ? "Stop" : status.session.state === "starting" ? "…" : "Start"}
               </button>
@@ -274,11 +310,13 @@ function SmallCard({ m, selected, use }: { m: Member; selected: boolean; use?: A
   const { config, status } = m;
   const mode = modeOf(status);
   const st = STATE[mode];
+  const running = status.session.state === "running";
+  const flash = useFlash(status.session.state);
   return (
     <button
       type="button"
       onClick={() => ui.openAgent(config.id)}
-      className={`flex w-[168px] cursor-pointer items-center gap-2 rounded-lg border bg-[var(--surface-card)] px-2.5 py-1.5 text-left shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${cardBorder(mode, selected)}`}
+      className={`${running ? "run-glow " : ""}${flash ? "state-flash " : ""}flex w-[168px] cursor-pointer items-center gap-2 rounded-lg border bg-[var(--surface-card)] px-2.5 py-1.5 text-left shadow-[var(--card-shadow)] transition-all hover:shadow-[var(--card-shadow-hover)] ${cardBorder(mode, selected)}`}
       title={`${config.name} · ${config.role} · ${st.label}`}
     >
       <Portrait name={config.name} color={config.color} lead={!!config.isLead} size={22} />

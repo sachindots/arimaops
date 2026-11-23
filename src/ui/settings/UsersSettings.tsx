@@ -108,7 +108,7 @@ export function UsersSettings() {
           Sign out
         </button>
       </p>
-      {error && <p className="m-0 rounded border border-red px-3 py-1.5 text-[13px] text-red">{error}</p>}
+      {error && <p className="m-0 rounded-lg border border-red px-3 py-1.5 text-[13px] text-red">{error}</p>}
       {shown && <AuthenticatorLink url={shown.url} who={shown.who} qrSvg={shown.qrSvg} />}
 
       {user && (
@@ -245,7 +245,7 @@ export function UsersSettings() {
 
       {user && (
         <section className="flex max-w-[680px] flex-col gap-3">
-          <SectionTitle>Active Devices</SectionTitle>
+          <SectionTitle>Active devices</SectionTitle>
           {!devices ? (
             <p className="m-0 text-[13px] text-muted">Loading devices…</p>
           ) : devices.length === 0 ? (

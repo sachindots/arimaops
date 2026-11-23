@@ -154,7 +154,7 @@ export function LicenseCard() {
       <section className="panel flex flex-col gap-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <SectionTitle>Current Plan</SectionTitle>
+            <SectionTitle>Current plan</SectionTitle>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className="font-display text-[20px] font-semibold capitalize text-ink">
                 {license.tier}
@@ -208,9 +208,9 @@ export function LicenseCard() {
         </div>
       </section>
 
-      {/* Owner-only Activate License Key form */}
+      {/* Owner-only Activate license key form */}
       <section className="panel flex flex-col gap-3 p-5">
-        <SectionTitle>Activate License Key</SectionTitle>
+        <SectionTitle>Activate license key</SectionTitle>
         <p className="m-0 text-[13px] text-muted">
           Paste a signed Ed25519 license token to unlock Enterprise seat quotas and features offline. Expired keys automatically fall back to Community limits.
         </p>

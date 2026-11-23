@@ -760,6 +760,8 @@ export interface OfficeSnapshot {
   freeModels?: FreeModelsState;
   /** This HQ's template library (built-in and saved or imported), for the welcome. */
   templateLibrary?: TemplateEntry[];
+  /** What this server can do. A missing flag means yes (older servers and the demo); the Rust HQ sends false for what it does not have yet. */
+  features?: { shell?: boolean; sandboxTab?: boolean };
   lessons?: LessonsState;
   actionItems?: ActionItem[];
   findings?: Finding[];

@@ -114,7 +114,7 @@ function GoalRow({ goal: g, cols }: { goal: Goal; cols: string }) {
       </span>
       <span role="cell" className="flex min-w-0 flex-wrap items-center gap-1.5">
         {open.slice(0, 3).map((t) => (
-          <button key={t.id} type="button" title={t.title} className="rounded-md bg-cream-2 px-1.5 py-0.5 text-[12px] font-medium text-accent hover:underline" onClick={() => ui.openTask(t.id)}>
+          <button key={t.id} type="button" title={t.title} className="rounded-lg bg-cream-2 px-1.5 py-0.5 text-[12px] font-medium text-accent hover:underline" onClick={() => ui.openTask(t.id)}>
             {t.id}
           </button>
         ))}

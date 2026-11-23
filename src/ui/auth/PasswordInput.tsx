@@ -12,7 +12,7 @@ export function PasswordInput({ className = "", ...props }: Omit<InputHTMLAttrib
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? "Hide password" : "Show password"}
         title={visible ? "Hide password" : "Show password"}
-        className="absolute right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded text-muted hover:text-ink"
+        className="absolute right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-muted hover:text-ink"
       >
         <Icon name={visible ? "visibility_off" : "visibility"} size={16} />
       </button>

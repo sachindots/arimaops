@@ -69,10 +69,10 @@ export function StackSettings() {
 }
 
 const PACK_STATUS: Record<SkillPackView["status"], [string, string]> = {
-  vetted: ["vetted", "#3fb950"],
-  approved: ["approved by you", "#3fb950"],
-  pending: ["waiting for your check", "#ffb020"],
-  rejected: ["rejected", "#ff2a4b"],
+  vetted: ["vetted", "#10b981"],
+  approved: ["approved by you", "#10b981"],
+  pending: ["waiting for your check", "#f59e0b"],
+  rejected: ["rejected", "#ef4444"],
 };
 
 /** Third-party skills come only from pinned packs (docs/templates.md section 2): one commit, a hash per skill, scanned. */

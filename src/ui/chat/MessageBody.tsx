@@ -7,7 +7,7 @@ import { useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 
 const TAG_COLOR: Record<MessageTag, string> = {
-  done: "var(--color-ok, #3fb950)",
+  done: "var(--color-ok, #10b981)",
   blocked: "var(--color-red, #ef4444)",
   question: "var(--accent)",
   fyi: "var(--color-muted)",
@@ -51,7 +51,7 @@ function Inline({ text }: { text: string }) {
     <>
       {parts.map((p, i) =>
         p.startsWith("`") && p.endsWith("`") && p.length > 2 ? (
-          <code key={i} className="rounded bg-[var(--color-cream-2,rgba(127,127,127,0.12))] px-1 font-term text-[13px]">
+          <code key={i} className="rounded-lg bg-[var(--color-cream-2,rgba(127,127,127,0.12))] px-1 font-term text-[13px]">
             {p.slice(1, -1)}
           </code>
         ) : (
@@ -69,7 +69,7 @@ function Rich({ text }: { text: string }) {
     <>
       {chunks.map((c, i) =>
         i % 2 === 1 ? (
-          <pre key={i} className="my-1.5 overflow-x-auto rounded-md border border-[var(--border-hairline)] bg-[var(--color-cream-2,rgba(127,127,127,0.08))] px-2.5 py-2 font-term text-[12px] leading-5">
+          <pre key={i} className="my-1.5 overflow-x-auto rounded-lg border border-[var(--border-hairline)] bg-[var(--color-cream-2,rgba(127,127,127,0.08))] px-2.5 py-2 font-term text-[12px] leading-5">
             {c.replace(/\n$/, "")}
           </pre>
         ) : (

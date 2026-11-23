@@ -90,7 +90,7 @@ function InlineMarkdown({ text }: { text: string }) {
           return (
             <code
               key={i}
-              className="rounded border border-[var(--border-hairline)] bg-cream-2 px-1 py-0.5 text-[12px] text-ink"
+              className="rounded-lg border border-[var(--border-hairline)] bg-cream-2 px-1 py-0.5 text-[12px] text-ink"
             >
               {part.slice(1, -1)}
             </code>

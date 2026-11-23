@@ -721,7 +721,7 @@ function FindingRow({
           <span className="shrink-0 text-[12px] text-muted">{f.id}</span>
           <span className="truncate font-medium text-ink">{f.title}</span>
           {f.cwe[0] && (
-            <span className="shrink-0 rounded bg-cream-2 px-1.5 py-px font-term text-[12px] text-muted">
+            <span className="shrink-0 rounded-lg bg-cream-2 px-1.5 py-px font-term text-[12px] text-muted">
               {f.cwe[0]}
             </span>
           )}
@@ -794,7 +794,7 @@ function FindingDetail({
           </span>
         </div>
         {f.cvss && (
-          <code className="break-all rounded-md border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2.5 py-1.5 font-term text-[12px] text-ink">
+          <code className="break-all rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2.5 py-1.5 font-term text-[12px] text-ink">
             {f.cvss.vector}
           </code>
         )}
