@@ -164,7 +164,7 @@ fn check_endpoint(raw: &str) -> Result<url::Url, String> {
     Ok(url)
 }
 
-fn mcp_servers(state: &AppState) -> Vec<Value> {
+pub(crate) fn mcp_servers(state: &AppState) -> Vec<Value> {
     setting(state, "mcpServers").and_then(|v| v.as_array().cloned()).unwrap_or_default()
 }
 
