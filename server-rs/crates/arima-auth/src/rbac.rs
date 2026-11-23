@@ -37,7 +37,8 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
 
     if matches!(role, ServerRole::Viewer) {
         return match cmd {
-            "recheckSetup" | "refreshSbx" | "refreshMcp" | "ping" => CommandVerdict::Allowed,
+            // refreshMcp is left out: it makes HQ call every MCP server, so it needs an operator.
+            "recheckSetup" | "refreshSbx" | "ping" => CommandVerdict::Allowed,
             _ => CommandVerdict::Denied("viewer role is strictly read-only"),
         };
     }
@@ -139,5 +140,13 @@ mod tests {
             assert!(matches!(authorize_command(cmd, &op), CommandVerdict::Denied(_)), "{cmd}");
             assert_eq!(authorize_command(cmd, &ctx(ServerRole::Owner)), CommandVerdict::Allowed, "{cmd}");
         }
+    }
+
+    #[test]
+    fn mcp_live_checks_need_an_operator_and_adding_needs_the_owner() {
+        assert!(matches!(authorize_command("refreshMcp", &ctx(ServerRole::Viewer)), CommandVerdict::Denied(_)));
+        assert_eq!(authorize_command("refreshMcp", &ctx(ServerRole::Operator)), CommandVerdict::Allowed);
+        assert!(matches!(authorize_command("addMcp", &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)));
+        assert_eq!(authorize_command("addMcp", &ctx(ServerRole::Owner)), CommandVerdict::Allowed);
     }
 }

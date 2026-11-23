@@ -213,6 +213,9 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
     if !valid_name(&name) {
         return Err("A server name uses lowercase letters, digits and dashes.".into());
     }
+    if name == "arima" {
+        return Err("\"arima\" is HQ's own tool server. Pick another name.".into());
+    }
     if !text(&input["command"], 300).is_empty() {
         return Err("Local stdio servers can't run on a hosted HQ. Add a remote server URL instead.".into());
     }
@@ -290,6 +293,23 @@ fn mcp_key(state: &AppState, name: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&raw).into_owned())
 }
 
+const MCP_CHECKS_PER_MINUTE: u32 = 10;
+
+/// Spends one of the project's live checks for this minute; each one makes HQ call out to MCP servers.
+fn take_mcp_check(state: &AppState, project_id: &str) -> Result<(), String> {
+    let now = std::time::Instant::now();
+    let mut checks = state.inner.mcp_checks.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (start, count) = checks.entry(project_id.to_owned()).or_insert((now, 0));
+    if now.duration_since(*start) >= std::time::Duration::from_secs(60) {
+        (*start, *count) = (now, 0);
+    }
+    if *count >= MCP_CHECKS_PER_MINUTE {
+        return Err("MCP servers were checked too often. Try again in a minute.".into());
+    }
+    *count += 1;
+    Ok(())
+}
+
 /// Probes the named MCP server, or every one when no name is given, and records each result for the snapshot.
 pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     use futures_util::StreamExt;
@@ -302,6 +322,7 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
     if let (Some(n), true) = (&only, targets.is_empty()) {
         return Err(format!("No MCP server \"{n}\"."));
     }
+    take_mcp_check(state, project_id)?;
     let results: Vec<(String, Result<Vec<Value>, String>)> = futures_util::stream::iter(targets)
         .map(|(name, url)| async move {
             let result = probe(&name, &url, mcp_key(state, &name)).await;

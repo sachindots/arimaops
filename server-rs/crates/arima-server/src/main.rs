@@ -221,6 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     state.ensure_default_project(&project_name, slug.trim_matches('-'), &cwd.display().to_string())?;
+    arima_server::team::refresh_builtin_role_prompts(&state);
 
     let preview_addr: SocketAddr = format!("{host}:{preview_port}").parse()?;
     let default_hq_origin = public_origin

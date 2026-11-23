@@ -6,7 +6,7 @@
 use arima_auth::{SessionMeta, VaultKey, SESSION_COOKIE_NAME};
 use arima_core::ServerRole;
 use arima_db::Db;
-use arima_server::mcp::{McpRegistry, MCP_PROTOCOL_VERSION, TOOLS};
+use arima_server::mcp::{unknown_tool_names, McpRegistry, MCP_PROTOCOL_VERSION, TOOLS};
 use arima_server::{router_with_state, AppState, ServerConfig};
 use axum::body::Body;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN};
@@ -142,11 +142,6 @@ fn tokens_survive_restart_and_are_revoked() {
 /// Snake-case words in role prompts and ritual prompts are tool names; each must be one HQ's tool server runs.
 #[test]
 fn role_prompts_name_only_dispatched_tools() {
-    fn tool_words(text: &str) -> Vec<&str> {
-        text.split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-            .filter(|w| w.contains('_') && !w.starts_with('_') && !w.ends_with('_'))
-            .collect()
-    }
     fn prompts<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a str>) {
         match v {
             Value::Object(m) => m.iter().for_each(|(k, v)| prompts(v, k, out)),
@@ -155,12 +150,12 @@ fn role_prompts_name_only_dispatched_tools() {
             _ => {}
         }
     }
-    assert_eq!(tool_words("then submit_plan, and `list_tasks`"), ["submit_plan", "list_tasks"]);
+    assert_eq!(unknown_tool_names("then submit_plan, and `list_tasks` or snake_"), ["submit_plan"]);
 
     let data: Value = serde_json::from_str(include_str!("../assets/team-data.json")).unwrap();
     let mut texts = Vec::new();
     prompts(&data, "", &mut texts);
     assert!(texts.len() > 20, "found the role prompts");
-    let unknown: Vec<&str> = texts.iter().flat_map(|t| tool_words(t)).filter(|w| !TOOLS.iter().any(|t| t.name == *w)).collect();
+    let unknown: Vec<&str> = texts.iter().flat_map(|t| unknown_tool_names(t)).collect();
     assert!(unknown.is_empty(), "role prompts name tools HQ doesn't run: {unknown:?}");
 }

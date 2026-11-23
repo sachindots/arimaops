@@ -316,6 +316,7 @@ async fn sandbox_mcp_connections_and_template_library() {
     assert!(int::add_mcp(&state, &pid, &[json!({ "name": "Bad Name", "url": "https://x.io" })]).is_err());
     assert!(int::add_mcp(&state, &pid, &[json!({ "name": "local", "command": "node", "url": "https://x.io" })]).is_err(), "stdio servers don't run on a hosted HQ");
     assert!(int::add_mcp(&state, &pid, &[json!({ "name": "meta", "url": "http://169.254.169.254/" })]).is_err());
+    assert!(int::add_mcp(&state, &pid, &[json!({ "name": "arima", "url": "https://x.io" })]).unwrap_err().contains("HQ's own"), "HQ's tool server name is reserved");
     int::add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://mcp.example.com/rpc", "apiKey": "mcp-secret-key-1" })]).unwrap();
     assert!(int::add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://mcp.example.com/rpc" })]).is_err(), "names are unique");
     int::set_agent_mcp(&state, &pid, &[json!("cipher"), json!(["docs", "docs", "ghost"])]).unwrap();
@@ -375,6 +376,10 @@ async fn sandbox_mcp_connections_and_template_library() {
     let ok = server(&state);
     assert_eq!((ok["status"].as_str(), ok["error"].is_null()), (Some("ready"), true), "a later refresh replaces the failure");
     assert!(int::refresh_mcp(&state, &pid, &[json!("ghost")]).await.is_err());
+    for _ in 0..8 {
+        int::refresh_mcp(&state, &pid, &[]).await.unwrap();
+    }
+    assert!(int::refresh_mcp(&state, &pid, &[]).await.unwrap_err().contains("too often"), "live checks are rate limited per project");
     int::remove_mcp(&state, &pid, &[json!("probe")]).unwrap();
 
     let mut custom = team::load(&state, &pid).unwrap().template;
