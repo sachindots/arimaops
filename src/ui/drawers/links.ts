@@ -4,14 +4,19 @@
 const OSC_LINK = /\x1b\]8;[^;]*;(https?:\/\/[^\x07\x1b]+)(?:\x07|\x1b\\)/g;
 const URL_CHARS = /^[^\s"'<>`]+/;
 
-export function lastLink(output: string): string | null {
-  const tail = output.slice(-30_000);
-  const text = tail
+/** Terminal output as plain text: colours, cursor moves and hyperlinks removed. */
+export function plainText(tail: string): string {
+  return tail
     .replace(/\x1b\[\d*C/g, " ") // cursor-forward: how full-screen CLIs draw a gap
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
     .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
     .replace(/\x1b[()][A-Z0-9]|\x1b[=>78]/g, "")
     .replace(/\r/g, "");
+}
+
+export function lastLink(output: string): string | null {
+  const tail = output.slice(-30_000);
+  const text = plainText(tail);
   // The last place a link starts: not a URL inside another link's query (redirect_uri=https://…).
   const at = [...text.matchAll(/(?:^|[\s"'(<])(https?:\/\/)/g)].pop();
   const osc = [...tail.matchAll(OSC_LINK)].pop()?.[1] ?? null;

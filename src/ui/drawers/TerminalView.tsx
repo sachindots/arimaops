@@ -6,6 +6,7 @@ import { officeActions } from "../../store/office";
 import { readTerminal, subscribeTerminal } from "../../store/terminal";
 import { FONT_EVENT, savedFont, terminalFont, type FontStyle } from "../../theme/fonts";
 import { lastLink } from "./links";
+import { signInPrompt, type SignIn } from "./signin";
 
 const theme = {
   background: "#0b0c0f",
@@ -62,6 +63,8 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
   const termRef = useRef<Terminal | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [signIn, setSignIn] = useState<SignIn | null>(null);
+  const [pasted, setPasted] = useState("");
 
   useEffect(() => {
     const el = host.current;
@@ -114,11 +117,16 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       term.onResize(({ cols, rows }) => officeActions.resizeTerminal(agentId, cols, rows));
       term.write(readTerminal(agentId));
       setLink(lastLink(readTerminal(agentId)));
+      setSignIn(signInPrompt(readTerminal(agentId)));
       let linkTimer = 0;
       unsub = subscribeTerminal(agentId, (data) => {
         term.write(data);
         window.clearTimeout(linkTimer);
-        linkTimer = window.setTimeout(() => !disposed && setLink(lastLink(readTerminal(agentId))), 200);
+        linkTimer = window.setTimeout(() => {
+          if (disposed) return;
+          setLink(lastLink(readTerminal(agentId)));
+          setSignIn(signInPrompt(readTerminal(agentId)));
+        }, 200);
       });
       term.onData((data) => {
         if (!touched.current) return;
@@ -162,7 +170,57 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
     };
   }, [agentId, autoFocus]);
 
-  const linkBar = link && (
+  const sendCode = () => {
+    const code = pasted.trim();
+    if (!code) return;
+    officeActions.sendTerminalInput(agentId, code);
+    window.setTimeout(() => officeActions.sendTerminalInput(agentId, "\r"), 150);
+    setPasted("");
+  };
+  const card = signIn && (
+    <div className="shrink-0 border-b border-[var(--border-hairline)] bg-cream-2 px-3 py-2.5 text-ink" role="region" aria-label="Sign in">
+      <div className="text-[13px] font-semibold">Sign in to continue</div>
+      <ol className="mt-1.5 grid gap-2 text-[13px]">
+        <li className="flex flex-wrap items-center gap-2">
+          <span className="text-muted">1.</span>
+          <button className="btn border-green px-3 py-1 text-[12px] text-green" onClick={() => openLink(signIn.link)}>
+            Open the sign-in page ↗
+          </button>
+        </li>
+        {signIn.step === "device" && (
+          <li className="flex flex-wrap items-center gap-2">
+            <span className="text-muted">2.</span>
+            <span>Type this code on the page:</span>
+            <code className="rounded-md bg-black/30 px-2 py-0.5 text-[15px] font-semibold tracking-wider">{signIn.code}</code>
+            <button className="btn px-3 py-1 text-[12px]" onClick={() => void navigator.clipboard?.writeText(signIn.code ?? "")}>
+              Copy code
+            </button>
+          </li>
+        )}
+        {signIn.step === "paste" && (
+          <li className="flex flex-wrap items-center gap-2">
+            <span className="text-muted">2.</span>
+            <span>Approve there, copy the code it shows, and paste it here:</span>
+            <input
+              className="min-w-[10rem] flex-1 rounded-md border border-[var(--border-hairline)] bg-black/30 px-2 py-1 text-[13px]"
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendCode()}
+              placeholder="Paste the code"
+              aria-label="Sign-in code"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button className="btn border-green px-3 py-1 text-[12px] text-green" disabled={!pasted.trim()} onClick={sendCode}>
+              Send code
+            </button>
+          </li>
+        )}
+      </ol>
+      {signIn.step !== "paste" && <div className="mt-1.5 text-[12px] text-muted">This window carries on by itself once you approve.</div>}
+    </div>
+  );
+  const linkBar = card || (link && (
     <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-hairline)] bg-cream-2 px-3 py-1.5 text-ink">
       <span className="min-w-0 flex-1 truncate font-term text-[12px] text-muted" title={link}>
         {link}
@@ -182,7 +240,7 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
         {copied ? "Copied" : "Copy"}
       </button>
     </div>
-  );
+  ));
   if (!touch())
     return (
       <div className="flex h-full min-h-0 w-full flex-col bg-[#0b1220]">
