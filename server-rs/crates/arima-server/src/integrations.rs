@@ -146,22 +146,61 @@ fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 40 && name.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
-/// Blocks cloud metadata and link-local targets; everything else is the owner's call.
-fn check_endpoint(raw: &str) -> Result<url::Url, String> {
+/// Private-network targets are refused unless the host's owner opts in with `ARIMA_ALLOW_PRIVATE_CONNECTIONS=1`.
+fn allow_private() -> bool {
+    std::env::var("ARIMA_ALLOW_PRIVATE_CONNECTIONS").is_ok_and(|v| v == "1")
+}
+
+/// Metadata and link-local addresses are never allowed; loopback, private, shared and unique-local ranges only with the opt-in.
+fn ip_blocked(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let always = v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast();
+            let o = v4.octets();
+            always || (!allow_private() && (v4.is_loopback() || v4.is_private() || (o[0] == 100 && (o[1] & 0xc0) == 64)))
+        }
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => ip_blocked(IpAddr::V4(v4)),
+            None => {
+                let seg = v6.segments()[0];
+                let always = v6.is_unspecified() || v6.is_multicast() || (seg & 0xffc0) == 0xfe80;
+                always || (!allow_private() && (v6.is_loopback() || (seg & 0xfe00) == 0xfc00))
+            }
+        },
+    }
+}
+
+const BLOCKED_MSG: &str = "That address is on a private network, or is a cloud metadata or link-local address, so HQ won't connect to it.";
+
+/// Checks the URL's scheme and any literal address. Names are checked when they are resolved, in `resolve_endpoint`.
+pub(crate) fn check_endpoint(raw: &str) -> Result<url::Url, String> {
     let url = url::Url::parse(raw).map_err(|_| "That isn't a valid URL.".to_owned())?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("The URL must start with http:// or https://".into());
     }
     let blocked = match url.host() {
-        Some(url::Host::Ipv4(v4)) => v4.is_link_local() || v4.is_unspecified(),
-        Some(url::Host::Ipv6(v6)) => v6.is_unspecified() || (v6.segments()[0] & 0xffc0) == 0xfe80,
-        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("metadata.google.internal"),
+        Some(url::Host::Ipv4(v4)) => ip_blocked(v4.into()),
+        Some(url::Host::Ipv6(v6)) => ip_blocked(v6.into()),
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("metadata.google.internal") || (d.eq_ignore_ascii_case("localhost") && !allow_private()),
         None => true,
     };
     if blocked {
-        return Err("That address is a cloud metadata or link-local address and can't be used.".into());
+        return Err(BLOCKED_MSG.into());
     }
     Ok(url)
+}
+
+/// Resolves the URL's host and refuses it if any address is blocked. The caller connects to the returned
+/// addresses only, so a name that changes its answer between this check and the request can't reach a blocked one.
+async fn resolve_endpoint(url: &url::Url) -> Result<Option<(String, Vec<std::net::SocketAddr>)>, String> {
+    let Some(url::Host::Domain(host)) = url.host() else { return Ok(None) };
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addrs: Vec<_> = tokio::net::lookup_host((host, port)).await.map_err(|_| format!("Couldn't find {host}."))?.collect();
+    if addrs.is_empty() || addrs.iter().any(|a| ip_blocked(a.ip())) {
+        return Err(BLOCKED_MSG.into());
+    }
+    Ok(Some((host.to_owned(), addrs)))
 }
 
 fn mcp_servers(state: &AppState) -> Vec<Value> {
@@ -317,9 +356,12 @@ pub async fn check_connection(state: &AppState, project_id: &str, args: &[Value]
     let name = text(args.first().unwrap_or(&Value::Null), 40);
     let conn = state.inner.connections.list().map_err(db_err)?.into_iter().find(|c| c.id == name).ok_or_else(|| format!("No connection \"{name}\"."))?;
     let url = check_endpoint(&conn.endpoint)?;
-    let mut req = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
-        .redirect(reqwest::redirect::Policy::none())
+    let pinned = resolve_endpoint(&url).await?;
+    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
+    if let Some((host, addrs)) = pinned {
+        builder = builder.resolve_to_addrs(&host, &addrs);
+    }
+    let mut req = builder
         .build()
         .map_err(db_err)?
         .post(url)
@@ -470,7 +512,9 @@ mod tests {
     #[test]
     fn endpoints_block_metadata_and_bad_schemes() {
         assert!(check_endpoint("https://mcp.example.com/rpc").is_ok());
-        assert!(check_endpoint("http://127.0.0.1:9000/mcp").is_ok());
+        for bad in ["http://127.0.0.1:9000/mcp", "http://localhost/x", "http://10.0.0.5/", "http://192.168.1.1/", "http://172.16.0.1/", "http://100.64.0.1/", "http://[::1]/", "http://[fd00::1]/", "http://[::ffff:10.0.0.1]/"] {
+            assert!(check_endpoint(bad).is_err(), "{bad} is private");
+        }
         for bad in ["http://169.254.169.254/latest", "ftp://x.com", "not a url", "http://metadata.google.internal/", "http://[fe80::1]/"] {
             assert!(check_endpoint(bad).is_err(), "{bad} is rejected");
         }
