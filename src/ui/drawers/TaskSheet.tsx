@@ -39,20 +39,9 @@ export function gateText(g: Gate): string {
   }
 }
 
-const token = () => {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-};
-const withToken = (url: string) => (token() ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token())}` : url);
-
-/** The URL HQ serves an evidence file at (read-only; the browser's token goes along, as for screen previews). */
+/** The URL HQ serves an evidence file at (read-only; the device cookie signs it in). */
 export const evidenceUrl = (projectId: string, taskId: string, sha: string, file: string) =>
-  file.startsWith("data:")
-    ? file
-    : withToken(`/api/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(taskId)}/${sha}/${encodeURIComponent(file)}`);
+  file.startsWith("data:") ? file : `/api/projects/${encodeURIComponent(projectId)}/evidence/${encodeURIComponent(taskId)}/${sha}/${encodeURIComponent(file)}`;
 
 interface History {
   events: { at: number; status: string; stageId: string; ownerId: string | null }[];
@@ -66,7 +55,7 @@ function useHistory(projectId: string, taskId: string, stamp: string): History |
   useEffect(() => {
     if (!live || !projectId) return;
     let stop = false;
-    fetch(withToken(`/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/history`), { credentials: "same-origin" })
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/history`, { credentials: "same-origin" })
       .then((r) => (r.ok ? (r.json() as Promise<History>) : null))
       .then((x) => !stop && setH(x))
       .catch(() => !stop && setH(null));

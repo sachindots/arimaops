@@ -181,20 +181,6 @@ export async function compositeAnnotatedPng(opts: {
 
 // ---------------------------------------------------------------- Live Preview & Feedback HTTP API
 
-function linkToken(): string {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function withHqToken(url: string): string {
-  const tok = linkToken();
-  if (!tok) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(tok)}`;
-}
-
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: unknown = {};
@@ -214,7 +200,7 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 export async function fetchPreviewTargets(projectId: string): Promise<PreviewTarget[]> {
-  const res = await fetch(withHqToken(`/api/projects/${encodeURIComponent(projectId)}/preview/targets`), {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/preview/targets`, {
     credentials: "same-origin",
   });
   const data = await readJson<{ targets?: PreviewTarget[] }>(res);
@@ -233,7 +219,7 @@ export async function requestPreviewToken(
   targetId: string,
   next?: string,
 ): Promise<PreviewTokenResult> {
-  const res = await fetch(withHqToken(`/api/projects/${encodeURIComponent(projectId)}/preview/token`), {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/preview/token`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -278,7 +264,7 @@ export async function capturePreviewSnapshot(
   projectId: string,
   input: { targetId: string | null; pageUrl: string; viewportWidth: number; viewportHeight: number },
 ): Promise<PreviewSnapshotResult> {
-  const res = await fetch(withHqToken(`/api/projects/${encodeURIComponent(projectId)}/preview/snapshot`), {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/preview/snapshot`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -301,7 +287,7 @@ export interface PostFeedbackPayload {
 }
 
 export async function postVisualFeedback(projectId: string, payload: PostFeedbackPayload): Promise<VisualFeedback> {
-  const res = await fetch(withHqToken(`/api/projects/${encodeURIComponent(projectId)}/feedback`), {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/feedback`, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -313,7 +299,7 @@ export async function postVisualFeedback(projectId: string, payload: PostFeedbac
 }
 
 export async function fetchVisualFeedback(projectId: string): Promise<VisualFeedback[]> {
-  const res = await fetch(withHqToken(`/api/projects/${encodeURIComponent(projectId)}/feedback`), {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/feedback`, {
     credentials: "same-origin",
   });
   const data = await readJson<{ items?: VisualFeedback[]; feedback?: VisualFeedback[] }>(res);
@@ -323,5 +309,5 @@ export async function fetchVisualFeedback(projectId: string): Promise<VisualFeed
 }
 
 export function feedbackImageUrl(projectId: string, feedbackId: string): string {
-  return withHqToken(`/api/projects/${encodeURIComponent(projectId)}/feedback/${encodeURIComponent(feedbackId)}/image`);
+  return `/api/projects/${encodeURIComponent(projectId)}/feedback/${encodeURIComponent(feedbackId)}/image`;
 }

@@ -21,14 +21,6 @@ export const useBuilding = create<BuildingState>(() => ({ others: {} }));
 
 const POLL_MS = 30_000;
 
-function token(): string {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /** Running projects other than `current`. */
 export const othersToShow = (list: ProjectOverview[], current: string) => list.filter((p) => p.online && !p.paused && p.id !== current);
 
@@ -51,8 +43,7 @@ export function followBuilding(): () => void {
     if (!current) return;
     let list: ProjectOverview[];
     try {
-      const tok = token();
-      const res = await fetch(`/api/projects${tok ? `?token=${encodeURIComponent(tok)}` : ""}`, { credentials: "same-origin" });
+      const res = await fetch("/api/projects", { credentials: "same-origin" });
       if (!res.ok) return;
       list = ((await res.json()) as { projects: ProjectOverview[] }).projects;
     } catch {
@@ -69,7 +60,7 @@ export function followBuilding(): () => void {
     for (const p of want) {
       set(p.id, { name: p.name });
       if (sockets.has(p.id)) continue;
-      const src = createWsSource(token(), p.id, { watch: true });
+      const src = createWsSource(p.id, { watch: true });
       sockets.set(
         p.id,
         src.connect((e) => {

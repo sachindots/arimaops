@@ -18,14 +18,6 @@ const STATUS_BADGE: Record<TaskStatus, { label: string; color: string }> = {
   blocked: { label: "BLOCKED", color: "#ef4444" },
 };
 
-function getBrowserToken(): string {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 export function CtoDrawer() {
   const snap = useOffice((s) => s.snap);
   const live = useOffice((s) => s.live);
@@ -95,8 +87,7 @@ export function CtoDrawer() {
     setLoading(true);
     setError(null);
     try {
-      const tok = getBrowserToken();
-      const res = await fetch(`/api/projects?token=${encodeURIComponent(tok)}`);
+      const res = await fetch(`/api/projects`);
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       // The server serves every project; "current" is the one this tab shows.
@@ -136,8 +127,7 @@ export function CtoDrawer() {
     if (!registerPath.trim() || !live) return;
     setError(null);
     try {
-      const tok = getBrowserToken();
-      const res = await fetch(`/api/projects/register?token=${encodeURIComponent(tok)}`, {
+      const res = await fetch(`/api/projects/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: registerPath.trim() }),
@@ -156,9 +146,8 @@ export function CtoDrawer() {
     if (!title || !live) return;
     setError(null);
     try {
-      const tok = getBrowserToken();
       const ownerId = newTaskOwner[projectId] || undefined;
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks?token=${encodeURIComponent(tok)}`, {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, ownerId }),
@@ -180,9 +169,8 @@ export function CtoDrawer() {
     if (!live) return;
     setError(null);
     try {
-      const tok = getBrowserToken();
       const res = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}?token=${encodeURIComponent(tok)}`,
+        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -201,7 +189,7 @@ export function CtoDrawer() {
   const post = async (path: string, body?: object) => {
     setError(null);
     try {
-      const res = await fetch(`/api/projects/${path}?token=${encodeURIComponent(getBrowserToken())}`, {
+      const res = await fetch(`/api/projects/${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body ?? {}),
@@ -219,8 +207,7 @@ export function CtoDrawer() {
   const setPaused = async (projectId: string, pause: boolean) => {
     setError(null);
     try {
-      const tok = getBrowserToken();
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/${pause ? "pause" : "resume"}?token=${encodeURIComponent(tok)}`, { method: "POST" });
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/${pause ? "pause" : "resume"}`, { method: "POST" });
       const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
@@ -527,10 +514,10 @@ export function CtoDrawer() {
               <code>~/{BRAND.homeDir}/deletion-records</code>.
             </p>
             <div className="flex flex-wrap gap-2">
-              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.html?token=${encodeURIComponent(getBrowserToken())}`} target="_blank" rel="noreferrer">
+              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.html`} target="_blank" rel="noreferrer">
                 Open deletion record ↗
               </a>
-              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.json?token=${encodeURIComponent(getBrowserToken())}`} target="_blank" rel="noreferrer">
+              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.json`} target="_blank" rel="noreferrer">
                 JSON
               </a>
               <button type="button" className="btn min-h-[40px] px-3 text-[12px]" onClick={() => setRecord(null)}>

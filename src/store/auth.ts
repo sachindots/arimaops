@@ -35,13 +35,27 @@ const store = (k: string, v: string | null) => {
   }
 };
 
-const linkToken = () => {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-};
+let linkLogin: Promise<void> = Promise.resolve();
+
+/**
+ * Trades the start-up link's token for the hq_sid device cookie (token in the POST body, never a URL).
+ * Sockets and `checkAuth` wait for it, so the token itself is never sent again.
+ */
+export function exchangeLinkToken(token: string) {
+  linkLogin = fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }), credentials: "same-origin" })
+    .then((res) => {
+      if (!res.ok) return;
+      try {
+        sessionStorage.removeItem("hq-token");
+      } catch {
+        /* private mode */
+      }
+    })
+    .catch(() => {});
+}
+
+/** Resolves once a pending start-up link exchange has finished (at once when there is none). */
+export const linkLoginDone = () => linkLogin;
 
 export function markSignedOut() {
   store("hq-live", null);
@@ -60,8 +74,8 @@ export async function checkAuth() {
     if (typeof location !== "undefined" && new URLSearchParams(location.search).get("mock") === "1") {
       return useAuth.setState({ status: "none", passkeysAvailable: false });
     }
-    const tok = linkToken();
-    const res = await fetch(`/api/auth/me${tok ? `?token=${encodeURIComponent(tok)}` : ""}`, { credentials: "same-origin" });
+    await linkLoginDone();
+    const res = await fetch("/api/auth/me", { credentials: "same-origin" });
     if (res.status === 401) {
       const body = (await res.json().catch(() => ({}))) as { people?: number; passkeysAvailable?: boolean };
       return useAuth.setState({
@@ -180,8 +194,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 /** The owner's people API. Throws the server's message on failure. */
 export async function usersApi<T = Record<string, unknown>>(method: "GET" | "POST" | "PATCH" | "DELETE", path = "", body?: unknown): Promise<T> {
-  const tok = linkToken();
-  const res = await fetch(`/api/users${path}${tok ? `?token=${encodeURIComponent(tok)}` : ""}`, {
+  const res = await fetch(`/api/users${path}`, {
     method,
     credentials: "same-origin",
     headers: body ? { "Content-Type": "application/json" } : undefined,

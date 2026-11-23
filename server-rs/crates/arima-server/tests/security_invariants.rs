@@ -470,3 +470,25 @@ async fn full_rbac_reset_revocation_device_revoke_throttle_and_audit() {
 
     let _ = header::SET_COOKIE;
 }
+
+#[tokio::test]
+async fn start_up_token_in_a_url_never_signs_in_only_the_login_exchange_does() {
+    let (addr, _state, _dir) = spawn_test_server().await;
+    let origin = format!("http://127.0.0.1:{}", addr.port());
+
+    let (status, _, _) = http_json(addr, "GET", "/api/auth/me?token=boot-token-123", None, Some(&origin), None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the start-up token in a query string is ignored");
+
+    let mut ws_req = format!("ws://{addr}/ws?token=boot-token-123").into_client_request().unwrap();
+    ws_req.headers_mut().insert("Origin", origin.parse().unwrap());
+    let err = tokio_tungstenite::connect_async(ws_req).await.unwrap_err();
+    assert!(err.to_string().contains("401"), "a WebSocket URL token is ignored: {err}");
+
+    let (status, cookie, _) = http_json(addr, "POST", "/api/login", None, Some(&origin), Some(json!({ "token": "boot-token-123" }))).await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie = cookie.set_cookie.expect("login sets the device cookie");
+    let (status, _, me) = http_json(addr, "GET", "/api/auth/me", Some(&cookie), Some(&origin), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["role"], "owner");
+    let _ws = connect_ws(addr, &cookie, &origin).await;
+}
