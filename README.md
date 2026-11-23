@@ -4,13 +4,17 @@
 
 **Website: [arimaops.tech](https://arimaops.tech/)** · [Features](https://arimaops.tech/features.html) · [Case studies](https://arimaops.tech/case-studies.html)
 
-[![ArimaOps Home: the team around a live core, what needs you on the left, today's activity on the right](site/assets/shots/home.webp)](https://arimaops.tech/)
+[![ArimaOps in motion: the team around a live core, chat, board and approvals (sample data)](site/assets/video/loop.webp)](https://arimaops.tech/)
 
-▶ **Watch the demos:** [dev team, 37 s](https://arimaops.tech/assets/video/demo.mp4) · [red team, 27 s](https://arimaops.tech/assets/video/demo-red.mp4) (sample projects from the built-in demo).
+▶ **[Watch the 90-second tour](https://arimaops.tech/assets/video/tour.mp4)** (first run, sign-in, the team at work). More demos: [dev team, 37 s](https://arimaops.tech/assets/video/demo.mp4) · [red team, 27 s](https://arimaops.tech/assets/video/demo-red.mp4) (sample projects from the built-in demo).
 
 **Real runs:** [RoleFit case study](https://arimaops.tech/case-studies.html#rolefit) (6-agent Antigravity Dev team: 6 merged PRs, 202 Vitest tests, 30 Verifier screenshots, [live app](https://sachinselvaraju.tech/rolefit/)) · [VAmPI case study](https://arimaops.tech/case-studies.html#vampi) (7-agent Security · Purple team).
 
 ArimaOps (அரிமா, "lion") runs a team of AI agents on your own machine. A **lead** plans the work and hands out tasks. Each **worker** builds in its own copy of the repo, in its own folder, container or Docker Sandbox, then opens a pull request or delivers a file. A **reviewer** and a **second model** from another maker check each other, and **gates** decide when a task is really done. You watch, steer and approve from your desk or your phone. HQ never merges or sends for you.
+
+## Fast and light
+
+HQ, the server, is a single Rust binary (axum, tokio, SQLite). Measured against the earlier Node server on one machine, both limited to 2 CPUs and 1 GB: **3 MiB** memory at idle (Node 78 to 95), **37.8k** requests a second (Node 15.2k), **14 ms** slowest-1% latency (Node 37), **27 MiB** with 300 live connections (Node 105). Models still set the pace of the work, and Rust was not faster at opening connections. Method and every number: [docs/benchmarks.md](docs/benchmarks.md).
 
 Free and open source. Agents run **Claude Code**, **Codex**, **Antigravity**, **OpenCode**, **Gemini CLI** or **GitHub Copilot**, on the subscriptions you already have, API keys you add, or free models.
 

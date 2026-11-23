@@ -132,6 +132,9 @@ async function preset(prefix) {
 async function shot(name) {
   await js(`(() => { const c = document.getElementById("demo-cursor"); if (c) c.style.display = "none"; })()`);
   await sleep(500);
+  // Headless Chrome only runs page transitions while frames are requested.
+  await send("Page.captureScreenshot", { format: "jpeg", quality: 10 });
+  await sleep(900);
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   const png = join(work, `${name}.png`);
   writeFileSync(png, Buffer.from(data, "base64"));
@@ -173,35 +176,34 @@ async function record(name, script) {
 
 // ------------------------------------------------------------ what to capture
 
+const tab = (label) => `[...document.querySelectorAll("button")].find((b) => b.offsetParent && b.textContent.replace(/\\s+/g, " ").trim().replace(/^[a-z_]+(?=[A-Z])/, "").startsWith(${JSON.stringify(label)}))`;
+
 async function shots() {
   console.log("Screenshots");
+  // A running screencast keeps frames (and so page transitions) flowing in headless Chrome.
+  listeners.add((msg) => msg.method === "Page.screencastFrame" && void send("Page.screencastFrameAck", { sessionId: msg.params.sessionId }));
+  await send("Page.startScreencast", { format: "jpeg", quality: 10, everyNthFrame: 1 });
   await viewport(W, H);
   await load();
+  await sleep(2500);
   await shot("home");
-  for (const [label, name] of [["Chat", "chat"], ["Board", "board"], ["Inbox", "inbox"], ["Agents", "agents"], ["Goals", "goals"], ["Flow", "flow"], ["Usage", "usage"]]) {
-    await click(rail(label), { pause: 1400 });
+  await click(rail("Team"), { pause: 1400 });
+  await shot("agents");
+  await click(tab("Chat"), { pause: 1500 });
+  await shot("chat");
+  await click(rail("Inbox"), { pause: 2600 });
+  await shot("inbox");
+  await click(`[...document.querySelectorAll("button")].find((b) => b.offsetParent && (b.getAttribute("aria-label") || "").startsWith("Ops menu"))`, { pause: 900 });
+  await click(`[...document.querySelectorAll("[role=menuitem],button")].find((b) => b.offsetParent && b.textContent.includes("Usage & Budgets"))`, { pause: 2200 });
+  await shot("usage");
+  await click(`[...document.querySelectorAll("button")].find((b) => b.offsetParent && b.getAttribute("aria-label") === "Settings")`, { pause: 2200 });
+  await shot("settings");
+  await click(rail("Work"), { pause: 1500 });
+  await shot("board");
+  for (const [label, name] of [["Findings", "findings"], ["PRs", "prs"], ["Goals", "goals"], ["Flow", "flow"]]) {
+    await click(tab(label), { pause: 1800 });
     await shot(name);
   }
-  await click(rail("PRs"), { pause: 1200 });
-  await click(`document.querySelectorAll('nav[aria-label="Pull request lists"] button')[1]`, { pause: 900 });
-  await shot("prs");
-  await click(`document.querySelector('button[aria-label="Settings"]')`, { pause: 1200 });
-  await shot("settings");
-  await click(button("Done"), { pause: 800 });
-  await click(rail("Grid"), { pause: 1600 });
-  await shot("command");
-  await click(button("← Home"), { pause: 1200 });
-
-  await preset("RedCell");
-  await shot("red-home");
-  await click(rail("Findings"), { pause: 1400 });
-  await shot("findings");
-  await click(`document.querySelector('tbody tr')`, { pause: 1000 });
-  await shot("finding");
-  await key("Escape");
-  await click(rail("Board"), { pause: 1400 });
-  await shot("red-board");
-
   await phone();
 }
 
