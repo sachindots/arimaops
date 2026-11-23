@@ -216,7 +216,7 @@ pub fn update_board(state: &AppState, project_id: &str, args: &[Value]) -> Resul
 /// A task's own CLI and model, kept in `tasks.data_json`; empty values clear them.
 pub fn set_task_runs_on(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let task_id = text(args.first().unwrap_or(&Value::Null), 40);
-    let cli = args.get(1).and_then(Value::as_str).filter(|c| crate::team_edit::AGENT_CLIS.contains(c)).map(str::to_owned);
+    let cli = args.get(1).and_then(Value::as_str).filter(|c| crate::cli::adapter(c).is_some()).map(str::to_owned);
     let model = text(args.get(2).unwrap_or(&Value::Null), 80);
     write(state, project_id, |conn| {
         let raw: String = conn

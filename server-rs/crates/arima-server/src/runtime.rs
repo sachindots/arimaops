@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::OwnedWriteHalf;
 
+use crate::cli::McpServer;
 use crate::state::AppState;
 
 const SCROLLBACK_BYTES: usize = 256 * 1024;
@@ -94,137 +95,10 @@ pub struct AgentRuntime {
     status: Mutex<RuntimeStatus>,
 }
 
-fn clean_model(model: &Value) -> Option<String> {
-    let m = model.as_str().unwrap_or("").trim();
-    (!m.is_empty() && m.len() <= 80 && !m.starts_with('-') && m.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'/' | b':' | b'@'))).then(|| m.to_owned())
-}
-
-/// The CLI and its arguments for an agent in a container. The container and its network are the boundary, so
-/// the CLI's own approval prompts are switched off: they would only stall an unattended agent.
-#[must_use]
-pub fn launch_args(cli: &str, model: &Value) -> Option<(String, Vec<String>)> {
-    let model = clean_model(model);
-    let flag = |name: &str| model.iter().flat_map(|m| [name.to_owned(), m.clone()]).collect::<Vec<_>>();
-    let args: Vec<String> = match cli {
-        "claude" => ["--dangerously-skip-permissions".to_owned()].into_iter().chain(flag("--model")).collect(),
-        "codex" => ["-c", "check_for_update_on_startup=false", "--dangerously-bypass-approvals-and-sandbox"].map(str::to_owned).into_iter().chain(flag("-m")).collect(),
-        "gemini" => ["--yolo".to_owned()].into_iter().chain(flag("--model")).collect(),
-        "copilot" => ["--allow-all-tools".to_owned()].into_iter().chain(flag("--model")).collect(),
-        "opencode" => flag("-m"),
-        "agy" => ["--dangerously-skip-permissions", "--mode", "auto"].map(str::to_owned).into_iter().chain(flag("--model")).collect(),
-        _ => return None,
-    };
-    Some((cli.to_owned(), args))
-}
-
-/// The instruction file name each CLI reads from its working folder.
-#[must_use]
-pub fn role_file(cli: &str) -> &'static str {
-    match cli {
-        "claude" => "CLAUDE.md",
-        "gemini" => "GEMINI.md",
-        _ => "AGENTS.md",
-    }
-}
-
-/// The environment variable that carries an API-key account's secret to a CLI, if that pairing exists.
-#[must_use]
-pub fn provider_env(cli: &str, provider: &str) -> &'static [&'static str] {
-    match (cli, provider) {
-        ("claude", "anthropic") => &["ANTHROPIC_API_KEY"],
-        ("codex" | "opencode", "openai") => &["OPENAI_API_KEY"],
-        ("gemini", "google") => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
-        ("opencode", "openrouter") => &["OPENROUTER_API_KEY"],
-        _ => &[],
-    }
-}
-
-/// An HTTP tool server an agent connects to. `token` is the env var that carries its bearer token, and the token.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct McpServer {
-    pub name: String,
-    pub url: String,
-    pub token: Option<(String, String)>,
-}
-
-/// How one CLI is told about its tool servers: a file written under the agent's folder, extra arguments, extra env.
-#[derive(Debug, Default, PartialEq)]
-pub struct McpLaunch {
-    pub file: Option<(&'static str, Value)>,
-    pub args: Vec<String>,
-    pub env: Vec<(String, String)>,
-}
-
 /// The env var that carries a registered server's key into the container.
 #[must_use]
 pub fn mcp_token_env(name: &str) -> String {
     format!("ARIMA_MCP_KEY_{}", name.to_ascii_uppercase().replace('-', "_"))
-}
-
-/// Each CLI's MCP config, holding exactly `servers` and, where the CLI allows it, nothing from the workspace.
-/// Claude, Codex and OpenCode read the token from the env var; the others don't expand env vars in headers, so
-/// their file (inside the agent's private home, never the workspace root) holds it.
-#[must_use]
-pub fn mcp_launch(cli: &str, servers: &[McpServer]) -> Option<McpLaunch> {
-    let map = |entry: &dyn Fn(&McpServer, Value) -> Value, auth: &dyn Fn(&str, &str) -> String| -> Value {
-        servers
-            .iter()
-            .map(|s| {
-                let headers = s.token.as_ref().map_or_else(|| json!({}), |(var, secret)| json!({ "Authorization": auth(var, secret) }));
-                (s.name.clone(), entry(s, headers))
-            })
-            .collect::<serde_json::Map<_, _>>()
-            .into()
-    };
-    let env_ref = |var: &str, _: &str| format!("Bearer ${{{var}}}");
-    let literal = |_: &str, secret: &str| format!("Bearer {secret}");
-    let in_home = |path: &str| format!("/workspace/{path}");
-    Some(match cli {
-        "claude" => McpLaunch {
-            file: Some((".mcp.json", json!({ "mcpServers": map(&|s, h| json!({ "type": "http", "url": s.url, "headers": h }), &env_ref) }))),
-            args: ["--strict-mcp-config", "--mcp-config", ".mcp.json"].map(str::to_owned).to_vec(),
-            env: Vec::new(),
-        },
-        "codex" => McpLaunch {
-            // `-c` values parse as TOML; a JSON string is a valid TOML basic string.
-            args: servers
-                .iter()
-                .flat_map(|s| {
-                    let url = ["-c".to_owned(), format!("mcp_servers.{}.url={}", s.name, json!(s.url))];
-                    let token = s.token.iter().flat_map(|(var, _)| ["-c".to_owned(), format!("mcp_servers.{}.bearer_token_env_var={}", s.name, json!(var))]);
-                    url.into_iter().chain(token).collect::<Vec<_>>()
-                })
-                .collect(),
-            ..McpLaunch::default()
-        },
-        "gemini" => {
-            const PATH: &str = ".agent-home/.arima/gemini-settings.json";
-            let names: Vec<&str> = servers.iter().map(|s| s.name.as_str()).collect();
-            McpLaunch {
-                file: Some((PATH, json!({ "mcpServers": map(&|s, h| json!({ "httpUrl": s.url, "headers": h }), &literal), "mcp": { "allowed": names } }))),
-                // The system settings file outranks the user's and the workspace's settings.
-                env: vec![("GEMINI_CLI_SYSTEM_SETTINGS_PATH".to_owned(), in_home(PATH))],
-                ..McpLaunch::default()
-            }
-        }
-        "copilot" => McpLaunch {
-            file: Some((".agent-home/.copilot/mcp-config.json", json!({ "mcpServers": map(&|s, h| json!({ "type": "http", "url": s.url, "headers": h, "tools": ["*"] }), &literal) }))),
-            ..McpLaunch::default()
-        },
-        "opencode" => {
-            const PATH: &str = ".agent-home/.arima/opencode.json";
-            McpLaunch {
-                file: Some((PATH, json!({ "mcp": { "servers": map(&|s, h| json!({ "type": "remote", "url": s.url, "headers": h }), &|var, _| format!("Bearer {{env:{var}}}")) } }))),
-                env: vec![("OPENCODE_CONFIG".to_owned(), in_home(PATH))],
-                ..McpLaunch::default()
-            }
-        }
-        "agy" => McpLaunch {
-            file: Some((".agent-home/.gemini/config/mcp_config.json", json!({ "mcpServers": map(&|s, h| json!({ "serverUrl": s.url, "headers": h }), &literal) }))),
-            ..McpLaunch::default()
-        },
-        _ => return None,
-    })
 }
 
 /// Rewrites only HQ's marked section of the role file, so notes an agent or the owner adds outside it survive.
@@ -494,13 +368,14 @@ impl AgentRuntime {
             return Err(format!("{} runs in {mode} mode. Agents run in container mode in this HQ build: switch the team's mode in Settings → Sandbox.", agent["name"].as_str().unwrap_or(agent_id)));
         }
         let cli = agent["cli"].as_str().unwrap_or("");
-        let (program, mut args) = launch_args(cli, &agent["model"]).ok_or_else(|| format!("HQ doesn't know how to launch \"{cli}\"."))?;
+        let adapter = crate::cli::adapter(cli).ok_or_else(|| format!("HQ doesn't know how to launch \"{cli}\"."))?;
+        let (program, mut args) = adapter.launch_args(&agent["model"]);
 
         let slug = crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned());
         let dir = self.config.workspaces_root.join(&slug).join(agent_id);
         std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create the agent's folder: {e}"))?;
         let name = agent["name"].as_str().unwrap_or(agent_id);
-        let role_path = dir.join(role_file(cli));
+        let role_path = dir.join(adapter.role_file);
         let role = format!("# {name}, {}\n\n{}", agent["role"].as_str().unwrap_or("agent"), agent["roleMd"].as_str().unwrap_or(""));
         let body = refresh_role(std::fs::read_to_string(&role_path).ok().as_deref(), &role);
         std::fs::write(&role_path, body).map_err(|e| e.to_string())?;
@@ -511,7 +386,7 @@ impl AgentRuntime {
             token: Some(("ARIMA_MCP_TOKEN".to_owned(), state.inner.mcp.issue_agent_token(project_id, agent_id))),
         }).collect();
         servers.extend(selected_servers(state, agent));
-        let mcp = mcp_launch(cli, &servers).unwrap_or_default();
+        let mcp = (adapter.mcp)(&servers);
         if let Some((path, cfg)) = &mcp.file {
             write_private(&dir.join(path), &serde_json::to_string_pretty(cfg).unwrap_or_default())?;
         }
@@ -519,13 +394,13 @@ impl AgentRuntime {
         arima_agents::docker::validate_launch(&program, &args).map_err(|e| e.to_string())?;
 
         let mut env: HashMap<String, String> = crate::secrets::env_for(state, project_id, agent_id);
-        env.extend([("TERM".to_owned(), "xterm-256color".to_owned()), ("HOME".to_owned(), "/workspace/.agent-home".to_owned())]);
+        env.extend([("TERM".to_owned(), "xterm-256color".to_owned()), ("HOME".to_owned(), crate::cli::AGENT_HOME.to_owned())]);
         env.extend(mcp.env);
         env.extend(servers.into_iter().filter_map(|s| s.token));
         if let Some(account) = agent["account"].as_str().filter(|a| !a.is_empty()) {
             let row = state.inner.vault_secrets.get_by_id(&format!("acct-{account}")).ok().flatten().ok_or_else(|| format!("The account \"{account}\" this agent uses doesn't exist."))?;
             let secret = state.inner.auth.vault().decrypt(format!("vault-secret:{}", row.id).as_bytes(), &row.secret_enc).map_err(|e| e.to_string())?;
-            for var in provider_env(cli, &row.provider) {
+            for var in adapter.provider_env(&row.provider) {
                 env.insert((*var).to_owned(), String::from_utf8_lossy(&secret).into_owned());
             }
         }
@@ -581,76 +456,6 @@ struct Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn launch_args_switch_off_prompts_and_pass_the_model() {
-        let (prog, args) = launch_args("claude", &json!("opus")).unwrap();
-        assert_eq!(prog, "claude");
-        assert_eq!(args, ["--dangerously-skip-permissions", "--model", "opus"]);
-        let (_, codex) = launch_args("codex", &json!("")).unwrap();
-        assert!(codex.contains(&"--dangerously-bypass-approvals-and-sandbox".to_owned()) && !codex.contains(&"-m".to_owned()));
-        assert!(launch_args("vim", &json!("")).is_none());
-    }
-
-    #[test]
-    fn a_model_that_looks_like_a_flag_or_shell_is_dropped() {
-        for bad in ["--evil", "-x", "a b", "x;rm -rf /", "$(id)"] {
-            let (_, args) = launch_args("gemini", &json!(bad)).unwrap();
-            assert_eq!(args, ["--yolo"], "{bad} isn't passed through");
-        }
-        assert_eq!(launch_args("gemini", &json!("gemini-2.5-pro")).unwrap().1, ["--yolo", "--model", "gemini-2.5-pro"]);
-    }
-
-    fn two_servers() -> Vec<McpServer> {
-        vec![
-            McpServer { name: "arima".into(), url: "http://hq/api/projects/p/mcp".into(), token: Some(("ARIMA_MCP_TOKEN".into(), "tok-1".into())) },
-            McpServer { name: "docs".into(), url: "https://docs.example/mcp".into(), token: None },
-        ]
-    }
-
-    #[test]
-    fn every_cli_gets_its_own_mcp_config_with_every_server() {
-        let s = two_servers();
-        let claude = mcp_launch("claude", &s).unwrap();
-        assert_eq!(claude.args, ["--strict-mcp-config", "--mcp-config", ".mcp.json"]);
-        let (path, cfg) = claude.file.unwrap();
-        assert_eq!(path, ".mcp.json");
-        assert_eq!(cfg["mcpServers"]["arima"], json!({ "type": "http", "url": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer ${ARIMA_MCP_TOKEN}" } }));
-        assert_eq!(cfg["mcpServers"]["docs"]["headers"], json!({}));
-        assert!(!cfg.to_string().contains("tok-1"), "Claude reads the token from the environment, not the file");
-
-        let codex = mcp_launch("codex", &s).unwrap();
-        assert!(codex.file.is_none());
-        assert_eq!(
-            codex.args,
-            ["-c", "mcp_servers.arima.url=\"http://hq/api/projects/p/mcp\"", "-c", "mcp_servers.arima.bearer_token_env_var=\"ARIMA_MCP_TOKEN\"", "-c", "mcp_servers.docs.url=\"https://docs.example/mcp\""]
-        );
-        assert!(arima_agents::docker::validate_launch("codex", &codex.args).is_ok(), "no secret on argv");
-
-        let gemini = mcp_launch("gemini", &s).unwrap();
-        let (path, cfg) = gemini.file.unwrap();
-        assert_eq!(gemini.env, [("GEMINI_CLI_SYSTEM_SETTINGS_PATH".to_owned(), format!("/workspace/{path}"))]);
-        assert_eq!(cfg["mcpServers"]["arima"], json!({ "httpUrl": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer tok-1" } }));
-        assert_eq!(cfg["mcp"]["allowed"], json!(["arima", "docs"]));
-
-        let (path, cfg) = mcp_launch("copilot", &s).unwrap().file.unwrap();
-        assert_eq!(path, ".agent-home/.copilot/mcp-config.json");
-        assert_eq!(cfg["mcpServers"]["docs"], json!({ "type": "http", "url": "https://docs.example/mcp", "headers": {}, "tools": ["*"] }));
-
-        let opencode = mcp_launch("opencode", &s).unwrap();
-        let (path, cfg) = opencode.file.unwrap();
-        assert_eq!(opencode.env, [("OPENCODE_CONFIG".to_owned(), format!("/workspace/{path}"))]);
-        assert_eq!(cfg["mcp"]["servers"]["arima"], json!({ "type": "remote", "url": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer {env:ARIMA_MCP_TOKEN}" } }));
-
-        let (path, cfg) = mcp_launch("agy", &s).unwrap().file.unwrap();
-        assert_eq!(path, ".agent-home/.gemini/config/mcp_config.json");
-        assert_eq!(cfg["mcpServers"]["arima"], json!({ "serverUrl": "http://hq/api/projects/p/mcp", "headers": { "Authorization": "Bearer tok-1" } }));
-
-        for cli in ["claude", "codex", "gemini", "copilot", "opencode", "agy"] {
-            assert!(cli == "codex" || mcp_launch(cli, &[]).unwrap().file.is_some(), "{cli}: an empty selection still writes a config, replacing any earlier one");
-        }
-        assert!(mcp_launch("vim", &s).is_none());
-    }
 
     #[test]
     fn the_role_section_is_rewritten_and_the_rest_of_the_file_kept() {
@@ -712,11 +517,4 @@ mod tests {
         assert!(role.contains("Second role text") && !role.contains("First role text") && role.contains("Notes the agent kept"), "{role}");
     }
 
-    #[test]
-    fn provider_keys_map_only_to_cli_pairs_that_use_them() {
-        assert_eq!(provider_env("claude", "anthropic"), ["ANTHROPIC_API_KEY"]);
-        assert!(provider_env("claude", "openai").is_empty());
-        assert_eq!(role_file("claude"), "CLAUDE.md");
-        assert_eq!(role_file("codex"), "AGENTS.md");
-    }
 }

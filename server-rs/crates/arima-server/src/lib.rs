@@ -3,6 +3,7 @@
 //! ArimaOps v2.0 HTTP, WebSocket, MCP, and embedded UI server crate.
 
 pub mod backups;
+pub mod cli;
 pub mod delivery;
 pub mod factory;
 pub mod github;

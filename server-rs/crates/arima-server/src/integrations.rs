@@ -546,8 +546,8 @@ pub fn setup_state(state: &AppState, now: &str) -> Value {
         json!({ "id": "agent-image", "label": "Agent image", "status": if st.image_ok { "ok" } else if st.docker_ok { "warning" } else { "missing" }, "detail": st.image_detail, "neededFor": "container",
             "fix": if st.image_ok || !st.docker_ok { Value::Null } else { fix(&format!("docker pull {}", state.inner.runtime.config.image)) } }),
     ];
-    for (id, label) in [("claude", "Claude Code"), ("codex", "Codex"), ("opencode", "OpenCode"), ("gemini", "Gemini CLI"), ("copilot", "Copilot CLI"), ("agy", "Antigravity")] {
-        checks.push(json!({ "id": id, "label": label, "status": if st.docker_ok { "ok" } else { "missing" },
+    for a in &crate::cli::ADAPTERS {
+        checks.push(json!({ "id": a.id, "label": a.label, "status": if st.docker_ok { "ok" } else { "missing" },
             "detail": if st.docker_ok { "Included in the agent image. Sign in from the agent's terminal on first Start." } else { "Needs Docker." }, "neededFor": "container", "fix": Value::Null }));
     }
     json!({
