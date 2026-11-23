@@ -122,7 +122,7 @@ fn evaluate_policy(policy: &EgressPolicy, host: &str, port: u16) -> Decision {
     }
 }
 
-/// In observe mode a refusal becomes a report, unless the host is a quiet one. Metadata and private addresses
+/// In observe mode a refusal becomes a report, unless the host is a quiet one. Metadata and loopback addresses
 /// stay blocked by [`resolve_pinned`] in every mode.
 fn observed(
     decision: Decision,
@@ -157,13 +157,16 @@ async fn resolve_pinned(
     host: &str,
     port: u16,
     allow_restricted: bool,
+    allow_private: bool,
 ) -> Result<SocketAddr, &'static str> {
+    // Observe mode leaves the agent's direct route open, so private (not loopback) targets add nothing it lacks.
+    let refused = |ip: IpAddr| is_restricted_ip(ip) && !allow_restricted && !(allow_private && !is_loopback_ip(ip));
     let clean = normalize_host(host);
     if let Ok(ip) = clean.parse::<IpAddr>() {
         if is_imds_or_link_local_ip(ip) {
             return Err("cloud metadata / link-local IP is unconditionally blocked");
         }
-        if is_restricted_ip(ip) && !allow_restricted {
+        if refused(ip) {
             return Err("restricted loopback/private/metadata IP blocked");
         }
         return Ok(SocketAddr::new(ip, port));
@@ -178,7 +181,7 @@ async fn resolve_pinned(
         if is_imds_or_link_local_ip(sa.ip()) {
             return Err("hostname resolved to unconditionally blocked cloud metadata / link-local IP");
         }
-        if is_restricted_ip(sa.ip()) && !allow_restricted {
+        if refused(sa.ip()) {
             // Never permit a hostname that resolves to loopback, RFC1918, or IMDS!
             return Err("hostname resolved to restricted loopback/private/metadata IP");
         }
@@ -266,7 +269,7 @@ async fn handle_client(
             return Ok(());
         }
 
-        let pinned_addr = match resolve_pinned(&host, port, decision.explicitly_scoped).await {
+        let pinned_addr = match resolve_pinned(&host, port, decision.explicitly_scoped, policy.observe).await {
             Ok(sa) => sa,
             Err(why) => {
                 let mut inner = reader.into_inner();
@@ -315,7 +318,7 @@ async fn handle_client(
         return Ok(());
     }
 
-    let pinned_addr = match resolve_pinned(&parsed.host, parsed.port, decision.explicitly_scoped).await {
+    let pinned_addr = match resolve_pinned(&parsed.host, parsed.port, decision.explicitly_scoped, policy.observe).await {
         Ok(sa) => sa,
         Err(why) => {
             let mut inner = reader.into_inner();
@@ -427,4 +430,26 @@ async fn write_forbidden(stream: &mut TcpStream, why: &str) -> std::io::Result<(
         body
     );
     stream.write_all(resp.as_bytes()).await
+}
+
+fn is_loopback_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|m| m.is_loopback()),
+    }
+}
+
+#[cfg(test)]
+mod observe_address_tests {
+    use super::resolve_pinned;
+
+    #[tokio::test]
+    async fn observe_reaches_private_addresses_but_never_loopback_or_metadata() {
+        assert!(resolve_pinned("10.0.0.7", 80, false, false).await.is_err(), "enforce refuses private targets");
+        assert!(resolve_pinned("10.0.0.7", 80, false, true).await.is_ok(), "observe lets a sibling container through");
+        assert!(resolve_pinned("fd00::7", 80, false, true).await.is_ok());
+        assert!(resolve_pinned("127.0.0.1", 80, false, true).await.is_err(), "HQ's own loopback stays closed");
+        assert!(resolve_pinned("::ffff:127.0.0.1", 80, false, true).await.is_err());
+        assert!(resolve_pinned("169.254.169.254", 80, false, true).await.is_err(), "metadata stays closed");
+    }
 }
