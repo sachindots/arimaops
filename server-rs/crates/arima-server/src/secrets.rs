@@ -67,7 +67,11 @@ fn valid_env_name(name: &str) -> Result<(), String> {
     if name.len() > 120 || !ok_start || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err("Variable names use letters, digits and underscores, and don't start with a digit.".into());
     }
-    if name.starts_with("ARIMA_") || BLOCKED_ENV.contains(&name) {
+    // These would send the owner's account key to a server of the operator's choosing, or change what it trusts.
+    let upper = name.to_ascii_uppercase();
+    let redirects = ["_BASE_URL", "_API_BASE", "_ENDPOINT", "_PROXY"].iter().any(|s| upper.ends_with(s))
+        || ["SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"].contains(&upper.as_str());
+    if redirects || name.starts_with("ARIMA_") || BLOCKED_ENV.contains(&name) {
         return Err(format!("{name} is reserved and can't be set."));
     }
     Ok(())
@@ -375,5 +379,18 @@ mod tests {
         assert!(valid_account_id("work-2"));
         assert!(!valid_account_id("Work"));
         assert!(!valid_account_id("-x"));
+    }
+}
+
+#[cfg(test)]
+mod env_name_tests {
+    use super::valid_env_name;
+
+    #[test]
+    fn names_that_redirect_keys_or_trust_are_refused() {
+        for bad in ["ANTHROPIC_BASE_URL", "openai_base_url", "HTTPS_PROXY", "no_proxy", "SSL_CERT_FILE", "AZURE_OPENAI_ENDPOINT", "ARIMA_X", "PATH"] {
+            assert!(valid_env_name(bad).is_err(), "{bad}");
+        }
+        assert!(valid_env_name("MY_FEATURE_FLAG").is_ok());
     }
 }

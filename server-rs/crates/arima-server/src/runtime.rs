@@ -237,10 +237,19 @@ impl AgentRuntime {
         removed
     }
 
+    /// Stops every running agent of a project (used when the project is deleted).
+    pub async fn stop_project(&self, state: &AppState, project_id: &str) {
+        let agents: Vec<String> = self.sessions.lock().map(|m| m.keys().filter(|(p, _)| p == project_id).map(|(_, a)| a.clone()).collect()).unwrap_or_default();
+        for agent in agents {
+            let _ = self.stop(state, project_id, &agent).await;
+        }
+    }
+
     pub async fn stop(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<(), String> {
         let name = format!("hq-{}-{agent_id}", crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned()));
         let session = self.sessions.lock().ok().and_then(|mut m| m.remove(&Self::key(project_id, agent_id)));
         let target = session.as_ref().map_or(name, |s| s.container.clone());
+        state.inner.mcp.revoke_agent_token(project_id, agent_id);
         self.engine.stop(&target, 10).await.map_err(|e| e.to_string())?;
         self.engine.remove(&target).await.map_err(|e| e.to_string())
     }
@@ -316,6 +325,7 @@ impl AgentRuntime {
         if still_ours {
             let exit = self.engine.inspect(&session.container).await.ok().flatten().map_or(0, |c| c.exit_code);
             let _ = self.engine.remove(&session.container).await;
+            state.inner.mcp.revoke_agent_token(project_id, agent_id);
             let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
             let note = if exit == 0 { "Session ended".to_owned() } else { format!("Session ended with exit code {exit}") };
             let event = json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "idle", "note": note });

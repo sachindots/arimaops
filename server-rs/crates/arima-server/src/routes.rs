@@ -1380,6 +1380,7 @@ async fn delete_project(
         return Err(ApiError::new(StatusCode::NOT_FOUND, "Project not found."));
     };
 
+    state.inner.runtime.stop_project(&state, &project_id).await;
     let summary = forget_project(
         &state.inner.db,
         &project_id,

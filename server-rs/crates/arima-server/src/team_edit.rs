@@ -169,6 +169,7 @@ pub async fn remove_agent(state: &AppState, project_id: &str, args: &[Value]) ->
     let known = crate::team::load(state, project_id).is_some_and(|m| m.team.iter().any(|a| a["id"] == id && a["isLead"] != true));
     if known {
         let _ = state.inner.supervisor.stop_agent(project_id, &id).await;
+        let _ = state.inner.runtime.stop(state, project_id, &id).await;
     }
     mutate(state, project_id, |model, conn| {
         let idx = agent_index(model, &id).ok_or_else(|| format!("No agent \"{id}\"."))?;

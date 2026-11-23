@@ -68,6 +68,16 @@ impl McpRegistry {
         token
     }
 
+    /// Forgets the bearer token and cached handler of an agent that has stopped.
+    pub fn revoke_agent_token(&self, project_id: &str, agent_id: &str) {
+        if let Ok(mut guard) = self.tokens.lock() {
+            guard.remove(&format!("{project_id}:{agent_id}"));
+        }
+        if let Ok(mut guard) = self.handlers.lock() {
+            guard.remove(&(project_id.to_owned(), agent_id.to_owned()));
+        }
+    }
+
     /// Verifies a bearer token in constant time and returns `(project_id, agent_id)`.
     #[must_use]
     pub fn verify_bearer_token(&self, candidate: &str) -> Option<(String, String)> {
