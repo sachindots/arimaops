@@ -611,7 +611,7 @@ export function createMockSource(): OfficeDataSource {
       const m = world.snap.mcp;
       const name = input.name.trim().toLowerCase();
       if (!m || !("others" in m) || !name || m.servers.some((s) => s.name === name)) return;
-      m.servers.push({ name, transport: { kind: "http", url: input.url ?? "" }, hasKey: !!input.apiKey, source: { kind: "manual" }, check: { ok: true, error: null, at: new Date().toISOString() } });
+      m.servers.push({ name, transport: { kind: "http", url: input.url ?? "" }, hasKey: !!input.apiKey, source: { kind: "manual" }, toolsSha256: null, blocked: null, check: { ok: true, error: null, at: new Date().toISOString() } });
       world.activity("config", null, `Added tool server ${name}`);
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },
@@ -619,7 +619,7 @@ export function createMockSource(): OfficeDataSource {
     copyMcp(_fromProjectId, name) {
       const m = world.snap.mcp;
       if (!m || !("others" in m) || m.servers.some((s) => s.name === name)) return;
-      m.servers.push({ name, transport: { kind: "http", url: `https://${name}.example.com/mcp` }, hasKey: false, source: { kind: "manual" }, check: null });
+      m.servers.push({ name, transport: { kind: "http", url: `https://${name}.example.com/mcp` }, hasKey: false, source: { kind: "manual" }, toolsSha256: null, blocked: null, check: null });
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },
 
@@ -646,6 +646,21 @@ export function createMockSource(): OfficeDataSource {
       }
       world.configChanged();
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
+    },
+
+    setToolServerKey(name, key) {
+      const m = world.snap.mcp;
+      const s = m && "others" in m ? m.servers.find((x) => x.name === name) : undefined;
+      if (!m || !s) return;
+      s.hasKey = !!key.trim();
+      world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
+    },
+
+    // The demo has no git: packs can be removed but not read.
+    addPack() {},
+    checkPackUpdates() {},
+    removePack(id) {
+      if (world.snap.packs) delete world.snap.packs[id];
     },
 
     answerApproval(agentId, approvalId, decision) {

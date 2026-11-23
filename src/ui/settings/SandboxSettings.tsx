@@ -228,6 +228,9 @@ function EgressSection() {
                 <div className="text-[12px] text-muted">
                   {b.agents.join(", ")} · {b.count} {b.count === 1 ? "request" : "requests"} · last {ago(b.lastSeen, now)} ago
                 </div>
+                {b.packs && b.packs.length > 0 && (
+                  <div className="text-[12px] text-amber">Not declared by {b.packs.length === 1 ? "the pack" : "the packs"} {b.packs.join(", ")}</div>
+                )}
               </div>
               {owner && (
                 <div className="flex gap-1.5">

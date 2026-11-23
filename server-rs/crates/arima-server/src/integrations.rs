@@ -20,7 +20,7 @@ fn text(v: &Value, max: usize) -> String {
     v.as_str().unwrap_or("").trim().chars().take(max).collect()
 }
 
-fn broadcast(state: &AppState, project_id: &str) {
+pub(crate) fn broadcast(state: &AppState, project_id: &str) {
     let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
     state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
 }
@@ -29,7 +29,7 @@ fn db_err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-fn setting(state: &AppState, key: &str) -> Option<Value> {
+pub(crate) fn setting(state: &AppState, key: &str) -> Option<Value> {
     let raw: Option<String> = state
         .inner
         .db
@@ -39,7 +39,7 @@ fn setting(state: &AppState, key: &str) -> Option<Value> {
     serde_json::from_str(&raw?).ok()
 }
 
-fn save_setting(state: &AppState, key: &str, value: &Value) -> Result<(), String> {
+pub(crate) fn save_setting(state: &AppState, key: &str, value: &Value) -> Result<(), String> {
     state
         .inner
         .db
@@ -54,7 +54,7 @@ fn save_setting(state: &AppState, key: &str, value: &Value) -> Result<(), String
         .map_err(db_err)
 }
 
-fn drop_setting(state: &AppState, key: &str) -> Result<(), String> {
+pub(crate) fn drop_setting(state: &AppState, key: &str) -> Result<(), String> {
     state
         .inner
         .db
@@ -143,7 +143,7 @@ pub fn set_lab_mode(state: &AppState, project_id: &str, args: &[Value]) -> Resul
 
 // ---------------------------------------------------------------- MCP server registry
 
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 40 && name.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
@@ -220,11 +220,11 @@ pub fn tool_servers(state: &AppState, project_id: &str) -> Vec<ToolServer> {
     setting(state, &servers_key(project_id)).and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default()
 }
 
-fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer]) -> Result<(), String> {
+pub(crate) fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer]) -> Result<(), String> {
     save_setting(state, &servers_key(project_id), &json!(servers))
 }
 
-fn live_projects(state: &AppState) -> Vec<(String, String)> {
+pub(crate) fn live_projects(state: &AppState) -> Vec<(String, String)> {
     state
         .inner
         .db
@@ -258,7 +258,7 @@ pub fn migrate_hq_wide_tool_servers(state: &AppState) -> Result<(), String> {
                 error: s["error"].as_str().map(str::to_owned),
                 at: at.to_owned(),
             });
-            Some(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: s["hasKey"] == true, source: ToolServerSource::Manual, check })
+            Some(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: s["hasKey"] == true, source: ToolServerSource::Manual, check, tools_sha256: None, blocked: None })
         })
         .collect();
     for (pid, _) in live_projects(state) {
@@ -302,7 +302,7 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
     if !key.is_empty() {
         state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
     }
-    servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None });
+    servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None, tools_sha256: None, blocked: None });
     save_tool_servers(state, project_id, &servers)?;
     broadcast(state, project_id);
     Ok(())
@@ -333,22 +333,49 @@ pub fn copy_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<()
 
 pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let name = text(args.first().unwrap_or(&Value::Null), 40);
-    let mut servers = tool_servers(state, project_id);
-    let before = servers.len();
-    servers.retain(|s| s.name != name);
-    if servers.len() == before {
-        return Err(format!("No MCP server \"{name}\"."));
+    let servers = tool_servers(state, project_id);
+    match servers.iter().find(|s| s.name == name) {
+        None => return Err(format!("No MCP server \"{name}\".")),
+        Some(ToolServer { source: ToolServerSource::Pack { pack_id, .. }, .. }) => return Err(format!("\"{name}\" comes from the pack {pack_id}. Remove the pack instead.")),
+        Some(_) => {}
     }
+    drop_servers(state, project_id, &[name])?;
+    broadcast(state, project_id);
+    Ok(())
+}
+
+/// Removes these servers from the project's list, their keys from the vault, and their names from every seat.
+pub(crate) fn drop_servers(state: &AppState, project_id: &str, names: &[String]) -> Result<(), String> {
+    let mut servers = tool_servers(state, project_id);
+    servers.retain(|s| !names.contains(&s.name));
     save_tool_servers(state, project_id, &servers)?;
-    let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, &name));
+    for name in names {
+        let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, name));
+    }
     let _ = crate::team_edit::mutate(state, project_id, |model, _| {
         for agent in &mut model.team {
             if let Some(list) = agent["mcp"].as_array_mut() {
-                list.retain(|n| n != name.as_str());
+                list.retain(|n| !n.as_str().is_some_and(|n| names.iter().any(|x| x == n)));
             }
         }
         Ok(())
     });
+    Ok(())
+}
+
+/// `setToolServerKey [name, key]`: stores (or, when empty, clears) a server's key without showing the old one.
+pub fn set_tool_server_key(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    let name = text(args.first().unwrap_or(&Value::Null), 40);
+    let key = text(args.get(1).unwrap_or(&Value::Null), 4000);
+    let mut servers = tool_servers(state, project_id);
+    let entry = servers.iter_mut().find(|s| s.name == name).ok_or_else(|| format!("No MCP server \"{name}\"."))?;
+    if key.is_empty() {
+        let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, &name));
+    } else {
+        state.store_vault_secret(Some(&mcp_secret_id(project_id, &name)), "mcp", "mcp", &name, &key).map_err(db_err)?;
+    }
+    entry.has_key = !key.is_empty();
+    save_tool_servers(state, project_id, &servers)?;
     broadcast(state, project_id);
     Ok(())
 }
@@ -431,6 +458,9 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
     for s in &mut servers {
         if let Some((_, result)) = results.iter().find(|(n, _)| s.name == *n) {
             s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.as_ref().err().cloned(), at: at.clone() });
+            if let Ok(tools) = result {
+                crate::packs::on_tools_listed(state, project_id, s, tools);
+            }
         }
     }
     save_tool_servers(state, project_id, &servers)?;
@@ -499,18 +529,25 @@ pub fn remove_connection(state: &AppState, project_id: &str, args: &[Value]) -> 
     Ok(())
 }
 
-/// Parses a `tools/list` reply, plain JSON or one server-sent `data:` event.
+/// Parses a `tools/list` reply, plain JSON or one server-sent `data:` event, into the normalised list: each tool's
+/// name, description, input schema and annotations, sorted by name. Its hash is what a pack's approval pins.
 fn parse_tools(body: &str) -> Vec<Value> {
     let json_text = body.lines().find_map(|l| l.strip_prefix("data:")).map_or(body, str::trim);
-    serde_json::from_str::<Value>(json_text)
+    let mut tools: Vec<Value> = serde_json::from_str::<Value>(json_text)
         .ok()
         .and_then(|v| v["result"]["tools"].as_array().cloned())
-        .map(|ts| ts.iter().map(|t| json!({ "name": t["name"], "description": t["description"].as_str().unwrap_or("") })).collect())
-        .unwrap_or_default()
+        .map(|ts| {
+            ts.iter()
+                .map(|t| json!({ "name": t["name"], "description": t["description"].as_str().unwrap_or(""), "inputSchema": t["inputSchema"], "annotations": t["annotations"] }))
+                .collect()
+        })
+        .unwrap_or_default();
+    tools.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    tools
 }
 
 /// One `tools/list` call through the endpoint guard, connecting only to the addresses that passed it.
-async fn probe(name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
+pub(crate) async fn probe(name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
     let url = check_endpoint(endpoint)?;
     let call = async {
         let pinned = resolve_endpoint(&url).await?;
@@ -602,7 +639,7 @@ pub fn template_library(state: &AppState) -> Vec<Value> {
 
 pub fn export_template(state: &AppState, project_id: &str) -> Result<(), String> {
     let model = crate::team::load(state, project_id).ok_or("This project has no team yet, so there is no template to save.")?;
-    let file = json!({ "format": TEMPLATE_FORMAT, "v": 1, "exportedAt": Utc::now().to_rfc3339(), "template": model.template, "packs": {} });
+    let file = json!({ "format": TEMPLATE_FORMAT, "v": 1, "exportedAt": Utc::now().to_rfc3339(), "template": model.template, "packs": crate::packs::export(state, project_id) });
     state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "template.file", "file": file }).to_string());
     Ok(())
 }
@@ -638,10 +675,13 @@ fn import_template_inner(state: &AppState, raw: &str) -> Result<String, String> 
     if builtin {
         return Err(format!("\"{id}\" is a built-in template; rename the template's id before importing."));
     }
+    // Packs from a file are never trusted: a project started from this template installs them pending review.
+    let packs = crate::packs::parse_template_packs(&file["packs"])?;
     let mut all = custom_templates(state);
     all.retain(|t| t["id"] != id.as_str());
     all.push(template);
     save_setting(state, "customTemplates", &json!(all))?;
+    crate::packs::save_template_packs(state, &id, &packs)?;
     Ok(id)
 }
 

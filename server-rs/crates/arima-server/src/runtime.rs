@@ -158,6 +158,10 @@ fn selected_servers(state: &AppState, project_id: &str, agent: &Value) -> Vec<Mc
                 tracing::warn!(agent = agent_id, server = name, "skipping an MCP server that isn't registered");
                 return None;
             };
+            if let Some(why) = &entry.blocked {
+                tracing::warn!(agent = agent_id, server = name, "skipping a blocked MCP server: {why}");
+                return None;
+            }
             let token = if entry.has_key {
                 match vault_secret(state, &crate::integrations::mcp_secret_id(project_id, name)) {
                     Ok(Some(secret)) => Some((mcp_token_env(name), secret)),
@@ -547,6 +551,14 @@ mod tests {
         rt.plan(&state, &pid, &id).unwrap();
         let role = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
         assert!(role.contains("Second role text") && !role.contains("First role text") && role.contains("Notes the agent kept"), "{role}");
+
+        // A blocked server (a pack server whose tools changed) isn't given to the agent.
+        let mut servers = int::tool_servers(&state, &pid);
+        servers[0].blocked = Some("tools changed".into());
+        int::save_tool_servers(&state, &pid, &servers).unwrap();
+        rt.plan(&state, &pid, &id).unwrap();
+        let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
+        assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"]);
     }
 
 }

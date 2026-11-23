@@ -18,6 +18,7 @@ import type {
   MeetingTurn,
   MeetingUrgency,
   OpinionSide,
+  PackEntry,
   PermissionPayload,
   PreviewMode,
   PreviewTarget,
@@ -52,6 +53,7 @@ export type {
   MeetingTurn,
   MeetingUrgency,
   OpinionSide,
+  PackEntry,
   PermissionPayload,
   PreviewMode,
   PreviewTarget,
@@ -726,6 +728,8 @@ export interface EgressBlock {
   count: number;
   firstSeen: string;
   lastSeen: string;
+  /** Packs the agents that reached it use: a host none of their grants declares. */
+  packs?: string[];
 }
 
 export interface EgressState {
@@ -793,6 +797,8 @@ export interface OfficeSnapshot {
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
+  /** This project's packs by id (Rust HQ): approved entries, pending installs, and updates waiting for review. */
+  packs?: Record<string, PackEntry>;
   /** Free models from models.dev, re-read daily (src/data/freeModels.ts). */
   freeModels?: FreeModelsState;
   /** This HQ's template library (built-in and saved or imported), for the welcome. */

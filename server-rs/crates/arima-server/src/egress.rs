@@ -168,6 +168,8 @@ impl PolicyProvider for ProxyPolicy {
                 policy.scope_allow_targets = scope.scope_allow_targets;
                 policy.deny.extend(scope.deny);
             }
+            // Read per request, so an approved or removed pack's hosts apply to running agents at once.
+            policy.allow.extend(crate::packs::egress_hosts(&self.0, &id.project_id));
             Some(policy)
         })
     }
@@ -209,6 +211,8 @@ fn iso(ms: i64) -> String {
 /// The egress part of the snapshot: the mode, the project's rules, and the hosts enforce would block (not ignored).
 #[must_use]
 pub fn snapshot(state: &AppState, project_id: &str) -> Value {
+    // A host no grant declares, reached by an agent that uses a pack, is flagged with that pack.
+    let by_agent = crate::packs::packs_by_agent(state, project_id);
     let rows = state
         .inner
         .db
@@ -220,10 +224,13 @@ pub fn snapshot(state: &AppState, project_id: &str) -> Value {
             let rows = stmt
                 .query_map([project_id], |r| {
                     let agents: String = r.get(2)?;
+                    let mut packs: Vec<&String> = agents.split(',').filter_map(|a| by_agent.get(a)).flatten().collect();
+                    packs.sort();
+                    packs.dedup();
                     Ok(json!({
                         "host": r.get::<_, String>(0)?, "port": r.get::<_, i64>(1)?,
                         "agents": agents.split(',').collect::<Vec<_>>(), "count": r.get::<_, i64>(3)?,
-                        "firstSeen": iso(r.get(4)?), "lastSeen": iso(r.get(5)?),
+                        "firstSeen": iso(r.get(4)?), "lastSeen": iso(r.get(5)?), "packs": packs,
                     }))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;

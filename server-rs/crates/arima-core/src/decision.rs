@@ -5,6 +5,7 @@ use serde_json::Value;
 use ts_rs::TS;
 
 use crate::meeting::{MeetingKind, MeetingUrgency};
+use crate::pack::PackChange;
 
 /// Lifecycle state of a visual decision shown in Inbox and inline Chat.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -31,6 +32,7 @@ pub enum DecisionKind {
     MemoryReview,
     SpendAlert,
     SkillScan,
+    PackReview,
     OverflowFallback,
     Info,
 }
@@ -173,6 +175,19 @@ pub enum DecisionPayload {
     },
     SkillScan {
         pack: String,
+        findings: Vec<String>,
+    },
+    /// A pack to install, or a change to an installed one (new commit or a server's live tool list).
+    PackReview {
+        pack: String,
+        /// The approved commit; none on first install.
+        from: Option<String>,
+        to: String,
+        changed: Vec<PackChange>,
+        egress: Vec<String>,
+        secrets: Vec<String>,
+        ignored: Vec<String>,
+        /// Scan findings, blocking ones first.
         findings: Vec<String>,
     },
     OverflowFallback {

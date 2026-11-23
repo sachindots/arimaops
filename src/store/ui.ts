@@ -14,7 +14,7 @@ export type DrawerState =
   | null;
 
 export type AgentTab = "terminal" | "shell" | "task" | "sandbox" | "messages" | "usage";
-export type SettingsTab = "team" | "users" | "license" | "accounts" | "memory" | "workflow" | "stack" | "mcp" | "sandbox" | "boards" | "project";
+export type SettingsTab = "team" | "users" | "license" | "accounts" | "memory" | "workflow" | "stack" | "mcp" | "packs" | "sandbox" | "boards" | "project";
 export type WorkspaceId = "home" | "work" | "inbox" | "team" | "preview" | "usage" | "factory" | "ops";
 export type WorkTab = "board" | "prs" | "findings" | "goals" | "flow";
 export type TeamTab = "agents" | "chat" | "meetings";

@@ -622,8 +622,10 @@ async fn execute_ws_command(
         }
         "ping" | "refreshSbx" => Ok(()),
         "refreshMcp" => crate::integrations::refresh_mcp(state, project_id, args).await,
-        "completeWelcome" => crate::team::complete_welcome(state, project_id, args)
-            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
+        "completeWelcome" => crate::team::complete_welcome(state, project_id, args).inspect(|()| {
+            crate::skills::pin_role_skills_in_background(state, project_id);
+            crate::packs::install_template_packs_in_background(state, project_id);
+        }),
         "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
         "addAgent" => crate::team_edit::add_agent(state, project_id, args),
         "removeAgent" => crate::team_edit::remove_agent(state, project_id, args).await,
@@ -647,6 +649,10 @@ async fn execute_ws_command(
         }
         "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
         "copyMcp" => crate::integrations::copy_mcp(state, project_id, args),
+        "setToolServerKey" => crate::integrations::set_tool_server_key(state, project_id, args),
+        "addPack" => crate::packs::add_pack(state, project_id, args).await,
+        "checkPackUpdates" => crate::packs::check_updates(state, project_id, args).await,
+        "removePack" => crate::packs::remove_pack(state, project_id, args),
         "setAgentMcp" => crate::integrations::set_agent_mcp(state, project_id, args),
         "saveConnection" => crate::integrations::save_connection(state, project_id, args),
         "removeConnection" => crate::integrations::remove_connection(state, project_id, args),
@@ -878,6 +884,7 @@ pub fn exec_answer_decision(
     }
 
     crate::skills::on_decision(state, &resolved);
+    crate::packs::on_decision(state, &resolved);
 
     // If this was a SecondOpinion / Disagreement card and the owner chose "waive-gate", record the gate waiver.
     if let DecisionPayload::SecondOpinion(ref so) | DecisionPayload::Disagreement(ref so) =
@@ -1461,6 +1468,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "welcome": team_model.is_none(),
             "templateLibrary": crate::integrations::template_library(state),
             "skillPacks": crate::skills::pack_views(state),
+            "packs": crate::packs::snapshot(state, project_id),
             "mcp": crate::integrations::mcp_state(state, project_id, &team, &now),
             "connections": crate::integrations::connections_state(state),
             "setup": crate::integrations::setup_state(state, &now),

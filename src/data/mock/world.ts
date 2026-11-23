@@ -336,9 +336,9 @@ export class World {
       },
       mcp: {
         servers: [
-          { name: "supabase-dev", transport: { kind: "http", url: "https://mcp.supabase.com/mcp" }, hasKey: true, source: { kind: "manual" }, check: { ok: true, error: null, at: new Date().toISOString() } },
-          { name: "stripe", transport: { kind: "http", url: "https://mcp.stripe.com" }, hasKey: false, source: { kind: "manual" }, check: null },
-          { name: "trigger", transport: { kind: "http", url: "https://mcp.trigger.dev/mcp" }, hasKey: false, source: { kind: "manual" }, check: { ok: false, error: "trigger answered 503 Service Unavailable.", at: new Date().toISOString() } },
+          { name: "supabase-dev", transport: { kind: "http", url: "https://mcp.supabase.com/mcp" }, hasKey: true, source: { kind: "manual" }, toolsSha256: null, blocked: null, check: { ok: true, error: null, at: new Date().toISOString() } },
+          { name: "stripe", transport: { kind: "http", url: "https://mcp.stripe.com" }, hasKey: false, source: { kind: "manual" }, toolsSha256: null, blocked: null, check: null },
+          { name: "trigger", transport: { kind: "http", url: "https://mcp.trigger.dev/mcp" }, hasKey: false, source: { kind: "manual" }, toolsSha256: null, blocked: null, check: { ok: false, error: "trigger answered 503 Service Unavailable.", at: new Date().toISOString() } },
         ],
         attached: {},
         others: [{ projectId: "proj-site", project: "Marketing site", name: "posthog" }],

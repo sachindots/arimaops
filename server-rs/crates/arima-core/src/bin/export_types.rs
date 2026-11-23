@@ -11,7 +11,7 @@ use arima_core::{
     AgentInstruction, AuditEntry, AuthUser, BoundingBox, ConsoleErrorEntry, DecisionKind,
     DecisionPayload, DecisionStatus, DeviceSession, ElementSelection, FeedbackRoute,
     MeetingAgendaItem, MeetingKind, MeetingMinutes, MeetingSession, MeetingStatus, MeetingTurn,
-    MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PasskeyInfo, PermissionPayload,
+    MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PackApproval, PackChange, PackEntry, PackLock, PackScan, PackSkill, PackSource, PackToolServer, PasskeyInfo, PermissionPayload,
     PreviewMode, PreviewTarget, PreviewTargetStatus, ProjectRole, ProposedDecision, ProposedTask,
     QuestionAnswer, QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload,
     ServerRole, ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport, VisualDecision, VisualFeedback, VoiceProvider, WsClientMessage, WsCommandAck,
@@ -69,6 +69,7 @@ pub fn render_typescript() -> String {
     push_decl::<OpinionSide>(&mut out);
     push_decl::<SecondOpinionPayload>(&mut out);
     push_decl::<PermissionPayload>(&mut out);
+    push_decl::<PackChange>(&mut out);
     push_decl::<DecisionPayload>(&mut out);
     push_decl::<VisualDecision>(&mut out);
 
@@ -91,6 +92,13 @@ pub fn render_typescript() -> String {
     push_decl::<ToolServerSource>(&mut out);
     push_decl::<ToolServerCheck>(&mut out);
     push_decl::<ToolServer>(&mut out);
+    push_decl::<PackSource>(&mut out);
+    push_decl::<PackSkill>(&mut out);
+    push_decl::<PackToolServer>(&mut out);
+    push_decl::<PackScan>(&mut out);
+    push_decl::<PackApproval>(&mut out);
+    push_decl::<PackEntry>(&mut out);
+    push_decl::<PackLock>(&mut out);
 
     // Correlated WS Protocol
     push_decl::<WsClientMessage>(&mut out);
