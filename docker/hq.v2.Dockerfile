@@ -27,7 +27,7 @@ RUN cargo build --release --manifest-path server-rs/Cargo.toml --bin arima-serve
 # Stage 3: Minimal non-root runtime image
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl tini \
+    ca-certificates curl git tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 arima \
     && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin arima \
