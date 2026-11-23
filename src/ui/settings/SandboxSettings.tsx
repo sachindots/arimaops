@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { SERVICE_KEYS, type EgressMode } from "../../data/types";
+import { SERVICE_KEYS, type EgressBlock, type EgressMode } from "../../data/types";
 import { useAuth } from "../../store/auth";
 import { officeActions, useOffice } from "../../store/office";
 import { Dot, Field, SectionTitle, ago, useNow } from "../kit";
@@ -188,8 +188,27 @@ function KeyEditor({ keys, onSet, onRemove, disabled }: { keys: string[]; onSet:
 const MODES: { value: EgressMode; label: string }[] = [
   { value: "off", label: "Off: no proxy" },
   { value: "observe", label: "Observe: block nothing" },
-  { value: "enforce", label: "Enforce (coming next)" },
+  { value: "enforce", label: "Enforce: block unlisted hosts" },
 ];
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Switching to enforce lists what it would have blocked this week and warns about SSH remotes first. */
+async function changeMode(mode: EgressMode, blocks: EgressBlock[]) {
+  if (mode === "enforce") {
+    const recent = blocks.filter((b) => Date.now() - Date.parse(b.lastSeen) < WEEK_MS);
+    const list = recent.length
+      ? `In the last 7 days, enforce mode would have blocked:\n${recent.slice(0, 12).map((b) => `• ${b.port === 80 || b.port === 443 ? b.host : `${b.host}:${b.port}`} (${b.count})`).join("\n")}${recent.length > 12 ? `\n…and ${recent.length - 12} more` : ""}`
+      : "Nothing was recorded as blocked in the last 7 days.";
+    const ok = await ask.confirm(
+      "Switch this project to enforce?",
+      `${list}\n\nAgents start on an internal network where HQ is the only way out. Each blocked host appears in the Inbox to allow once, always or deny.\n\nGit over SSH (port 22) stops working: use HTTPS remotes. Applies at each agent's next start.`,
+      { ok: "Switch to enforce", danger: true },
+    );
+    if (!ok) return;
+  }
+  officeActions.setEgressMode(mode);
+}
 
 /** The project's network mode and the hosts its agents reached that enforce mode would block. */
 function EgressSection() {
@@ -206,10 +225,12 @@ function EgressSection() {
         Agents reach the internet through HQ's proxy. Observe mode blocks nothing: it lists each host that enforce mode would block, so you can allow what this project needs first. Changes apply at each agent's next start.
       </p>
       <Field label="Mode" hint={owner ? undefined : "Only the owner can change the mode or allow hosts."}>
-        <Select value={egress.mode} onChange={(m) => officeActions.setEgressMode(m as EgressMode)} ariaLabel="Network mode" options={MODES} disabled={!owner} />
+        <Select value={egress.mode} onChange={(m) => void changeMode(m as EgressMode, egress.wouldBlock)} ariaLabel="Network mode" options={MODES} disabled={!owner} />
       </Field>
       {egress.mode === "enforce" && (
-        <p className="mt-2 text-[13px] text-muted">Enforce mode is coming next. Until then this project works exactly like observe: nothing is blocked.</p>
+        <p className="mt-2 text-[13px] text-muted">
+          Agents run on an internal network with HQ as the only way out. Hosts not allowed below are refused and appear in the Inbox. Git over SSH doesn't work here: use HTTPS remotes.
+        </p>
       )}
 
       <h4 className="mb-2 mt-4 text-[13px] font-semibold text-ink">Would be blocked in enforce mode</h4>

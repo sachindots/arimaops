@@ -76,7 +76,6 @@ pub fn unsupported(cmd: &str) -> Option<&'static str> {
         "authMcp" => "Signing in to an MCP server isn't available in this HQ build yet.",
         "finishGithubApp" => "Creating the GitHub App from HQ isn't available in this HQ build yet.",
         "answerApproval" => "Sandbox approvals come from the sandbox runtime, which this HQ build doesn't have yet.",
-        "resolveAccess" => "Access requests come from the agent runtime, which this HQ build doesn't have yet.",
         "sendProposal" => "Sending a proposed action isn't available in this HQ build yet.",
         "addToSuite" => "Adding a task to the benchmark suite isn't available in this HQ build yet.",
         _ => return None,

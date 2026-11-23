@@ -724,6 +724,7 @@ mod tests {
             workspaces_host_root: "/host/ws".into(),
             hq_url: None,
             egress_port: 8420,
+            hq_container: None,
         });
         let binds = |rt: &crate::runtime::AgentRuntime| rt.plan(&state, &pid, &agent).unwrap().body["HostConfig"]["Binds"].clone();
 

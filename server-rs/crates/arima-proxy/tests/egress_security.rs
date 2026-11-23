@@ -133,6 +133,7 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
 struct Observing {
     policy: EgressPolicy,
     seen: Mutex<Vec<(String, String, u16)>>,
+    blocked: Mutex<Vec<(String, String, u16)>>,
 }
 
 impl PolicyProvider for Observing {
@@ -146,6 +147,10 @@ impl PolicyProvider for Observing {
 
     fn record_would_block(&self, identity: &ContainerIdentity, host: &str, port: u16) {
         self.seen.lock().unwrap().push((identity.agent_id.clone(), host.to_owned(), port));
+    }
+
+    fn record_blocked(&self, identity: &ContainerIdentity, host: &str, port: u16) {
+        self.blocked.lock().unwrap().push((identity.agent_id.clone(), host.to_owned(), port));
     }
 }
 
@@ -194,4 +199,50 @@ async fn names_the_caller_by_credential_and_observe_mode_records_instead_of_bloc
     creds.revoke("p1", "ada");
     let (head, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &cred).await;
     assert!(head.starts_with("HTTP/1.1 407"), "a revoked credential is refused: {head}");
+}
+
+/// The whole reply to a CONNECT the proxy refuses (it closes the connection after the body).
+async fn connect_reply(proxy_addr: SocketAddr, authority: &str, cred: &str) -> String {
+    let mut stream = TcpStream::connect(proxy_addr).await.unwrap();
+    let req = format!("CONNECT {authority} HTTP/1.1\r\nProxy-Authorization: Basic {cred}\r\n\r\n");
+    stream.write_all(req.as_bytes()).await.unwrap();
+    let mut reply = String::new();
+    let _ = stream.read_to_string(&mut reply).await;
+    reply
+}
+
+#[tokio::test]
+async fn enforce_refuses_unlisted_hosts_with_an_inbox_answer_and_private_addresses_unless_scoped() {
+    let echo = spawn_echo_server().await;
+    let creds = ProxyCredentials::new();
+    let token = creds.issue(ContainerIdentity { project_id: "p1".into(), agent_id: "ada".into(), container_name: "hq-p1-ada".into() });
+    let provider = Arc::new(Observing {
+        policy: EgressPolicy {
+            observe: false,
+            allow: vec!["10.255.255.1".into()],
+            deny: vec!["denied.example".into()],
+            quiet: vec!["quiet.example".into()],
+            scope_allow_targets: vec![format!("127.0.0.1:{}", echo.port())],
+            ..EgressPolicy::default()
+        },
+        ..Observing::default()
+    });
+    let proxy = EgressProxy::start("127.0.0.1:0".parse().unwrap(), creds, Arc::clone(&provider) as Arc<dyn PolicyProvider>).await.unwrap();
+    let cred = basic("ada", &token);
+
+    let reply = connect_reply(proxy.addr(), "Unlisted.Example:443", &cred).await;
+    assert!(reply.starts_with("HTTP/1.1 403") && reply.contains("unlisted.example:443") && reply.contains("Inbox"), "{reply}");
+
+    let (plain, _) = send_connect(proxy.addr(), "quiet.example:443", &cred).await;
+    assert!(plain.starts_with("HTTP/1.1 403"), "quiet hosts are refused too, without a request");
+    let (denied, _) = send_connect(proxy.addr(), "denied.example:443", &cred).await;
+    assert!(denied.starts_with("HTTP/1.1 403"));
+    // Listed but private: observe would let it through (the direct route is open there); enforce refuses it.
+    let private = connect_reply(proxy.addr(), "10.255.255.1:80", &cred).await;
+    assert!(private.starts_with("HTTP/1.1 403") && private.contains("restricted"), "{private}");
+    let (scoped, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &cred).await;
+    assert!(scoped.starts_with("HTTP/1.1 200"), "an explicit scope target still gets through: {scoped}");
+
+    assert_eq!(*provider.blocked.lock().unwrap(), [("ada".to_owned(), "unlisted.example".to_owned(), 443)], "only the unlisted host files a request");
+    assert!(provider.seen.lock().unwrap().is_empty(), "enforce doesn't report would-blocks");
 }

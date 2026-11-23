@@ -48,7 +48,7 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
         | "startAgent" | "stopAgent" | "sendMessage" | "askTeam" | "sendTerminalInput" | "resizeTerminal"
         | "closeShell" | "closeHostShell" | "forwardPort" | "unforwardPort" | "openWorkspace" | "inspectWorkspace"
         | "answerDecision" | "resolveDecision" | "resolveActionItem" | "recordGate" | "sendProposal"
-        | "answerApproval" | "resolveAccess"
+        | "answerApproval"
         | "assignTask" | "addGoal" | "updateGoal" | "setTaskGoal" | "setTaskRunsOn" | "updateBoard" | "createBoard"
         | "updateFinding" | "keepOutOfMemory" | "decideMemories"
         | "startMeeting" | "joinMeeting" | "addMeetingTurn" | "commitMeetingMinutes" | "submitVisualFeedback"
@@ -106,6 +106,7 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "sendProposal"
             | "setEgressMode"
             | "allowEgressHost"
+            | "resolveAccess"
             | "updateAgent"
             | "updateRole"
             | "setTeamMode"
@@ -157,7 +158,7 @@ mod tests {
 
     #[test]
     fn only_the_owner_changes_agent_egress() {
-        for cmd in ["setEgressMode", "allowEgressHost", "ignoreEgressHost", "removeEgressRule"] {
+        for cmd in ["setEgressMode", "allowEgressHost", "ignoreEgressHost", "removeEgressRule", "resolveAccess"] {
             for role in [ServerRole::Operator, ServerRole::Viewer] {
                 assert!(matches!(authorize_command(cmd, &ctx(role)), CommandVerdict::Denied(_)), "{cmd}");
             }

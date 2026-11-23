@@ -65,7 +65,29 @@ const MIGRATIONS: &[Migration] = &[
         name: "011_agent_egress",
         sql: AGENT_EGRESS_SCHEMA,
     },
+    // 012 is left to the packs track.
+    Migration {
+        version: 13,
+        name: "013_egress_access",
+        sql: EGRESS_ACCESS_SCHEMA,
+    },
 ];
+
+/// One Inbox access request per agent, host and port that enforce mode refused, and how the owner answered it.
+/// `once` is allowed until `expires_at`; `project` added a project rule; `denied` is never asked about again.
+const EGRESS_ACCESS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS egress_access (
+    id           INTEGER PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id     TEXT NOT NULL,
+    host         TEXT NOT NULL,
+    port         INTEGER NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('pending', 'once', 'project', 'denied')),
+    requested_at INTEGER NOT NULL,
+    expires_at   INTEGER,
+    UNIQUE (project_id, agent_id, host, port)
+);
+"#;
 
 /// Each project's egress mode, its own allowed hosts, and the hosts its agents reached that enforce mode would
 /// block (one row per agent, host and port). The retired HQ-wide `sandboxProxy` setting goes.

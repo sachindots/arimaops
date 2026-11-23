@@ -639,6 +639,7 @@ async fn execute_ws_command(
         "allowEgressHost" => crate::egress::allow_host(state, project_id, args),
         "ignoreEgressHost" => crate::egress::ignore_host(state, project_id, args),
         "removeEgressRule" => crate::egress::remove_rule(state, project_id, args),
+        "resolveAccess" => crate::egress::resolve_access(state, project_id, args),
         "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
         "setLabMode" => crate::integrations::set_lab_mode(state, project_id, args),
         "addMcp" => {
@@ -1466,6 +1467,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "setup": crate::integrations::setup_state(state, &now),
             "features": { "shell": false, "sandboxTab": false },
             "sbx": crate::secrets::sbx_state(state, project_id, &agent_ids, &now),
+            "accessRequests": crate::egress::access_requests(state, project_id),
             "accounts": crate::secrets::accounts_state(state),
             "config": {
                 "project": project,
