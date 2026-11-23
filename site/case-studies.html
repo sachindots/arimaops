@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Case studies · ArimaOps</title>
-<meta name="description" content="Real ArimaOps runs: a 6-agent Antigravity Dev team shipping RoleFit live (6 PRs, 202 tests, 30 Playwright Verifier screenshots), and a 7-agent Purple security team on VAmPI.">
-<meta property="og:title" content="Case studies: RoleFit Dev team & VAmPI Purple team · ArimaOps">
+<meta name="description" content="Real ArimaOps runs: a 6-agent Antigravity Dev team shipping RoleFit live (6 PRs, 202 tests, 30 Playwright Verifier screenshots),.">
+<meta property="og:title" content="Case studies: RoleFit Dev team · ArimaOps">
 <meta property="og:description" content="Recorded from real ArimaOps projects: real PRs, model catches, Playwright verification screenshots, honest friction, and human checkpoints.">
 <meta property="og:image" content="https://arimaops.tech/assets/shots/case/rolefit-studio.webp">
 <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
@@ -38,7 +38,6 @@
     <p class="lede">Projects run end-to-end with ArimaOps on our own machine, recorded from the real database, GitHub pull requests, and Verifier screenshots. Each says what the team built, what reviewers caught, and where a human stepped in.</p>
     <nav class="toc" aria-label="On this page" style="margin-top:20px">
       <a href="#rolefit">RoleFit: a 6-agent Dev team shipping a live app</a>
-      <a href="#vampi">VAmPI: a Purple team on a vulnerable API</a>
     </nav>
   </div>
 </section>
@@ -264,84 +263,6 @@
         <p>HQ's usage table recorded <code>0</code> metered events for <code>agy</code> (metering currently parses <code>claude</code> and <code>codex</code> session logs only), so we report exact counts instead of estimating tokens. Merging stayed 100% human across all 5 Inbox checkpoints.</p>
       </div>
     </div>
-  </div>
-</section>
-
-<!-- ================================================================ VAMPI SECURITY CASE STUDY -->
-<section class="hero band alt" id="vampi">
-  <div class="wrap">
-    <span class="eyebrow">Case study · Security · Purple · 18 November 2026</span>
-    <h2 class="h1" style="margin-top:14px;font-size:clamp(32px,4.6vw,50px)">A Purple team<br><em>on a vulnerable API</em></h2>
-    <p class="lede">VAmPI is a deliberately vulnerable REST API built for practising API security. We ran it in our own lab and pointed a seven-agent Security · Purple team at it, in scope and on our machine. This is what the team did, what it found, and where it stopped.</p>
-    <div class="stats">
-      <div class="stat"><b>15</b><span>endpoints mapped from the API's own spec</span></div>
-      <div class="stat"><b>12</b><span>leads ranked against the OWASP API Top 10</span></div>
-      <div class="stat"><b>2</b><span>exposures confirmed by reading only</span></div>
-      <div class="stat"><b>0</b><span>requests outside scope</span></div>
-    </div>
-  </div>
-</section>
-
-<section class="band">
-  <div class="wrap">
-    <div class="head"><span class="eyebrow">Setup</span><h2>Scope first, enforced by HQ</h2><p>The lab ran VAmPI in a container on the agents' network. The scope named one address; HQ and the other lab app were set out of scope. We checked the gate from inside an agent's container before any work began.</p></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>From an agent's container</th><th>Result</th></tr></thead>
-      <tbody>
-        <tr><td>VAmPI, <code>172.30.0.3:5000</code> (in scope)</td><td>200: reached through HQ's proxy</td></tr>
-        <tr><td>Another lab app, <code>172.30.0.2</code> (out of scope)</td><td>403: refused by HQ's proxy</td></tr>
-        <tr><td>Any other site</td><td>Blocked: no route without the proxy</td></tr>
-      </tbody>
-    </table></div>
-    <div class="grid g2" style="margin-top:28px">
-      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-agents.webp" alt="The seven agents" loading="lazy" width="1600" height="1000"></div><p class="cap">Seven agents: lead, recon, two exploit, defender, reporter and a second opinion on a free model</p></figure>
-      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-flow.webp" alt="The Purple flow" loading="lazy" width="1600" height="1000"></div><p class="cap">The Purple flow: Scope, Recon, Threat model, Vulnerability analysis, Exploitation, Detect, Post-exploitation, Report</p></figure>
-    </div>
-  </div>
-</section>
-
-<section class="band alt">
-  <div class="wrap">
-    <div class="head"><span class="eyebrow">Recon</span><h2>The whole surface, from read-only requests</h2><p>Recon pulled the OpenAPI spec, mapped 15 endpoints and the JWT sign-in, and noted what each one exposes. One step changed the lab (seeding its database), so recon asked first: the plan, its impact and its rollback went to the owner's Inbox and ran only after approval.</p></div>
-    <div class="grid g2">
-      <div class="card"><span class="sev high">Confirmed · read only</span><h3>Every password, no sign-in needed</h3><p><code>GET /users/v1/_debug</code> returns all users, including the admin, with their passwords in plain text. Recon recorded the shape and redacted the values.</p><span class="where">OWASP API8, API3 · CWE-200</span></div>
-      <div class="card"><span class="sev high">Confirmed · read only</span><h3>An exposed debugger</h3><p>Flask runs with the Werkzeug debugger on. Error pages leak source paths, table columns and a SQL query built by pasting in the username; <code>/console</code> is reachable behind a PIN.</p><span class="where">OWASP API8 · CWE-489, CWE-209</span></div>
-    </div>
-    <p class="note">The leaked source shows <code>f"SELECT * FROM users WHERE username = '{username}'"</code>, a SQL injection the team ranked for exploitation. It was not exercised, and the console PIN was never tried: both needed an approved plan first.</p>
-  </div>
-</section>
-
-<section class="band">
-  <div class="wrap">
-    <div class="head"><span class="eyebrow">Threat model</span><h2>Every OWASP API risk, with a task to prove it</h2><p>The lead mapped the surface to the OWASP API Security Top 10 (2023), turned each risk into a hypothesis and a task, and ranked them. Exploits that change state each need a plan the owner approves.</p></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Priority</th><th>Task</th><th>What to prove</th></tr></thead>
-      <tbody>
-        <tr><td>P0</td><td>Exposed debugger</td><td>Tracebacks leak source; a PIN bypass would give remote code execution (plan required)</td></tr>
-        <tr><td>P1</td><td>Excessive data exposure</td><td>An unauthenticated dump of every user, with passwords</td></tr>
-        <tr><td>P1</td><td>Object-level authorisation</td><td>User A reads or edits user B's books, email or password</td></tr>
-        <tr><td>P1</td><td>Mass assignment</td><td>Registering with an admin flag grants the admin role</td></tr>
-        <tr><td>P1</td><td>SQL injection</td><td>Sign-in bypass or data extraction through the username</td></tr>
-        <tr><td>P2</td><td>Weak JWT handling</td><td>HS256 secret strength, algorithm handling and expiry</td></tr>
-        <tr><td>P2</td><td>User enumeration</td><td>Valid usernames from list endpoints and sign-in errors</td></tr>
-        <tr><td>P3</td><td>No rate limiting</td><td>A small, capped burst only, under the rules of engagement</td></tr>
-      </tbody>
-    </table></div>
-    <div class="grid g2" style="margin-top:28px">
-      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-board.webp" alt="The engagement board" loading="lazy" width="1600" height="1000"></div><p class="cap">The board: recon and the threat model in review, eight exploit tasks waiting on them</p></figure>
-      <figure style="margin:0"><div class="shot"><img src="assets/shots/case/sec-chat.webp" alt="The engagement chat" loading="lazy" width="1600" height="1000"></div><p class="cap">Chat: the recon handoff reaching every agent, and an exploit agent asking for work</p></figure>
-    </div>
-  </div>
-</section>
-
-<section class="band alt">
-  <div class="wrap">
-    <div class="head"><span class="eyebrow">Where it stopped</span><h2>Exploitation is paused, on purpose</h2><p>When the team moved to exploitation, the model provider's own safety system flagged the work as offensive security and stopped the lead. An earlier recon attempt on a different provider was refused by its filter in the same way. That is the providers doing their job: offensive testing needs the provider's verification for authorised security work, which this run did not have.</p></div>
-    <ul class="card" style="box-shadow:none">
-      <li>We did not try to word around the safeguards. The engagement is paused until verification is in place.</li>
-      <li>HQ's own gates held throughout: scope enforced at the proxy, one lab change run only after approval, secrets redacted in every deliverable.</li>
-      <li>No finding was filed: a finding counts only once it is confirmed, scored with CVSS 4.0 and checked by a second model.</li>
-    </ul>
   </div>
 </section>
 

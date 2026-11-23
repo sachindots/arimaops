@@ -196,7 +196,7 @@
         <p>Authorised testing, with a gate on every step.</p>
         <ul><li>The engagement can't start until you set the scope. HQ refuses anything outside it.</li><li>Recon, threat model, exploitation and a report, each a stage. Anything that changes the target waits for your approval.</li><li>Every finding carries evidence, CVSS 4.0, CWE, ATT&amp;CK and WSTG, and is checked by a second model.</li></ul>
         <div class="uses"><span class="chip">Security · Red</span><span class="chip">Purple</span><span class="chip">Blue</span></div>
-        <a class="more" href="case-studies.html#vampi">See a Purple team on a vulnerable API →</a>
+        <a class="more" href="features.html#findings">How findings, scope and gates work →</a>
       </article>
       <article class="card audience">
         <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 8h6M9 12h6"/></svg></span>
@@ -303,7 +303,7 @@
 <section class="band alt" id="runs">
   <div class="wrap">
     <div class="head"><span class="eyebrow">Real runs</span><h2>What a team did with it</h2><p>Recorded from real projects on our own machine, with real commits, app screenshots, what the reviewers caught, and where people had to step in.</p></div>
-    <div class="grid g2">
+    <div class="grid" style="grid-template-columns:minmax(0,560px);justify-content:center">
       <a class="run-card" href="case-studies.html#rolefit">
         <div class="run-thumb"><img src="assets/shots/case/rolefit-studio.webp" alt="RoleFit split-pane ATS resume studio shipped by a 6-agent ArimaOps Dev team" loading="lazy" width="1280" height="800"></div>
         <div class="run-card-head"><span class="where">Dev · 6 Antigravity agents · Live app</span><span class="chip free">Live demo</span></div>
@@ -317,19 +317,7 @@
         </div>
         <span class="more">Read case study &amp; inspect PRs →</span>
       </a>
-      <a class="run-card" href="case-studies.html#vampi">
-        <div class="run-thumb"><img src="assets/shots/case/sec-board.webp" alt="VAmPI Purple team engagement board in ArimaOps showing recon and threat model in review" loading="lazy" width="1600" height="1000"></div>
-        <div class="run-card-head"><span class="where">Security · Purple · 7 agents</span><span class="chip neutral">Paused at exploit gate</span></div>
-        <h3>VAmPI: a Purple team on a vulnerable API</h3>
-        <p>Scope enforced at the proxy, 15 endpoints mapped from OpenAPI, two exposures confirmed read-only, an OWASP API threat model ranked P0–P3, and why exploitation stopped.</p>
-        <div class="run-metrics">
-          <span class="chip">15 endpoints</span>
-          <span class="chip">12 OWASP leads</span>
-          <span class="chip">0 out-of-scope</span>
-          <span class="chip neutral">Read-only verified</span>
-        </div>
-        <span class="more">Read security case study →</span>
-      </a>
+
     </div>
   </div>
 </section>
