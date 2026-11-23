@@ -642,7 +642,8 @@ async fn execute_ws_command(
             state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
             Ok(())
         }
-        "ping" | "refreshSbx" | "refreshMcp" => Ok(()),
+        "ping" | "refreshSbx" => Ok(()),
+        "refreshMcp" => crate::integrations::refresh_mcp(state, project_id, args).await,
         "completeWelcome" => crate::team::complete_welcome(state, project_id, args),
         "updateAgent" => crate::team_edit::update_agent(state, project_id, args),
         "addAgent" => crate::team_edit::add_agent(state, project_id, args),
@@ -658,7 +659,10 @@ async fn execute_ws_command(
         "setProxy" => crate::secrets::set_proxy(state, project_id, args),
         "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
         "setLabMode" => crate::integrations::set_lab_mode(state, project_id, args),
-        "addMcp" => crate::integrations::add_mcp(state, project_id, args),
+        "addMcp" => {
+            crate::integrations::add_mcp(state, project_id, args)?;
+            crate::integrations::refresh_mcp(state, project_id, &[args.first().map_or(Value::Null, |a| a["name"].clone())]).await
+        }
         "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
         "setAgentMcp" => crate::integrations::set_agent_mcp(state, project_id, args),
         "saveConnection" => crate::integrations::save_connection(state, project_id, args),

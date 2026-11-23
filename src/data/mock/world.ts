@@ -330,9 +330,9 @@ export class World {
       },
       mcp: {
         servers: [
-          { name: "supabase-dev", transport: "remote http", status: "ready", nextStep: null },
-          { name: "stripe", transport: "remote http", status: "needs-auth", nextStep: "sbx mcp auth stripe" },
-          { name: "trigger", transport: "local stdio", status: "ready", nextStep: null },
+          { name: "supabase-dev", transport: "remote http", status: "ready", error: null, checkedAt: new Date().toISOString(), nextStep: null },
+          { name: "stripe", transport: "remote http", status: "needs-auth", error: null, checkedAt: null, nextStep: "sbx mcp auth stripe" },
+          { name: "trigger", transport: "remote http", status: "error", error: "trigger answered 503 Service Unavailable.", checkedAt: new Date().toISOString(), nextStep: null },
         ],
         attached: {},
         error: null,

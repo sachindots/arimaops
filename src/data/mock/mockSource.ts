@@ -591,7 +591,7 @@ export function createMockSource(): OfficeDataSource {
       const m = world.snap.mcp;
       const name = input.name.trim().toLowerCase();
       if (!m || !name || m.servers.some((s) => s.name === name)) return;
-      m.servers.push({ name, transport: input.command ? "local stdio" : "remote http", status: input.apiKey || input.command ? "ready" : "needs-auth", nextStep: null });
+      m.servers.push({ name, transport: "remote http", status: input.apiKey ? "ready" : "needs-auth", error: null, checkedAt: new Date().toISOString(), nextStep: null });
       world.activity("config", null, `Added MCP server ${name}`);
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },

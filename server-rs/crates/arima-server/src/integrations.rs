@@ -275,10 +275,54 @@ pub fn set_agent_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Resu
 pub fn mcp_state(state: &AppState, team: &[Value], checked_at: &str) -> Value {
     let servers: Vec<Value> = mcp_servers(state)
         .iter()
-        .map(|s| json!({ "name": s["name"], "transport": "remote http", "status": "ready", "nextStep": null }))
+        .map(|s| {
+            json!({ "name": s["name"], "transport": "remote http", "status": s["status"].as_str().unwrap_or("unchecked"),
+                "error": s.get("error").cloned().unwrap_or(Value::Null), "checkedAt": s.get("checkedAt").cloned().unwrap_or(Value::Null), "nextStep": null })
+        })
         .collect();
     let attached: Map<String, Value> = team.iter().filter_map(|a| Some((a["id"].as_str()?.to_owned(), a["mcp"].clone()))).collect();
     json!({ "servers": servers, "attached": attached, "error": null, "checkedAt": checked_at })
+}
+
+fn mcp_key(state: &AppState, name: &str) -> Option<String> {
+    let row = state.inner.vault_secrets.get_by_id(&format!("mcp-{name}")).ok().flatten()?;
+    let raw = state.inner.auth.vault().decrypt(format!("vault-secret:{}", row.id).as_bytes(), &row.secret_enc).ok()?;
+    Some(String::from_utf8_lossy(&raw).into_owned())
+}
+
+/// Probes the named MCP server, or every one when no name is given, and records each result for the snapshot.
+pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    use futures_util::StreamExt;
+    let only = args.first().map(|v| text(v, 40)).filter(|n| !n.is_empty());
+    let targets: Vec<(String, String)> = mcp_servers(state)
+        .iter()
+        .filter(|s| only.as_ref().is_none_or(|n| s["name"] == n.as_str()))
+        .filter_map(|s| Some((s["name"].as_str()?.to_owned(), s["url"].as_str()?.to_owned())))
+        .collect();
+    if let (Some(n), true) = (&only, targets.is_empty()) {
+        return Err(format!("No MCP server \"{n}\"."));
+    }
+    let results: Vec<(String, Result<Vec<Value>, String>)> = futures_util::stream::iter(targets)
+        .map(|(name, url)| async move {
+            let result = probe(&name, &url, mcp_key(state, &name)).await;
+            (name, result)
+        })
+        .buffer_unordered(4)
+        .collect()
+        .await;
+    let now = Utc::now().to_rfc3339();
+    // Re-read after the probes so a server added or removed meanwhile isn't lost or brought back.
+    let mut servers = mcp_servers(state);
+    for s in &mut servers {
+        if let Some((_, result)) = results.iter().find(|(n, _)| s["name"] == n.as_str()) {
+            s["status"] = json!(if result.is_ok() { "ready" } else { "error" });
+            s["error"] = result.as_ref().err().map_or(Value::Null, |e| json!(e));
+            s["checkedAt"] = json!(now);
+        }
+    }
+    save_setting(state, "mcpServers", &json!(servers))?;
+    broadcast(state, project_id);
+    Ok(())
 }
 
 // ---------------------------------------------------------------- tool connections
@@ -352,21 +396,38 @@ fn parse_tools(body: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// One `tools/list` call through the endpoint guard, connecting only to the addresses that passed it.
+async fn probe(name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
+    let url = check_endpoint(endpoint)?;
+    let call = async {
+        let pinned = resolve_endpoint(&url).await?;
+        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
+        if let Some((host, addrs)) = pinned {
+            builder = builder.resolve_to_addrs(&host, &addrs);
+        }
+        let mut req = builder
+            .build()
+            .map_err(db_err)?
+            .post(url.clone())
+            .header("Accept", "application/json, text/event-stream")
+            .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
+        if let Some(key) = bearer {
+            req = req.bearer_auth(key);
+        }
+        let resp = req.send().await.map_err(|e| format!("Couldn't reach {name}: {}", e.without_url()))?;
+        if !resp.status().is_success() {
+            return Err(format!("{name} answered {}.", resp.status()));
+        }
+        Ok(parse_tools(&resp.text().await.map_err(db_err)?))
+    };
+    // The request has its own timeout; this also bounds the name lookup and reading the body.
+    tokio::time::timeout(std::time::Duration::from_secs(10), call).await.map_err(|_| format!("{name} didn't answer in time."))?
+}
+
 pub async fn check_connection(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let name = text(args.first().unwrap_or(&Value::Null), 40);
     let conn = state.inner.connections.list().map_err(db_err)?.into_iter().find(|c| c.id == name).ok_or_else(|| format!("No connection \"{name}\"."))?;
-    let url = check_endpoint(&conn.endpoint)?;
-    let pinned = resolve_endpoint(&url).await?;
-    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
-    if let Some((host, addrs)) = pinned {
-        builder = builder.resolve_to_addrs(&host, &addrs);
-    }
-    let mut req = builder
-        .build()
-        .map_err(db_err)?
-        .post(url)
-        .header("Accept", "application/json, text/event-stream")
-        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
+    let mut bearer = None;
     if conn.has_secret {
         let enc: Option<String> = state
             .inner
@@ -374,15 +435,9 @@ pub async fn check_connection(state: &AppState, project_id: &str, args: &[Value]
             .read(|c| c.query_row("SELECT secret_enc FROM tool_connections WHERE id = ?1", [&name], |r| r.get(0)).optional().map_err(DbError::from))
             .map_err(db_err)?
             .flatten();
-        if let Some(bytes) = enc.and_then(|e| state.inner.auth.vault().decrypt(format!("tool-connection:{name}").as_bytes(), &e).ok()) {
-            req = req.bearer_auth(String::from_utf8_lossy(&bytes));
-        }
+        bearer = enc.and_then(|e| state.inner.auth.vault().decrypt(format!("tool-connection:{name}").as_bytes(), &e).ok()).map(|b| String::from_utf8_lossy(&b).into_owned());
     }
-    let resp = req.send().await.map_err(|e| format!("Couldn't reach {name}: {}", e.without_url()))?;
-    if !resp.status().is_success() {
-        return Err(format!("{name} answered {}.", resp.status()));
-    }
-    let tools = parse_tools(&resp.text().await.map_err(db_err)?);
+    let tools = probe(&name, &conn.endpoint, bearer).await?;
     let mut meta = setting(state, &conn_meta_key(&name)).unwrap_or_else(|| json!({}));
     meta["tools"] = json!(tools);
     meta["probedAt"] = json!(Utc::now().to_rfc3339());

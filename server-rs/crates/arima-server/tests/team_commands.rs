@@ -351,6 +351,32 @@ async fn sandbox_mcp_connections_and_template_library() {
     assert!(int::connections_state(&state).is_empty());
     assert!(int::check_connection(&state, &pid, &[json!("notes")]).await.is_err());
 
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for status in ["503 Service Unavailable", "200 OK"] {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = s.read(&mut buf).await.unwrap();
+            assert!(String::from_utf8_lossy(&buf[..n]).to_lowercase().contains("authorization: bearer mcp-key-7"), "the server's stored key is sent");
+            let body = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"#;
+            s.write_all(format!("HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+        }
+    });
+    int::add_mcp(&state, &pid, &[json!({ "name": "probe", "url": format!("http://127.0.0.1:{port}/mcp"), "apiKey": "mcp-key-7" })]).unwrap();
+    let server = |state: &AppState| arima_server::ws::build_initial_snapshot(state, Some(&pid))["snapshot"]["mcp"]["servers"][0].clone();
+    assert_eq!((server(&state)["status"].as_str(), server(&state)["checkedAt"].is_null()), (Some("unchecked"), true), "an unprobed server isn't reported ready");
+    int::refresh_mcp(&state, &pid, &[json!("probe")]).await.unwrap();
+    let failed = server(&state);
+    assert_eq!(failed["status"], "error");
+    assert!(failed["error"].as_str().unwrap().contains("503") && failed["checkedAt"].is_string(), "the failure and its time are reported");
+    int::refresh_mcp(&state, &pid, &[]).await.unwrap();
+    let ok = server(&state);
+    assert_eq!((ok["status"].as_str(), ok["error"].is_null()), (Some("ready"), true), "a later refresh replaces the failure");
+    assert!(int::refresh_mcp(&state, &pid, &[json!("ghost")]).await.is_err());
+    int::remove_mcp(&state, &pid, &[json!("probe")]).unwrap();
+
     let mut custom = team::load(&state, &pid).unwrap().template;
     custom["id"] = json!("my-team");
     custom["name"] = json!("My team");

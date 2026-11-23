@@ -227,7 +227,11 @@ export interface AgentConfig {
 export interface McpServer {
   name: string;
   transport: string; // "remote http" | "local stdio" | …
-  status: string; // "ready" | "needs-auth" | …
+  status: string; // "ready" | "error" | "unchecked" | "needs-auth" | …
+  /** Rust HQ: why the last check failed; null when it passed or hasn't run. */
+  error?: string | null;
+  /** Rust HQ: when the server was last checked (ISO time); null before the first check. */
+  checkedAt?: string | null;
   nextStep: string | null; // e.g. "sbx mcp auth arcjet"
 }
 

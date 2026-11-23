@@ -1,23 +1,26 @@
 import { useState } from "react";
 import { chosenTools, STACK_CATALOG } from "../../data/stack";
 import { officeActions, useOffice } from "../../store/office";
-import { Field, SectionTitle } from "../kit";
+import { ago, Field, SectionTitle, useNow } from "../kit";
 import { TerminalView } from "../drawers/TerminalView";
 import { ask } from "../dialog";
 
 const STATUS: Record<string, [string, string]> = {
-  ready: ["Ready", "#10b981"],
-  "needs-auth": ["Needs sign-in", "#8b5cf6"],
+  ready: ["Ready", "var(--color-green)"],
+  error: ["Can't connect", "var(--color-red)"],
+  unchecked: ["Not checked", "var(--color-muted)"],
+  "needs-auth": ["Needs sign-in", "var(--color-amber)"],
 };
 
-/** MCP servers from Docker Sandboxes' registry, and which agents get them. */
+/** Remote MCP servers registered with HQ, their last check, and which agents get them. */
 export function McpSettings() {
   const mcp = useOffice((s) => s.snap?.mcp);
   const team = useOffice((s) => s.snap?.config.team) ?? [];
   const stack = useOffice((s) => s.snap?.config.stack);
   const [signingIn, setSigningIn] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", url: "", apiKey: "", command: "", args: "", local: false });
+  const [form, setForm] = useState({ name: "", url: "", apiKey: "" });
+  const now = useNow(30_000);
   if (!mcp) return <p className="text-[13px] text-muted">Loading MCP servers…</p>;
 
   const servers = mcp.servers;
@@ -28,16 +31,11 @@ export function McpSettings() {
     officeActions.setAgentMcp(agentId, on ? [...cur, name] : cur.filter((n) => n !== name));
   };
   const stuck = team.flatMap((a) => (mcp.attached[a.id] ?? []).filter((n) => !(a.mcp ?? []).includes(n)).map((n) => ({ agent: a, name: n })));
-  const tip = form.local ? null : missingParam(form.url);
-  const canAdd = /^[a-z0-9][a-z0-9_-]{0,39}$/.test(form.name.trim().toLowerCase()) && (form.local ? form.command.trim() : form.url.trim());
+  const tip = missingParam(form.url);
+  const canAdd = /^[a-z0-9][a-z0-9_-]{0,39}$/.test(form.name.trim().toLowerCase()) && form.url.trim();
   const add = () => {
-    officeActions.addMcp({
-      name: form.name.trim().toLowerCase(),
-      ...(form.local
-        ? { command: form.command.trim(), args: form.args.trim() ? form.args.split(",").map((a) => a.trim()).filter(Boolean) : undefined }
-        : { url: form.url.trim(), apiKey: form.apiKey.trim() || undefined }),
-    });
-    setForm({ name: "", url: "", apiKey: "", command: "", args: "", local: false });
+    officeActions.addMcp({ name: form.name.trim().toLowerCase(), url: form.url.trim(), apiKey: form.apiKey.trim() || undefined });
+    setForm({ name: "", url: "", apiKey: "" });
   };
 
   return (
@@ -59,14 +57,15 @@ export function McpSettings() {
         ) : (
           <div className="panel">
             {servers.map((s) => {
-              const [label, color] = STATUS[s.status] ?? [s.status, "#6b7280"];
+              const [label, color] = STATUS[s.status] ?? [s.status, "var(--color-muted)"];
               return (
-                <div key={s.name} className="flex items-center gap-3 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
+                <div key={s.name} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t-2 border-dashed border-cream-3 px-3 py-2 first:border-t-0">
                   <b className="font-term text-[13px]">{s.name}</b>
                   <span className="text-[12px] text-muted">{s.transport}</span>
                   <span className="chip chip-dot text-[12px]" style={{ ["--c" as string]: color }}>
                     {label}
                   </span>
+                  {s.checkedAt && <span className="text-[12px] text-muted">checked {ago(s.checkedAt, now)} ago</span>}
                   <span className="flex-1" />
                   {s.status === "needs-auth" && (
                     <button
@@ -100,6 +99,7 @@ export function McpSettings() {
                       Delete…
                     </button>
                   )}
+                  {s.error && <p className="m-0 w-full text-[12px] text-red">{s.error}</p>}
                 </div>
               );
             })}
@@ -182,7 +182,7 @@ export function McpSettings() {
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[13px]">
             <span className="text-muted">From your stack:</span>
             {suggestions.map((t) => (
-              <button key={t.id} className="btn px-2 text-[12px]" onClick={() => setForm({ ...form, local: false, name: t.id, url: t.mcp ?? "" })}>
+              <button key={t.id} className="btn px-2 text-[12px]" onClick={() => setForm({ ...form, name: t.id, url: t.mcp ?? "" })}>
                 {t.name}
               </button>
             ))}
@@ -192,31 +192,19 @@ export function McpSettings() {
           <Field label="Name" hint="Letters, numbers, - or _">
             <input className="field w-full font-term text-[13px]" value={form.name} placeholder="supabase" onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          {form.local ? (
-            <Field label="Command" hint="A program on this Mac (local stdio server)">
-              <input className="field w-full font-term text-[13px]" value={form.command} placeholder="npx" onChange={(e) => setForm({ ...form, command: e.target.value })} />
-            </Field>
-          ) : (
-            <Field label="URL">
-              <input className="field w-full font-term text-[13px]" value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} />
-            </Field>
-          )}
-          {form.local ? (
-            <Field label="Arguments" hint="Comma separated">
-              <input className="field w-full font-term text-[13px]" value={form.args} placeholder="-y, @supabase/mcp-server" onChange={(e) => setForm({ ...form, args: e.target.value })} />
-            </Field>
-          ) : (
-            <Field label="API key (optional)" hint="Sent as a Bearer token. Stored encrypted in HQ's vault and never shown again. Leave empty if the server needs none.">
-              <input
-                type="password"
-                autoComplete="off"
-                className="field w-full font-term text-[13px]"
-                value={form.apiKey}
-                placeholder="••••"
-                onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-              />
-            </Field>
-          )}
+          <Field label="URL">
+            <input className="field w-full font-term text-[13px]" value={form.url} placeholder="https://mcp.example.com/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} />
+          </Field>
+          <Field label="API key (optional)" hint="Sent as a Bearer token. Stored encrypted in HQ's vault and never shown again. Leave empty if the server needs none.">
+            <input
+              type="password"
+              autoComplete="off"
+              className="field w-full font-term text-[13px]"
+              value={form.apiKey}
+              placeholder="••••"
+              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+            />
+          </Field>
         </div>
         {tip && <p className="mt-2 text-[13px] text-muted">{tip}</p>}
         <div className="mt-3 flex items-center gap-3">
