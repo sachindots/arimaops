@@ -14,7 +14,7 @@ use arima_core::{
     OutboxMessageKind, QuestionAnswer, ServerRole, VoiceProvider, WsClientMessage, WsCommandAck,
     WsServerEvent,
 };
-use arima_db::{is_owner_only_gate, DbError, ResolveDecisionInput};
+use arima_db::{is_owner_only_gate, ResolveDecisionInput};
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -732,29 +732,7 @@ async fn execute_ws_command(
             state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
             stopped
         }
-        "createBoard" => {
-            let title = args
-                .first()
-                .and_then(Value::as_str)
-                .unwrap_or("New Board")
-                .trim()
-                .to_owned();
-            let board_id = format!("B-{}", uuid::Uuid::new_v4().simple());
-            let now_ms = Utc::now().timestamp_millis();
-            state
-                .inner
-                .db
-                .transaction(|conn| {
-                    conn.execute(
-                        "INSERT INTO boards (id, project_id, name, status, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
-                        rusqlite::params![board_id, project_id, title, now_ms],
-                    )?;
-                    Ok::<_, DbError>(())
-                })
-                .map_err(|e| e.to_string())?;
-            Ok(())
-        }
+        "createBoard" => crate::planning::create_board(state, project_id, args.first().and_then(Value::as_str).unwrap_or("")).map(drop),
         "sendMessage" | "askTeam" => {
             let (to_id, text) = if cmd == "askTeam" {
                 ("lead", args.first().and_then(Value::as_str).unwrap_or(""))

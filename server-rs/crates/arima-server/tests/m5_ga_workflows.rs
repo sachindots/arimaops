@@ -327,9 +327,9 @@ async fn m5_tool_connections_vault_no_secret_echo_and_mcp_propose_send_owner_onl
             .unwrap(),
     )
     .unwrap();
-    let dec_id = mcp_val["result"]["decision"]["id"].as_str().unwrap().to_owned();
-    assert_eq!(mcp_val["result"]["ownerOnly"], true);
-    assert_eq!(mcp_val["result"]["decision"]["payload"]["kind"], "send-proposal");
+    let dec_id = mcp_val["result"]["structuredContent"]["decision"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(mcp_val["result"]["structuredContent"]["ownerOnly"], true);
+    assert_eq!(mcp_val["result"]["structuredContent"]["decision"]["payload"]["kind"], "send-proposal");
 
     // GET /api/connections lists connection (without secret) + pendingSends!
     let (st_list, list_json) = send_json(&app, Method::GET, "/api/connections", &view_tok, None).await;

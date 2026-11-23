@@ -184,6 +184,7 @@ pub async fn remove_agent(state: &AppState, project_id: &str, args: &[Value]) ->
         )
         .map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM agent_secrets WHERE project_id = ?1 AND agent_id = ?2", rusqlite::params![project_id, id]).map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM mcp_tokens WHERE project_id = ?1 AND agent_id = ?2", rusqlite::params![project_id, id]).map_err(|e| e.to_string())?;
         Ok(())
     })
 }

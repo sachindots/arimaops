@@ -63,13 +63,32 @@ pub fn messages_for(state: &AppState, project_id: &str) -> Vec<Value> {
 
 /// Records the owner's message, shows it in Chat, and types it into the agent if it is running.
 pub async fn send_from_owner(state: &AppState, project_id: &str, to: &str, text: &str) -> Result<(), String> {
+    let (to_id, mut message) = record_message(state, project_id, "you", to, text)?;
+    if deliver_pending(state, project_id, &to_id).await > 0 {
+        message["delivered"] = json!("typed");
+        broadcast_message(state, project_id, &message);
+    }
+    Ok(())
+}
+
+/// An agent's message to a teammate (typed in the background) or to the owner ("you"), shown in Chat.
+pub fn send_from_agent(state: &AppState, project_id: &str, from: &str, to: &str, text: &str) -> Result<(), String> {
+    let (to_id, _) = record_message(state, project_id, from, to, text)?;
+    if to_id != "you" {
+        kick(state, project_id, &to_id);
+    }
+    Ok(())
+}
+
+/// Saves a message, queues it for an agent recipient and shows it in Chat. Returns the recipient and the message.
+fn record_message(state: &AppState, project_id: &str, from: &str, to: &str, text: &str) -> Result<(String, Value), String> {
     let text = text.trim();
     if text.is_empty() {
         return Err("Type a message first.".into());
     }
     let to_id = if to == "lead" {
         lead_id(state, project_id).ok_or("This project has no team yet.")?
-    } else if seat_ids(state, project_id).iter().any(|(id, _)| id == to) {
+    } else if (to == "you" && from != "you") || seat_ids(state, project_id).iter().any(|(id, _)| id == to) {
         to.to_owned()
     } else {
         return Err(format!("No agent \"{to}\"."));
@@ -81,24 +100,23 @@ pub async fn send_from_owner(state: &AppState, project_id: &str, to: &str, text:
         .db
         .transaction(|conn| {
             conn.execute(
-                "INSERT INTO messages (id, project_id, from_id, to_id, body, created_at) VALUES (?1, ?2, 'you', ?3, ?4, ?5)",
-                rusqlite::params![id, project_id, to_id, text, now],
+                "INSERT INTO messages (id, project_id, from_id, to_id, body, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![id, project_id, from, to_id, text, now],
             )?;
             Ok::<_, arima_db::DbError>(())
         })
         .map_err(|e| e.to_string())?;
-    state
-        .inner
-        .supervisor
-        .enqueue_outbox(project_id, &to_id, OutboxMessageKind::Text, &json!({ "from": "you", "text": text }).to_string())
-        .map_err(|e| e.to_string())?;
-    let mut message = json!({ "id": id, "fromId": "you", "toId": to_id, "text": text, "at": iso(now), "delivered": "queued" });
-    broadcast_message(state, project_id, &message);
-    if deliver_pending(state, project_id, &to_id).await > 0 {
-        message["delivered"] = json!("typed");
-        broadcast_message(state, project_id, &message);
+    let mut message = json!({ "id": id, "fromId": from, "toId": to_id, "text": text, "at": iso(now) });
+    if to_id != "you" {
+        state
+            .inner
+            .supervisor
+            .enqueue_outbox(project_id, &to_id, OutboxMessageKind::Text, &json!({ "from": from, "text": text }).to_string())
+            .map_err(|e| e.to_string())?;
+        message["delivered"] = json!("queued");
     }
-    Ok(())
+    broadcast_message(state, project_id, &message);
+    Ok((to_id, message))
 }
 
 fn broadcast_message(state: &AppState, project_id: &str, message: &Value) {
