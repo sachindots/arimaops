@@ -195,7 +195,6 @@ impl WsHub {
 
 #[derive(Debug, Deserialize)]
 pub struct WsQuery {
-    pub token: Option<String>,
     pub project: Option<String>,
 }
 
@@ -228,33 +227,12 @@ pub async fn ws_handler(
         Err(_) => return (StatusCode::UNAUTHORIZED, "Invalid session cookie").into_response(),
     };
 
-    let is_local = state.is_local_origin(origin.as_deref(), peer_ip, host_hdr.as_deref())
-        || (origin.is_none() && peer_ip.is_loopback());
-
-    let mut session = if let Some(ref tok) = raw_cookie {
-        match state.inner.auth.verify_session(tok, false) {
-            Ok(Some(s)) => Some((tok.clone(), s)),
-            _ => None,
-        }
-    } else {
-        None
-    };
-
-    if session.is_none() {
-        if let Some(ref tok) = query.token {
-            if let Ok((raw_tok, _)) = state.inner.auth.exchange_bootstrap_token(
-                tok,
-                &state.inner.config.bootstrap_token,
-                is_local,
-                origin.clone(),
-                "WS Bootstrap".into(),
-            ) {
-                if let Ok(Some(s)) = state.inner.auth.verify_session(&raw_tok, false) {
-                    session = Some((raw_tok, s));
-                }
-            }
-        }
-    }
+    // Only the device cookie signs a socket in: the start-up link is traded for one by POST /api/login first,
+    // so the long-lived token never travels in a WebSocket URL.
+    let session = raw_cookie.and_then(|tok| match state.inner.auth.verify_session(&tok, false) {
+        Ok(Some(s)) => Some((tok, s)),
+        _ => None,
+    });
 
     let Some((session_token, verified)) = session else {
         return (StatusCode::UNAUTHORIZED, "Sign in").into_response();

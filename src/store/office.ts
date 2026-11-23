@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { createMockSource } from "../data/mock/mockSource";
 import type { ConnectionStatus, DataPreset, OfficeDataSource, OfficeEvent, SimSpeed } from "../data/source";
 import { createWsSource } from "../data/ws/wsSource";
+import { exchangeLinkToken } from "./auth";
 import type { StackConfig } from "../data/stack";
 import type {
   AccountInput,
@@ -86,23 +87,17 @@ function hqToken(): string | null {
     }
     remember("hq-live", "1");
     remember("hq-role", role);
-    void fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: fromUrl }), credentials: "same-origin" })
-      .then((res) => {
-        if (!res.ok) return;
-        try {
-          sessionStorage.removeItem("hq-token");
-        } catch {
-          /* private mode */
-        }
-      })
-      .catch(() => {});
+    exchangeLinkToken(fromUrl);
     url.searchParams.delete("token");
     url.searchParams.delete("role");
     history.replaceState(null, "", url.toString()); // keep the token out of history and screenshots
     return fromUrl;
   }
   try {
-    return sessionStorage.getItem("hq-token");
+    // A reload before the exchange finished: try it again.
+    const left = sessionStorage.getItem("hq-token");
+    if (left) exchangeLinkToken(left);
+    return left;
   } catch {
     return null;
   }
@@ -153,7 +148,7 @@ export const isViewer = (() => {
     return false;
   }
 })();
-const source: OfficeDataSource = !forceMock && (token || loggedIn) ? createWsSource(token ?? "", currentProject) : createMockSource();
+const source: OfficeDataSource = !forceMock && (token || loggedIn) ? createWsSource(currentProject) : createMockSource();
 
 export const useOffice = create<OfficeState>(() => ({
   snap: null,

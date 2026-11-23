@@ -5,14 +5,6 @@ import { useEffect, useState } from "react";
 
 export type Screens = Record<string, Record<string, string>>; // project → agent → text
 
-function token(): string {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /** Polls the previews of `projects` every `ms` while the page is visible. */
 export function useScreens(projects: string[], live: boolean, ms = 2000): Screens {
   const [screens, setScreens] = useState<Screens>({});
@@ -22,12 +14,11 @@ export function useScreens(projects: string[], live: boolean, ms = 2000): Screen
     let stop = false;
     const tick = async () => {
       if (document.hidden) return;
-      const tok = token();
       const next: Screens = {};
       await Promise.all(
         key.split(",").map(async (p) => {
           try {
-            const r = await fetch(`/api/projects/${encodeURIComponent(p)}/screens?lines=40${tok ? `&token=${encodeURIComponent(tok)}` : ""}`, { credentials: "same-origin" });
+            const r = await fetch(`/api/projects/${encodeURIComponent(p)}/screens?lines=40`, { credentials: "same-origin" });
             if (r.ok) next[p] = ((await r.json()) as { screens: Record<string, string> }).screens;
           } catch {
             /* offline: keep the last preview */

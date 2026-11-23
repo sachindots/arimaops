@@ -2,13 +2,13 @@
 // Server → browser: OfficeEvent JSON. Browser → server: { cmd, args }.
 
 import type { OfficeDataSource, OfficeEvent } from "../source";
-import { markSignedOut } from "../../store/auth";
+import { linkLoginDone, markSignedOut } from "../../store/auth";
 import { ask } from "../../ui/dialog";
 
 let cmdCounter = 0;
 
 /** `watch`: a read-only feed for the one-building office (no terminal output; the server ignores commands). */
-export function createWsSource(token: string, project = "", opts: { watch?: boolean } = {}): OfficeDataSource {
+export function createWsSource(project = "", opts: { watch?: boolean } = {}): OfficeDataSource {
   let ws: WebSocket | null = null;
   const queue: string[] = [];
 
@@ -100,9 +100,8 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
         if (!active) return;
         onStatus?.(retry ? "reconnecting" : "connecting");
         const proto = location.protocol === "https:" ? "wss" : "ws";
-        // No token: the hq_sid cookie from /api/login authenticates (same origin).
+        // The hq_sid cookie from /api/login authenticates (same origin); no token ever goes in the URL.
         const q = new URLSearchParams();
-        if (token) q.set("token", token);
         if (project) q.set("project", project);
         if (opts.watch) q.set("watch", "1");
         const sock = new WebSocket(`${proto}://${location.host}/ws${q.size ? `?${q}` : ""}`);
@@ -150,7 +149,7 @@ export function createWsSource(token: string, project = "", opts: { watch?: bool
           timer = window.setTimeout(open, Math.min(5000, 400 * retry));
         };
       };
-      open();
+      void linkLoginDone().then(open);
 
       // Signing in while the socket is waiting out a retry: connect now instead of up to 5 seconds later.
       const nudge = () => {

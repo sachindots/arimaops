@@ -3,13 +3,12 @@
 //! Hybrid agent orchestration engine for ArimaOps v2.0 (Milestone 2):
 //! - Native Rust HTTP+SSE runners (`providers`: Anthropic, OpenAI, Gemini, OpenRouter/DeepSeek, Bedrock)
 //! - Per-agent Tokio supervisor (`supervisor`) with state locks, setup sequencing, and persisted desired state
-//! - Docker Engine spec builder (`docker`) & `sbx` adapter (`sbx`) with mandatory default CPU/RAM quotas (`2 CPU / 2048 MB`)
+//! - Docker Engine spec builder (`docker`) with mandatory default CPU/RAM quotas (`2 CPU / 2048 MB`)
 //! - Incremental byte-offset JSONL usage tailer (`usage`) with truncation/rotation detection
 
 pub mod docker;
 pub mod engine;
 pub mod providers;
-pub mod sbx;
 pub mod supervisor;
 pub mod usage;
 
@@ -22,7 +21,6 @@ pub use providers::{
     ModelResponse, ModelRunner, ModelStreamEvent, ProviderKind, SeatRole, SseStreamAccumulator,
     TokenUsage, ToolDefinition,
 };
-pub use sbx::{SbxAdapter, SbxCommandSpec};
 pub use supervisor::{
     AgentSupervisor, SetupSequenceStep, SupervisedAgentSnapshot, SupervisedSessionState,
 };
@@ -119,20 +117,6 @@ mod tests {
             egress_proxy_url: None,
         });
         assert!(secret_err.is_err());
-
-        // Sbx adapter also enforces 2 CPU / 2048 MB defaults and stdin secret passing.
-        let sbx = SbxAdapter::default();
-        let run_cmd = sbx
-            .build_run_command("hq-alpha-coder", None, None, "claude", &[])
-            .unwrap();
-        assert_eq!(run_cmd.cpus, 2);
-        assert_eq!(run_cmd.memory_mb, 2048);
-
-        let sec_cmd = sbx
-            .build_set_secret_command(Some("hq-alpha-coder"), "anthropic", "sk-ant-secret")
-            .unwrap();
-        assert_eq!(sec_cmd.stdin_secret.as_deref(), Some("sk-ant-secret"));
-        assert!(!sec_cmd.argv.iter().any(|a| a.contains("sk-ant-secret")));
     }
 
     #[tokio::test]

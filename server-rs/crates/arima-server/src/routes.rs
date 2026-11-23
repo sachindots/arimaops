@@ -475,14 +475,8 @@ async fn health() -> Json<Value> {
     }))
 }
 
-#[derive(Debug, Deserialize)]
-struct TokenQuery {
-    token: Option<String>,
-}
-
 async fn auth_me(
     State(state): State<AppState>,
-    Query(q): Query<TokenQuery>,
     headers: HeaderMap,
     PeerIp(peer_ip): PeerIp,
 ) -> Result<Response, ApiError> {
@@ -506,24 +500,6 @@ async fn auth_me(
             return Ok(Json(json!({
                 "role": verified.role,
                 "user": verified.user.as_ref().map(|u| json!({ "id": u.id, "name": u.name })),
-                "people": people,
-                "passkeysAvailable": passkeys_available
-            }))
-            .into_response());
-        }
-    }
-
-    // Legacy ?token= read-only check during first bootstrap before POST /api/login finishes.
-    if let Some(ref tok) = q.token {
-        let is_local = state.is_local_origin(
-            ctx.origin.as_deref(),
-            ctx.peer_ip,
-            ctx.host.as_deref(),
-        ) || (!ctx.remote && ctx.peer_ip.is_loopback());
-        if tok == &state.inner.config.bootstrap_token && (people == 0 || is_local) {
-            return Ok(Json(json!({
-                "role": "owner",
-                "user": null,
                 "people": people,
                 "passkeysAvailable": passkeys_available
             }))

@@ -15,14 +15,6 @@ export interface AgentUsage extends Tokens {
 
 const total = (t: Tokens) => t.input + t.cached + t.output;
 
-function token(): string {
-  try {
-    return sessionStorage.getItem("hq-token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /** Demo numbers: each agent's live token count spread over 24 slices by a seeded generator, rough cost at $3/M. */
 function demoUsage(agents: { agentId: string; usage?: Tokens | null }[], days: number): AgentUsage[] {
   return agents
@@ -52,8 +44,7 @@ export function useAgentUsage(days = 1) {
     const tick = async () => {
       if (document.hidden) return;
       try {
-        const tok = token();
-        const r = await fetch(`/api/projects/${encodeURIComponent(projectId)}/usage?days=${days}${tok ? `&token=${encodeURIComponent(tok)}` : ""}`, { credentials: "same-origin" });
+        const r = await fetch(`/api/projects/${encodeURIComponent(projectId)}/usage?days=${days}`, { credentials: "same-origin" });
         if (r.ok && !stop) {
           const data = (await r.json()) as { agents?: AgentUsage[] };
           setRows(Array.isArray(data.agents) ? data.agents : []);

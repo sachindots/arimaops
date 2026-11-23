@@ -77,74 +77,6 @@ impl SeatRole {
             }
         }
     }
-
-    /// Built-in MCP tool definitions exposed to this seat role.
-    #[must_use]
-    pub fn default_tools(self) -> Vec<ToolDefinition> {
-        let mut tools = vec![
-            ToolDefinition {
-                name: "ask_user".into(),
-                description: "Ask the user structured multiple-choice questions with a (Recommended) default.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "title": { "type": "string" },
-                        "details": { "type": "string" },
-                        "questions": { "type": "array" }
-                    },
-                    "required": ["title", "questions"]
-                }),
-            },
-            ToolDefinition {
-                name: "request_meeting".into(),
-                description: "Request an interactive Standup or Discussion session with the team and owner.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "title": { "type": "string" },
-                        "urgency": { "type": "string", "enum": ["low", "normal", "high"] },
-                        "agenda": { "type": "array", "items": { "type": "string" } }
-                    },
-                    "required": ["title"]
-                }),
-            },
-        ];
-
-        if matches!(self, Self::Reviewer | Self::SecondOpinion | Self::Lead) {
-            tools.push(ToolDefinition {
-                name: "propose_second_opinion".into(),
-                description: "Present side-by-side Option A vs Option B rationale and risks.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "title": { "type": "string" },
-                        "optionA": { "type": "object" },
-                        "optionB": { "type": "object" }
-                    },
-                    "required": ["title", "optionA", "optionB"]
-                }),
-            });
-        }
-
-        if matches!(self, Self::Reviewer | Self::Verifier | Self::Lead) {
-            tools.push(ToolDefinition {
-                name: "record_gate".into(),
-                description: "Record gate pass or fail with full Markdown rationale.".into(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "taskId": { "type": "string" },
-                        "gateId": { "type": "string" },
-                        "state": { "type": "string", "enum": ["passed", "failed", "reset"] },
-                        "note": { "type": "string" }
-                    },
-                    "required": ["taskId", "gateId", "state"]
-                }),
-            });
-        }
-
-        tools
-    }
 }
 
 /// Tool schema exposed to LLM providers.
@@ -197,7 +129,7 @@ impl ModelRequest {
             seat_role,
             system_prompt: None,
             messages,
-            tools: seat_role.default_tools(),
+            tools: Vec::new(),
             max_tokens: 4096,
             temperature: 0.2,
         }
