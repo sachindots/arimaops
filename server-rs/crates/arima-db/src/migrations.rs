@@ -49,7 +49,23 @@ const MIGRATIONS: &[Migration] = &[
         name: "007_agent_secrets",
         sql: AGENT_SECRETS_SCHEMA,
     },
+    Migration {
+        version: 8,
+        name: "008_mcp_tokens",
+        sql: MCP_TOKENS_SCHEMA,
+    },
 ];
+
+/// One HQ tool-server bearer token per agent, stored as a SHA-256 hex digest so it survives an HQ restart.
+const MCP_TOKENS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS mcp_tokens (
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id    TEXT NOT NULL,
+    token_hash  TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (project_id, agent_id)
+);
+"#;
 
 /// App variables and service keys, encrypted with the vault key. `agent_id` is '' for "every agent".
 const AGENT_SECRETS_SCHEMA: &str = r#"

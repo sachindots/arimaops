@@ -257,7 +257,7 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
     )
     .await;
     assert_eq!(st, StatusCode::OK);
-    let q_decision_id = ask_rpc["result"]["decisionId"]
+    let q_decision_id = ask_rpc["result"]["structuredContent"]["decisionId"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -373,7 +373,7 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
     )
     .await;
     assert_eq!(st, StatusCode::OK);
-    let dis_id = dis_rpc["result"]["decisionId"].as_str().unwrap().to_owned();
+    let dis_id = dis_rpc["result"]["structuredContent"]["decisionId"].as_str().unwrap().to_owned();
     assert_eq!(
         state.inner.mcp.handler_invocations("proj-alpha", "lead"),
         2,
@@ -453,7 +453,7 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
         })),
     )
     .await;
-    assert_eq!(valid_gate_rpc["result"]["ok"], true);
+    assert_eq!(valid_gate_rpc["result"]["structuredContent"]["ok"], true);
 
     // Owner resolves the `owner_only` disagreement with `waive-gate` -> succeeds and records gate waiver!
     owner_ws
@@ -506,8 +506,8 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
         })),
     )
     .await;
-    let meeting_id = mtg_rpc["result"]["meetingId"].as_str().unwrap().to_owned();
-    let mtg_dec_id = mtg_rpc["result"]["decisionId"].as_str().unwrap().to_owned();
+    let meeting_id = mtg_rpc["result"]["structuredContent"]["meetingId"].as_str().unwrap().to_owned();
+    let mtg_dec_id = mtg_rpc["result"]["structuredContent"]["decisionId"].as_str().unwrap().to_owned();
 
     // Owner joins the requested meeting via WS `joinMeeting`.
     owner_ws

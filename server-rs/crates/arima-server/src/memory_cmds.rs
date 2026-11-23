@@ -116,6 +116,7 @@ pub fn update_finding(state: &AppState, project_id: &str, args: &[Value]) -> Res
         verified: p["verified"].as_bool(),
         cvss_vector: p["cvss"].as_str().or_else(|| p["cvssVector"].as_str()).map(|v| Some(v.to_owned())),
         title: p["title"].as_str().map(str::to_owned),
+        remediation_markdown: p["remediationMarkdown"].as_str().map(str::to_owned),
         ..UpdateFindingInput::default()
     };
     state.inner.findings.update_finding(project_id, &id, patch).map_err(err)?;

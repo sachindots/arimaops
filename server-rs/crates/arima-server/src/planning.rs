@@ -152,6 +152,47 @@ pub fn set_task_goal(state: &AppState, project_id: &str, args: &[Value]) -> Resu
     })
 }
 
+/// A new active board; returns its id.
+pub fn create_board(state: &AppState, project_id: &str, title: &str) -> Result<String, String> {
+    let title: String = match title.trim() {
+        "" => "New Board".to_owned(),
+        t => t.chars().take(120).collect(),
+    };
+    let id = format!("B-{}", uuid::Uuid::new_v4().simple());
+    write(state, project_id, |conn| {
+        conn.execute(
+            "INSERT INTO boards (id, project_id, name, status, created_at, updated_at) VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
+            rusqlite::params![id, project_id, title, Utc::now().timestamp_millis()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// Replaces a board's spec and bumps its version; returns the new version.
+pub fn write_spec(state: &AppState, project_id: &str, board_id: &str, markdown: &str) -> Result<i64, String> {
+    let markdown = markdown.trim();
+    if markdown.is_empty() {
+        return Err("A spec needs at least one requirement.".into());
+    }
+    let mut version = 0;
+    write(state, project_id, |conn| {
+        version = conn
+            .query_row(
+                "UPDATE boards SET spec_markdown = ?1, spec_version = spec_version + 1, updated_at = ?2
+                 WHERE project_id = ?3 AND id = ?4 RETURNING spec_version",
+                rusqlite::params![markdown, Utc::now().timestamp_millis(), project_id, board_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("No board \"{board_id}\"."))?;
+        Ok(())
+    })?;
+    Ok(version)
+}
+
 pub fn update_board(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let id = text(args.first().unwrap_or(&Value::Null), 20);
     let patch = args.get(1).cloned().unwrap_or(Value::Null);

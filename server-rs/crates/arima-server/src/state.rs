@@ -136,7 +136,7 @@ impl AppState {
         let usage = UsageRepo::new(db.clone());
         let supervisor = AgentSupervisor::new(db.clone(), 1);
         let runtime = crate::runtime::AgentRuntime::new(crate::runtime::RuntimeConfig::from_env(config.data_root.as_deref()));
-        let mcp = McpRegistry::new();
+        let mcp = McpRegistry::new(db.clone());
         let standups = StandupScheduler::new();
         let github = GithubSyncService::new(db.clone());
         let egress_policy = Arc::new(DynamicScopePolicyProvider::new(EgressPolicy::default()));

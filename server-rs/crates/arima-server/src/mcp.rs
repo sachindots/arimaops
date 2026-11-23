@@ -10,10 +10,11 @@ use arima_core::{
     QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload, ServerRole,
     VisualDecision, VoiceProvider, WsServerEvent,
 };
-use arima_db::{is_owner_only_gate, CreateFindingInput, DbError};
+use arima_db::{is_owner_only_gate, CreateFindingInput, CreateMemoryInput, Db, DbError, MemoryStatusFilter};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 use crate::meetings::{start_or_request_meeting, StartMeetingInput};
@@ -27,59 +28,64 @@ pub struct CachedMcpHandler {
     pub invocations: AtomicU64,
 }
 
-#[derive(Debug, Clone)]
-struct AgentCredential {
-    project_id: String,
-    agent_id: String,
-    token: String,
+/// Registry of cached per-`(project_id, agent_id)` MCP handlers. Bearer tokens live in `mcp_tokens` as SHA-256 digests.
+#[derive(Debug)]
+pub struct McpRegistry {
+    db: Db,
+    handlers: Mutex<HashMap<(String, String), Arc<CachedMcpHandler>>>,
 }
 
-/// Registry of cached per-`(project_id, agent_id)` MCP handlers and bearer credentials.
-#[derive(Debug, Default)]
-pub struct McpRegistry {
-    handlers: Mutex<HashMap<(String, String), Arc<CachedMcpHandler>>>,
-    tokens: Mutex<HashMap<String, AgentCredential>>,
+fn token_digest(token: &str) -> String {
+    format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
 impl McpRegistry {
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(db: Db) -> Self {
+        Self { db, handlers: Mutex::default() }
     }
 
-    /// Issues (or replaces) a bearer token for `(project_id, agent_id)`.
+    /// Issues (or replaces) the bearer token for `(project_id, agent_id)`; only its digest is stored.
     pub fn issue_agent_token(&self, project_id: &str, agent_id: &str) -> String {
-        let token = format!(
-            "mcp_{}_{}_{}",
-            project_id,
-            agent_id,
-            uuid::Uuid::new_v4().simple()
-        );
-        if let Ok(mut guard) = self.tokens.lock() {
-            guard.insert(
-                format!("{project_id}:{agent_id}"),
-                AgentCredential {
-                    project_id: project_id.to_owned(),
-                    agent_id: agent_id.to_owned(),
-                    token: token.clone(),
-                },
-            );
+        let token = format!("mcp_{}", uuid::Uuid::new_v4().simple());
+        let stored = self.db.transaction(|conn| {
+            conn.execute(
+                "INSERT INTO mcp_tokens (project_id, agent_id, token_hash, created_at) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(project_id, agent_id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at",
+                rusqlite::params![project_id, agent_id, token_digest(&token), Utc::now().timestamp_millis()],
+            )?;
+            Ok::<_, DbError>(())
+        });
+        if let Err(e) = stored {
+            tracing::warn!(project_id, agent_id, "couldn't store the agent's MCP token: {e}");
         }
         token
     }
 
-    /// Verifies a bearer token in constant time and returns `(project_id, agent_id)`.
+    /// Revokes the bearer token for `(project_id, agent_id)`.
+    pub fn revoke_agent_token(&self, project_id: &str, agent_id: &str) {
+        let _ = self.db.transaction(|conn| {
+            conn.execute("DELETE FROM mcp_tokens WHERE project_id = ?1 AND agent_id = ?2", rusqlite::params![project_id, agent_id])?;
+            Ok::<_, DbError>(())
+        });
+    }
+
+    /// Verifies a bearer token against every stored digest in constant time and returns `(project_id, agent_id)`.
     #[must_use]
     pub fn verify_bearer_token(&self, candidate: &str) -> Option<(String, String)> {
-        let cand_bytes = candidate.as_bytes();
-        let Ok(guard) = self.tokens.lock() else {
-            return None;
-        };
-        let mut matched: Option<(String, String)> = None;
-        for cred in guard.values() {
-            let tok_bytes = cred.token.as_bytes();
-            if tok_bytes.len() == cand_bytes.len() && bool::from(tok_bytes.ct_eq(cand_bytes)) {
-                matched = Some((cred.project_id.clone(), cred.agent_id.clone()));
+        let cand = token_digest(candidate);
+        let rows = self
+            .db
+            .read(|conn| {
+                let mut stmt = conn.prepare("SELECT project_id, agent_id, token_hash FROM mcp_tokens")?;
+                let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+            })
+            .ok()?;
+        let mut matched = None;
+        for (project_id, agent_id, hash) in rows {
+            if bool::from(hash.as_bytes().ct_eq(cand.as_bytes())) {
+                matched = Some((project_id, agent_id));
             }
         }
         matched
@@ -168,152 +174,530 @@ impl McpJsonRpcResponse {
     }
 }
 
-/// Caller identity executing an MCP request.
+/// The only MCP revision this server implements: Streamable HTTP with JSON responses, no batching, no sessions.
+pub const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+
+/// Caller identity executing an MCP request: always an agent authenticated by its bearer token.
 #[derive(Debug, Clone)]
 pub struct McpCaller {
     pub project_id: String,
     pub agent_id: String,
-    pub actor_user_id: Option<String>,
-    pub actor_role: ServerRole,
-    pub is_agent_token: bool,
     pub remote: bool,
 }
 
-/// Processes a JSON-RPC 2.0 MCP call using the cached per-`(project_id, agent_id)` handler.
-pub fn handle_mcp_rpc(
-    state: &AppState,
-    caller: &McpCaller,
-    req: McpJsonRpcRequest,
-) -> McpJsonRpcResponse {
+type ToolResult = Result<Value, (i32, String)>;
+
+/// One HQ tool: what `tools/list` advertises and what `tools/call` runs, kept together so they can't drift.
+pub struct ToolDef {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub input_schema: fn() -> Value,
+    run: fn(&AppState, &McpCaller, &CachedMcpHandler, &Value) -> ToolResult,
+}
+
+fn str_prop(description: &str) -> Value {
+    json!({ "type": "string", "description": description })
+}
+
+fn object(properties: Value, required: &[&str]) -> Value {
+    json!({ "type": "object", "properties": properties, "required": required })
+}
+
+fn opinion_side_schema(who: &str) -> Value {
+    json!({
+        "type": "object",
+        "description": format!("{who}'s side of the comparison."),
+        "properties": {
+            "label": str_prop("Short name of this option."),
+            "authorId": str_prop("Agent id that holds this view."),
+            "summary": str_prop("One-line summary."),
+            "rationaleMarkdown": str_prop("Full rationale, Markdown."),
+            "risks": { "type": "array", "items": { "type": "string" } }
+        }
+    })
+}
+
+fn second_opinion_schema() -> Value {
+    object(
+        json!({
+            "title": str_prop("Card title."),
+            "details": str_prop("Context for the owner."),
+            "taskId": str_prop("Task this is about."),
+            "gateId": str_prop("Gate this could waive, if any."),
+            "recommendation": str_prop("Which option you recommend and why."),
+            "confidence": str_prop("How sure you are, e.g. low, medium, high."),
+            "canWaiveGate": { "type": "boolean", "description": "Whether choosing a side may waive the gate. Defaults to true when gateId is set." },
+            "ownerOnly": { "type": "boolean", "description": "Only the owner may answer. Defaults to canWaiveGate." },
+            "optionA": opinion_side_schema("Option A"),
+            "optionB": opinion_side_schema("Option B")
+        }),
+        &[],
+    )
+}
+
+pub const TOOLS: &[ToolDef] = &[
+    ToolDef {
+        name: "ask_user",
+        description: "Ask the owner structured multiple-choice questions; mark the recommended option. Answers arrive as a message.",
+        input_schema: || {
+            object(
+                json!({
+                    "title": str_prop("The question, as the card's title."),
+                    "details": str_prop("Context the owner needs to answer."),
+                    "taskId": str_prop("Task this is about."),
+                    "ownerOnly": { "type": "boolean", "description": "Only the owner may answer (not operators)." },
+                    "questions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": str_prop("Question id, e.g. q1."),
+                                "prompt": str_prop("The question text."),
+                                "multiSelect": { "type": "boolean" },
+                                "allowOther": { "type": "boolean", "description": "Allow a free-text answer. Defaults to true." },
+                                "options": {
+                                    "type": "array",
+                                    "items": {
+                                        "anyOf": [
+                                            { "type": "string" },
+                                            {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": { "type": "string" },
+                                                    "label": { "type": "string" },
+                                                    "description": { "type": "string" },
+                                                    "recommended": { "type": "boolean" }
+                                                },
+                                                "required": ["label"]
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "required": ["prompt"]
+                        }
+                    }
+                }),
+                &["title"],
+            )
+        },
+        run: tool_ask_user,
+    },
+    ToolDef {
+        name: "propose_second_opinion",
+        description: "Put Option A and Option B side by side for the owner to choose.",
+        input_schema: second_opinion_schema,
+        run: |s, c, h, a| tool_second_opinion(s, c, h, a, false),
+    },
+    ToolDef {
+        name: "report_disagreement",
+        description: "Escalate a disagreement between agents with each side's rationale.",
+        input_schema: second_opinion_schema,
+        run: |s, c, h, a| tool_second_opinion(s, c, h, a, true),
+    },
+    ToolDef {
+        name: "request_meeting",
+        description: "Request a standup, kickoff, review or discussion with the team and the owner.",
+        input_schema: || {
+            object(
+                json!({
+                    "title": str_prop("Meeting topic."),
+                    "kind": { "type": "string", "enum": ["standup", "kickoff", "review", "discussion"] },
+                    "urgency": { "type": "string", "enum": ["low", "normal", "high"] },
+                    "participantIds": { "type": "array", "items": { "type": "string" }, "description": "Agent ids. Defaults to the lead and you." },
+                    "agenda": { "type": "array", "items": { "type": "string" } },
+                    "moderatorId": str_prop("Agent id that moderates. Defaults to lead.")
+                }),
+                &[],
+            )
+        },
+        run: tool_request_meeting,
+    },
+    ToolDef {
+        name: "record_gate",
+        description: "Record a task gate result with its rationale. Owner-only gates (merge waivers) are refused.",
+        input_schema: || {
+            object(
+                json!({
+                    "taskId": str_prop("Task id."),
+                    "gateId": str_prop("Gate id, e.g. verify, review, second-opinion, detected, checked, edited."),
+                    "state": { "type": "string", "enum": ["passed", "failed", "reset", "waived"], "description": "Defaults to passed." },
+                    "note": str_prop("Rationale, Markdown: what you checked, or each problem."),
+                    "url": str_prop("Link to the evidence, e.g. a PR."),
+                    "byId": str_prop("Who recorded it. Defaults to you.")
+                }),
+                &["taskId", "gateId"],
+            )
+        },
+        run: tool_record_gate,
+    },
+    ToolDef {
+        name: "request_access",
+        description: "Ask the owner to allow a tool, command, path or domain.",
+        input_schema: || {
+            object(
+                json!({
+                    "toolName": str_prop("What needs access, e.g. network-egress."),
+                    "commandOrPath": str_prop("The command, path or domain."),
+                    "reason": str_prop("Why you need it."),
+                    "scopeHint": str_prop("How narrow the grant can be."),
+                    "taskId": str_prop("Task this is for.")
+                }),
+                &["reason"],
+            )
+        },
+        run: tool_request_access,
+    },
+    ToolDef {
+        name: "attach_evidence",
+        description: "Attach verification evidence to a task: the commit, the steps you took and labelled screenshots.",
+        input_schema: || {
+            object(
+                json!({
+                    "taskId": str_prop("Task id."),
+                    "sha": str_prop("Commit checked. Defaults to HEAD."),
+                    "steps": { "type": "array", "description": "One entry per step: what you opened, did and saw." },
+                    "shots": { "type": "array", "description": "Screenshot files, each with a label." }
+                }),
+                &["taskId"],
+            )
+        },
+        run: tool_attach_evidence,
+    },
+    ToolDef {
+        name: "get_visual_feedback",
+        description: "List the visual feedback the owner left on this project's preview.",
+        input_schema: || object(json!({}), &[]),
+        run: |s, _, h, _| tool_get_visual_feedback(s, h),
+    },
+    ToolDef {
+        name: "list_tasks",
+        description: "List this project's board tasks.",
+        input_schema: || object(json!({}), &[]),
+        run: |s, _, h, _| tool_list_tasks(s, h),
+    },
+    ToolDef {
+        name: "update_task",
+        description: "Create a board task, or update one with the same id.",
+        input_schema: || {
+            object(
+                json!({
+                    "id": str_prop("Task id, e.g. T-12. Reusing an id updates that task."),
+                    "title": str_prop("Task title, with its done-when."),
+                    "boardId": str_prop("Board id. Defaults to B1."),
+                    "stageId": str_prop("Stage, e.g. build, review, verify, or recon, threat, vuln, exploit, post, report. Defaults to build."),
+                    "status": str_prop("e.g. todo, doing, done. Defaults to doing."),
+                    "ownerId": str_prop("Owning agent id. Defaults to you.")
+                }),
+                &["id", "title"],
+            )
+        },
+        run: |s, _, h, a| tool_update_task(s, h, a),
+    },
+    ToolDef {
+        name: "assign_task",
+        description: "Give a task to an agent on this project's team.",
+        input_schema: || object(json!({ "taskId": str_prop("Task id."), "agentId": str_prop("Agent id.") }), &["taskId", "agentId"]),
+        run: |s, _, h, a| {
+            crate::team_edit::assign_task(s, &h.project_id, &[json!(arg_str(a, "taskId")), json!(arg_str(a, "agentId"))]).map_err(invalid)?;
+            Ok(json!({ "ok": true }))
+        },
+    },
+    ToolDef {
+        name: "create_board",
+        description: "Create a board for a body of work; returns its id.",
+        input_schema: || object(json!({ "title": str_prop("Board title.") }), &["title"]),
+        run: |s, _, h, a| {
+            let id = crate::planning::create_board(s, &h.project_id, arg_str(a, "title")).map_err(invalid)?;
+            Ok(json!({ "ok": true, "boardId": id }))
+        },
+    },
+    ToolDef {
+        name: "write_spec",
+        description: "Write or replace a board's spec, one numbered requirement per line (S1., S2.…).",
+        input_schema: || {
+            object(json!({ "boardId": str_prop("Board id."), "specMarkdown": str_prop("The spec, Markdown.") }), &["boardId", "specMarkdown"])
+        },
+        run: |s, _, h, a| {
+            let version = crate::planning::write_spec(s, &h.project_id, arg_str(a, "boardId"), arg_str(a, "specMarkdown")).map_err(invalid)?;
+            Ok(json!({ "ok": true, "specVersion": version }))
+        },
+    },
+    ToolDef {
+        name: "list_goals",
+        description: "List this project's goals with their progress.",
+        input_schema: || object(json!({}), &[]),
+        run: |s, _, h, _| Ok(json!({ "goals": crate::planning::goals_for(s, &h.project_id) })),
+    },
+    ToolDef {
+        name: "update_goal",
+        description: "Update a goal's numbers or status.",
+        input_schema: || {
+            object(
+                json!({
+                    "id": str_prop("Goal id, e.g. G1."),
+                    "title": str_prop("New title."),
+                    "metric": str_prop("What is measured."),
+                    "target": str_prop("Target value, e.g. $5k."),
+                    "current": str_prop("Current value."),
+                    "status": { "type": "string", "enum": ["active", "done", "dropped"] }
+                }),
+                &["id"],
+            )
+        },
+        run: |s, _, h, a| {
+            crate::planning::update_goal(s, &h.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
+            Ok(json!({ "ok": true }))
+        },
+    },
+    ToolDef {
+        name: "send_message",
+        description: "Send a chat message to a teammate, to the lead, or to the owner (\"you\").",
+        input_schema: || object(json!({ "to": str_prop("Agent id, \"lead\", or \"you\" for the owner."), "text": str_prop("The message.") }), &["to", "text"]),
+        run: |s, _, h, a| {
+            crate::delivery::send_from_agent(s, &h.project_id, &h.agent_id, arg_str(a, "to"), arg_str(a, "text")).map_err(invalid)?;
+            Ok(json!({ "ok": true }))
+        },
+    },
+    ToolDef {
+        name: "report_finding",
+        description: "Record a security finding with its CVSS 4.0 vector, reproduction and evidence.",
+        input_schema: || {
+            object(
+                json!({
+                    "title": str_prop("Finding title."),
+                    "target": str_prop("Affected asset, host or URL."),
+                    "id": str_prop("Finding id. Generated when omitted."),
+                    "cwe": str_prop("e.g. CWE-89."),
+                    "cvssVector": str_prop("CVSS:4.0/… vector; the score and severity are computed from it."),
+                    "cvssScore": { "type": "number" },
+                    "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+                    "status": str_prop("Finding status."),
+                    "descriptionMarkdown": str_prop("What it is and its impact."),
+                    "reproductionMarkdown": str_prop("Exact steps to reproduce."),
+                    "remediationMarkdown": str_prop("The fix."),
+                    "evidenceRefs": { "type": "array", "items": { "type": "string" }, "description": "Evidence file paths." },
+                    "verified": { "type": "boolean" }
+                }),
+                &["title", "target"],
+            )
+        },
+        run: |s, _, h, a| tool_report_finding(s, h, a),
+    },
+    ToolDef {
+        name: "update_finding",
+        description: "Update a finding: confirm it (verified), change its severity, status or CVSS vector, or add remediation.",
+        input_schema: || {
+            object(
+                json!({
+                    "id": str_prop("Finding id."),
+                    "title": str_prop("New title."),
+                    "severity": { "type": "string", "enum": ["critical", "high", "medium", "low", "info"] },
+                    "status": str_prop("Finding status."),
+                    "verified": { "type": "boolean", "description": "You reproduced it from its evidence." },
+                    "cvssVector": str_prop("CVSS:4.0/… vector."),
+                    "remediationMarkdown": str_prop("Remediation, Markdown (replaces the current text).")
+                }),
+                &["id"],
+            )
+        },
+        run: |s, _, h, a| {
+            crate::memory_cmds::update_finding(s, &h.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
+            Ok(json!({ "ok": true }))
+        },
+    },
+    ToolDef {
+        name: "check_scope",
+        description: "Check whether a host or URL is inside the engagement scope and allowed by the egress proxy.",
+        input_schema: || object(json!({ "target": str_prop("Host or URL.") }), &["target"]),
+        run: |s, _, h, a| tool_check_scope(s, h, a),
+    },
+    ToolDef {
+        name: "propose_send",
+        description: "Propose an external send (mail, post, CRM write) through a tool connection; the owner approves it in Inbox.",
+        input_schema: || {
+            object(
+                json!({
+                    "connection": str_prop("Tool connection name."),
+                    "tool": str_prop("Tool on that connection."),
+                    "args": { "type": "object", "description": "Arguments for that tool." },
+                    "summary": str_prop("What will be sent, for the owner."),
+                    "taskId": str_prop("Task this is for.")
+                }),
+                &["connection", "tool"],
+            )
+        },
+        run: |s, _, h, a| tool_propose_send(s, h, a),
+    },
+    ToolDef {
+        name: "recall",
+        description: "Search the team's memory (decisions, dead ends, lessons), certified first.",
+        input_schema: || {
+            object(
+                json!({ "query": str_prop("Words to search for."), "limit": { "type": "integer", "minimum": 1, "maximum": 50, "description": "Defaults to 12." } }),
+                &["query"],
+            )
+        },
+        run: |s, _, h, a| {
+            let limit = a.get("limit").and_then(Value::as_u64).map_or(12, |n| n.clamp(1, 50));
+            let mut found = s.inner.memory.search(&h.project_id, Some(arg_str(a, "query")), MemoryStatusFilter::All).map_err(server)?;
+            found.truncate(usize::try_from(limit).unwrap_or(12));
+            Ok(json!({ "memories": found }))
+        },
+    },
+    ToolDef {
+        name: "related",
+        description: "Memories about a task, a file path, or the same topics as another memory.",
+        input_schema: || {
+            json!({
+                "type": "object",
+                "properties": { "taskId": str_prop("Task id."), "path": str_prop("File path."), "memoryId": str_prop("Memory id.") },
+                "oneOf": [{ "required": ["taskId"] }, { "required": ["path"] }, { "required": ["memoryId"] }]
+            })
+        },
+        run: tool_related,
+    },
+    ToolDef {
+        name: "remember",
+        description: "Save a memory for the team. It stays uncertified until the owner or an operator certifies it.",
+        input_schema: || {
+            object(
+                json!({
+                    "type": { "type": "string", "enum": ["Decision", "DeadEnd", "Lesson"] },
+                    "text": str_prop("The memory, without secrets or people's names."),
+                    "about": { "type": "array", "items": { "type": "string" }, "description": "Files or components it is about." },
+                    "taskId": str_prop("Task it came from; it is added to about.")
+                }),
+                &["type", "text"],
+            )
+        },
+        run: tool_remember,
+    },
+    ToolDef {
+        name: "keep_out_of_memory",
+        description: "Add a person's name to the project's keep-out list; it is masked in every memory, now and later.",
+        input_schema: || object(json!({ "name": str_prop("The name, at least 2 characters.") }), &["name"]),
+        run: |s, _, h, a| {
+            crate::memory_cmds::keep_out_of_memory(s, &h.project_id, &[json!(arg_str(a, "name"))]).map_err(invalid)?;
+            Ok(json!({ "ok": true }))
+        },
+    },
+];
+
+fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
+    args.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+fn invalid(msg: String) -> (i32, String) {
+    (-32602, msg)
+}
+
+fn server(e: DbError) -> (i32, String) {
+    (-32000, e.to_string())
+}
+
+/// Processes one JSON-RPC 2.0 message. Notifications (no `id`) get no response.
+pub fn handle_mcp_rpc(state: &AppState, caller: &McpCaller, req: McpJsonRpcRequest) -> Option<McpJsonRpcResponse> {
     let _ = req.jsonrpc;
-    let rpc_id = req.id.unwrap_or(Value::Null);
+    let rpc_id = req.id?;
+    let handler = state.inner.mcp.get_or_create_handler(&caller.project_id, &caller.agent_id);
 
-    if matches!(caller.actor_role, ServerRole::Viewer) {
-        return McpJsonRpcResponse::err(rpc_id, -32001, "viewer role is strictly read-only");
-    }
-
-    let handler = state
-        .inner
-        .mcp
-        .get_or_create_handler(&caller.project_id, &caller.agent_id);
-
-    match req.method.as_str() {
+    Some(match req.method.as_str() {
         "initialize" => McpJsonRpcResponse::ok(
             rpc_id,
             json!({
-                "protocolVersion": "2024-11-05",
-                "serverInfo": {
-                    "name": "arimaops-mcp",
-                    "version": env!("CARGO_PKG_VERSION")
-                },
-                "capabilities": { "tools": {} },
-                "cachedHandlerInvocations": handler.invocations.load(Ordering::Relaxed)
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "serverInfo": { "name": "arimaops-mcp", "version": env!("CARGO_PKG_VERSION") },
+                "capabilities": { "tools": {} }
             }),
         ),
+        "ping" => McpJsonRpcResponse::ok(rpc_id, json!({})),
         "tools/list" => McpJsonRpcResponse::ok(
             rpc_id,
             json!({
-                "tools": [
-                    { "name": "ask_user", "description": "Ask structured multi-choice questions with (Recommended) options." },
-                    { "name": "propose_second_opinion", "description": "Create side-by-side Option A vs Option B second-opinion card." },
-                    { "name": "report_disagreement", "description": "Escalate an agent-vs-agent disagreement with Option A and Option B rationales." },
-                    { "name": "request_meeting", "description": "Request an interactive Standup or Discussion room with the team and owner." },
-                    { "name": "record_gate", "description": "Record a task gate transition (passed, failed, reset, waived) with full Markdown rationale." },
-                    { "name": "request_access", "description": "Request permission for a tool, command, path, or domain." },
-                    { "name": "attach_evidence", "description": "Attach verifier PR/task steps and screenshot evidence." },
-                    { "name": "get_visual_feedback", "description": "Retrieve visual feedback annotations submitted for this project." },
-                    { "name": "list_tasks", "description": "List board tasks in this project." },
-                    { "name": "update_task", "description": "Create or update a board task." },
-                    { "name": "report_finding", "description": "Record a security finding with CVSS 4.0 scoring, reproduction steps, and evidence." },
-                    { "name": "check_scope", "description": "Verify whether a target host or URL is allowed under the engagement scope and egress proxy policy." },
-                    { "name": "propose_send", "description": "Propose an external tool send action requiring explicit Owner approval in Inbox." }
-                ]
+                "tools": TOOLS.iter().map(|t| json!({ "name": t.name, "description": t.description, "inputSchema": (t.input_schema)() })).collect::<Vec<_>>()
             }),
         ),
         "tools/call" => {
-            let tool_name = req
-                .params
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned();
-            let args = req
-                .params
-                .get("arguments")
-                .cloned()
-                .unwrap_or_else(|| req.params.clone());
-
-            let res = dispatch_tool(state, caller, &handler, &tool_name, &args);
-            let redacted = redact_json_value(&args);
+            let tool_name = req.params.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
+            let args = req.params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let res = match TOOLS.iter().find(|t| t.name == tool_name) {
+                Some(tool) => (tool.run)(state, caller, &handler, &args),
+                None => Err((-32602, format!("Unknown tool: {tool_name}"))),
+            };
             let _ = record_audit(
                 &state.inner.db,
                 AuditWrite {
-                    actor_user_id: caller.actor_user_id.as_deref(),
+                    actor_user_id: None,
                     actor_name: &caller.agent_id,
-                    actor_role: Some(caller.actor_role),
+                    actor_role: Some(ServerRole::Operator),
                     project_id: Some(&caller.project_id),
                     action: &format!("mcp.{tool_name}"),
                     target: Some(&caller.project_id),
-                    summary: format!("args={redacted}"),
-                    remote: caller.remote,
-                    allowed: res.is_ok(),
-                },
-            );
-
-            match res {
-                Ok(val) => McpJsonRpcResponse::ok(rpc_id, val),
-                Err((code, msg)) => McpJsonRpcResponse::err(rpc_id, code, msg),
-            }
-        }
-        other => {
-            // Also allow direct method calls where `method` is the tool name itself.
-            let res = dispatch_tool(state, caller, &handler, other, &req.params);
-            let redacted = redact_json_value(&req.params);
-            let _ = record_audit(
-                &state.inner.db,
-                AuditWrite {
-                    actor_user_id: caller.actor_user_id.as_deref(),
-                    actor_name: &caller.agent_id,
-                    actor_role: Some(caller.actor_role),
-                    project_id: Some(&caller.project_id),
-                    action: &format!("mcp.{other}"),
-                    target: Some(&caller.project_id),
-                    summary: format!("args={redacted}"),
+                    summary: format!("args={}", redact_json_value(&args)),
                     remote: caller.remote,
                     allowed: res.is_ok(),
                 },
             );
             match res {
-                Ok(val) => McpJsonRpcResponse::ok(rpc_id, val),
+                Ok(val) => McpJsonRpcResponse::ok(
+                    rpc_id,
+                    json!({ "content": [{ "type": "text", "text": val.to_string() }], "structuredContent": val }),
+                ),
                 Err((code, msg)) => McpJsonRpcResponse::err(rpc_id, code, msg),
             }
         }
-    }
+        other => McpJsonRpcResponse::err(rpc_id, -32601, format!("Method not found: {other}")),
+    })
 }
 
-fn dispatch_tool(
-    state: &AppState,
-    caller: &McpCaller,
-    handler: &CachedMcpHandler,
-    tool_name: &str,
-    args: &Value,
-) -> Result<Value, (i32, String)> {
-    match tool_name {
-        "ask_user" => tool_ask_user(state, caller, handler, args),
-        "propose_second_opinion" => tool_second_opinion(state, caller, handler, args, false),
-        "report_disagreement" => tool_second_opinion(state, caller, handler, args, true),
-        "request_meeting" => tool_request_meeting(state, caller, handler, args),
-        "record_gate" => tool_record_gate(state, caller, handler, args),
-        "request_access" => tool_request_access(state, caller, handler, args),
-        "attach_evidence" => tool_attach_evidence(state, caller, handler, args),
-        "get_visual_feedback" => tool_get_visual_feedback(state, handler),
-        "list_tasks" => tool_list_tasks(state, handler),
-        "update_task" => tool_update_task(state, handler, args),
-        "report_finding" => tool_report_finding(state, handler, args),
-        "check_scope" => tool_check_scope(state, handler, args),
-        "propose_send" => tool_propose_send(state, handler, args),
-        other => Err((-32601, format!("Unknown MCP tool '{other}'"))),
+fn tool_related(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandler, args: &Value) -> ToolResult {
+    let all = state.inner.memory.search(&handler.project_id, None, MemoryStatusFilter::All).map_err(server)?;
+    let memory_id = arg_str(args, "memoryId");
+    let topics: Vec<String> = if memory_id.is_empty() {
+        // The memory store keeps `about` trimmed and lower-cased.
+        [arg_str(args, "taskId"), arg_str(args, "path")].into_iter().map(|s| s.trim().to_ascii_lowercase()).filter(|s| !s.is_empty()).collect()
+    } else {
+        all.iter().find(|m| m.id == memory_id).map(|m| m.about.clone()).ok_or_else(|| invalid(format!("No memory \"{memory_id}\".")))?
+    };
+    if topics.is_empty() && memory_id.is_empty() {
+        return Err(invalid("Give a taskId, path or memoryId.".into()));
     }
+    let related: Vec<_> = all.into_iter().filter(|m| m.id != memory_id && m.about.iter().any(|a| topics.contains(a))).collect();
+    Ok(json!({ "memories": related }))
+}
+
+fn tool_remember(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandler, args: &Value) -> ToolResult {
+    let mut about: Vec<String> = args
+        .get("about")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+        .unwrap_or_default();
+    if let Some(task) = args.get("taskId").and_then(Value::as_str).filter(|t| !t.is_empty()) {
+        about.push(task.to_owned());
+    }
+    let memory = state
+        .inner
+        .memory
+        .insert(
+            &handler.project_id,
+            CreateMemoryInput {
+                id: None,
+                mem_type: arg_str(args, "type").to_owned(),
+                text: arg_str(args, "text").to_owned(),
+                about,
+                certified: false,
+                created_at_ms: None,
+                last_used_at_ms: None,
+            },
+        )
+        .map_err(|e| match e {
+            DbError::InvalidInput(msg) => invalid(msg),
+            other => server(other),
+        })?;
+    let snapshot = crate::ws::build_initial_snapshot(state, Some(&handler.project_id));
+    state.inner.ws_hub.broadcast_snapshot(&handler.project_id, &snapshot);
+    Ok(json!({ "ok": true, "memory": memory }))
 }
 
 fn tool_ask_user(
@@ -745,7 +1129,7 @@ fn tool_request_meeting(
 
 fn tool_record_gate(
     state: &AppState,
-    caller: &McpCaller,
+    _caller: &McpCaller,
     handler: &CachedMcpHandler,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
@@ -774,10 +1158,8 @@ fn tool_record_gate(
         .and_then(Value::as_str)
         .unwrap_or(&handler.agent_id);
 
-    // Strict RBAC invariant: operators and non-owner agent tokens CANNOT forge owner-only gate waivers!
-    if is_owner_only_gate(gate_id, gate_state, by_id)
-        && (caller.is_agent_token || !matches!(caller.actor_role, ServerRole::Owner))
-    {
+    // Agents can never record an owner-only gate (a merge waiver); only the owner can, from the UI.
+    if is_owner_only_gate(gate_id, gate_state, by_id) {
         return Err((
             -32003,
             "Forbidden: operators and agents cannot forge owner-only gate waivers".into(),

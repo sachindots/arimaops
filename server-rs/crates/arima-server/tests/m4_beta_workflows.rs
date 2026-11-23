@@ -363,8 +363,8 @@ async fn m4_security_scope_proxy_sync_cvss4_and_six_export_formats() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(check_json["result"]["allowed"], false);
-    assert_eq!(check_json["result"]["blockedImds"], true);
+    assert_eq!(check_json["result"]["structuredContent"]["allowed"], false);
+    assert_eq!(check_json["result"]["structuredContent"]["blockedImds"], true);
 
     let resp_report = app
         .clone()
@@ -393,9 +393,9 @@ async fn m4_security_scope_proxy_sync_cvss4_and_six_export_formats() {
             .unwrap(),
     )
     .unwrap();
-    let f1_id = rep_json["result"]["finding"]["id"].as_str().unwrap().to_owned();
-    assert_eq!(rep_json["result"]["finding"]["cvssScore"], 9.3);
-    assert_eq!(rep_json["result"]["finding"]["severity"], "critical");
+    let f1_id = rep_json["result"]["structuredContent"]["finding"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(rep_json["result"]["structuredContent"]["finding"]["cvssScore"], 9.3);
+    assert_eq!(rep_json["result"]["structuredContent"]["finding"]["severity"], "critical");
 
     // Viewer blocked from POST/PATCH findings; Operator allowed!
     let (st_vf, _) = send_json(

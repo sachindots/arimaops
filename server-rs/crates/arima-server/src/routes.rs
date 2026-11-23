@@ -24,7 +24,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::github::verify_github_signature;
-use crate::mcp::{handle_mcp_rpc, McpCaller, McpJsonRpcRequest};
+use crate::mcp::{handle_mcp_rpc, McpCaller, McpJsonRpcRequest, MCP_PROTOCOL_VERSION};
 use crate::meetings::{
     add_turn_and_refresh_minutes, commit_minutes_and_broadcast, handle_meeting_action,
     start_or_request_meeting, StartMeetingInput,
@@ -2036,65 +2036,45 @@ async fn record_project_gate(
     Ok(Json(json!({ "ok": true, "gateEvent": record })))
 }
 
+/// HQ's tool server takes only agent bearer tokens: a signed-in browser session can't act as an agent.
 fn resolve_mcp_caller(
     state: &AppState,
     headers: &HeaderMap,
     peer_ip: IpAddr,
-    explicit_project_id: Option<String>,
+    path_project_id: Option<&str>,
 ) -> Result<McpCaller, ApiError> {
-    let default_proj = explicit_project_id
-        .or_else(|| {
-            headers
-                .get("x-arima-project-id")
-                .and_then(|v| v.to_str().ok())
-                .map(str::to_owned)
-        })
-        .or_else(|| state.default_project().map(|(id, _, _, _)| id))
-        .unwrap_or_else(|| "proj-alpha".to_owned());
-
-    let hdr_agent = headers
-        .get("x-arima-agent-id")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-
-    // 1. Check `Authorization: Bearer <agent_token>` first.
-    if let Some(auth_hdr) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) {
-        if let Some(bearer) = auth_hdr.strip_prefix("Bearer ").map(str::trim) {
-            if let Some((pid, aid)) = state.inner.mcp.verify_bearer_token(bearer) {
-                return Ok(McpCaller {
-                    project_id: pid,
-                    agent_id: aid,
-                    actor_user_id: None,
-                    actor_role: ServerRole::Operator,
-                    is_agent_token: true,
-                    remote: !peer_ip.is_loopback(),
-                });
-            }
-            return Err(ApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "Invalid MCP agent bearer token.",
-            ));
+    let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
+    let host = headers.get(HOST).and_then(|v| v.to_str().ok());
+    if !state.is_allowed_origin(origin, host) {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "Origin not allowed."));
+    }
+    if let Some(version) = headers.get("mcp-protocol-version") {
+        if version.as_bytes() != MCP_PROTOCOL_VERSION.as_bytes() {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Unsupported MCP protocol version; this server speaks {MCP_PROTOCOL_VERSION}.")));
         }
     }
+    let bearer = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .map(str::trim)
+        .ok_or_else(|| ApiError::new(StatusCode::UNAUTHORIZED, "MCP needs an agent bearer token."))?;
+    let (project_id, agent_id) = state
+        .inner
+        .mcp
+        .verify_bearer_token(bearer)
+        .ok_or_else(|| ApiError::new(StatusCode::UNAUTHORIZED, "Invalid MCP agent bearer token."))?;
+    if path_project_id.is_some_and(|p| p != project_id) {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "This token belongs to another project."));
+    }
+    Ok(McpCaller { project_id, agent_id, remote: !peer_ip.is_loopback() })
+}
 
-    // 2. Fallback: authenticated user session cookie (`hq_sid`).
-    let ctx = extract_ctx(state, headers, peer_ip, &Method::POST)?;
-    let session = require_session(state, &ctx, false)?;
-    let eff_role = effective_role_for_project(state, &session, &default_proj);
-    let agent_id = hdr_agent.unwrap_or_else(|| {
-        session
-            .user
-            .as_ref()
-            .map_or("lead".into(), |u| u.name.clone())
-    });
-
-    Ok(McpCaller {
-        project_id: default_proj,
-        agent_id,
-        actor_user_id: session.user.as_ref().map(|u| u.id.clone()),
-        actor_role: eff_role,
-        is_agent_token: false,
-        remote: ctx.remote,
+fn mcp_reply(state: &AppState, headers: &HeaderMap, peer_ip: IpAddr, project_id: Option<&str>, req: McpJsonRpcRequest) -> Result<Response, ApiError> {
+    let caller = resolve_mcp_caller(state, headers, peer_ip, project_id)?;
+    Ok(match handle_mcp_rpc(state, &caller, req) {
+        Some(resp) => Json(resp).into_response(),
+        None => StatusCode::ACCEPTED.into_response(),
     })
 }
 
@@ -2103,10 +2083,8 @@ async fn mcp_root_endpoint(
     headers: HeaderMap,
     PeerIp(peer_ip): PeerIp,
     Json(req): Json<McpJsonRpcRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let caller = resolve_mcp_caller(&state, &headers, peer_ip, None)?;
-    let resp = handle_mcp_rpc(&state, &caller, req);
-    Ok(Json(serde_json::to_value(resp).unwrap_or(Value::Null)))
+) -> Result<Response, ApiError> {
+    mcp_reply(&state, &headers, peer_ip, None, req)
 }
 
 async fn mcp_project_endpoint(
@@ -2115,10 +2093,8 @@ async fn mcp_project_endpoint(
     headers: HeaderMap,
     PeerIp(peer_ip): PeerIp,
     Json(req): Json<McpJsonRpcRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let caller = resolve_mcp_caller(&state, &headers, peer_ip, Some(project_id))?;
-    let resp = handle_mcp_rpc(&state, &caller, req);
-    Ok(Json(serde_json::to_value(resp).unwrap_or(Value::Null)))
+) -> Result<Response, ApiError> {
+    mcp_reply(&state, &headers, peer_ip, Some(&project_id), req)
 }
 
 async fn github_webhook_root(

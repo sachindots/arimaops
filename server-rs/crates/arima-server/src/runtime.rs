@@ -211,6 +211,7 @@ impl AgentRuntime {
     pub async fn stop(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<(), String> {
         let name = format!("hq-{}-{agent_id}", crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned()));
         let session = self.sessions.lock().ok().and_then(|mut m| m.remove(&Self::key(project_id, agent_id)));
+        state.inner.mcp.revoke_agent_token(project_id, agent_id);
         let target = session.as_ref().map_or(name, |s| s.container.clone());
         self.engine.stop(&target, 10).await.map_err(|e| e.to_string())?;
         self.engine.remove(&target).await.map_err(|e| e.to_string())
@@ -283,6 +284,7 @@ impl AgentRuntime {
             let exit = self.engine.inspect(&session.container).await.ok().flatten().map_or(0, |c| c.exit_code);
             let _ = self.engine.remove(&session.container).await;
             let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
+            state.inner.mcp.revoke_agent_token(project_id, agent_id);
             let note = if exit == 0 { "Session ended".to_owned() } else { format!("Session ended with exit code {exit}") };
             let event = json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "idle", "note": note });
             state.inner.ws_hub.broadcast_project(project_id, &event.to_string());
