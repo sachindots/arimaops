@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use arima_proxy::{
-    ContainerIdentity, ContainerIpRegistry, EgressPolicy, EgressProxy, StaticPolicyProvider,
+    ContainerIdentity, EgressPolicy, EgressProxy, PolicyProvider, ProxyCredentials,
+    StaticPolicyProvider,
 };
+use base64::Engine as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -25,9 +27,13 @@ async fn spawn_echo_server() -> SocketAddr {
     addr
 }
 
-async fn send_connect(proxy_addr: SocketAddr, authority: &str) -> (String, TcpStream) {
+fn basic(user: &str, token: &str) -> String {
+    base64::engine::general_purpose::STANDARD.encode(format!("{user}:{token}"))
+}
+
+async fn send_connect(proxy_addr: SocketAddr, authority: &str, cred: &str) -> (String, TcpStream) {
     let mut stream = TcpStream::connect(proxy_addr).await.unwrap();
-    let req = format!("CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n\r\n");
+    let req = format!("CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\nProxy-Authorization: Basic {cred}\r\n\r\n");
     stream.write_all(req.as_bytes()).await.unwrap();
 
     let mut buf = Vec::new();
@@ -46,15 +52,12 @@ async fn send_connect(proxy_addr: SocketAddr, authority: &str) -> (String, TcpSt
 #[tokio::test]
 async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_target() {
     let echo_addr = spawn_echo_server().await;
-    let registry = ContainerIpRegistry::new();
-    registry.register(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        ContainerIdentity {
-            project_id: "p1".into(),
-            agent_id: "coder".into(),
-            container_name: "hq-p1-coder".into(),
-        },
-    );
+    let registry = ProxyCredentials::new();
+    let cred = basic("coder", &registry.issue(ContainerIdentity {
+        project_id: "p1".into(),
+        agent_id: "coder".into(),
+        container_name: "hq-p1-coder".into(),
+    }));
 
     // Even if `localhost:<port>` or `127.0.0.1:<port>` appears in normal `allow`,
     // DNS-pinned restricted-IP defense must block it unless in `scope_allow_targets`.
@@ -71,6 +74,7 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
             drafts_only: false,
             outbound_hosts: vec![],
             allow_unknown_loopback_peer: false,
+            ..EgressPolicy::default()
         },
     });
     let normal_proxy = EgressProxy::start(
@@ -82,17 +86,17 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
     .unwrap();
 
     let (head_loopback, _) =
-        send_connect(normal_proxy.addr(), &format!("127.0.0.1:{}", echo_addr.port())).await;
+        send_connect(normal_proxy.addr(), &format!("127.0.0.1:{}", echo_addr.port()), &cred).await;
     assert!(head_loopback.starts_with("HTTP/1.1 403 Forbidden"), "{head_loopback}");
 
-    let (head_imds, _) = send_connect(normal_proxy.addr(), "169.254.169.254:80").await;
+    let (head_imds, _) = send_connect(normal_proxy.addr(), "169.254.169.254:80", &cred).await;
     assert!(head_imds.starts_with("HTTP/1.1 403 Forbidden"), "{head_imds}");
 
-    let (head_ipv6, _) = send_connect(normal_proxy.addr(), "[::1]:443").await;
+    let (head_ipv6, _) = send_connect(normal_proxy.addr(), "[::1]:443", &cred).await;
     assert!(head_ipv6.starts_with("HTTP/1.1 403 Forbidden"), "{head_ipv6}");
 
     let (head_dns, _) =
-        send_connect(normal_proxy.addr(), &format!("localhost:{}", echo_addr.port())).await;
+        send_connect(normal_proxy.addr(), &format!("localhost:{}", echo_addr.port()), &cred).await;
     assert!(head_dns.starts_with("HTTP/1.1 403 Forbidden"), "{head_dns}");
 
     // Explicitly authorized engagement scope target IS permitted.
@@ -104,6 +108,7 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
             drafts_only: false,
             outbound_hosts: vec![],
             allow_unknown_loopback_peer: false,
+            ..EgressPolicy::default()
         },
     });
     let scoped_proxy =
@@ -112,7 +117,7 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
             .unwrap();
 
     let (head_scoped, mut tunnel) =
-        send_connect(scoped_proxy.addr(), &format!("127.0.0.1:{}", echo_addr.port())).await;
+        send_connect(scoped_proxy.addr(), &format!("127.0.0.1:{}", echo_addr.port()), &cred).await;
     assert!(
         head_scoped.starts_with("HTTP/1.1 200 Connection Established"),
         "{head_scoped}"
@@ -121,4 +126,72 @@ async fn blocks_ssrf_loopback_imds_ipv6_and_dns_rebind_while_allowing_scoped_tar
     let mut reply = [0u8; 4];
     tunnel.read_exact(&mut reply).await.unwrap();
     assert_eq!(&reply, b"ping");
+}
+
+/// Records what observe mode lets through.
+#[derive(Default)]
+struct Observing {
+    policy: EgressPolicy,
+    seen: Mutex<Vec<(String, String, u16)>>,
+}
+
+impl PolicyProvider for Observing {
+    fn policy_for<'a>(
+        &'a self,
+        _peer: std::net::IpAddr,
+        identity: Option<&'a ContainerIdentity>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<EgressPolicy>> + Send + 'a>> {
+        Box::pin(async move { identity.map(|_| self.policy.clone()) })
+    }
+
+    fn record_would_block(&self, identity: &ContainerIdentity, host: &str, port: u16) {
+        self.seen.lock().unwrap().push((identity.agent_id.clone(), host.to_owned(), port));
+    }
+}
+
+#[tokio::test]
+async fn names_the_caller_by_credential_and_observe_mode_records_instead_of_blocking() {
+    let echo = spawn_echo_server().await;
+    let creds = ProxyCredentials::new();
+    let token = creds.issue(ContainerIdentity { project_id: "p1".into(), agent_id: "ada".into(), container_name: "hq-p1-ada".into() });
+    let provider = Arc::new(Observing {
+        policy: EgressPolicy {
+            observe: true,
+            allow: vec!["127.0.0.4".into()],
+            quiet: vec!["127.0.0.3".into()],
+            // The echo server is on loopback: only a scope target may reach it, as in every mode.
+            scope_allow_targets: vec![format!("127.0.0.1:{}", echo.port())],
+            ..EgressPolicy::default()
+        },
+        ..Observing::default()
+    });
+    let proxy = EgressProxy::start("127.0.0.1:0".parse().unwrap(), creds.clone(), Arc::clone(&provider) as Arc<dyn PolicyProvider>).await.unwrap();
+
+    for bad in [basic("ada", "wrong-token"), basic("grace", &token), "not base64!".into()] {
+        let (head, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &bad).await;
+        assert!(head.starts_with("HTTP/1.1 407"), "{head}");
+    }
+    let mut stream = TcpStream::connect(proxy.addr()).await.unwrap();
+    stream.write_all(b"CONNECT example.test:443 HTTP/1.1\r\n\r\n").await.unwrap();
+    let mut buf = [0u8; 64];
+    let n = stream.read(&mut buf).await.unwrap();
+    assert!(buf[..n].starts_with(b"HTTP/1.1 407"), "no credential is refused too");
+
+    let cred = basic("ada", &token);
+    let (head, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &cred).await;
+    assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+    // Not in the allow list: observe records it and lets it on to the address check (which refuses loopback, so
+    // no test request leaves this machine).
+    let _ = send_connect(proxy.addr(), "LOCALHOST:8443", &cred).await;
+    let _ = send_connect(proxy.addr(), "127.0.0.3:443", &cred).await;
+    let _ = send_connect(proxy.addr(), "127.0.0.4:443", &cred).await;
+    // Metadata stays blocked in observe mode.
+    let (imds, _) = send_connect(proxy.addr(), "169.254.169.254:80", &cred).await;
+    assert!(imds.starts_with("HTTP/1.1 403"), "{imds}");
+    let seen = provider.seen.lock().unwrap().clone();
+    assert_eq!(seen, [("ada".to_owned(), "localhost".to_owned(), 8443)], "quiet and allowed hosts aren't recorded");
+
+    creds.revoke("p1", "ada");
+    let (head, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &cred).await;
+    assert!(head.starts_with("HTTP/1.1 407"), "a revoked credential is refused: {head}");
 }

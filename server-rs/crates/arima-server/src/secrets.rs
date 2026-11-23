@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! App variables, service keys, accounts and the sandbox proxy: `setEnvVar`, `removeEnvVar`, `setSecret`,
-//! `removeSecret`, `openEnvFile`, `saveAccount`, `removeAccount`, `setProxy`.
+//! App variables, service keys and accounts: `setEnvVar`, `removeEnvVar`, `setSecret`,
+//! `removeSecret`, `openEnvFile`, `saveAccount`, `removeAccount`.
 //!
 //! Values are encrypted with the vault key before they touch SQLite and never leave this module in clear text
 //! except through [`env_for`], which the agent launcher calls. Snapshots carry names and the last four
@@ -203,34 +203,12 @@ pub fn sbx_state(state: &AppState, project_id: &str, agent_ids: &[String], check
     }
     json!({
         "basePolicy": "balanced",
-        "proxy": setting(state, "sandboxProxy").and_then(|v| v.as_str().map(str::to_owned)),
+        "egress": crate::egress::snapshot(state, project_id),
         "globalKeys": names(state, project_id, "", "key"),
         "projectEnv": { "path": "HQ vault", "exists": !project_env.is_empty(), "keys": project_env },
         "agents": agents,
         "checkedAt": checked_at
     })
-}
-
-pub fn set_proxy(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
-    let url = text(args.first().unwrap_or(&Value::Null), 300);
-    let valid = (url.starts_with("http://") || url.starts_with("https://")) && url.len() > 8 && !url.contains(char::is_whitespace);
-    if !url.is_empty() && !valid {
-        return Err("Proxy must be an http(s):// URL".into());
-    }
-    state
-        .inner
-        .db
-        .transaction(|conn| {
-            if url.is_empty() {
-                conn.execute("DELETE FROM server_settings WHERE key = 'sandboxProxy'", [])?;
-            } else {
-                put_setting(conn, "sandboxProxy", &json!(url))?;
-            }
-            Ok::<_, DbError>(())
-        })
-        .map_err(db_err)?;
-    broadcast(state, project_id);
-    Ok(())
 }
 
 /// The environment for one agent's container: project-wide values, then the agent's own, then service keys.

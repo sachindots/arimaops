@@ -5,6 +5,7 @@ import type { OfficeEvent, SimSpeed } from "../source";
 import type {
   ActionItem,
   ActivityType,
+  EgressState,
   SbxState,
   SessionInfo,
   SetupState,
@@ -61,6 +62,11 @@ export function mockSetup(): SetupState {
 }
 
 /** What the mock "sbx" reports: domain rules mirror the saved lists. */
+function mockEgress(): EgressState {
+  const seen = (host: string, port: number, agents: string[], count: number) => ({ host, port, agents, count, firstSeen: now(), lastSeen: now() });
+  return { mode: "observe", rules: [], wouldBlock: [seen("api.stripe.com", 443, ["nova"], 14), seen("auth.example.dev", 8443, ["nova", "vale"], 3)] };
+}
+
 export function mockSbx(team: AgentConfig[], project: string): SbxState {
   const agents: SbxState["agents"] = {};
   for (const a of team) {
@@ -81,7 +87,7 @@ export function mockSbx(team: AgentConfig[], project: string): SbxState {
         : [],
     };
   }
-  return { basePolicy: "balanced", proxy: null, globalKeys: ["anthropic", "github"], projectEnv: { path: `~/.arima/${slug(project)}/project.env`, exists: true, keys: ["GH_TOKEN"] }, agents, checkedAt: now() };
+  return { basePolicy: "balanced", egress: mockEgress(), globalKeys: ["anthropic", "github"], projectEnv: { path: `~/.arima/${slug(project)}/project.env`, exists: true, keys: ["GH_TOKEN"] }, agents, checkedAt: now() };
 }
 
 export function mockSession(project: string, agentId: string): SessionInfo {

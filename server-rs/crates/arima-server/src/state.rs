@@ -107,6 +107,8 @@ pub struct AppStateInner {
     pub standups: StandupScheduler,
     pub github: GithubSyncService,
     pub egress_policy: Arc<DynamicScopePolicyProvider>,
+    /// Running agents' proxy credentials and policies (`crate::egress`).
+    pub egress: crate::egress::AgentEgress,
     pub preview_registry: PreviewRegistry,
     pub preview_signer: PreviewTokenSigner,
     pub ws_hub: WsHub,
@@ -169,6 +171,7 @@ impl AppState {
                 standups,
                 github,
                 egress_policy,
+                egress: crate::egress::AgentEgress::default(),
                 preview_registry,
                 preview_signer,
                 ws_hub: WsHub::new(),

@@ -35,7 +35,15 @@ pub struct RuntimeConfig {
     pub workspaces_host_root: PathBuf,
     /// HQ's address as agents reach it, for their MCP tools. Unset means agents get no HQ tools.
     pub hq_url: Option<String>,
-    pub egress_proxy: Option<String>,
+    /// The port of HQ's egress proxy, on the same host as `hq_url`.
+    pub egress_port: u16,
+}
+
+/// `HQ_EGRESS_PORT`, or HQ's port + 1000 (8420 by default).
+#[must_use]
+pub fn egress_port() -> u16 {
+    let env_port = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<u16>().ok());
+    env_port("HQ_EGRESS_PORT").unwrap_or_else(|| env_port("HQ_PORT").unwrap_or(7420).saturating_add(1000))
 }
 
 impl RuntimeConfig {
@@ -54,7 +62,7 @@ impl RuntimeConfig {
             workspaces_host_root: std::env::var("ARIMA_WORKSPACES_HOST_ROOT").map_or_else(|_| root.clone(), PathBuf::from),
             workspaces_root: root,
             hq_url: nonempty("ARIMA_AGENT_HQ_URL"),
-            egress_proxy: nonempty("ARIMA_AGENT_EGRESS_PROXY"),
+            egress_port: egress_port(),
         }
     }
 }
@@ -277,6 +285,7 @@ impl AgentRuntime {
         let name = format!("hq-{}-{agent_id}", crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned()));
         let session = self.sessions.lock().ok().and_then(|mut m| m.remove(&Self::key(project_id, agent_id)));
         state.inner.mcp.revoke_agent_token(project_id, agent_id);
+        state.inner.egress.revoke(project_id, agent_id);
         let target = session.as_ref().map_or(name, |s| s.container.clone());
         self.engine.stop(&target, 10).await.map_err(|e| e.to_string())?;
         self.engine.remove(&target).await.map_err(|e| e.to_string())
@@ -354,6 +363,7 @@ impl AgentRuntime {
             let exit = self.engine.inspect(&session.container).await.ok().flatten().map_or(0, |c| c.exit_code);
             let _ = self.engine.remove(&session.container).await;
             state.inner.mcp.revoke_agent_token(project_id, agent_id);
+            state.inner.egress.revoke(project_id, agent_id);
             let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
             let note = if exit == 0 { "Session ended".to_owned() } else { format!("Session ended with exit code {exit}") };
             let event = json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "idle", "note": note });
@@ -407,10 +417,12 @@ impl AgentRuntime {
                 env.insert((*var).to_owned(), String::from_utf8_lossy(&secret).into_owned());
             }
         }
-        if let Some(proxy) = &self.config.egress_proxy {
-            for var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"] {
-                env.insert(var.to_owned(), proxy.clone());
-            }
+        let container = format!("hq-{slug}-{agent_id}");
+        // Without an HQ address agents can't reach the proxy either, so they keep going straight out.
+        if let Some(hq) = self.config.hq_url.as_deref().filter(|_| crate::egress::mode(state, project_id) != crate::egress::EgressMode::Off) {
+            let policy = crate::egress::policy(adapter.egress, &crate::egress::project_rules(state, project_id), agent);
+            let token = state.inner.egress.admit(project_id, agent_id, &container, policy);
+            env.extend(crate::egress::proxy_env(hq, self.config.egress_port, agent_id, &token));
         }
         std::fs::create_dir_all(dir.join(".agent-home")).map_err(|e| e.to_string())?;
         let (uid, gid) = {
@@ -456,7 +468,7 @@ impl AgentRuntime {
                 "RestartPolicy": { "Name": "no" }
             }
         });
-        Ok(Plan { container: format!("hq-{slug}-{agent_id}"), body, workspace_host })
+        Ok(Plan { container, body, workspace_host })
     }
 }
 
@@ -509,7 +521,7 @@ mod tests {
             workspaces_root: root.path().into(),
             workspaces_host_root: root.path().into(),
             hq_url: Some("http://hq:7420/".into()),
-            egress_proxy: None,
+            egress_port: 8420,
         });
         let plan = rt.plan(&state, &pid, &id).unwrap();
         let dir = root.path().join("demo").join(&id);
@@ -520,6 +532,13 @@ mod tests {
         assert!(!cfg.to_string().contains("docs-key-1"), "the key isn't written to the workspace");
         let env: Vec<&str> = plan.body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
         assert!(env.contains(&"ARIMA_MCP_KEY_DOCS=docs-key-1") && env.iter().any(|e| e.starts_with("ARIMA_MCP_TOKEN=mcp_")), "{env:?}");
+        let proxy = env.iter().find_map(|e| e.strip_prefix("HTTPS_PROXY=")).expect("observe mode sets the proxy");
+        let token = proxy.strip_prefix(&format!("http://{id}:")).and_then(|t| t.strip_suffix("@hq:8420")).expect(proxy);
+        assert!(state.inner.egress.credentials.identify(&id, token).is_some(), "the credential in the URL names this agent");
+        assert!(env.contains(&"NODE_USE_ENV_PROXY=1") && env.iter().any(|e| e.starts_with("NO_PROXY=") && e.split([',', '=']).any(|h| h == "hq")), "{env:?}");
+        crate::egress::set_mode(&state, &pid, &[json!("off")]).unwrap();
+        let off = rt.plan(&state, &pid, &id).unwrap();
+        assert!(!off.body["Env"].to_string().contains("PROXY"), "off mode sets no proxy");
         assert!(plan.body["Cmd"].as_array().unwrap().contains(&json!("--strict-mcp-config")));
         assert!(std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap().contains("First role text"));
 

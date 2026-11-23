@@ -59,7 +59,40 @@ const MIGRATIONS: &[Migration] = &[
         name: "009_skill_pins",
         sql: SKILL_PINS_SCHEMA,
     },
+    // 010 belongs to another track; `migrate` applies each missing version, so the order they land in doesn't matter.
+    Migration {
+        version: 11,
+        name: "011_agent_egress",
+        sql: AGENT_EGRESS_SCHEMA,
+    },
 ];
+
+/// Each project's egress mode, its own allowed hosts, and the hosts its agents reached that enforce mode would
+/// block (one row per agent, host and port). The retired HQ-wide `sandboxProxy` setting goes.
+const AGENT_EGRESS_SCHEMA: &str = r#"
+ALTER TABLE projects ADD COLUMN egress_mode TEXT NOT NULL DEFAULT 'observe' CHECK (egress_mode IN ('off', 'observe', 'enforce'));
+
+CREATE TABLE IF NOT EXISTS egress_rules (
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    rule        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (project_id, rule)
+);
+
+CREATE TABLE IF NOT EXISTS egress_would_block (
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id    TEXT NOT NULL,
+    host        TEXT NOT NULL,
+    port        INTEGER NOT NULL,
+    count       INTEGER NOT NULL DEFAULT 1,
+    first_seen  INTEGER NOT NULL,
+    last_seen   INTEGER NOT NULL,
+    ignored     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (project_id, agent_id, host, port)
+);
+
+DELETE FROM server_settings WHERE key = 'sandboxProxy';
+"#;
 
 /// Agent Skills pinned HQ-wide: one row per skill ref, at one commit, with the hash of its files.
 /// `decision_id` is the Inbox card for the current hash; only that card can approve it.
@@ -544,15 +577,14 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         );",
     )?;
 
-    let current: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
-        [],
-        |row| row.get(0),
-    )?;
+    let applied: Vec<i64> = conn
+        .prepare("SELECT version FROM schema_migrations")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
 
     let sp_seq = AtomicU64::new(10_000);
     for m in MIGRATIONS {
-        if m.version <= current {
+        if applied.contains(&m.version) {
             continue;
         }
         run_savepoint(conn, &sp_seq, |c| {

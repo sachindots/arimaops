@@ -5,6 +5,7 @@
 pub mod backups;
 pub mod cli;
 pub mod delivery;
+pub mod egress;
 pub mod factory;
 pub mod github;
 pub mod integrations;
