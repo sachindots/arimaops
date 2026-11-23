@@ -60,7 +60,7 @@ export function createMockSource(): OfficeDataSource {
     const next = mockSbx(world.snap.config.team, world.snap.config.project.name);
     next.globalKeys = old.globalKeys;
     next.projectEnv = old.projectEnv;
-    next.proxy = old.proxy;
+    next.egress = old.egress;
     for (const id of Object.keys(next.agents))
       if (old.agents[id]) {
         next.agents[id].keys = old.agents[id].keys;
@@ -447,8 +447,28 @@ export function createMockSource(): OfficeDataSource {
       world.emit({ type: "sbx.updated", sbx: structuredClone(sbx) });
     },
 
-    setProxy(url) {
-      world.snap.sbx.proxy = url;
+    setEgressMode(mode) {
+      world.snap.sbx.egress!.mode = mode;
+      world.emit({ type: "sbx.updated", sbx: structuredClone(world.snap.sbx) });
+    },
+
+    allowEgressHost(host, port) {
+      const eg = world.snap.sbx.egress!;
+      const rule = port === 80 || port === 443 ? host : `${host}:${port}`;
+      if (!eg.rules.includes(rule)) eg.rules.push(rule);
+      eg.wouldBlock = eg.wouldBlock.filter((b) => !(b.host === host && b.port === port));
+      world.emit({ type: "sbx.updated", sbx: structuredClone(world.snap.sbx) });
+    },
+
+    ignoreEgressHost(host, port) {
+      const eg = world.snap.sbx.egress!;
+      eg.wouldBlock = eg.wouldBlock.filter((b) => !(b.host === host && b.port === port));
+      world.emit({ type: "sbx.updated", sbx: structuredClone(world.snap.sbx) });
+    },
+
+    removeEgressRule(rule) {
+      const eg = world.snap.sbx.egress!;
+      eg.rules = eg.rules.filter((r) => r !== rule);
       world.emit({ type: "sbx.updated", sbx: structuredClone(world.snap.sbx) });
     },
 

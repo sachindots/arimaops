@@ -104,7 +104,8 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "resolveDecision"
             | "recordGate"
             | "sendProposal"
-            | "setProxy"
+            | "setEgressMode"
+            | "allowEgressHost"
             | "updateAgent"
             | "updateRole"
             | "setTeamMode"
@@ -148,5 +149,17 @@ mod tests {
         assert_eq!(authorize_command("refreshMcp", &ctx(ServerRole::Operator)), CommandVerdict::Allowed);
         assert!(matches!(authorize_command("addMcp", &ctx(ServerRole::Operator)), CommandVerdict::Denied(_)));
         assert_eq!(authorize_command("addMcp", &ctx(ServerRole::Owner)), CommandVerdict::Allowed);
+    }
+
+    #[test]
+    fn only_the_owner_changes_agent_egress() {
+        for cmd in ["setEgressMode", "allowEgressHost", "ignoreEgressHost", "removeEgressRule"] {
+            for role in [ServerRole::Operator, ServerRole::Viewer] {
+                assert!(matches!(authorize_command(cmd, &ctx(role)), CommandVerdict::Denied(_)), "{cmd}");
+            }
+            assert_eq!(authorize_command(cmd, &ctx(ServerRole::Owner)), CommandVerdict::Allowed, "{cmd}");
+        }
+        let remote = AuthContext { remote: true, ..ctx(ServerRole::Owner) };
+        assert_eq!(authorize_command("setEgressMode", &remote), CommandVerdict::StepUpRequired);
     }
 }

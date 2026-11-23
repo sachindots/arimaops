@@ -706,10 +706,33 @@ export interface SbxApproval {
   protocol?: string;
 }
 
+/** A project's agent network mode: off (no proxy), observe (everything allowed; what enforce would block is listed), enforce. */
+export type EgressMode = "off" | "observe" | "enforce";
+
+/** A host the project's agents reached that enforce mode would block. */
+export interface EgressBlock {
+  host: string;
+  port: number;
+  agents: string[];
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface EgressState {
+  mode: EgressMode;
+  /** Hosts allowed for this project ("host" or "host:port"). */
+  rules: string[];
+  wouldBlock: EgressBlock[];
+}
+
 /** What sbx actually has on this machine (read back, not saved settings). */
 export interface SbxState {
   basePolicy: BasePolicy;
-  proxy: string | null;
+  /** The frozen v1 server's upstream proxy; the Rust HQ sends `egress` instead. */
+  proxy?: string | null;
+  /** Absent from the v1 server. */
+  egress?: EgressState;
   globalKeys: string[]; // service keys available to every sandbox
   projectEnv?: { path: string; exists: boolean; keys: string[] };
   agents: Record<string, SbxAgentState>;

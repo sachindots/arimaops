@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::ip_guard::is_imds_or_link_local_ip;
@@ -59,6 +60,48 @@ impl ContainerIpRegistry {
     }
 }
 
+/// Per-agent proxy credentials HQ issues at each start. The proxy names its caller by the credential in the
+/// proxy URL (`http://<agent>:<token>@hq:<port>`), never by source IP.
+#[derive(Debug, Clone, Default)]
+pub struct ProxyCredentials {
+    /// SHA-256 hex of the token to the agent it names.
+    map: Arc<RwLock<HashMap<String, ContainerIdentity>>>,
+}
+
+fn token_digest(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+impl ProxyCredentials {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// A fresh token for this agent; any earlier one for the same project and agent stops working.
+    pub fn issue(&self, identity: ContainerIdentity) -> String {
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        if let Ok(mut map) = self.map.write() {
+            map.retain(|_, id| !(id.project_id == identity.project_id && id.agent_id == identity.agent_id));
+            map.insert(token_digest(&token), identity);
+        }
+        token
+    }
+
+    pub fn revoke(&self, project_id: &str, agent_id: &str) {
+        if let Ok(mut map) = self.map.write() {
+            map.retain(|_, id| !(id.project_id == project_id && id.agent_id == agent_id));
+        }
+    }
+
+    /// The agent this credential names, if the token is current and the user name is that agent.
+    #[must_use]
+    pub fn identify(&self, user: &str, token: &str) -> Option<ContainerIdentity> {
+        let id = self.map.read().ok()?.get(&token_digest(token)).cloned()?;
+        (id.agent_id == user).then_some(id)
+    }
+}
+
 /// Effective egress allow/deny policy evaluated for a single container or test peer.
 #[derive(Debug, Clone, Default)]
 pub struct EgressPolicy {
@@ -68,6 +111,11 @@ pub struct EgressPolicy {
     pub drafts_only: bool,
     pub outbound_hosts: Vec<String>,
     pub allow_unknown_loopback_peer: bool,
+    /// Observe mode: a request the policy would refuse goes through and is reported to
+    /// [`PolicyProvider::record_would_block`] instead.
+    pub observe: bool,
+    /// Hosts the CLIs call on their own (telemetry): never reported.
+    pub quiet: Vec<String>,
 }
 
 pub trait PolicyProvider: Send + Sync {
@@ -76,6 +124,9 @@ pub trait PolicyProvider: Send + Sync {
         peer_ip: IpAddr,
         identity: Option<&'a ContainerIdentity>,
     ) -> Pin<Box<dyn Future<Output = Option<EgressPolicy>> + Send + 'a>>;
+
+    /// An observe-mode request that enforce would have refused.
+    fn record_would_block(&self, _identity: &ContainerIdentity, _host: &str, _port: u16) {}
 }
 
 /// Simple static policy provider for deterministic setups and tests.
@@ -191,6 +242,7 @@ impl DynamicScopePolicyProvider {
             drafts_only: false,
             outbound_hosts: vec![],
             allow_unknown_loopback_peer,
+            ..EgressPolicy::default()
         };
 
         if let Ok(mut guard) = self.projects.write() {

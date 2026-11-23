@@ -22,7 +22,7 @@ pub use ip_guard::{is_imds_or_link_local_ip, is_restricted_ip};
 pub use policy::{
     host_matches, host_matches_scope, is_imds_host_literal, normalize_scope_rule,
     parse_connect_authority, ContainerIdentity, ContainerIpRegistry, DynamicScopePolicyProvider,
-    EgressPolicy, PolicyProvider, ProxyError, ScopeCheckResult, StaticPolicyProvider,
+    EgressPolicy, PolicyProvider, ProxyCredentials, ProxyError, ScopeCheckResult, StaticPolicyProvider,
 };
 pub use preview::{
     rewrite_csp_frame_ancestors, strip_arima_cookies, PreviewClaims, PreviewError, PreviewProxy,

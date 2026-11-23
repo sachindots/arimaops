@@ -9,9 +9,11 @@ use tokio::sync::oneshot;
 use tracing::{debug, warn};
 
 use crate::ip_guard::{is_imds_or_link_local_ip, is_restricted_ip};
+use base64::Engine as _;
+
 use crate::policy::{
-    host_matches, host_matches_scope, normalize_host, parse_connect_authority, ContainerIpRegistry,
-    EgressPolicy, PolicyProvider, ProxyError,
+    host_matches, host_matches_scope, is_imds_host_literal, normalize_host, parse_connect_authority, ContainerIdentity,
+    EgressPolicy, PolicyProvider, ProxyCredentials, ProxyError,
 };
 
 const MAX_HEADER_BYTES: usize = 64 * 1024;
@@ -43,7 +45,7 @@ pub struct EgressProxy;
 impl EgressProxy {
     pub async fn start(
         bind_addr: SocketAddr,
-        registry: ContainerIpRegistry,
+        credentials: ProxyCredentials,
         policy: Arc<dyn PolicyProvider>,
     ) -> Result<EgressProxyHandle, ProxyError> {
         let listener = TcpListener::bind(bind_addr).await?;
@@ -60,7 +62,7 @@ impl EgressProxy {
                     accepted = listener.accept() => {
                         match accepted {
                             Ok((stream, peer)) => {
-                                let reg = registry.clone();
+                                let reg = credentials.clone();
                                 let pol = Arc::clone(&policy);
                                 tokio::spawn(async move {
                                     if let Err(err) = handle_client(stream, peer, reg, pol).await {
@@ -120,6 +122,37 @@ fn evaluate_policy(policy: &EgressPolicy, host: &str, port: u16) -> Decision {
     }
 }
 
+/// In observe mode a refusal becomes a report, unless the host is a quiet one. Metadata and private addresses
+/// stay blocked by [`resolve_pinned`] in every mode.
+fn observed(
+    decision: Decision,
+    policy: &EgressPolicy,
+    provider: &dyn PolicyProvider,
+    identity: Option<&ContainerIdentity>,
+    host: &str,
+    port: u16,
+) -> Decision {
+    if decision.allowed || !policy.observe || is_imds_host_literal(host) {
+        return decision;
+    }
+    if let Some(id) = identity.filter(|_| !host_matches(&policy.quiet, host, port)) {
+        provider.record_would_block(id, &normalize_host(host), port);
+    }
+    Decision { allowed: true, explicitly_scoped: false, reason: "" }
+}
+
+/// `Basic base64(agent:token)` from the `Proxy-Authorization` header.
+fn identify(credentials: &ProxyCredentials, header: &str) -> Option<ContainerIdentity> {
+    let (scheme, encoded) = header.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return None;
+    }
+    let raw = base64::engine::general_purpose::STANDARD.decode(encoded.trim()).ok()?;
+    let text = String::from_utf8(raw).ok()?;
+    let (user, token) = text.split_once(':')?;
+    credentials.identify(user, token)
+}
+
 async fn resolve_pinned(
     host: &str,
     port: u16,
@@ -160,7 +193,7 @@ async fn resolve_pinned(
 async fn handle_client(
     stream: TcpStream,
     peer: SocketAddr,
-    registry: ContainerIpRegistry,
+    credentials: ProxyCredentials,
     provider: Arc<dyn PolicyProvider>,
 ) -> Result<(), ProxyError> {
     let mut reader = BufReader::new(stream);
@@ -201,10 +234,19 @@ async fn handle_client(
         return Ok(());
     };
 
-    let identity = registry.identify(peer.ip());
-    let Some(policy) = provider.policy_for(peer.ip(), identity.as_ref()).await else {
+    let auth = lines.iter().skip(1).find_map(|h| {
+        let (name, value) = h.split_once(':')?;
+        name.trim().eq_ignore_ascii_case("proxy-authorization").then(|| value.trim().to_owned())
+    });
+    let identity = auth.as_deref().and_then(|a| identify(&credentials, a));
+    let policy = if auth.is_some() && identity.is_none() {
+        None
+    } else {
+        provider.policy_for(peer.ip(), identity.as_ref()).await
+    };
+    let Some(policy) = policy else {
         let mut inner = reader.into_inner();
-        write_forbidden(&mut inner, "unknown proxy client").await?;
+        write_auth_required(&mut inner).await?;
         return Ok(());
     };
 
@@ -217,7 +259,7 @@ async fn handle_client(
             return Ok(());
         };
 
-        let decision = evaluate_policy(&policy, &host, port);
+        let decision = observed(evaluate_policy(&policy, &host, port), &policy, &*provider, identity.as_ref(), &host, port);
         if !decision.allowed {
             let mut inner = reader.into_inner();
             write_forbidden(&mut inner, decision.reason).await?;
@@ -266,7 +308,7 @@ async fn handle_client(
         return Ok(());
     };
 
-    let decision = evaluate_policy(&policy, &parsed.host, parsed.port);
+    let decision = observed(evaluate_policy(&policy, &parsed.host, parsed.port), &policy, &*provider, identity.as_ref(), &parsed.host, parsed.port);
     if !decision.allowed {
         let mut inner = reader.into_inner();
         write_forbidden(&mut inner, decision.reason).await?;
@@ -365,6 +407,16 @@ fn parse_http_proxy_url(raw: &str) -> Option<ParsedHttpTarget> {
         port,
         path_and_query,
     })
+}
+
+async fn write_auth_required(stream: &mut TcpStream) -> std::io::Result<()> {
+    let body = "ArimaOps proxy: a valid agent proxy credential is required.\n";
+    let resp = format!(
+        "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"ArimaOps\"\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    stream.write_all(resp.as_bytes()).await
 }
 
 async fn write_forbidden(stream: &mut TcpStream, why: &str) -> std::io::Result<()> {

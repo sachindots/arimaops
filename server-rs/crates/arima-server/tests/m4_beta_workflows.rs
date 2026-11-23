@@ -12,7 +12,7 @@
 //!    atomic restore round-trip (DB, vault, `evidence/`, `feedback/`) + Owner-only RBAC.
 
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use arima_auth::{SessionMeta, VaultKey, SESSION_COOKIE_NAME};
@@ -21,7 +21,7 @@ use arima_core::{
     ProposedDecision, ServerRole, VoiceProvider,
 };
 use arima_db::{parse_and_score_cvss4, CreateMemoryInput, Db, DbError};
-use arima_proxy::{ContainerIdentity, ContainerIpRegistry, EgressProxy};
+use arima_proxy::{EgressProxy, ProxyCredentials};
 use arima_server::{router_with_state, AppState, ServerConfig};
 use axum::body::Body;
 use axum::http::header::{CONTENT_TYPE, COOKIE, HOST, ORIGIN};
@@ -224,18 +224,10 @@ async fn m4_security_scope_proxy_sync_cvss4_and_six_export_formats() {
     });
 
     // Start live EgressProxy backed by AppState's synchronized DynamicScopePolicyProvider.
-    let ip_reg = ContainerIpRegistry::new();
-    ip_reg.register(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        ContainerIdentity {
-            project_id: project_id.clone(),
-            agent_id: "cipher".into(),
-            container_name: "hq-vampi-cipher".into(),
-        },
-    );
+    // No credential: the scope provider serves a loopback caller (this test) its project's scope.
     let proxy = EgressProxy::start(
         "127.0.0.1:0".parse().unwrap(),
-        ip_reg,
+        ProxyCredentials::new(),
         Arc::clone(&state.inner.egress_policy) as Arc<dyn arima_proxy::PolicyProvider>,
     )
     .await

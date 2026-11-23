@@ -4,6 +4,7 @@ import type { TeamTemplate } from "./model";
 import type { StackConfig } from "./stack";
 import type {
   AccessDecision,
+  EgressMode,
   AgentCli,
   AccessRequest,
   ActionItem,
@@ -192,8 +193,13 @@ export interface OfficeDataSource {
   /** Write-only app variables (.env) for all agents (agentId null) or one agent. HQ never echoes values back. */
   setEnvVar(agentId: string | null, name: string, value: string): void;
   removeEnvVar(agentId: string | null, name: string): void;
-  /** Machine-wide upstream proxy for sandbox traffic (null clears it). */
-  setProxy(url: string | null): void;
+  /** Owner only: the project's agent network mode, applied at each agent's next start. */
+  setEgressMode(mode: EgressMode): void;
+  /** Owner only: allow a host for every agent in the project, which drops it from the would-block list. */
+  allowEgressHost(host: string, port: number): void;
+  /** Owner only: hide a host from the would-block list. */
+  ignoreEgressHost(host: string, port: number): void;
+  removeEgressRule(rule: string): void;
   /** Creates the agent's env file if needed and opens it in the default editor. */
   openEnvFile(agentId: string): void;
   /** Closes an action item; HQ tells the agent (done: with your note; dismissed: continue without it). */

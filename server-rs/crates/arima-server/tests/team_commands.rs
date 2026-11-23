@@ -282,11 +282,7 @@ async fn secrets_accounts_and_proxy_never_expose_values() {
     assert!(sec::remove_account(&state, &pid, &[json!("work")]).is_err());
     assert_eq!(sec::accounts_state(&state)["list"].as_array().unwrap().len(), 1);
 
-    assert!(sec::set_proxy(&state, &pid, &[json!("ftp://x")]).is_err());
-    sec::set_proxy(&state, &pid, &[json!("http://proxy:3128")]).unwrap();
-    assert_eq!(sec::sbx_state(&state, &pid, &[], "now")["proxy"], "http://proxy:3128");
-    sec::set_proxy(&state, &pid, &[json!("")]).unwrap();
-    assert_eq!(sec::sbx_state(&state, &pid, &[], "now")["proxy"], Value::Null);
+    assert_eq!(sec::sbx_state(&state, &pid, &[], "now")["egress"]["mode"], "observe");
     assert!(sec::open_env_file().is_err());
 
     sec::set_env_var(&state, &pid, &[json!("zero"), json!("TMP"), json!("v")]).unwrap();

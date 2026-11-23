@@ -1,9 +1,10 @@
 import { useId, useState } from "react";
-import { SERVICE_KEYS } from "../../data/types";
+import { SERVICE_KEYS, type EgressMode } from "../../data/types";
+import { useAuth } from "../../store/auth";
 import { officeActions, useOffice } from "../../store/office";
-import { Dot, Field, SectionTitle } from "../kit";
+import { Dot, Field, SectionTitle, ago, useNow } from "../kit";
 import { Select } from "../primitives/Select";
-import { ChipList, CommitInput, isDomain } from "./controls";
+import { ChipList, isDomain } from "./controls";
 import { ResourcesSection } from "./ResourcesSection";
 import { ask } from "../dialog";
 
@@ -184,6 +185,86 @@ function KeyEditor({ keys, onSet, onRemove, disabled }: { keys: string[]; onSet:
   );
 }
 
+const MODES: { value: EgressMode; label: string }[] = [
+  { value: "off", label: "Off: no proxy" },
+  { value: "observe", label: "Observe: block nothing" },
+  { value: "enforce", label: "Enforce (coming next)" },
+];
+
+/** The project's network mode and the hosts its agents reached that enforce mode would block. */
+function EgressSection() {
+  const egress = useOffice((s) => s.snap?.sbx.egress);
+  const owner = useAuth((s) => s.role === "owner" || s.status === "none");
+  const now = useNow(30_000);
+  if (!egress) return null;
+  const hostLabel = (host: string, port: number) => (port === 80 || port === 443 ? host : `${host}:${port}`);
+
+  return (
+    <section className="panel p-3">
+      <SectionTitle>Network for all agents</SectionTitle>
+      <p className="mb-3 text-[13px] text-muted">
+        Agents reach the internet through HQ's proxy. Observe mode blocks nothing: it lists each host that enforce mode would block, so you can allow what this project needs first. Changes apply at each agent's next start.
+      </p>
+      <Field label="Mode" hint={owner ? undefined : "Only the owner can change the mode or allow hosts."}>
+        <Select value={egress.mode} onChange={(m) => officeActions.setEgressMode(m as EgressMode)} ariaLabel="Network mode" options={MODES} disabled={!owner} />
+      </Field>
+      {egress.mode === "enforce" && (
+        <p className="mt-2 text-[13px] text-muted">Enforce mode is coming next. Until then this project works exactly like observe: nothing is blocked.</p>
+      )}
+
+      <h4 className="mb-2 mt-4 text-[13px] font-semibold text-ink">Would be blocked in enforce mode</h4>
+      {egress.mode === "off" ? (
+        <p className="text-[13px] text-muted">Nothing is recorded while the mode is off.</p>
+      ) : egress.wouldBlock.length === 0 ? (
+        <p className="text-[13px] text-muted">Nothing yet. Every host the agents reached is allowed.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-white/10">
+          {egress.wouldBlock.map((b) => (
+            <li key={`${b.host}:${b.port}`} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-term text-[13px] text-ink" title={`${b.host}:${b.port}`}>
+                  {hostLabel(b.host, b.port)}
+                </div>
+                <div className="text-[12px] text-muted">
+                  {b.agents.join(", ")} · {b.count} {b.count === 1 ? "request" : "requests"} · last {ago(b.lastSeen, now)} ago
+                </div>
+              </div>
+              {owner && (
+                <div className="flex gap-1.5">
+                  <button type="button" className="btn text-[12px]" onClick={() => officeActions.allowEgressHost(b.host, b.port)}>
+                    Allow for this project
+                  </button>
+                  <button type="button" className="btn text-[12px]" onClick={() => officeActions.ignoreEgressHost(b.host, b.port)}>
+                    Ignore
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {egress.rules.length > 0 && (
+        <>
+          <h4 className="mb-2 mt-4 text-[13px] font-semibold text-ink">Allowed for this project</h4>
+          <ul className="flex flex-wrap gap-1.5">
+            {egress.rules.map((r) => (
+              <li key={r} className="chip font-term text-[12px]">
+                {r}
+                {owner && (
+                  <button type="button" className="ml-1 text-[12px]" aria-label={`Remove ${r}`} onClick={() => officeActions.removeEgressRule(r)}>
+                    ✕
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string }) {
   const snap = useOffice((s) => s.snap);
   const [agentId, setAgentId] = useState(initialAgentId ?? snap?.config.team[0]?.id ?? "");
@@ -219,6 +300,8 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
         />
       </section>
 
+      <EgressSection />
+
       <h3 className="-mb-2 mt-2 font-display text-[20px] font-semibold">This agent</h3>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -245,7 +328,7 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
           </button>
         </div>
         <p className="mb-3 text-[13px] text-muted">
-          Domains this agent may reach. Blocked wins over allowed. Saved with the agent; it is enforced when HQ's egress proxy is on for this server, otherwise it is a record only.
+          Domains this agent may reach, on top of the project's. Blocked wins over allowed. In observe mode these only decide what is listed as would-be-blocked.
         </p>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Allowed domains">
@@ -287,13 +370,6 @@ export function SandboxSettingsTab({ initialAgentId }: { initialAgentId?: string
       </section>
 
       <h3 className="-mb-2 mt-2 font-display text-[20px] font-semibold">This server — all agents</h3>
-
-      <section className="panel p-3">
-        <SectionTitle>Upstream proxy</SectionTitle>
-        <Field label="Proxy URL" hint="Optional. All agent traffic goes through this proxy. Leave empty for none.">
-          <CommitInput className="field font-term text-[13px]" value={sbx.proxy ?? ""} placeholder="http://proxy.internal:3128" onCommit={(v) => officeActions.setProxy(v.trim() || null)} />
-        </Field>
-      </section>
 
       <section className="panel p-3">
         <SectionTitle>Service keys for every agent</SectionTitle>

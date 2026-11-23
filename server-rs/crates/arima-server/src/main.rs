@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use arima_auth::VaultKey;
 use arima_db::{migrate_v1_data, Db, MigrateV1Options};
-use arima_proxy::{normalize_preview_domain, normalize_strict_origin, PreviewProxy, PreviewProxyConfig};
+use arima_proxy::{normalize_preview_domain, normalize_strict_origin, EgressProxy, PreviewProxy, PreviewProxyConfig};
 use arima_server::{router_with_state, AppState, ServerConfig};
 use tokio::net::TcpListener;
 use tracing::info;
@@ -241,6 +241,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     info!("ArimaOps v2 preview proxy listening on http://{preview_addr}");
     println!("ArimaOps v2 preview proxy listening on http://{preview_addr}");
+
+    // Agents reach the internet through this proxy (observe mode); each one is named by its own credential.
+    let _egress_handle = if state.inner.runtime.config.enabled {
+        let egress_addr: SocketAddr = format!("{host}:{}", state.inner.runtime.config.egress_port).parse()?;
+        let handle = EgressProxy::start(
+            egress_addr,
+            state.inner.egress.credentials.clone(),
+            std::sync::Arc::new(arima_server::egress::ProxyPolicy(state.clone())),
+        )
+        .await
+        .map_err(|e| format!("couldn't start the agent egress proxy on {egress_addr} (set HQ_EGRESS_PORT to move it): {e}"))?;
+        info!("agent egress proxy listening on {}", handle.addr());
+        Some(handle)
+    } else {
+        None
+    };
 
     let _backup_scheduler = arima_server::backups::spawn_nightly_backup_scheduler(state.clone());
 

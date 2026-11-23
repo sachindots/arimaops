@@ -635,7 +635,10 @@ async fn execute_ws_command(
         "saveAccount" => crate::secrets::save_account(state, project_id, args),
         "testAccountKey" => crate::key_test::run(state, project_id, args).await,
         "removeAccount" => crate::secrets::remove_account(state, project_id, args),
-        "setProxy" => crate::secrets::set_proxy(state, project_id, args),
+        "setEgressMode" => crate::egress::set_mode(state, project_id, args),
+        "allowEgressHost" => crate::egress::allow_host(state, project_id, args),
+        "ignoreEgressHost" => crate::egress::ignore_host(state, project_id, args),
+        "removeEgressRule" => crate::egress::remove_rule(state, project_id, args),
         "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
         "setLabMode" => crate::integrations::set_lab_mode(state, project_id, args),
         "addMcp" => {
