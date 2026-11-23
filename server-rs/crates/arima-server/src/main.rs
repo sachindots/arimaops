@@ -192,6 +192,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState::new(db, vault, config);
     state.configure_cloud_proxy(public_origin.clone(), preview_domain.clone());
     state.inner.runtime.refresh().await;
+    let orphans = state.inner.runtime.reconcile().await;
+    if orphans > 0 {
+        tracing::info!(orphans, "removed agent containers left by a previous run");
+    }
     {
         let rt = &state.inner.runtime.config;
         if rt.enabled {

@@ -109,6 +109,11 @@ async fn an_agent_runs_in_a_container_and_its_terminal_round_trips() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     assert!(!docker(&["inspect", "hq-demo-cipher"], None), "its container is removed too");
 
+    // A container left by a previous HQ process is removed at boot; one without this HQ's label is not.
+    state.inner.runtime.start(&state, &pid, "cipher").await.unwrap();
+    assert_eq!(state.inner.runtime.reconcile().await, 1, "the orphaned container is removed");
+    assert!(!docker(&["inspect", "hq-demo-cipher"], None));
+
     docker(&["network", "rm", &network], None);
     docker(&["rmi", "-f", &image], None);
 }

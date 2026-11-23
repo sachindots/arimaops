@@ -72,10 +72,25 @@ pub struct RuntimeStatus {
     pub image_detail: String,
 }
 
+struct StartGuard {
+    set: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
+    key: (String, String),
+}
+
+impl Drop for StartGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.set.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
 pub struct AgentRuntime {
     pub config: RuntimeConfig,
     engine: DockerEngine,
     sessions: Mutex<HashMap<(String, String), Arc<Session>>>,
+    /// Agents whose container is being created; a second Start while one is in flight is a no-op.
+    starting: Arc<Mutex<std::collections::HashSet<(String, String)>>>,
     status: Mutex<RuntimeStatus>,
 }
 
@@ -127,7 +142,7 @@ pub fn provider_env(cli: &str, provider: &str) -> &'static [&'static str] {
 impl AgentRuntime {
     #[must_use]
     pub fn new(config: RuntimeConfig) -> Self {
-        Self { config, engine: DockerEngine::from_env(), sessions: Mutex::new(HashMap::new()), status: Mutex::new(RuntimeStatus::default()) }
+        Self { config, engine: DockerEngine::from_env(), sessions: Mutex::new(HashMap::new()), starting: Arc::default(), status: Mutex::new(RuntimeStatus::default()) }
     }
 
     fn key(project_id: &str, agent_id: &str) -> (String, String) {
@@ -208,6 +223,20 @@ impl AgentRuntime {
         self.engine.resize(&session.container, cols.clamp(20, 500), rows.clamp(5, 200)).await.map_err(|e| e.to_string())
     }
 
+    /// Removes this HQ's agent containers (labelled with its workspaces root, so another HQ on the same Docker host is untouched) left by a previous process: this process has no session for them, so nothing
+    /// could stop them or read their terminal. Call once at boot, before any Start.
+    pub async fn reconcile(&self) -> usize {
+        if !self.config.enabled {
+            return 0;
+        }
+        let Ok(ids) = self.engine.ids_with_label(&format!("arimaops.hq={}", self.config.workspaces_root.display())).await else { return 0 };
+        let mut removed = 0;
+        for id in ids {
+            removed += usize::from(self.engine.remove(&id).await.is_ok());
+        }
+        removed
+    }
+
     pub async fn stop(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<(), String> {
         let name = format!("hq-{}-{agent_id}", crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned()));
         let session = self.sessions.lock().ok().and_then(|mut m| m.remove(&Self::key(project_id, agent_id)));
@@ -221,6 +250,11 @@ impl AgentRuntime {
         if self.is_running(project_id, agent_id) {
             return Ok(());
         }
+        let key = Self::key(project_id, agent_id);
+        if !self.starting.lock().is_ok_and(|mut set| set.insert(key.clone())) {
+            return Ok(());
+        }
+        let _release = StartGuard { set: self.starting.clone(), key };
         if !self.config.enabled {
             return Err("Agents can't start here: Docker isn't available to HQ. Mount the Docker socket into HQ to turn the agent runtime on.".into());
         }
@@ -352,7 +386,7 @@ impl AgentRuntime {
             "Tty": true, "OpenStdin": true, "StdinOnce": false,
             "WorkingDir": "/workspace",
             "User": format!("{uid}:{gid}"),
-            "Labels": { "arimaops.project": project_id, "arimaops.agent": agent_id },
+            "Labels": { "arimaops.project": project_id, "arimaops.agent": agent_id, "arimaops.hq": self.config.workspaces_root.display().to_string() },
             "HostConfig": {
                 "Binds": [format!("{workspace_host}:/workspace:rw")],
                 "NanoCpus": (cpus * 1e9).round() as i64,

@@ -42,26 +42,19 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
         };
     }
 
-    let owner_only_always = matches!(
-        cmd,
-        "openHostShell"
-            | "openShell"
-            | "saveAccount"
-            | "testAccountKey"
-            | "removeAccount"
-            | "setProxy"
-            | "addMcp"
-            | "runSetupFix"
-            | "deleteProject"
-            | "importTemplate"
-            | "promoteLessons"
-            | "setLessonPromotion"
-            | "removeLesson"
-            | "setMemoryExtraction"
-            | "addToSuite"
-            | "manageUsers"
-            | "setProjectRole"
-    );
+    // Allow-list: an operator may run only these; any new command is owner-only until listed here.
+    let operator_ok = matches!(cmd, "ping" | "elevate" | "recheckSetup" | "refreshSbx" | "refreshMcp"
+        | "startAgent" | "stopAgent" | "sendMessage" | "askTeam" | "sendTerminalInput" | "resizeTerminal"
+        | "closeShell" | "closeHostShell" | "forwardPort" | "unforwardPort" | "openWorkspace" | "inspectWorkspace"
+        | "answerDecision" | "resolveDecision" | "resolveActionItem" | "recordGate" | "sendProposal"
+        | "answerApproval" | "resolveAccess"
+        | "assignTask" | "addGoal" | "updateGoal" | "setTaskGoal" | "setTaskRunsOn" | "updateBoard" | "createBoard"
+        | "updateFinding" | "keepOutOfMemory" | "decideMemories"
+        | "startMeeting" | "joinMeeting" | "addMeetingTurn" | "commitMeetingMinutes" | "submitVisualFeedback"
+        | "updateAgent" | "addAgent" | "setTeamMode" | "updateRole"
+        | "setEnvVar" | "removeEnvVar" | "openEnvFile" | "setSecret" | "removeSecret"
+        | "exportTemplate" | "checkConnection");
+    let owner_only_always = !operator_ok;
 
     let local_host_escape = matches!(
         cmd,
@@ -128,4 +121,23 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
     }
 
     CommandVerdict::Allowed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx(role: ServerRole) -> AuthContext {
+        AuthContext { server_role: role, project_role: None, remote: false, elevated: false, target_agent_local: false, decision_owner_only: false }
+    }
+
+    #[test]
+    fn operator_is_allow_listed_and_unknown_commands_are_owner_only() {
+        let op = ctx(ServerRole::Operator);
+        assert_eq!(authorize_command("startAgent", &op), CommandVerdict::Allowed);
+        for cmd in ["removeAgent", "updateWorkflow", "saveConnection", "updateSandbox", "brandNewCommand"] {
+            assert!(matches!(authorize_command(cmd, &op), CommandVerdict::Denied(_)), "{cmd}");
+            assert_eq!(authorize_command(cmd, &ctx(ServerRole::Owner)), CommandVerdict::Allowed, "{cmd}");
+        }
+    }
 }

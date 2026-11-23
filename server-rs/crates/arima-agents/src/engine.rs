@@ -156,6 +156,13 @@ impl DockerEngine {
         }
     }
 
+    /// Ids of every container (running or not) that carries the label `key`.
+    pub async fn ids_with_label(&self, key: &str) -> Result<Vec<String>> {
+        let filters = json!({ "label": [key] }).to_string();
+        let reply = self.expect("GET", &format!("/containers/json?all=1&filters={}", encode(&filters)), None, &[200]).await?;
+        Ok(reply.json().as_array().map(|a| a.iter().filter_map(|c| c["Id"].as_str().map(str::to_owned)).collect()).unwrap_or_default())
+    }
+
     pub async fn inspect(&self, id: &str) -> Result<Option<ContainerState>> {
         let reply = self.send("GET", &format!("/containers/{}/json", encode(id)), None).await?;
         match reply.status {
