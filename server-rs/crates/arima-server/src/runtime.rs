@@ -37,6 +37,9 @@ pub struct RuntimeConfig {
     pub hq_url: Option<String>,
     /// The port of HQ's egress proxy, on the same host as `hq_url`.
     pub egress_port: u16,
+    /// HQ's own container (its id prefix, which Docker uses as the hostname) when HQ runs in one. Enforce mode
+    /// attaches it to the agents' internal network, so it is their only way out.
+    pub hq_container: Option<String>,
 }
 
 /// `HQ_EGRESS_PORT`, or HQ's port + 1000 (8420 by default).
@@ -63,7 +66,26 @@ impl RuntimeConfig {
             workspaces_root: root,
             hq_url: nonempty("ARIMA_AGENT_HQ_URL"),
             egress_port: egress_port(),
+            hq_container: std::path::Path::new("/.dockerenv").exists().then(|| std::fs::read_to_string("/etc/hostname").ok()).flatten().map(|h| h.trim().to_owned()).filter(|h| !h.is_empty()),
         }
+    }
+
+    /// The per-HQ network enforce-mode agents start on: internal, so HQ (attached to it too) is the only way out.
+    #[must_use]
+    pub fn internal_network(&self) -> String {
+        format!("{}-internal", self.network)
+    }
+
+    /// HQ's container and the host name agents use for it, which enforce mode needs to put HQ on their network.
+    fn enforce_hq(&self) -> Result<(String, String), String> {
+        let container = self.hq_container.clone().ok_or(
+            "Enforce mode needs HQ to run in a container, so it can be the agents' only way out. Switch this project to observe in Settings, or run HQ with the compose files.",
+        )?;
+        let host = self.hq_url.as_deref().and_then(|u| url::Url::parse(u).ok()).and_then(|u| u.host_str().map(str::to_owned));
+        let host = host.filter(|h| h.trim_matches(['[', ']']).parse::<std::net::IpAddr>().is_err()).ok_or(
+            "Enforce mode needs ARIMA_AGENT_HQ_URL to name HQ by host name (as in http://arima-hq:7420), so agents find it on their internal network.",
+        )?;
+        Ok((container, host))
     }
 }
 
@@ -285,7 +307,13 @@ impl AgentRuntime {
         }
         self.engine.ping().await.map_err(|e| e.to_string())?;
         let plan = self.plan(state, project_id, agent_id)?;
-        self.engine.ensure_network(&self.config.network).await.map_err(|e| e.to_string())?;
+        if let Some((hq, alias)) = &plan.enforce {
+            let net = self.config.internal_network();
+            self.engine.ensure_network(&net, true).await.map_err(|e| e.to_string())?;
+            self.engine.connect_network(&net, hq, std::slice::from_ref(alias)).await.map_err(|e| format!("couldn't put HQ on the agents' internal network: {e}"))?;
+        } else {
+            self.engine.ensure_network(&self.config.network, false).await.map_err(|e| e.to_string())?;
+        }
         self.engine.ensure_image(&self.config.image).await.map_err(|e| e.to_string())?;
         let _ = self.engine.remove(&plan.container).await;
         let id = self.engine.create_container(&plan.container, &plan.body).await.map_err(|e| e.to_string())?;
@@ -399,9 +427,12 @@ impl AgentRuntime {
             }
         }
         let container = format!("hq-{slug}-{agent_id}");
+        let egress = crate::egress::mode(state, project_id);
+        // Read at each start, so a mode change reaches an agent at its next start.
+        let enforce = if egress == crate::egress::EgressMode::Enforce { Some(self.config.enforce_hq()?) } else { None };
         // Without an HQ address agents can't reach the proxy either, so they keep going straight out.
-        if let Some(hq) = self.config.hq_url.as_deref().filter(|_| crate::egress::mode(state, project_id) != crate::egress::EgressMode::Off) {
-            let policy = crate::egress::policy(adapter.egress, &crate::egress::project_rules(state, project_id), agent);
+        if let Some(hq) = self.config.hq_url.as_deref().filter(|_| egress != crate::egress::EgressMode::Off) {
+            let policy = crate::egress::policy(egress, adapter.egress, &crate::egress::project_rules(state, project_id), agent);
             let token = state.inner.egress.admit(project_id, agent_id, &container, policy);
             env.extend(crate::egress::proxy_env(hq, self.config.egress_port, agent_id, &token));
         }
@@ -444,17 +475,19 @@ impl AgentRuntime {
                 "CapDrop": ["ALL"],
                 "SecurityOpt": ["no-new-privileges"],
                 "Tmpfs": { "/tmp": "rw,nosuid,size=256m" },
-                "NetworkMode": self.config.network,
+                "NetworkMode": if enforce.is_some() { self.config.internal_network() } else { self.config.network.clone() },
                 "Init": true,
                 "RestartPolicy": { "Name": "no" }
             }
         });
-        Ok(Plan { container, body, workspace_host })
+        Ok(Plan { container, body, workspace_host, enforce })
     }
 }
 
 pub(crate) struct Plan {
     container: String,
+    /// HQ's container and its name for agents, when the agent starts on the internal network.
+    enforce: Option<(String, String)>,
     pub(crate) body: Value,
     workspace_host: String,
 }
@@ -503,6 +536,7 @@ mod tests {
             workspaces_host_root: root.path().into(),
             hq_url: Some("http://hq:7420/".into()),
             egress_port: 8420,
+            hq_container: None,
         });
         let plan = rt.plan(&state, &pid, &id).unwrap();
         let dir = root.path().join("demo").join(&id);
@@ -516,6 +550,24 @@ mod tests {
         let token = proxy.strip_prefix(&format!("http://{id}:")).and_then(|t| t.strip_suffix("@hq:8420")).expect(proxy);
         assert!(state.inner.egress.credentials.identify(&id, token).is_some(), "the credential in the URL names this agent");
         assert!(env.contains(&"NODE_USE_ENV_PROXY=1") && env.iter().any(|e| e.starts_with("NO_PROXY=") && e.split([',', '=']).any(|h| h == "hq")), "{env:?}");
+        assert_eq!(plan.body["HostConfig"]["NetworkMode"], "net", "observe keeps the agent on HQ's normal network");
+        assert!(state.inner.egress.policy(&pid, &id).unwrap().observe);
+
+        crate::egress::set_mode(&state, &pid, &[json!("enforce")]).unwrap();
+        let err = rt.plan(&state, &pid, &id).err().unwrap();
+        assert!(err.contains("container"), "HQ on the host can't be the only way out, so enforce refuses to start: {err}");
+        let mut in_container = rt.config.clone();
+        in_container.hq_container = Some("0123abcd".into());
+        let rt = AgentRuntime::new(in_container);
+        let enforced = rt.plan(&state, &pid, &id).unwrap();
+        assert_eq!(enforced.body["HostConfig"]["NetworkMode"], "net-internal");
+        assert_eq!(enforced.enforce, Some(("0123abcd".to_owned(), "hq".to_owned())), "HQ joins under the name agents use for it");
+        assert!(!state.inner.egress.policy(&pid, &id).unwrap().observe, "the proxy refuses for this agent");
+        crate::egress::set_mode(&state, &pid, &[json!("observe")]).unwrap();
+        assert!(!state.inner.egress.policy(&pid, &id).unwrap().observe, "a running agent keeps its start's mode");
+        let back = rt.plan(&state, &pid, &id).unwrap();
+        assert_eq!((back.body["HostConfig"]["NetworkMode"].clone(), back.enforce), (json!("net"), None), "the next start applies the switch");
+
         crate::egress::set_mode(&state, &pid, &[json!("off")]).unwrap();
         let off = rt.plan(&state, &pid, &id).unwrap();
         assert!(!off.body["Env"].to_string().contains("PROXY"), "off mode sets no proxy");

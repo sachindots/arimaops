@@ -118,12 +118,15 @@ fn evaluate_policy(policy: &EgressPolicy, host: &str, port: u16) -> Decision {
     Decision {
         allowed: false,
         explicitly_scoped: false,
-        reason: "host not in allowlist",
+        reason: NOT_LISTED,
     }
 }
 
-/// In observe mode a refusal becomes a report, unless the host is a quiet one. Metadata and loopback addresses
-/// stay blocked by [`resolve_pinned`] in every mode.
+const NOT_LISTED: &str = "host not in allowlist";
+
+/// In observe mode a refusal becomes a report, unless the host is a quiet one. In enforce mode an unlisted host
+/// stays refused and becomes an access request. Metadata and loopback addresses stay blocked by
+/// [`resolve_pinned`] in every mode.
 fn observed(
     decision: Decision,
     policy: &EgressPolicy,
@@ -132,13 +135,29 @@ fn observed(
     host: &str,
     port: u16,
 ) -> Decision {
-    if decision.allowed || !policy.observe || is_imds_host_literal(host) {
+    if decision.allowed || is_imds_host_literal(host) || (!policy.observe && decision.reason != NOT_LISTED) {
         return decision;
     }
-    if let Some(id) = identity.filter(|_| !host_matches(&policy.quiet, host, port)) {
-        provider.record_would_block(id, &normalize_host(host), port);
+    let id = identity.filter(|_| !host_matches(&policy.quiet, host, port));
+    if policy.observe {
+        if let Some(id) = id {
+            provider.record_would_block(id, &normalize_host(host), port);
+        }
+        return Decision { allowed: true, explicitly_scoped: false, reason: "" };
     }
-    Decision { allowed: true, explicitly_scoped: false, reason: "" }
+    if let Some(id) = id {
+        provider.record_blocked(id, &normalize_host(host), port);
+    }
+    decision
+}
+
+/// The 403 text: an unlisted host names itself and where the owner approves it.
+fn refusal(decision: &Decision, host: &str, port: u16) -> String {
+    if decision.reason == NOT_LISTED {
+        format!("{}:{port} is not allowed for this project. Approve it in the ArimaOps Inbox, then retry", normalize_host(host))
+    } else {
+        decision.reason.to_owned()
+    }
 }
 
 /// `Basic base64(agent:token)` from the `Proxy-Authorization` header.
@@ -265,7 +284,7 @@ async fn handle_client(
         let decision = observed(evaluate_policy(&policy, &host, port), &policy, &*provider, identity.as_ref(), &host, port);
         if !decision.allowed {
             let mut inner = reader.into_inner();
-            write_forbidden(&mut inner, decision.reason).await?;
+            write_forbidden(&mut inner, &refusal(&decision, &host, port)).await?;
             return Ok(());
         }
 
@@ -314,7 +333,7 @@ async fn handle_client(
     let decision = observed(evaluate_policy(&policy, &parsed.host, parsed.port), &policy, &*provider, identity.as_ref(), &parsed.host, parsed.port);
     if !decision.allowed {
         let mut inner = reader.into_inner();
-        write_forbidden(&mut inner, decision.reason).await?;
+        write_forbidden(&mut inner, &refusal(&decision, &parsed.host, parsed.port)).await?;
         return Ok(());
     }
 

@@ -2,9 +2,8 @@
 
 //! Agent egress: each project's mode, the policy an agent gets at start, its proxy credential, and the hosts
 //! enforce mode would block. Agents reach the internet through HQ's egress proxy, which names them by the
-//! credential in their proxy URL.
-//!
-//! shortcut: `enforce` is stored but behaves like `observe` until agents move to an internal network (step 3c).
+//! credential in their proxy URL. In enforce mode agents sit on an internal network where that proxy is the only
+//! way out, and each refused host becomes one Inbox access request per agent.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -42,7 +41,7 @@ pub enum EgressMode {
     Off,
     /// Everything goes through; each host enforce would block is recorded.
     Observe,
-    /// Stored, and for now the same as observe.
+    /// Agents start on an internal network; the proxy refuses unlisted hosts and private addresses.
     Enforce,
 }
 
@@ -95,14 +94,14 @@ pub fn project_rules(state: &AppState, project_id: &str) -> Vec<String> {
 /// The policy an agent gets at start, never stored: the shared base, its CLI's hosts, the project's rules and
 /// the seat's own allow list; the seat's deny list and cloud metadata are denied.
 #[must_use]
-pub fn policy(cli_egress: &[&str], project_rules: &[String], seat: &Value) -> EgressPolicy {
+pub fn policy(mode: EgressMode, cli_egress: &[&str], project_rules: &[String], seat: &Value) -> EgressPolicy {
     let seat_list = |key: &str| seat["sandbox"][key].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>();
     let mut allow: Vec<String> = BASE.iter().chain(cli_egress).map(|h| (*h).to_owned()).collect();
     allow.extend(project_rules.iter().cloned());
     allow.extend(seat_list("allow"));
     let mut deny: Vec<String> = METADATA.iter().map(|h| (*h).to_owned()).collect();
     deny.extend(seat_list("deny"));
-    EgressPolicy { allow, deny, quiet: QUIET.iter().map(|h| (*h).to_owned()).collect(), observe: true, ..EgressPolicy::default() }
+    EgressPolicy { allow, deny, quiet: QUIET.iter().map(|h| (*h).to_owned()).collect(), observe: mode != EgressMode::Enforce, ..EgressPolicy::default() }
 }
 
 /// The proxy variables for one agent's container. Node's own `fetch` ignores the proxy without `NODE_USE_ENV_PROXY`.
@@ -140,7 +139,7 @@ impl AgentEgress {
         }
     }
 
-    fn policy(&self, project_id: &str, agent_id: &str) -> Option<EgressPolicy> {
+    pub(crate) fn policy(&self, project_id: &str, agent_id: &str) -> Option<EgressPolicy> {
         self.policies.read().ok()?.get(&(project_id.to_owned(), agent_id.to_owned())).cloned()
     }
 
@@ -164,6 +163,7 @@ impl PolicyProvider for ProxyPolicy {
         Box::pin(async move {
             let id = identity?;
             let mut policy = self.0.inner.egress.policy(&id.project_id, &id.agent_id)?;
+            policy.allow.extend(allowed_once(&self.0, &id.project_id, &id.agent_id));
             if let Some(scope) = self.0.inner.egress_policy.policy_for_project(&id.project_id) {
                 policy.scope_allow_targets = scope.scope_allow_targets;
                 policy.deny.extend(scope.deny);
@@ -176,6 +176,122 @@ impl PolicyProvider for ProxyPolicy {
         if record(&self.0, &identity.project_id, &identity.agent_id, host, port) {
             broadcast(&self.0, &identity.project_id);
         }
+    }
+
+    fn record_blocked(&self, identity: &ContainerIdentity, host: &str, port: u16) {
+        if request_access(&self.0, &identity.project_id, &identity.agent_id, host, port) {
+            broadcast(&self.0, &identity.project_id);
+        }
+    }
+}
+
+/// How long "Allow once" lets one agent reach a host. One blocked step (a clone, an install) opens many
+/// connections to the same host, often in parallel and with retries, so a connection count would either cut
+/// the step off halfway or stop meaning "once"; a short window covers the step and then closes by itself.
+pub const ALLOW_ONCE_MS: i64 = 15 * 60 * 1000;
+
+/// A rule for one host and port, as the owner's allow list writes it.
+fn rule_for(host: &str, port: u16) -> String {
+    if matches!(port, 80 | 443) { host.to_owned() } else { format!("{host}:{port}") }
+}
+
+/// Files one access request per agent, host and port for a request enforce mode refused; true when a request is
+/// newly waiting. A denied host is never asked about again; one allowed once is asked about again after the
+/// window closes, and one allowed for the project only if the owner later removed the rule.
+pub fn request_access(state: &AppState, project_id: &str, agent_id: &str, host: &str, port: u16) -> bool {
+    let now = Utc::now().timestamp_millis();
+    let filed = state.inner.db.transaction(|conn| {
+        conn.query_row(
+            "INSERT INTO egress_access (project_id, agent_id, host, port, status, requested_at) VALUES (?1, ?2, ?3, ?4, 'pending', ?5)
+             ON CONFLICT(project_id, agent_id, host, port) DO UPDATE SET status = 'pending', requested_at = excluded.requested_at, expires_at = NULL
+             WHERE egress_access.status = 'project' OR (egress_access.status = 'once' AND egress_access.expires_at <= excluded.requested_at)
+             RETURNING id",
+            rusqlite::params![project_id, agent_id, host, port, now],
+            |r| r.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(DbError::from)
+    });
+    match filed {
+        Ok(row) => row.is_some(),
+        Err(e) => {
+            tracing::warn!(project_id, agent_id, host, "couldn't file an access request: {e}");
+            false
+        }
+    }
+}
+
+/// The hosts this agent was allowed once and whose window is still open.
+fn allowed_once(state: &AppState, project_id: &str, agent_id: &str) -> Vec<String> {
+    let now = Utc::now().timestamp_millis();
+    state
+        .inner
+        .db
+        .read(|conn| {
+            let mut stmt = conn.prepare("SELECT host, port FROM egress_access WHERE project_id = ?1 AND agent_id = ?2 AND status = 'once' AND expires_at > ?3")?;
+            let rows = stmt.query_map(rusqlite::params![project_id, agent_id, now], |r| Ok(rule_for(&r.get::<_, String>(0)?, r.get(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok::<_, DbError>(rows)
+        })
+        .unwrap_or_default()
+}
+
+/// The project's access requests for the snapshot, newest first, in the shape the Inbox reads.
+#[must_use]
+pub fn access_requests(state: &AppState, project_id: &str) -> Value {
+    let rows = state
+        .inner
+        .db
+        .read(|conn| {
+            let mut stmt = conn.prepare("SELECT id, agent_id, host, port, status, requested_at FROM egress_access WHERE project_id = ?1 ORDER BY requested_at DESC LIMIT 50")?;
+            let rows = stmt
+                .query_map([project_id], |r| {
+                    let status = match r.get::<_, String>(4)?.as_str() {
+                        "pending" => "pending",
+                        "denied" => "denied",
+                        _ => "allowed",
+                    };
+                    Ok(json!({
+                        "id": r.get::<_, i64>(0)?.to_string(), "agentId": r.get::<_, String>(1)?,
+                        "domain": rule_for(&r.get::<_, String>(2)?, r.get(3)?), "reason": "Refused by enforce mode. Allow once lets this agent reach it for 15 minutes.",
+                        "at": iso(r.get(5)?), "status": status, "observed": true,
+                    }))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok::<_, DbError>(rows)
+        })
+        .unwrap_or_default();
+    Value::Array(rows)
+}
+
+/// `resolveAccess [id, "once" | "project" | "deny"]` (owner only), for a request still waiting.
+pub fn resolve_access(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
+    let id = args.first().and_then(Value::as_str).and_then(|s| s.parse::<i64>().ok()).ok_or("That access request doesn't exist.")?;
+    let now = Utc::now().timestamp_millis();
+    let (status, expires) = match args.get(1).and_then(Value::as_str).unwrap_or("") {
+        "once" => ("once", Some(now + ALLOW_ONCE_MS)),
+        "project" => ("project", None),
+        "deny" => ("denied", None),
+        _ => return Err("Answer once, project or deny.".into()),
+    };
+    let (host, port) = state
+        .inner
+        .db
+        .transaction(|conn| {
+            conn.query_row(
+                "UPDATE egress_access SET status = ?1, expires_at = ?2 WHERE id = ?3 AND project_id = ?4 AND status = 'pending' RETURNING host, port",
+                rusqlite::params![status, expires, id, project_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, u16>(1)?)),
+            )
+            .optional()
+            .map_err(DbError::from)
+        })
+        .map_err(|e| e.to_string())?
+        .ok_or("That access request was already answered.")?;
+    if status == "project" {
+        allow_host(state, project_id, &[json!(host), json!(port)])
+    } else {
+        broadcast(state, project_id);
+        Ok(())
     }
 }
 
@@ -262,8 +378,7 @@ pub fn set_mode(state: &AppState, project_id: &str, args: &[Value]) -> Result<()
 /// `allowEgressHost [host, port]` (owner only): a project rule for that host, which drops it from the list.
 pub fn allow_host(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let (host, port) = host_port(args)?;
-    let raw = if matches!(port, 80 | 443) { host.clone() } else { format!("{host}:{port}") };
-    let rule = normalize_scope_rule(&raw).filter(|_| !is_imds_host_literal(&host)).ok_or("That host can't be allowed.")?;
+    let rule = normalize_scope_rule(&rule_for(&host, port)).filter(|_| !is_imds_host_literal(&host)).ok_or("That host can't be allowed.")?;
     state
         .inner
         .db
@@ -317,7 +432,7 @@ mod tests {
     #[test]
     fn the_policy_joins_base_cli_project_and_seat_rules() {
         let seat = json!({ "sandbox": { "allow": ["api.stripe.com"], "deny": ["registry.npmjs.org"] } });
-        let p = policy(crate::cli::adapter("claude").unwrap().egress, &["auth.example.dev:8443".into()], &seat);
+        let p = policy(EgressMode::Observe, crate::cli::adapter("claude").unwrap().egress, &["auth.example.dev:8443".into()], &seat);
         let allowed = |h: &str, port| host_matches(&p.allow, h, port);
         assert!(allowed("api.anthropic.com", 443) && allowed("github.com", 443) && allowed("index.crates.io", 443) && allowed("proxy.golang.org", 443));
         assert!(allowed("registry-1.docker.io", 443) && allowed("files.pythonhosted.org", 443));
@@ -325,6 +440,7 @@ mod tests {
         assert!(!allowed("api.openai.com", 443), "another CLI's hosts aren't in this one's policy");
         assert!(host_matches(&p.deny, "registry.npmjs.org", 443) && host_matches(&p.deny, "169.254.169.254", 80), "seat deny and metadata");
         assert!(host_matches(&p.quiet, "o123.ingest.sentry.io", 443) && p.observe);
+        assert!(!policy(EgressMode::Enforce, &[], &[], &seat).observe, "enforce refuses instead of recording");
         for a in &crate::cli::ADAPTERS {
             assert!(!a.egress.is_empty(), "{} lists its provider hosts", a.id);
         }
@@ -348,7 +464,7 @@ mod tests {
         assert_eq!(stripe["agents"].as_array().unwrap().len(), 2);
         assert!(!stripe["firstSeen"].as_str().unwrap().is_empty());
 
-        let token = state.inner.egress.admit(&pid, "ada", "hq-demo-ada", policy(&[], &[], &json!({})));
+        let token = state.inner.egress.admit(&pid, "ada", "hq-demo-ada", policy(EgressMode::Observe, &[], &[], &json!({})));
         assert!(state.inner.egress.credentials.identify("ada", &token).is_some());
         allow_host(&state, &pid, &[json!("api.stripe.com"), json!(443)]).unwrap();
         assert_eq!(project_rules(&state, &pid), ["api.stripe.com"]);
@@ -363,6 +479,38 @@ mod tests {
         assert!(project_rules(&state, &pid).is_empty());
         state.inner.egress.revoke(&pid, "ada");
         assert!(state.inner.egress.credentials.identify("ada", &token).is_none());
+    }
+
+    #[test]
+    fn a_refused_host_files_one_request_per_agent_and_each_answer_holds() {
+        let (state, pid) = demo();
+        let pending = |state: &AppState| access_requests(state, &pid).as_array().unwrap().iter().filter(|r| r["status"] == "pending").map(|r| (r["agentId"].as_str().unwrap().to_owned(), r["domain"].as_str().unwrap().to_owned(), r["id"].as_str().unwrap().to_owned())).collect::<Vec<_>>();
+        assert!(request_access(&state, &pid, "ada", "api.stripe.com", 443));
+        assert!(!request_access(&state, &pid, "ada", "api.stripe.com", 443), "a second refusal doesn't file another");
+        assert!(request_access(&state, &pid, "grace", "api.stripe.com", 443), "another agent gets its own");
+        assert!(request_access(&state, &pid, "ada", "db.example", 5432));
+        let reqs = pending(&state);
+        assert_eq!(reqs.len(), 3);
+        let id = |agent: &str, domain: &str| reqs.iter().find(|r| r.0 == agent && r.1 == domain).unwrap().2.clone();
+
+        resolve_access(&state, &pid, &[json!(id("ada", "api.stripe.com")), json!("once")]).unwrap();
+        assert_eq!(allowed_once(&state, &pid, "ada"), ["api.stripe.com"]);
+        assert!(allowed_once(&state, &pid, "grace").is_empty(), "allow once is for that agent only");
+        assert!(project_rules(&state, &pid).is_empty(), "and adds no project rule");
+        assert!(resolve_access(&state, &pid, &[json!(id("ada", "api.stripe.com")), json!("deny")]).is_err(), "an answered request stays answered");
+        assert!(!request_access(&state, &pid, "ada", "api.stripe.com", 443), "nothing new while the window is open");
+        state.inner.db.transaction(|c| c.execute("UPDATE egress_access SET expires_at = 0 WHERE agent_id = 'ada' AND host = 'api.stripe.com'", []).map_err(DbError::from)).unwrap();
+        assert!(allowed_once(&state, &pid, "ada").is_empty(), "the window closes by itself");
+        assert!(request_access(&state, &pid, "ada", "api.stripe.com", 443), "after it closes, the host is asked about again");
+
+        resolve_access(&state, &pid, &[json!(id("grace", "api.stripe.com")), json!("project")]).unwrap();
+        assert_eq!(project_rules(&state, &pid), ["api.stripe.com"], "always for this project adds the rule");
+
+        resolve_access(&state, &pid, &[json!(id("ada", "db.example:5432")), json!("deny")]).unwrap();
+        assert!(!request_access(&state, &pid, "ada", "db.example", 5432), "a denied host isn't asked about again");
+        assert!(allowed_once(&state, &pid, "ada").is_empty());
+        assert!(resolve_access(&state, &pid, &[json!("999"), json!("once")]).is_err());
+        assert!(resolve_access(&state, &pid, &[json!(id("ada", "db.example:5432")), json!("maybe")]).is_err());
     }
 
     #[test]

@@ -112,7 +112,8 @@ pub struct EgressPolicy {
     pub outbound_hosts: Vec<String>,
     pub allow_unknown_loopback_peer: bool,
     /// Observe mode: a request the policy would refuse goes through and is reported to
-    /// [`PolicyProvider::record_would_block`] instead.
+    /// [`PolicyProvider::record_would_block`] instead. Off (enforce), it is refused, reported to
+    /// [`PolicyProvider::record_blocked`], and private addresses are refused unless explicitly scoped.
     pub observe: bool,
     /// Hosts the CLIs call on their own (telemetry): never reported.
     pub quiet: Vec<String>,
@@ -127,6 +128,9 @@ pub trait PolicyProvider: Send + Sync {
 
     /// An observe-mode request that enforce would have refused.
     fn record_would_block(&self, _identity: &ContainerIdentity, _host: &str, _port: u16) {}
+
+    /// An enforce-mode request refused because its host isn't listed (quiet hosts aren't reported).
+    fn record_blocked(&self, _identity: &ContainerIdentity, _host: &str, _port: u16) {}
 }
 
 /// Simple static policy provider for deterministic setups and tests.

@@ -297,20 +297,20 @@ function BlockedRequests({ agent }: { agent: AgentConfig }) {
   );
 }
 
-/** The agent asked (request_access) to reach a domain its sandbox blocks. */
+/** The agent asked (request_access) to reach a domain its sandbox blocks, or HQ's proxy refused it in enforce mode. */
 function AccessCard({ request, agent }: { request: AccessRequest; agent: AgentConfig }) {
   return (
     <div className="border-b border-white/[0.08] bg-[rgba(255,23,68,0.16)] px-3 py-2">
       <div className="text-[13px] text-red">
-        <b>{agent.name}</b> wants to reach <b className="font-term text-[13px]">{request.domain}</b>
+        <b>{agent.name}</b> {request.observed ? "tried to reach" : "wants to reach"} <b className="font-term text-[13px]">{request.domain}</b>
       </div>
-      <div className="mb-2 text-[13px] text-muted">“{request.reason}”</div>
+      <div className="mb-2 text-[13px] text-muted">{request.observed ? request.reason : `“${request.reason}”`}</div>
       <div className="flex flex-wrap gap-2">
-        <button className="btn px-2 text-[13px]" onClick={() => officeActions.resolveAccess(request.id, "agent")}>
-          Allow for {agent.name}
+        <button className="btn px-2 text-[13px]" onClick={() => officeActions.resolveAccess(request.id, "once")}>
+          Allow once
         </button>
-        <button className="btn px-2 text-[13px]" onClick={() => officeActions.resolveAccess(request.id, "everyone")}>
-          Allow for everyone
+        <button className="btn px-2 text-[13px]" onClick={() => officeActions.resolveAccess(request.id, "project")}>
+          Always for this project
         </button>
         <button className="btn px-2 text-[13px]" onClick={() => officeActions.resolveAccess(request.id, "deny")}>
           Deny

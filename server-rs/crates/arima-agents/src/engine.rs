@@ -118,13 +118,27 @@ impl DockerEngine {
         if self.image_present(image).await? { Ok(()) } else { self.pull_image(image).await }
     }
 
-    pub async fn ensure_network(&self, name: &str) -> Result<()> {
+    /// Creates the bridge network when missing. An `internal` one has no route out; an existing network that
+    /// isn't internal is refused rather than used, so agents are never quietly left with a way out.
+    pub async fn ensure_network(&self, name: &str, internal: bool) -> Result<()> {
         let reply = self.send("GET", &format!("/networks/{}", encode(name)), None).await?;
         match reply.status {
+            200 if internal && reply.json()["Internal"] != json!(true) => Err(engine_err(format!("the network {name} exists but isn't internal: remove it so HQ can create it"))),
             200 => Ok(()),
-            404 => self.expect("POST", "/networks/create", Some(&json!({ "Name": name, "Driver": "bridge", "CheckDuplicate": true })), &[201]).await.map(|_| ()),
+            404 => self.expect("POST", "/networks/create", Some(&json!({ "Name": name, "Driver": "bridge", "Internal": internal, "CheckDuplicate": true })), &[201]).await.map(|_| ()),
             s => Err(engine_err(format!("Docker answered {s} checking network {name}: {}", reply.message()))),
         }
+    }
+
+    /// Attaches `container` (a name or id prefix) to `network` under `aliases`, unless it's already there.
+    pub async fn connect_network(&self, network: &str, container: &str, aliases: &[String]) -> Result<()> {
+        let reply = self.expect("GET", &format!("/networks/{}", encode(network)), None, &[200]).await?;
+        let attached = reply.json()["Containers"].as_object().is_some_and(|m| m.iter().any(|(id, c)| id.starts_with(container) || c["Name"] == container));
+        if attached {
+            return Ok(());
+        }
+        let body = json!({ "Container": container, "EndpointConfig": { "Aliases": aliases } });
+        self.expect("POST", &format!("/networks/{}/connect", encode(network)), Some(&body), &[200]).await.map(|_| ())
     }
 
     /// Creates a container from a Docker create body and returns its id.

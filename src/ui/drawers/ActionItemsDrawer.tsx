@@ -112,13 +112,14 @@ export function ActionItemsDrawer() {
           <Plain text={`${who(r.agentId)} ${r.observed ? "tried to reach" : "wants to reach"} ${r.domain}.${r.reason ? `\n\n${r.reason}` : ""}`}>
             {!isViewer && (
               <>
-                <button className="btn btn-primary text-[13px]" onClick={() => officeActions.resolveAccess(r.id, "agent")}>Allow for {who(r.agentId)}</button>
+                <button className="btn btn-primary text-[13px]" onClick={() => officeActions.resolveAccess(r.id, "once")}>Allow once</button>
+                <button className="btn text-[13px]" onClick={() => officeActions.resolveAccess(r.id, "project")}>Always for this project</button>
                 <button className="btn text-[13px]" onClick={() => officeActions.resolveAccess(r.id, "deny")}>Deny</button>
               </>
             )}
           </Plain>
         ),
-        approve: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "agent"),
+        approve: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "once"),
         reject: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "deny"),
       });
     for (const bl of a.blocked)

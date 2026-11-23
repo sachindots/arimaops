@@ -765,7 +765,7 @@ export function createMockSource(): OfficeDataSource {
         world.activity("config", req.agentId, `You denied ${who} access to ${req.domain}`);
         world.write(req.agentId, [{ text: `\x1b[38;2;255;23;68mhq ▸ access to ${req.domain} denied — continuing without it\x1b[0m` }]);
       } else {
-        const ids = decision === "everyone" ? world.snap.config.team.filter((a) => a.mode === "sandbox").map((a) => a.id) : [req.agentId];
+        const ids = decision === "project" ? world.snap.config.team.filter((a) => a.mode === "sandbox").map((a) => a.id) : [req.agentId];
         for (const id of ids) {
           const a = world.cfg(id);
           if (a && !a.sandbox.allow.includes(req.domain)) a.sandbox.allow = [...a.sandbox.allow, req.domain];
@@ -773,7 +773,7 @@ export function createMockSource(): OfficeDataSource {
         }
         world.configChanged();
         syncSbx();
-        world.activity("config", req.agentId, `You allowed ${req.domain} for ${decision === "everyone" ? "every agent" : who}`);
+        world.activity("config", req.agentId, `You allowed ${req.domain} for ${decision === "project" ? "every agent" : who}`);
       }
       if (world.status(req.agentId)?.state === "needs-input") world.setStatus(req.agentId, { state: "working", note: decision === "deny" ? "Continuing without it" : `Reading ${req.domain}` });
     },
