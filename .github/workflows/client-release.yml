@@ -13,7 +13,7 @@ jobs:
     name: Client Rust Check & Tests
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -39,7 +39,7 @@ jobs:
             target: windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux bundle dependencies
         if: matrix.target == 'linux'
@@ -52,7 +52,7 @@ jobs:
         working-directory: apps/client
         run: cargo tauri build
       - name: Upload desktop artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: arimaops-client-${{ matrix.target }}
           path: |
@@ -67,8 +67,8 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -87,7 +87,7 @@ jobs:
         run: |
           cargo tauri android build --apk
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: arimaops-client-android
           path: apps/client/src-tauri/gen/android/app/build/outputs/apk/**/*.apk

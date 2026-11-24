@@ -8,7 +8,7 @@ ARG GID=1000
 
 USER root
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npm install -g playwright@1.49.1 \
+RUN npm install -g playwright@1.65.1 \
  && playwright install --with-deps chromium \
  && chmod -R a+rX /ms-playwright \
  && npm cache clean --force \

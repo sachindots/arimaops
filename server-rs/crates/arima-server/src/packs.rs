@@ -1007,6 +1007,8 @@ mod tests {
         state.ensure_default_project("Demo", "demo", "/workspaces/demo").unwrap();
         let pid = state.default_project().unwrap().0;
         crate::team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+        // Drop external skill refs (e.g. trailofbits/skills@...) from the built-in dev template so tests run offline.
+        crate::team_edit::drop_role_skills(&state, &pid, |s| s.contains('@')).unwrap();
         (tmp, state, pid, repo, commit)
     }
 
