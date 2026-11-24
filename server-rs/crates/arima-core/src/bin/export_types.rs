@@ -18,10 +18,10 @@ use arima_core::{
     ServerRole, ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport, VisualDecision, VisualFeedback, VoiceProvider, WsClientMessage, WsCommandAck,
     WsServerEvent,
 };
-use ts_rs::TS;
+use ts_rs::{Config, TS};
 
 fn push_decl<T: TS>(out: &mut String) {
-    let decl = T::decl();
+    let decl = T::decl(&Config::default());
     let trimmed = decl.trim();
     if trimmed.starts_with("export ") {
         out.push_str(trimmed);

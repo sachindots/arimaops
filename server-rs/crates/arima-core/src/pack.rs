@@ -13,6 +13,7 @@ use crate::tool_server::ToolServerTransport;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, TS)]
 pub struct PackLock {
     pub v: u32,
+    #[ts(type = "{ [key in string]?: PackEntry }")]
     pub packs: BTreeMap<String, PackEntry>,
 }
 
@@ -29,8 +30,10 @@ pub struct PackEntry {
     #[serde(default)]
     pub tree: String,
     #[serde(default)]
+    #[ts(type = "{ [key in string]?: PackSkill }")]
     pub skills: BTreeMap<String, PackSkill>,
     #[serde(default)]
+    #[ts(type = "{ [key in string]?: PackToolServer }")]
     pub tool_servers: BTreeMap<String, PackToolServer>,
     /// Hosts the pack says it reaches (its manifest's `network.hosts`).
     #[serde(default)]
