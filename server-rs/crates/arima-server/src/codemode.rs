@@ -260,8 +260,8 @@ fn blocks(apis: &[Api], docs: bool, budget: usize) -> (String, usize) {
 /// The runner adds its limits, which it alone enforces.
 #[must_use]
 pub fn description(apis: &[Api]) -> String {
-    let head = "Run JavaScript that calls your tools as code, in a fresh sandbox. Send an async arrow function or plain \
-statements; the function's return value, or the last expression, is the result. `await` each call. Only the codemode \
+    let head = "Run JavaScript that calls your tools as code, in a fresh sandbox. Send an async arrow function; its return value \
+is the result. Plain statements work too: `return` the result. `await` each call. Only the codemode \
 calls declared below reach outside the sandbox: there is no fetch, network, file system, process or import. \
 console.log lines come back as logs.";
     let search = "\n`await codemode.search(\"words\")` returns the matching tools with their descriptions and full declarations.";

@@ -17,5 +17,11 @@ RUN curl -fsSL https://antigravity.google/cli/install.sh -o /tmp/agy-install.sh 
 RUN git config --system credential.https://github.com.helper '!gh auth git-credential' \
  && git config --system --add safe.directory '*'
 
+# The codemode tool server (Tools as code), with its pinned dependencies from its lockfile.
+COPY docker/codemode/package.json docker/codemode/package-lock.json /opt/arima-codemode/
+RUN npm ci --prefix /opt/arima-codemode --omit=dev --ignore-scripts \
+ && npm cache clean --force
+COPY docker/codemode/server.mjs docker/codemode/run.mjs docker/codemode/child.cjs /opt/arima-codemode/
+
 ENV NODE_USE_ENV_PROXY=1
 WORKDIR /workspace

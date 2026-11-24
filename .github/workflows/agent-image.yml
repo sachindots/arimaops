@@ -1,11 +1,12 @@
 name: Agent image
 
-# Publishes the image agents run in. Rebuilt only when its Dockerfile changes, or on demand.
+# Publishes the image agents run in. Rebuilt only when its Dockerfile or the codemode runner changes, or on demand.
 on:
   push:
     branches: [main]
     paths:
       - "docker/agent.v2.Dockerfile"
+      - "docker/codemode/**"
       - ".github/workflows/agent-image.yml"
   workflow_dispatch:
 
