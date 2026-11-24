@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-create-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-create-"));
 const { registerProjectPath, readRegistry } = await import("../server/projectsRegistry");
 
 let fails = 0;

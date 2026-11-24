@@ -54,7 +54,7 @@ const devices = new PushDevices((deviceId, userId) => guard.device(deviceId, fal
 const token = (name: string) => `${name}-fixture-token-long-enough`;
 devices.register({ deviceId: ownerDevice, userId: owner.id, token: token("owner"), server: "https://hq.example" });
 devices.register({ deviceId: viewerDevice, userId: viewer.id, token: token("viewer"), server: "https://hq.example" });
-assert.equal(statSync(join(dir, "arima.db")).mode & 0o777, 0o600);
+if (process.platform !== "win32") assert.equal(statSync(join(dir, "arima.db")).mode & 0o777, 0o600); // no POSIX modes on Windows
 assert.throws(() => devices.register({ deviceId: "bad", userId: owner.id, token: token("bad"), server: "http://remote.example" }));
 await devices.notify({ ...alert, operatorsOnly: true });
 assert.deepEqual(deliveries.map(d => d.token), [token("owner")]);

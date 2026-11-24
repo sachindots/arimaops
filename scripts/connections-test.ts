@@ -10,7 +10,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-conn-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-conn-"));
 process.env.ARIMA_MASTER_KEY ??= "b".repeat(64);
 const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
 const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");

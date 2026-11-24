@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-lessons-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-lessons-"));
 const { hqDb } = await import("../server/lib/db");
 const { copyToProject, seedBuiltins } = await import("../server/templates");
 const { decideLesson, lessonsForBrief, projectWords, promoteLessons, specificsIn, templateIdOf, templateLessons } = await import("../server/lessons");

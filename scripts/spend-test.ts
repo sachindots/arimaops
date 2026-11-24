@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-spend-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-spend-"));
 const { hqDb } = await import("../server/lib/db");
 const { capsOf, periods, rolePaused, SpendGuard, spendPaused, spendState } = await import("../server/spendCaps");
 const { MeteredRunner } = await import("../server/modelRunner");

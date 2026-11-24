@@ -6,7 +6,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-bench-test-")); // ~/.arima-bench lands here, not in your home
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-bench-test-")); // ~/.arima-bench lands here, not in your home
 const { BENCHMARKS, benchmarkErrors, imageRef } = await import("./bench/benchmarks");
 const { compareRuns, marketingChecks, scoreAnswers, scoreFindings, scoreRun } = await import("./bench/score");
 const { plan, runBenchmark, targetCommands, teardownCommands } = await import("./bench/run");

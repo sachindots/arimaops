@@ -8,7 +8,7 @@ import { join } from "node:path";
 import type { Gate } from "../src/data/model";
 import type { PullRequest, Task } from "../src/data/types";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-evidence-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-evidence-"));
 const { assertGates, gateProblem, uiFilesOf, OBSERVED_GATES } = await import("../server/gates");
 const { saveEvidence, latestEvidence, evidenceFile, kindOf, prComment } = await import("../server/evidence");
 const { DEV_TEMPLATE } = await import("../src/data/templates");

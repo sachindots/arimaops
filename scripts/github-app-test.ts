@@ -5,7 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-ghapp-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-ghapp-"));
 process.env.ARIMA_MASTER_KEY = "github-app-test-master-key";
 const { finishManifest, githubAppState, GitHubAppWebhooks, handleWebhook, HEALTHY_MS, verifySignature, webhookSecret, webhooksHealthy } = await import("../server/githubApp");
 const { appManifest, newAppUrl, WEBHOOK_EVENTS } = await import("../src/data/githubApp");

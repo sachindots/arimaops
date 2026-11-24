@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-resume-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-resume-"));
 const { Hub } = await import("../server/hub");
 const { resumeAgents } = await import("../server/resumeAgents");
 const { projectHome } = await import("../server/paths");

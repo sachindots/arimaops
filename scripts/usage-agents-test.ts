@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-usage-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-usage-"));
 const { hqDb } = await import("../server/lib/db");
 const { recordEvent, agentUsage } = await import("../server/usageEvents");
 

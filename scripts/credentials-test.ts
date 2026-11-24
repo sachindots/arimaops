@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const HOME = mkdtempSync(join(tmpdir(), "arima-cred-"));
-process.env.HOME = HOME;
+process.env.HOME = process.env.USERPROFILE = HOME;
 delete process.env.ARIMA_MASTER_KEY;
 const { keyFrom, loadMasterKey, Vault } = await import("../server/credentials/vault");
 const { Accounts } = await import("../server/credentials/registry");
@@ -27,13 +27,14 @@ const throws = (fn: () => unknown, re: RegExp) => {
     return re.test(String(e));
   }
 };
-const mode = (p: string) => statSync(p).mode & 0o777;
+// Windows has no POSIX file modes: there every mode check passes and the rest of each check still runs.
+const hasMode = (p: string, m: number) => process.platform === "win32" || (statSync(p).mode & 0o777) === m;
 
 // ---------------------------------------------------------------- master key
 const noKc = null;
 const dir = join(HOME, ".arima");
 const m1 = loadMasterKey({ env: "", keychain: noKc, dir });
-check("no env, no keychain: a 0600 key file is created", m1.source === "file" && mode(join(dir, "vault.key")) === 0o600);
+check("no env, no keychain: a 0600 key file is created", m1.source === "file" && hasMode(join(dir, "vault.key"), 0o600));
 check("the same key file is reused", loadMasterKey({ env: "", keychain: noKc, dir }).key.equals(m1.key));
 check("ARIMA_MASTER_KEY wins over everything", loadMasterKey({ env: "my server secret", keychain: noKc, dir }).source === "env");
 let stored: string | null = null;
@@ -48,7 +49,7 @@ const vfile = join(dir, "vault.json");
 const v = new Vault(vfile, m1);
 v.set("account:work", "sk-ant-api03-SECRETVALUE-1a2b");
 const raw = readFileSync(vfile, "utf8");
-check("the vault file never holds the value in clear, and is 0600", !raw.includes("SECRETVALUE") && mode(vfile) === 0o600);
+check("the vault file never holds the value in clear, and is 0600", !raw.includes("SECRETVALUE") && hasMode(vfile, 0o600));
 check("values round-trip; the UI list shows only the last 4", v.get("account:work") === "sk-ant-api03-SECRETVALUE-1a2b" && JSON.stringify(v.list()).includes('"last4":"1a2b"') && !JSON.stringify(v.list()).includes("SECRET"));
 const tampered = JSON.parse(raw);
 tampered.entries["account:other"] = tampered.entries["account:work"]; // moved to another name
@@ -88,7 +89,7 @@ check("each provider has a label and a secret hint", PROVIDERS.every((p) => PROV
 
 // ---------------------------------------------------------------- delivery
 const prep = prepareSecrets("alpha", "nyx", { env: { ANTHROPIC_API_KEY: "sk-ant-DELIVER-me" }, files: [] }, "local", HOME);
-check("secrets file is 0600 in a 0700 folder outside the agent's workspace", mode(prep.envFile) === 0o600 && mode(secretsDir("alpha", "nyx", HOME)) === 0o700 && prep.envFile.startsWith(join(HOME, ".arima", "secrets")));
+check("secrets file is 0600 in a 0700 folder outside the agent's workspace", hasMode(prep.envFile, 0o600) && hasMode(secretsDir("alpha", "nyx", HOME), 0o700) && prep.envFile.startsWith(join(HOME, ".arima", "secrets")));
 const cmd = shellCommand({ file: "claude", args: [], envFile: null, env: { PORT: "4100" }, secretEnvFile: prep.envFile });
 check("the launch command line never contains the key, and deletes the file after loading it", !cmd.includes("DELIVER") && cmd.includes(`rm -f '${prep.envFile}'`) && cmd.indexOf("rm -f") > cmd.indexOf(prep.envFile));
 check("subscription agents can't inherit a model key from HQ's own shell", /unset ANTHROPIC_API_KEY [^;]*OPENAI_API_KEY/.test(cmd) && cmd.indexOf("unset ANTHROPIC_API_KEY") < cmd.indexOf(prep.envFile));

@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-ctr-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-ctr-"));
 const { hostAllowed, loginCommand, runArgs, ensureNetwork, startEgressProxy, hostFirewallCmd, IMAGE, NETWORK, GATEWAY, egressPort, BASE_ALLOW } = await import("../server/containers");
 const { run } = await import("../server/lib/exec");
 
@@ -56,7 +56,7 @@ check("multiple --env-file flags preserve project-then-agent order", pEnvIdx > 0
   setEnvVar(pFile, "GH_TOKEN", "ghp_secret_2"); // update in place
   setEnvVar(aFile, "DATABASE_URL", "postgres://localhost/db");
   const content = readFileSync(pFile, "utf8");
-  check("env file created with mode 0600", (statSync(pFile).mode & 0o777) === 0o600);
+  check("env file created with mode 0600", process.platform === "win32" || (statSync(pFile).mode & 0o777) === 0o600);
   check("env var updates in place without quotes and keeps comments", content.includes("# project header") && content.includes("GH_TOKEN=ghp_secret_2") && !content.includes("ghp_secret_1"));
   check("listEnvKeys returns sorted key names only", JSON.stringify(listEnvKeys(pFile)) === JSON.stringify(["FOO", "GH_TOKEN"]) && hasEnvKey(pFile, "GH_TOKEN"));
   let badKeyRejected = false;
