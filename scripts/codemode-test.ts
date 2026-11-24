@@ -56,7 +56,8 @@ started = Date.now();
 r = await run("async () => 'ok'", tools);
 check("the next run succeeds within 2 s", r.result === "ok" && Date.now() - started < 2000, { r, ms: Date.now() - started });
 
-r = await run("const a = []; while (true) a.push(new Array(1e6).fill(Math.random()));", tools);
+// Its own deadline: on slower runners filling 128 MB can take longer than the short one, and this checks the memory cap.
+r = await createRunner({ ...LIMITS, timeMs: 20_000 })("const a = []; while (true) a.push(new Array(1e6).fill(Math.random()));", tools);
 check("a heap blow-up is killed", /more than 128 MB/.test(r.error), r);
 
 r = await run("async () => await fetch('https://example.com')", tools);
