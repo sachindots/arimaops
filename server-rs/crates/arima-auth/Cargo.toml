@@ -30,4 +30,6 @@ uuid.workspace = true
 webauthn-rs.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+crypto-glue.workspace = true
 tempfile.workspace = true

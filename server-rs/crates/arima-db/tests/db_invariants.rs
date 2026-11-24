@@ -522,3 +522,141 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
         .unwrap();
     assert_eq!(resolved_spec.status, DecisionStatus::Resolved);
 }
+
+#[test]
+fn opens_and_migrates_pre_upgrade_sqlite_db_with_fts5_and_backups() {
+    use arima_db::{
+        create_encrypted_backup, restore_encrypted_backup, verify_encrypted_backup,
+        CreateMemoryInput, MemoryRepo, MemoryStatusFilter,
+    };
+
+    let fixture_src =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pre_upgrade_v032.db");
+    assert!(
+        fixture_src.is_file(),
+        "pre-upgrade SQLite fixture missing at {}",
+        fixture_src.display()
+    );
+
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("state/arima.db");
+    fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    fs::copy(&fixture_src, &db_path).unwrap();
+
+    let db = Db::open(&db_path).unwrap();
+
+    db.read(|conn| {
+        let integrity: String = conn.query_row("PRAGMA integrity_check;", [], |r| r.get(0))?;
+        assert_eq!(integrity.to_lowercase(), "ok");
+
+        let mut fk_stmt = conn.prepare("PRAGMA foreign_key_check;")?;
+        assert_eq!(fk_stmt.query_map([], |_| Ok(()))?.count(), 0);
+
+        // The fixture was written by main at migration 13; its rows must survive untouched.
+        let original_migrations: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version <= 13 AND applied_at <= 1795503862961;",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(original_migrations, 11);
+
+        let marker: String = conn.query_row(
+            "SELECT value_json FROM server_settings WHERE key = 'upgradeFixtureMarker';",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(marker, "\"rusqlite-0.32\"");
+
+        let task_title: String = conn.query_row(
+            "SELECT title FROM tasks WHERE project_id = 'p-legacy' AND id = 'T01';",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(task_title, "Upgrade rusqlite safely");
+
+        let passkey_count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM passkeys;", [], |r| r.get(0))?;
+        assert_eq!(passkey_count, 1);
+        Ok::<_, DbError>(())
+    })
+    .unwrap();
+
+    let mem_repo = MemoryRepo::new(db.clone());
+    let fts_hits = mem_repo
+        .search(
+            "p-legacy",
+            Some("upgrade backup"),
+            MemoryStatusFilter::Certified,
+        )
+        .unwrap();
+    assert_eq!(fts_hits.len(), 1);
+    assert_eq!(fts_hits[0].id, "M-FTS-1");
+
+    let passkey_hits = mem_repo
+        .search("p-legacy", Some("passkey"), MemoryStatusFilter::All)
+        .unwrap();
+    assert_eq!(passkey_hits.len(), 1);
+    assert_eq!(passkey_hits[0].id, "M-FTS-2");
+
+    mem_repo
+        .insert(
+            "p-legacy",
+            CreateMemoryInput {
+                id: Some("M-FTS-3".into()),
+                mem_type: "Lesson".into(),
+                text: "Post-upgrade FTS5 indexing still matches new records cleanly.".into(),
+                about: vec!["sqlite".into()],
+                certified: true,
+                created_at_ms: Some(1_700_000_002_000),
+                last_used_at_ms: Some(1_700_000_002_000),
+            },
+        )
+        .unwrap();
+    let new_hits = mem_repo
+        .search(
+            "p-legacy",
+            Some("post-upgrade indexing"),
+            MemoryStatusFilter::Certified,
+        )
+        .unwrap();
+    assert_eq!(new_hits.len(), 1);
+    assert_eq!(new_hits[0].id, "M-FTS-3");
+
+    let outbox = OutboxRepo::new(db.clone());
+    let pending = outbox
+        .next_pending("p-legacy", "coder", 1, 1, 0)
+        .unwrap()
+        .unwrap();
+    assert_eq!((pending.epoch, pending.seq), (1, 1));
+
+    let snap_path = dir.path().join("backups/pre-upgrade-snap.db");
+    backup_sqlite_to(&db, &snap_path).unwrap();
+    let snap_db = Db::open(&snap_path).unwrap();
+    let snap_mem = MemoryRepo::new(snap_db);
+    let snap_hits = snap_mem
+        .search("p-legacy", Some("stemming"), MemoryStatusFilter::Certified)
+        .unwrap();
+    assert_eq!(snap_hits.len(), 1);
+    assert_eq!(snap_hits[0].id, "M-FTS-1");
+
+    let backups_dir = dir.path().join("encrypted-backups");
+    let key = b"test-vault-key-material-32bytes!";
+    let (_summary, manifest, archive) =
+        create_encrypted_backup(&db, None, &backups_dir, key, "upgrade-test").unwrap();
+    assert!(manifest.valid && manifest.integrity_ok);
+    assert_eq!(manifest.projects_count, 1);
+    assert_eq!(manifest.users_count, 1);
+    assert_eq!(manifest.memories_count, 3);
+
+    let verified = verify_encrypted_backup(&archive, key).unwrap();
+    assert!(verified.valid && verified.integrity_ok);
+
+    let target_db = Db::open(&dir.path().join("restored/arima.db")).unwrap();
+    let outcome = restore_encrypted_backup(&target_db, None, None, &archive, key).unwrap();
+    assert!(outcome.manifest.valid);
+    let restored_hits = MemoryRepo::new(target_db)
+        .search("p-legacy", Some("passkey"), MemoryStatusFilter::All)
+        .unwrap();
+    assert_eq!(restored_hits.len(), 1);
+    assert_eq!(restored_hits[0].id, "M-FTS-2");
+}
