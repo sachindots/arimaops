@@ -158,7 +158,7 @@ fn locate(read: impl Fn(&str) -> Option<Vec<u8>>, repo: &str, plugin: Option<&st
 /// Reads the located pack at the tree's commit: its plugin tree (hashed, scanned and stored), its skills (checked),
 /// HTTP tool servers, declared hosts and secrets, and the parts HQ won't install. Tool lists are filled in later by a
 /// live check.
-fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> Result<PackEntry, String> {
+fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located, allow_private: bool) -> Result<PackEntry, String> {
     let paths: Vec<&str> = tree.paths().collect();
     let root = loc.dir.as_deref().unwrap_or(".");
     let (files, left_out) = tree.plugin(root, |p| NOT_INSTALLED.iter().any(|d| p.starts_with(&format!("{d}/"))))?;
@@ -214,7 +214,7 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> 
                 return Err(format!("The tool server name \"{name}\" isn't usable: lowercase letters, digits and dashes, not \"arima\"."));
             }
             let url = cfg["url"].as_str().ok_or_else(|| format!("The tool server {name} has no URL."))?;
-            int::check_endpoint(url).map_err(|e| format!("The tool server {name}: {e}"))?;
+            int::check_endpoint(url, allow_private).map_err(|e| format!("The tool server {name}: {e}"))?;
             tool_servers.insert(name.clone(), PackToolServer { transport: ToolServerTransport::Http { url: url.to_owned() }, tools_sha256: None, tools: vec![] });
         }
     }
@@ -258,7 +258,7 @@ fn prepare(state: &AppState, url: &str, plugin: Option<&str>, rev: &str) -> Resu
     let result = (|| {
         let tree = skills::fetch_tree(&scratch, url, rev)?;
         let loc = locate(|p| tree.file(p), &repo_id(url)?, plugin)?;
-        let entry = build(&tree, &root, url, &loc)?;
+        let entry = build(&tree, &root, url, &loc, state.inner.config.allow_private_connections)?;
         Ok((loc.id, entry))
     })();
     let _ = std::fs::remove_dir_all(&scratch);
@@ -274,7 +274,7 @@ async fn probe_servers(state: &AppState, project_id: &str, id: &str, entry: &mut
         let has_key = existing.iter().any(|s| s.name == *name && s.has_key);
         let key_id = if has_key { int::mcp_secret_id(project_id, name) } else { kept_key_id(project_id, id, name) };
         let key = crate::runtime::vault_secret(state, &key_id).ok().flatten();
-        match int::probe(name, url, key).await {
+        match int::probe(state, name, url, key).await {
             Ok(tools) => {
                 server.tools_sha256 = Some(tools_hash(&tools));
                 server.tools = tools;

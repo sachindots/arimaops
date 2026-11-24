@@ -295,9 +295,9 @@ async fn secrets_accounts_and_proxy_never_expose_values() {
 async fn sandbox_mcp_connections_and_template_library() {
     use arima_server::integrations as int;
     // The test's MCP server listens on loopback, which HQ refuses unless the host's owner opts in.
-    // SAFETY: set before this test's own threads start; other tests in this binary don't touch this variable.
-    unsafe { std::env::set_var("ARIMA_ALLOW_PRIVATE_CONNECTIONS", "1") };
-    let (state, pid) = state();
+    let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([5u8; 32]), ServerConfig { allow_private_connections: true, ..ServerConfig::default() });
+    state.ensure_default_project("Demo", "demo", "/workspaces/demo").unwrap();
+    let pid = state.default_project().unwrap().0;
     team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
 
     int::update_sandbox(&state, &pid, &[json!("cipher"), json!({ "allow": ["B.com", "b.com", " "], "deny": ["x.io"], "resources": { "cpus": 9999, "memoryGb": 0.1 } })]).unwrap();

@@ -44,7 +44,7 @@ pub async fn forward(
         }
     };
     let sent = async {
-        let (url, client) = tokio::time::timeout(LOOKUP, guarded_client(&url, MAX_CALL)).await.map_err(|_| format!("Couldn't find {server} in time."))??;
+        let (url, client) = tokio::time::timeout(LOOKUP, guarded_client(&state, &url, MAX_CALL)).await.map_err(|_| format!("Couldn't find {server} in time."))??;
         let mut req = client.request(method, url).body(body);
         for name in PASS_UP {
             if let Some(v) = headers.get(name) {

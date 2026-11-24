@@ -33,8 +33,8 @@ pub fn is_imds_or_link_local_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// Returns `true` if `ip` belongs to loopback, RFC 1918 private, link-local / cloud IMDS
-/// (`169.254.0.0/16`, `fe80::/10`), ULA (`fc00::/7`), unspecified (`0.0.0.0/8`, `::`),
+/// Returns `true` if `ip` belongs to loopback, RFC 1918 private, shared CGNAT (`100.64.0.0/10`, which tailnets
+/// use), link-local / cloud IMDS (`169.254.0.0/16`, `fe80::/10`), ULA (`fc00::/7`), unspecified (`0.0.0.0/8`, `::`),
 /// multicast, or broadcast ranges — including IPv4-mapped IPv6 addresses.
 #[must_use]
 pub fn is_restricted_ip(ip: IpAddr) -> bool {
@@ -42,12 +42,27 @@ pub fn is_restricted_ip(ip: IpAddr) -> bool {
         return true;
     }
     match ip {
-        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private(),
+        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64),
         IpAddr::V6(v6) => {
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_restricted_ip(IpAddr::V4(mapped));
             }
             v6.is_loopback() || v6.is_unique_local()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shared_cgnat_range_is_restricted() {
+        for ip in ["100.64.0.1", "100.100.100.100", "100.127.255.254", "::ffff:100.64.0.1"] {
+            assert!(is_restricted_ip(ip.parse().unwrap()), "{ip}");
+        }
+        for ip in ["100.63.255.255", "100.128.0.0", "8.8.8.8"] {
+            assert!(!is_restricted_ip(ip.parse().unwrap()), "{ip}");
         }
     }
 }

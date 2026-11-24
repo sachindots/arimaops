@@ -58,6 +58,8 @@ pub struct ServerConfig {
     pub trust_proxy: bool,
     pub same_origin: bool,
     pub data_root: Option<PathBuf>,
+    /// The host's owner lets HQ connect to loopback and private-network tool servers (`ARIMA_ALLOW_PRIVATE_CONNECTIONS=1`).
+    pub allow_private_connections: bool,
 }
 
 impl Default for ServerConfig {
@@ -77,6 +79,7 @@ impl Default for ServerConfig {
             trust_proxy: false,
             same_origin: false,
             data_root: None,
+            allow_private_connections: false,
         }
     }
 }
