@@ -32,6 +32,7 @@ async fn spawn() -> (SocketAddr, AppState, TempDir) {
         trust_proxy: false,
         same_origin: false,
         data_root: Some(dir.path().to_path_buf()),
+        allow_private_connections: false,
     };
     let state = AppState::new(Db::open(&dir.path().join("arima.db")).unwrap(), VaultKey::from_bytes([9u8; 32]), cfg);
     state.ensure_default_project("Alpha", "alpha", "/tmp/alpha").unwrap();

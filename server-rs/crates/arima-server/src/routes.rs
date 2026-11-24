@@ -1667,6 +1667,7 @@ async fn resolve_project_decision(
         .inner
         .decisions
         .get(&decision_id)?
+        .filter(|d| d.project_id == project_id)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Decision not found."))?;
     if existing.owner_only && !matches!(eff_role, ServerRole::Owner) {
         let _ = record_audit(
@@ -1689,7 +1690,7 @@ async fn resolve_project_decision(
         ));
     }
 
-    exec_answer_decision(&state, &[json!(decision_id), body.clone()], eff_role)
+    exec_answer_decision(&state, &project_id, &[json!(decision_id), body.clone()], eff_role)
         .map_err(|e| ApiError::new(StatusCode::FORBIDDEN, e))?;
 
     let updated = state.inner.decisions.get(&decision_id)?;

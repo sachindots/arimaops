@@ -213,6 +213,8 @@ async function changeMode(mode: EgressMode, blocks: EgressBlock[]) {
 /** The project's network mode and the hosts its agents reached that enforce mode would block. */
 function EgressSection() {
   const egress = useOffice((s) => s.snap?.sbx.egress);
+  const requests = useOffice((s) => s.snap?.accessRequests);
+  const denied = (requests ?? []).filter((r) => r.status === "denied");
   const owner = useAuth((s) => s.role === "owner" || s.status === "none");
   const now = useNow(30_000);
   if (!egress) return null;
@@ -222,7 +224,7 @@ function EgressSection() {
     <section className="panel p-3">
       <SectionTitle>Network for all agents</SectionTitle>
       <p className="mb-3 text-[13px] text-muted">
-        Agents reach the internet through HQ's proxy. Observe mode blocks nothing: it lists each host that enforce mode would block, so you can allow what this project needs first. Changes apply at each agent's next start.
+        Agents reach the internet through HQ's proxy. Observe mode blocks nothing public: it lists each host that enforce mode would block, so you can allow what this project needs first. Private-network addresses (an internal registry or database) are refused in every mode until you allow that host for this project. Mode changes apply at each agent's next start; allowed hosts apply at once.
       </p>
       <Field label="Mode" hint={owner ? undefined : "Only the owner can change the mode or allow hosts."}>
         <Select value={egress.mode} onChange={(m) => void changeMode(m as EgressMode, egress.wouldBlock)} ariaLabel="Network mode" options={MODES} disabled={!owner} />
@@ -278,6 +280,28 @@ function EgressSection() {
                 {owner && (
                   <button type="button" className="ml-1 text-[12px]" aria-label={`Remove ${r}`} onClick={() => officeActions.removeEgressRule(r)}>
                     ✕
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {denied.length > 0 && (
+        <>
+          <h4 className="mb-2 mt-4 text-[13px] font-semibold text-ink">Denied</h4>
+          <p className="mb-2 text-[12px] text-muted">An agent is never asked about a denied host again. Clear it to be asked next time.</p>
+          <ul className="flex flex-col divide-y divide-white/10">
+            {denied.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-term text-[13px] text-ink" title={r.domain}>{r.domain}</div>
+                  <div className="text-[12px] text-muted">{r.agentId}</div>
+                </div>
+                {owner && (
+                  <button type="button" className="btn text-[12px]" onClick={() => officeActions.resolveAccess(r.id, "clear")}>
+                    Clear
                   </button>
                 )}
               </li>

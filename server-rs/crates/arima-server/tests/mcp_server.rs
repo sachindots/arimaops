@@ -195,12 +195,12 @@ async fn ask_user_with_a_form_files_it_and_delivers_the_answer() {
     assert!(!stored.owner_only);
 
     let answer = json!({ "action": "send", "componentId": "go", "context": {}, "data": { "name": "Ada" } });
-    arima_server::ws::exec_answer_decision(&state, &[json!(id), json!({ "status": "resolved", "formAnswer": answer })], ServerRole::Operator).unwrap();
+    arima_server::ws::exec_answer_decision(&state, &pid, &[json!(id), json!({ "status": "resolved", "formAnswer": answer })], ServerRole::Operator).unwrap();
     let out = state.inner.supervisor.poll_next_outbox(&pid, "lead", 0, 0).unwrap().expect("the answer is queued for the agent");
     let sent: Value = serde_json::from_str(&out.payload_json).unwrap();
     assert_eq!((sent["payload"]["kind"].as_str(), &sent["payload"]["answer"]), (Some("form"), &answer));
 
     let big = json!({ "action": "send", "componentId": "go", "context": {}, "data": { "x": "y".repeat(40_000) } });
-    let err = arima_server::ws::exec_answer_decision(&state, &[json!(id), json!({ "formAnswer": big })], ServerRole::Owner).unwrap_err();
+    let err = arima_server::ws::exec_answer_decision(&state, &pid, &[json!(id), json!({ "formAnswer": big })], ServerRole::Owner).unwrap_err();
     assert_eq!(err, "form answer is larger than 32 KiB");
 }

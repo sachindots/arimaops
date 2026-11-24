@@ -146,43 +146,25 @@ pub(crate) fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 40 && name.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
-/// Private-network targets are refused unless the host's owner opts in with `ARIMA_ALLOW_PRIVATE_CONNECTIONS=1`.
-fn allow_private() -> bool {
-    std::env::var("ARIMA_ALLOW_PRIVATE_CONNECTIONS").is_ok_and(|v| v == "1")
+/// Metadata, link-local and unspecified addresses are never allowed; loopback, private, shared (CGNAT) and
+/// unique-local ranges only when the host's owner opts in (`ServerConfig::allow_private_connections`).
+/// The same guard the egress proxy uses, so the two can't disagree.
+pub(crate) fn ip_blocked(ip: std::net::IpAddr, allow_private: bool) -> bool {
+    arima_proxy::is_imds_or_link_local_ip(ip) || (!allow_private && arima_proxy::is_restricted_ip(ip))
 }
 
-/// Metadata and link-local addresses are never allowed; loopback, private, shared and unique-local ranges only with the opt-in.
-fn ip_blocked(ip: std::net::IpAddr) -> bool {
-    use std::net::IpAddr;
-    match ip {
-        IpAddr::V4(v4) => {
-            let always = v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast() || v4.is_multicast();
-            let o = v4.octets();
-            always || (!allow_private() && (v4.is_loopback() || v4.is_private() || (o[0] == 100 && (o[1] & 0xc0) == 64)))
-        }
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            Some(v4) => ip_blocked(IpAddr::V4(v4)),
-            None => {
-                let seg = v6.segments()[0];
-                let always = v6.is_unspecified() || v6.is_multicast() || (seg & 0xffc0) == 0xfe80;
-                always || (!allow_private() && (v6.is_loopback() || (seg & 0xfe00) == 0xfc00))
-            }
-        },
-    }
-}
-
-const BLOCKED_MSG: &str = "That address is on a private network, or is a cloud metadata or link-local address, so HQ won't connect to it.";
+pub(crate) const BLOCKED_MSG: &str = "That address is on a private network, or is a cloud metadata or link-local address, so HQ won't connect to it.";
 
 /// Checks the URL's scheme and any literal address. Names are checked when they are resolved, in `resolve_endpoint`.
-pub(crate) fn check_endpoint(raw: &str) -> Result<url::Url, String> {
+pub(crate) fn check_endpoint(raw: &str, allow_private: bool) -> Result<url::Url, String> {
     let url = url::Url::parse(raw).map_err(|_| "That isn't a valid URL.".to_owned())?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("The URL must start with http:// or https://".into());
     }
     let blocked = match url.host() {
-        Some(url::Host::Ipv4(v4)) => ip_blocked(v4.into()),
-        Some(url::Host::Ipv6(v6)) => ip_blocked(v6.into()),
-        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("metadata.google.internal") || (d.eq_ignore_ascii_case("localhost") && !allow_private()),
+        Some(url::Host::Ipv4(v4)) => ip_blocked(v4.into(), allow_private),
+        Some(url::Host::Ipv6(v6)) => ip_blocked(v6.into(), allow_private),
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("metadata.google.internal") || (d.eq_ignore_ascii_case("localhost") && !allow_private),
         None => true,
     };
     if blocked {
@@ -193,11 +175,11 @@ pub(crate) fn check_endpoint(raw: &str) -> Result<url::Url, String> {
 
 /// Resolves the URL's host and refuses it if any address is blocked. The caller connects to the returned
 /// addresses only, so a name that changes its answer between this check and the request can't reach a blocked one.
-async fn resolve_endpoint(url: &url::Url) -> Result<Option<(String, Vec<std::net::SocketAddr>)>, String> {
+async fn resolve_endpoint(url: &url::Url, allow_private: bool) -> Result<Option<(String, Vec<std::net::SocketAddr>)>, String> {
     let Some(url::Host::Domain(host)) = url.host() else { return Ok(None) };
     let port = url.port_or_known_default().unwrap_or(80);
     let addrs: Vec<_> = tokio::net::lookup_host((host, port)).await.map_err(|_| format!("Couldn't find {host}."))?.collect();
-    if addrs.is_empty() || addrs.iter().any(|a| ip_blocked(a.ip())) {
+    if addrs.is_empty() || addrs.iter().any(|a| ip_blocked(a.ip(), allow_private)) {
         return Err(BLOCKED_MSG.into());
     }
     Ok(Some((host.to_owned(), addrs)))
@@ -227,7 +209,8 @@ fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer])
 /// writers can't drop each other's change. Nothing is saved when `edit` fails. `edit` must not await or call back
 /// into this function (the lock isn't reentrant).
 pub fn update_tool_servers<R>(state: &AppState, project_id: &str, edit: impl FnOnce(&mut Vec<ToolServer>) -> Result<R, String>) -> Result<R, String> {
-    let _guard = state.inner.tool_servers_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = state.project_lock(&servers_key(project_id));
+    let _held = guard.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut servers = tool_servers(state, project_id);
     let out = edit(&mut servers)?;
     save_tool_servers(state, project_id, &servers)?;
@@ -304,7 +287,7 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
         return Err("Local stdio servers can't run on a hosted HQ. Add a remote server URL instead.".into());
     }
     let url = text(&input["url"], 500);
-    check_endpoint(&url)?;
+    check_endpoint(&url, state.inner.config.allow_private_connections)?;
     let key = text(&input["apiKey"], 4000);
     update_tool_servers(state, project_id, |servers| {
         if servers.iter().any(|s| s.name == name) {
@@ -461,7 +444,7 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
     let results: Vec<(String, Result<Vec<Value>, String>)> = futures_util::stream::iter(targets)
         .map(|(name, url, has_key)| async move {
             let key = if has_key { crate::runtime::vault_secret(state, &mcp_secret_id(project_id, &name)).ok().flatten() } else { None };
-            let result = probe(&name, &url, key).await;
+            let result = probe(state, &name, &url, key).await;
             (name, result)
         })
         .buffer_unordered(4)
@@ -517,7 +500,7 @@ pub fn save_connection(state: &AppState, project_id: &str, args: &[Value]) -> Re
     }
     let existing = state.inner.connections.list().map_err(db_err)?.into_iter().find(|c| c.id == name);
     let url = Some(text(&input["url"], 500)).filter(|u| !u.is_empty()).or_else(|| existing.as_ref().map(|c| c.endpoint.clone())).ok_or("A connection needs a URL.")?;
-    check_endpoint(&url)?;
+    check_endpoint(&url, state.inner.config.allow_private_connections)?;
     let key = input["apiKey"].as_str().map(str::trim);
     let enc = match key {
         Some(k) if !k.is_empty() => Some(state.inner.auth.vault().encrypt(format!("tool-connection:{name}").as_bytes(), k.as_bytes()).map_err(db_err)?),
@@ -562,7 +545,7 @@ pub fn remove_connection(state: &AppState, project_id: &str, args: &[Value]) -> 
 
 /// Parses a `tools/list` reply, plain JSON or one server-sent `data:` event, into the normalised list: each tool's
 /// name, description, input schema and annotations, sorted by name. Its hash is what a pack's approval pins.
-fn parse_tools(body: &str) -> Vec<Value> {
+pub(crate) fn parse_tools(body: &str) -> Vec<Value> {
     let json_text = body.lines().find_map(|l| l.strip_prefix("data:")).map_or(body, str::trim);
     let mut tools: Vec<Value> = serde_json::from_str::<Value>(json_text)
         .ok()
@@ -579,9 +562,10 @@ fn parse_tools(body: &str) -> Vec<Value> {
 
 /// A client for `endpoint` that passed the endpoint guard: it connects only to the addresses checked here and
 /// follows no redirects, so neither a changed DNS answer nor a redirect can reach a blocked address.
-pub(crate) async fn guarded_client(endpoint: &str, timeout: std::time::Duration) -> Result<(url::Url, reqwest::Client), String> {
-    let url = check_endpoint(endpoint)?;
-    let pinned = resolve_endpoint(&url).await?;
+pub(crate) async fn guarded_client(state: &AppState, endpoint: &str, timeout: std::time::Duration) -> Result<(url::Url, reqwest::Client), String> {
+    let allow_private = state.inner.config.allow_private_connections;
+    let url = check_endpoint(endpoint, allow_private)?;
+    let pinned = resolve_endpoint(&url, allow_private).await?;
     let mut builder = reqwest::Client::builder().timeout(timeout).connect_timeout(std::time::Duration::from_secs(8)).redirect(reqwest::redirect::Policy::none());
     if let Some((host, addrs)) = pinned {
         builder = builder.resolve_to_addrs(&host, &addrs);
@@ -589,12 +573,19 @@ pub(crate) async fn guarded_client(endpoint: &str, timeout: std::time::Duration)
     Ok((url, builder.build().map_err(db_err)?))
 }
 
-/// Records how a call through HQ to one of the project's servers went, the same way a live check does. A success
-/// is written only over a failed check, so working calls don't rewrite the setting each time.
-pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) {
+/// Records how a call through HQ to one of the project's servers went, the same way a live check does. Only a change
+/// is written and broadcast (a failure over a success, a different error, a success over a failure), so an agent
+/// retrying against a down server doesn't rebuild every client's snapshot on each call. Returns whether it wrote.
+pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) -> bool {
     let changed = update_tool_servers(state, project_id, |servers| {
         let Some(s) = servers.iter_mut().find(|s| s.name == name) else { return Err(String::new()) };
-        if result.is_ok() && s.check.as_ref().is_none_or(|c| c.ok) {
+        let same = match (&result, &s.check) {
+            (Ok(()), None) => true,
+            (_, None) => false,
+            (Ok(()), Some(c)) => c.ok,
+            (Err(e), Some(c)) => !c.ok && c.error.as_ref() == Some(e),
+        };
+        if same {
             return Err(String::new());
         }
         s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.err(), at: Utc::now().to_rfc3339() });
@@ -603,12 +594,13 @@ pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, res
     if changed.is_ok() {
         broadcast(state, project_id);
     }
+    changed.is_ok()
 }
 
 /// One `tools/list` call through the endpoint guard, connecting only to the addresses that passed it.
-pub(crate) async fn probe(name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
+pub(crate) async fn probe(state: &AppState, name: &str, endpoint: &str, bearer: Option<String>) -> Result<Vec<Value>, String> {
     let call = async {
-        let (url, client) = guarded_client(endpoint, std::time::Duration::from_secs(8)).await?;
+        let (url, client) = guarded_client(state, endpoint, std::time::Duration::from_secs(8)).await?;
         let mut req = client
             .post(url)
             .header("Accept", "application/json, text/event-stream")
@@ -639,7 +631,7 @@ pub async fn check_connection(state: &AppState, project_id: &str, args: &[Value]
             .flatten();
         bearer = enc.and_then(|e| state.inner.auth.vault().decrypt(format!("tool-connection:{name}").as_bytes(), &e).ok()).map(|b| String::from_utf8_lossy(&b).into_owned());
     }
-    let tools = probe(&name, &conn.endpoint, bearer).await?;
+    let tools = probe(state, &name, &conn.endpoint, bearer).await?;
     let mut meta = setting(state, &conn_meta_key(&name)).unwrap_or_else(|| json!({}));
     meta["tools"] = json!(tools);
     meta["probedAt"] = json!(Utc::now().to_rfc3339());
@@ -771,12 +763,15 @@ mod tests {
 
     #[test]
     fn endpoints_block_metadata_and_bad_schemes() {
-        assert!(check_endpoint("https://mcp.example.com/rpc").is_ok());
+        assert!(check_endpoint("https://mcp.example.com/rpc", false).is_ok());
         for bad in ["http://127.0.0.1:9000/mcp", "http://localhost/x", "http://10.0.0.5/", "http://192.168.1.1/", "http://172.16.0.1/", "http://100.64.0.1/", "http://[::1]/", "http://[fd00::1]/", "http://[::ffff:10.0.0.1]/"] {
-            assert!(check_endpoint(bad).is_err(), "{bad} is private");
+            assert!(check_endpoint(bad, false).is_err(), "{bad} is private");
+            assert!(check_endpoint(bad, true).is_ok(), "{bad} is allowed with the owner's opt-in");
         }
-        for bad in ["http://169.254.169.254/latest", "ftp://x.com", "not a url", "http://metadata.google.internal/", "http://[fe80::1]/"] {
-            assert!(check_endpoint(bad).is_err(), "{bad} is rejected");
+        // Even with the opt-in: AWS's IPv6 metadata address and 0.0.0.0/8 slipped past the old forwarder guard.
+        for bad in ["http://169.254.169.254/latest", "ftp://x.com", "not a url", "http://metadata.google.internal/", "http://[fe80::1]/", "http://[fd00:ec2::254]/", "http://0.0.0.1/", "http://[::ffff:169.254.169.254]/"] {
+            assert!(check_endpoint(bad, false).is_err(), "{bad} is rejected");
+            assert!(check_endpoint(bad, true).is_err(), "{bad} is rejected even with the opt-in");
         }
     }
 
@@ -811,6 +806,31 @@ mod tests {
             t.join().unwrap();
         }
         assert_eq!(tool_servers(&state, &pid).len(), 200, "no concurrent update is lost");
+    }
+
+    #[test]
+    fn one_projects_tool_server_edit_never_waits_on_anothers() {
+        let (state, a, b) = two_projects();
+        let guard = state.project_lock(&servers_key(&a));
+        let _held = guard.lock().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (st, pb) = (state.clone(), b.clone());
+        std::thread::spawn(move || tx.send(update_tool_servers(&st, &pb, |_| Ok(()))).unwrap());
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap().is_ok(), "B's edit finishes while A's lock is held");
+    }
+
+    #[test]
+    fn repeated_forward_failures_write_and_broadcast_once() {
+        let (state, pid, _) = two_projects();
+        add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://docs.example/mcp" })]).unwrap();
+        let down = || Err("docs answered 503 Service Unavailable.".to_owned());
+        assert!(record_forward(&state, &pid, "docs", down()), "the first failure is recorded");
+        for _ in 0..5 {
+            assert!(!record_forward(&state, &pid, "docs", down()), "a retry with the same error writes nothing");
+        }
+        assert!(record_forward(&state, &pid, "docs", Err("docs answered 401 Unauthorized.".into())), "a different error is recorded");
+        assert!(record_forward(&state, &pid, "docs", Ok(())), "recovery is recorded");
+        assert!(!record_forward(&state, &pid, "docs", Ok(())));
     }
 
     /// Two projects, each with a team, plus an archived third one.

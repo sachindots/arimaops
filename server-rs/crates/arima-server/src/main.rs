@@ -187,6 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         trust_proxy,
         same_origin: false,
         data_root: Some(data_root.clone()),
+        allow_private_connections: env::var("ARIMA_ALLOW_PRIVATE_CONNECTIONS").is_ok_and(|v| v == "1"),
     };
 
     let state = AppState::new(db, vault, config);

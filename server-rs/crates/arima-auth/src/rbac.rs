@@ -100,8 +100,6 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "saveAccount"
             | "testAccountKey"
             | "removeAccount"
-            | "resolveActionItem"
-            | "resolveDecision"
             | "recordGate"
             | "sendProposal"
             | "setEgressMode"
@@ -122,7 +120,9 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "setToolsAsCode"
             | "addPack"
             | "removePack"
-    );
+    ) || (matches!(cmd, "resolveActionItem" | "resolveDecision") && ctx.decision_owner_only);
+    // Agent questions and forms are answered from a phone without a code; owner-only cards (packs, skills, gate
+    // waivers) still need one.
 
     if ctx.remote && needs_step_up && !ctx.elevated {
         return CommandVerdict::StepUpRequired;
@@ -170,5 +170,17 @@ mod tests {
         }
         let remote = AuthContext { remote: true, ..ctx(ServerRole::Owner) };
         assert_eq!(authorize_command("setEgressMode", &remote), CommandVerdict::StepUpRequired);
+    }
+
+    #[test]
+    fn remote_step_up_is_only_for_owner_only_cards() {
+        let remote = AuthContext { remote: true, ..ctx(ServerRole::Owner) };
+        for cmd in ["resolveDecision", "resolveActionItem"] {
+            assert_eq!(authorize_command(cmd, &remote), CommandVerdict::Allowed, "{cmd}: an agent question or form");
+            let owner_card = AuthContext { decision_owner_only: true, ..remote };
+            assert_eq!(authorize_command(cmd, &owner_card), CommandVerdict::StepUpRequired, "{cmd}: a pack, skill or gate card");
+            assert_eq!(authorize_command(cmd, &AuthContext { elevated: true, ..owner_card }), CommandVerdict::Allowed);
+        }
+        assert_eq!(authorize_command("recordGate", &AuthContext { decision_owner_only: true, ..remote }), CommandVerdict::StepUpRequired);
     }
 }

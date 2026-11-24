@@ -394,7 +394,7 @@ pub(crate) async fn upsert_connection(
         None => None,
     };
 
-    crate::integrations::check_endpoint(&body.endpoint).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
+    crate::integrations::check_endpoint(&body.endpoint, state.inner.config.allow_private_connections).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
     let connection = state.inner.connections.upsert(
         clean_id,
         &body.kind,

@@ -88,6 +88,7 @@ async fn m3_preview_cookie_isolation_feedback_workspace_sync_symlink_guard_and_p
         trust_proxy: false,
         same_origin: false,
         data_root: Some(data_root.clone()),
+        allow_private_connections: false,
     };
 
     let state = AppState::new(db, vault, cfg);
@@ -587,6 +588,7 @@ async fn cloud_https_wildcard_subdomain_preview_secure_cookies_and_passkeys_on_p
         trust_proxy: true,
         same_origin: false,
         data_root: Some(dir.path().to_path_buf()),
+        allow_private_connections: false,
     };
 
     let state = AppState::new(db, vault, cfg);

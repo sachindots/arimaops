@@ -178,7 +178,7 @@ async fn resolve_pinned(
     allow_restricted: bool,
     allow_private: bool,
 ) -> Result<SocketAddr, &'static str> {
-    // Observe mode leaves the agent's direct route open, so private (not loopback) targets add nothing it lacks.
+    // `allow_private`: the owner named this host in a rule, which opens private (never loopback) addresses.
     let refused = |ip: IpAddr| is_restricted_ip(ip) && !allow_restricted && !(allow_private && !is_loopback_ip(ip));
     let clean = normalize_host(host);
     if let Ok(ip) = clean.parse::<IpAddr>() {
@@ -288,7 +288,7 @@ async fn handle_client(
             return Ok(());
         }
 
-        let pinned_addr = match resolve_pinned(&host, port, decision.explicitly_scoped, policy.observe).await {
+        let pinned_addr = match resolve_pinned(&host, port, decision.explicitly_scoped, host_matches(&policy.private_allow, &host, port)).await {
             Ok(sa) => sa,
             Err(why) => {
                 let mut inner = reader.into_inner();
@@ -337,7 +337,7 @@ async fn handle_client(
         return Ok(());
     }
 
-    let pinned_addr = match resolve_pinned(&parsed.host, parsed.port, decision.explicitly_scoped, policy.observe).await {
+    let pinned_addr = match resolve_pinned(&parsed.host, parsed.port, decision.explicitly_scoped, host_matches(&policy.private_allow, &parsed.host, parsed.port)).await {
         Ok(sa) => sa,
         Err(why) => {
             let mut inner = reader.into_inner();
@@ -463,9 +463,9 @@ mod observe_address_tests {
     use super::resolve_pinned;
 
     #[tokio::test]
-    async fn observe_reaches_private_addresses_but_never_loopback_or_metadata() {
-        assert!(resolve_pinned("10.0.0.7", 80, false, false).await.is_err(), "enforce refuses private targets");
-        assert!(resolve_pinned("10.0.0.7", 80, false, true).await.is_ok(), "observe lets a sibling container through");
+    async fn private_addresses_need_an_owner_rule_and_loopback_and_metadata_never_open() {
+        assert!(resolve_pinned("10.0.0.7", 80, false, false).await.is_err(), "no rule: a private target is refused in every mode");
+        assert!(resolve_pinned("10.0.0.7", 80, false, true).await.is_ok(), "an owner rule naming it lets it through");
         assert!(resolve_pinned("fd00::7", 80, false, true).await.is_ok());
         assert!(resolve_pinned("127.0.0.1", 80, false, true).await.is_err(), "HQ's own loopback stays closed");
         assert!(resolve_pinned("::ffff:127.0.0.1", 80, false, true).await.is_err());

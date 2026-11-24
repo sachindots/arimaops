@@ -115,12 +115,30 @@ impl WsHub {
         }
     }
 
-    /// Serializes `event` once and enqueues to every active subscriber without blocking slow peers.
+    /// Serializes `event` once and enqueues it without blocking slow peers: to the sockets of the project it belongs
+    /// to, or to every socket when it names no project.
     pub fn broadcast_event(&self, event: &WsServerEvent) {
         let Ok(payload) = serde_json::to_string(event) else {
             return;
         };
-        self.broadcast_raw_json(&payload);
+        let project = match event {
+            WsServerEvent::DecisionUpdated { decision } => Some(&decision.project_id),
+            WsServerEvent::FeedbackCreated { feedback } => Some(&feedback.project_id),
+            WsServerEvent::MeetingUpdated { meeting } => Some(&meeting.project_id),
+            _ => None,
+        };
+        match project {
+            Some(pid) => self.broadcast_project(pid, &payload),
+            None => self.broadcast_raw_json(&payload),
+        }
+    }
+
+    /// Serializes `event` once and sends it only to sockets showing `project_id`, for events that don't name their
+    /// project themselves (a meeting turn names only its meeting).
+    pub fn broadcast_project_event(&self, project_id: &str, event: &WsServerEvent) {
+        if let Ok(payload) = serde_json::to_string(event) {
+            self.broadcast_project(project_id, &payload);
+        }
     }
 
     /// Sends a frame only to sockets showing `project_id`. It describes a change, so the cached snapshot is dropped.
@@ -654,7 +672,14 @@ async fn execute_ws_command(
             crate::integrations::refresh_mcp(state, project_id, &[args.first().map_or(Value::Null, |a| a["name"].clone())]).await
         }
         "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
-        "copyMcp" => crate::integrations::copy_mcp(state, project_id, args),
+        "copyMcp" => {
+            // The caller is Owner here (RBAC); copying a key out of another project needs Owner there too (owner decision Q4).
+            let from = args.first().and_then(Value::as_str).unwrap_or("");
+            if !is_owner_in(state, actor_uid, from) {
+                return Err("Copying a tool server needs the Owner role in the project it comes from.".into());
+            }
+            crate::integrations::copy_mcp(state, project_id, args)
+        }
         "setToolServerKey" => crate::integrations::set_tool_server_key(state, project_id, args),
         "addPack" => crate::packs::add_pack(state, project_id, args).await,
         "checkPackUpdates" => crate::packs::check_updates(state, project_id, args).await,
@@ -676,8 +701,12 @@ async fn execute_ws_command(
         "removeLesson" => crate::memory_cmds::remove_lesson(state, project_id, args),
         "setLessonPromotion" => crate::memory_cmds::set_lesson_promotion(state, project_id, args),
         "updateFinding" => crate::memory_cmds::update_finding(state, project_id, args),
-        "updateRole" => crate::team_edit::update_role(state, project_id, args)
-            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
+        "updateRole" => {
+            if actor_role != ServerRole::Owner {
+                crate::skills::check_operator_refs(state, project_id, &args.get(1).map_or(Value::Null, |p| p["skills"].clone()))?;
+            }
+            crate::team_edit::update_role(state, project_id, args).inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id))
+        }
         "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args)
             .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
         "addGoal" => crate::planning::add_goal(state, project_id, args),
@@ -689,7 +718,7 @@ async fn execute_ws_command(
         "setCompany" => crate::planning::set_company(state, project_id, args),
         "updateStack" => crate::planning::update_stack(state, project_id, args),
         "answerDecision" | "resolveDecision" | "resolveActionItem" => {
-            exec_answer_decision(state, args, actor_role)
+            exec_answer_decision(state, project_id, args, actor_role)
         }
         "recordGate" => exec_record_gate(state, project_id, actor_name, actor_role, args),
         "startMeeting" => exec_start_meeting(state, project_id, actor_name, args),
@@ -769,6 +798,7 @@ async fn execute_ws_command(
 /// to the requesting agent, and broadcasts `WsServerEvent::DecisionUpdated`.
 pub fn exec_answer_decision(
     state: &AppState,
+    project_id: &str,
     args: &[Value],
     actor_role: ServerRole,
 ) -> Result<(), String> {
@@ -794,6 +824,10 @@ pub fn exec_answer_decision(
     } else {
         return Err("missing decisionId".into());
     };
+    // The caller's role was worked out for `project_id`, so only that project's cards may be answered with it.
+    if !state.inner.decisions.get(&decision_id).map_err(|e| e.to_string())?.is_some_and(|d| d.project_id == project_id) {
+        return Err("Decision not found.".into());
+    }
 
     let mut status = Some(DecisionStatus::Resolved);
     let mut answers: Option<Vec<QuestionAnswer>> = None;
@@ -1313,6 +1347,14 @@ fn inspect_command_context(
     (target_agent_local, decision_owner_only)
 }
 
+/// Whether the signed-in user (none: the bootstrap session, which is the owner) is Owner of the project.
+fn is_owner_in(state: &AppState, user_id: Option<&str>, project_id: &str) -> bool {
+    let Some(uid) = user_id else { return true };
+    let Some(user) = state.inner.auth.get_user_by_id(uid).ok().flatten().filter(|u| !u.disabled) else { return false };
+    let project_role = state.inner.auth.get_project_role(project_id, uid).ok().flatten();
+    effective_role(user.role, project_role) == ServerRole::Owner
+}
+
 fn is_agent_local_in_project(state: &AppState, project_id: &str, agent_id: &str) -> bool {
     let Ok(Some(cfg_raw)) = state.inner.db.read(|conn| {
         use rusqlite::OptionalExtension;
@@ -1481,7 +1523,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         "snapshot": {
             "welcome": team_model.is_none(),
             "templateLibrary": crate::integrations::template_library(state),
-            "skillPacks": crate::skills::pack_views(state),
+            "skillPacks": crate::skills::pack_views(state, project_id),
             "packs": crate::packs::snapshot(state, project_id),
             "mcp": crate::integrations::mcp_state(state, project_id, &team, &now),
             "connections": crate::integrations::connections_state(state),
@@ -1552,5 +1594,118 @@ mod audit_tests {
         assert!(!c.to_string().contains("sk-ant") && c.to_string().contains("work"));
         let d = audit_args("testAccountKey", &[json!("anthropic"), json!("sk-ant-secret-value"), json!("req-1")]);
         assert!(!d.to_string().contains("sk-ant") && d.to_string().contains("anthropic"));
+    }
+}
+
+#[cfg(test)]
+mod project_scope_tests {
+    use super::*;
+    use arima_core::{DecisionPayload, DecisionStatus, VisualDecision};
+
+    fn card(project_id: &str) -> VisualDecision {
+        VisualDecision {
+            id: format!("dec-{project_id}"),
+            project_id: project_id.to_owned(),
+            from_id: "lead".into(),
+            task_id: None,
+            title: "Which way?".into(),
+            details: String::new(),
+            waiting: true,
+            owner_only: false,
+            status: DecisionStatus::Open,
+            payload: DecisionPayload::Info { markdown: "x".into() },
+            note: None,
+            created_at: Utc::now().to_rfc3339(),
+            closed_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_card_is_answered_only_from_its_own_project() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        state.inner.db.transaction(|c| c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-b', 'b', 'B', '/w/b', 9, 9)", []).map_err(arima_db::DbError::from)).unwrap();
+        let b_card = state.inner.decisions.upsert(&card("proj-b")).unwrap();
+
+        let err = exec_answer_decision(&state, &a, &[json!(b_card.id), json!("optionA")], ServerRole::Owner).unwrap_err();
+        assert_eq!(err, "Decision not found.");
+        assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Open, "B's card is untouched");
+        exec_answer_decision(&state, "proj-b", &[json!(b_card.id), json!("optionA")], ServerRole::Operator).unwrap();
+        assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Resolved);
+    }
+
+    #[tokio::test]
+    async fn an_operator_cannot_add_a_new_skill_ref_to_a_role() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let pid = state.default_project().unwrap().0;
+        crate::team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+        let role = crate::team::load(&state, &pid).unwrap().template["roles"][0].clone();
+        let args = [role["id"].clone(), json!({ "skills": ["evil/repo@exfil"] })];
+        let err = execute_ws_command(&state, &pid, None, "op", ServerRole::Operator, "updateRole", &args).await.unwrap_err();
+        assert!(err.contains("Only the owner"), "{err}");
+        assert_eq!(crate::team::load(&state, &pid).unwrap().template["roles"][0], role, "the role is unchanged");
+    }
+
+    #[tokio::test]
+    async fn copying_a_tool_server_needs_owner_in_both_projects() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        state.inner.db.transaction(|c| {
+            c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-b', 'b', 'B', '/w/b', 9, 9)", [])?;
+            c.execute("INSERT INTO users (id, name, password_hash, role, created_at) VALUES ('u-op', 'op', 'h', 'operator', 1)", [])
+        }.map_err(arima_db::DbError::from)).unwrap();
+        crate::integrations::add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://docs.example/mcp", "apiKey": "a-key" })]).unwrap();
+        state.inner.auth.set_project_role("proj-b", "u-op", ServerRole::Owner).unwrap();
+        let copy = [json!(a), json!("docs")];
+
+        let err = execute_ws_command(&state, "proj-b", Some("u-op"), "op", ServerRole::Owner, "copyMcp", &copy).await.unwrap_err();
+        assert!(err.contains("Owner role in the project it comes from"), "{err}");
+        assert!(crate::integrations::tool_servers(&state, "proj-b").is_empty(), "Owner of B only: A's key stays in A");
+
+        state.inner.auth.set_project_role(&a, "u-op", ServerRole::Owner).unwrap();
+        execute_ws_command(&state, "proj-b", Some("u-op"), "op", ServerRole::Owner, "copyMcp", &copy).await.unwrap();
+        assert!(crate::integrations::tool_servers(&state, "proj-b")[0].has_key);
+    }
+
+    #[test]
+    fn decision_events_reach_only_their_projects_sockets() {
+        let hub = WsHub::default();
+        let (tx_a, mut rx_a) = mpsc::channel(8);
+        let (tx_b, mut rx_b) = mpsc::channel(8);
+        hub.register("dev-a", tx_a, "proj-a", true);
+        hub.register("dev-b", tx_b, "proj-b", true);
+        hub.broadcast_event(&WsServerEvent::DecisionUpdated { decision: card("proj-a") });
+        assert!(matches!(rx_a.try_recv(), Ok(WsOutbound::Text(t)) if t.contains("dec-proj-a")));
+        assert!(rx_b.try_recv().is_err(), "project B's sockets never see A's card");
+    }
+
+    #[test]
+    fn meeting_turns_reach_only_their_projects_sockets() {
+        use arima_core::{MeetingKind, MeetingUrgency, VoiceProvider};
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        let (tx_b, mut rx_b) = mpsc::channel(64);
+        state.inner.ws_hub.register("dev-b", tx_b, "proj-b", true);
+        let input = crate::meetings::StartMeetingInput {
+            project_id: a.clone(),
+            kind: MeetingKind::Standup,
+            title: "Standup".into(),
+            urgency: MeetingUrgency::Normal,
+            moderator_id: "lead".into(),
+            participant_ids: vec!["lead".into()],
+            requested_by: "lead".into(),
+            agenda_titles: vec!["Plans".into()],
+            voice_enabled: false,
+            voice_provider: VoiceProvider::BrowserWebSpeech,
+        };
+        let (meeting, _, _) = crate::meetings::start_or_request_meeting(&state, input, true).unwrap();
+        crate::meetings::add_turn_and_refresh_minutes(&state, &meeting.id, "lead", None, None, "secret plan", None, None).unwrap();
+        while let Ok(WsOutbound::Text(t)) = rx_b.try_recv() {
+            assert!(!t.contains("secret plan") && !t.contains(&meeting.id), "project B saw A's meeting: {t}");
+        }
     }
 }

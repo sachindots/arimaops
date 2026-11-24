@@ -73,10 +73,7 @@ fn check(state: &AppState, pid: &str, name: &str) -> Option<arima_core::ToolServ
 
 #[tokio::test]
 async fn forwarding_attaches_the_key_and_refuses_what_the_agent_was_not_given() {
-    // The upstream listens on loopback, which HQ refuses unless the host's owner opts in.
-    // SAFETY: set before this test's own threads start; this binary has no other test.
-    unsafe { std::env::set_var("ARIMA_ALLOW_PRIVATE_CONNECTIONS", "1") };
-    let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([9u8; 32]), ServerConfig::default());
+    let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([9u8; 32]), ServerConfig { allow_private_connections: true, ..ServerConfig::default() });
     state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
     let pid = state.default_project().unwrap().0;
     team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();

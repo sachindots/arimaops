@@ -71,7 +71,35 @@ const MIGRATIONS: &[Migration] = &[
         name: "013_egress_access",
         sql: EGRESS_ACCESS_SCHEMA,
     },
+    Migration {
+        version: 14,
+        name: "014_skill_approvals",
+        sql: SKILL_APPROVALS_SCHEMA,
+    },
 ];
+
+/// Each project's own answer on a pinned skill's current hash, like a pack's approval. `skill_pins` keeps the
+/// fetched files (content-addressed, shared) and the scanner's verdict; `decision_id` here is the project's Inbox
+/// card for `content_hash`, and only that card can approve it. Existing answers move to the project whose card
+/// gave them.
+const SKILL_APPROVALS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS skill_approvals (
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    skill_ref     TEXT NOT NULL,
+    content_hash  TEXT NOT NULL,
+    status        TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+    decision_id   TEXT,
+    updated_at    INTEGER NOT NULL,
+    PRIMARY KEY (project_id, skill_ref)
+);
+
+INSERT OR IGNORE INTO skill_approvals (project_id, skill_ref, content_hash, status, decision_id, updated_at)
+    SELECT d.project_id, p.skill_ref, p.content_hash, CASE p.status WHEN 'blocked' THEN 'pending' ELSE p.status END, p.decision_id, p.updated_at
+    FROM skill_pins p JOIN visual_decisions d ON d.id = p.decision_id;
+
+UPDATE skill_pins SET status = 'pending' WHERE status IN ('approved', 'rejected');
+UPDATE skill_pins SET decision_id = NULL;
+"#;
 
 /// One Inbox access request per agent, host and port that enforce mode refused, and how the owner answered it.
 /// `once` is allowed until `expires_at`; `project` added a project rule; `denied` is never asked about again.
@@ -620,4 +648,36 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SKILL_APPROVALS_SCHEMA;
+    use crate::{Db, DbError};
+
+    #[test]
+    fn skill_answers_move_to_the_project_whose_card_gave_them() {
+        let db = Db::open_in_memory().unwrap();
+        db.transaction(|c| {
+            c.execute_batch(
+                "INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('p-a', 'a', 'A', '/a', 1, 1);
+                 INSERT INTO visual_decisions (id, project_id, from_id, title, details, status, payload_json, created_at)
+                     VALUES ('dec-1', 'p-a', 'hq', 't', 'd', 'resolved', '{}', 1);
+                 INSERT INTO skill_pins (skill_ref, url, path, name, description, commit_sha, content_hash, status, decision_id, created_at, updated_at)
+                     VALUES ('a/b@x', 'u', 'p', 'x', 'd', 'c', 'h1', 'approved', 'dec-1', 1, 1),
+                            ('a/b@y', 'u', 'p', 'y', 'd', 'c', 'h2', 'blocked', NULL, 1, 1);",
+            )?;
+            c.execute_batch(SKILL_APPROVALS_SCHEMA)?;
+            Ok::<_, DbError>(())
+        })
+        .unwrap();
+        let rows: Vec<(String, String, String)> = db
+            .read(|c| {
+                let mut s = c.prepare("SELECT a.project_id, a.status, p.status FROM skill_approvals a JOIN skill_pins p USING (skill_ref)")?;
+                let rows = s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok::<_, DbError>(rows)
+            })
+            .unwrap();
+        assert_eq!(rows, [("p-a".to_owned(), "approved".to_owned(), "pending".to_owned())], "the answer moved; the stored pin keeps only the scan");
+    }
 }

@@ -3,11 +3,13 @@
 //! A project's tool servers, reached through HQ. An agent calls `/api/projects/{id}/mcp/{server}` with its own HQ
 //! token; HQ checks the server is ticked on that agent's seat, attaches the server's key from the vault, and passes
 //! the MCP request and its reply (JSON or an event stream) through unchanged. Upstream keys never enter containers.
+//! A pack server's `tools/list` reply is the exception: HQ reads it whole and checks it against the pack's approved
+//! tool list first (Stage 1 decision 2.5), so a server that changes its tools after approval is blocked at once.
 
 use std::time::Duration;
 
 use arima_auth::{record_audit, redact_json_value, AuditWrite};
-use arima_core::{ServerRole, ToolServerTransport};
+use arima_core::{ServerRole, ToolServer, ToolServerSource, ToolServerTransport};
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method, StatusCode};
@@ -25,6 +27,8 @@ const MAX_CALL: Duration = Duration::from_secs(300);
 const LOOKUP: Duration = Duration::from_secs(10);
 const PASS_UP: [&str; 5] = ["accept", "content-type", "mcp-session-id", "mcp-protocol-version", "last-event-id"];
 const PASS_DOWN: [&str; 3] = ["content-type", "mcp-session-id", "mcp-protocol-version"];
+/// The largest `tools/list` reply HQ reads to check a pack server's tools.
+const MAX_TOOL_LIST_BYTES: usize = 4 << 20;
 
 pub async fn forward(
     State(state): State<AppState>,
@@ -36,15 +40,21 @@ pub async fn forward(
 ) -> Result<Response, ApiError> {
     let caller = agent_caller(&state, &headers, peer_ip, Some(&project_id))?;
     let calls = tool_calls(&body);
-    let (url, key) = match target(&state, &caller, &server) {
+    let (entry, key) = match target(&state, &caller, &server) {
         Ok(t) => t,
         Err(e) => {
             audit(&state, &caller, &server, &calls, false);
             return Err(e);
         }
     };
+    let lists_tools = lists_tools(&body);
+    if matches!(entry.source, ToolServerSource::Pack { .. }) && lists_tools == Some(false) {
+        audit(&state, &caller, &server, &calls, false);
+        return Err(ApiError::new(StatusCode::FORBIDDEN, format!("Send tools/list to the pack server \"{server}\" on its own, not in a batch.")));
+    }
+    let ToolServerTransport::Http { url } = entry.transport.clone();
     let sent = async {
-        let (url, client) = tokio::time::timeout(LOOKUP, guarded_client(&url, MAX_CALL)).await.map_err(|_| format!("Couldn't find {server} in time."))??;
+        let (url, client) = tokio::time::timeout(LOOKUP, guarded_client(&state, &url, MAX_CALL)).await.map_err(|_| format!("Couldn't find {server} in time."))??;
         let mut req = client.request(method, url).body(body);
         for name in PASS_UP {
             if let Some(v) = headers.get(name) {
@@ -76,11 +86,55 @@ pub async fn forward(
             out = out.header(name, v);
         }
     }
-    out.body(Body::from_stream(resp.bytes_stream())).map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+    let body = if matches!(entry.source, ToolServerSource::Pack { .. }) && lists_tools == Some(true) && status.is_success() {
+        Body::from(checked_tool_list(&state, &caller.project_id, entry, resp).await?)
+    } else {
+        Body::from_stream(resp.bytes_stream())
+    };
+    out.body(body).map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-/// The server's URL and key, when the server is registered in this project and ticked on the caller's seat.
-fn target(state: &AppState, caller: &McpCaller, server: &str) -> Result<(String, Option<String>), ApiError> {
+/// `Some(true)` for a lone `tools/list` request, `Some(false)` for a batch that holds one, `None` otherwise.
+fn lists_tools(body: &[u8]) -> Option<bool> {
+    match serde_json::from_slice::<Value>(body) {
+        Ok(Value::Array(batch)) => batch.iter().any(|m| m["method"] == "tools/list").then_some(false),
+        Ok(one) => (one["method"] == "tools/list").then_some(true),
+        Err(_) => None,
+    }
+}
+
+/// Reads a pack server's `tools/list` reply whole and runs the same check as a live Refresh: a list that differs from
+/// the approved one blocks the server, files one review, and is refused here instead of reaching the agent.
+async fn checked_tool_list(state: &AppState, project_id: &str, mut server: ToolServer, resp: reqwest::Response) -> Result<Bytes, ApiError> {
+    let gateway = |e: String| ApiError::new(StatusCode::BAD_GATEWAY, e);
+    let mut bytes = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = futures_util::StreamExt::next(&mut stream).await {
+        bytes.extend_from_slice(&chunk.map_err(|e| gateway(format!("{} broke off its tool list: {}", server.name, e.without_url())))?);
+        if bytes.len() > MAX_TOOL_LIST_BYTES {
+            return Err(gateway(format!("{}'s tool list is over {} MB.", server.name, MAX_TOOL_LIST_BYTES >> 20)));
+        }
+    }
+    let tools = crate::integrations::parse_tools(&String::from_utf8_lossy(&bytes));
+    let before = (server.blocked.clone(), server.tools_sha256.clone());
+    crate::packs::on_tools_listed(state, project_id, &mut server, &tools);
+    if (server.blocked.clone(), server.tools_sha256.clone()) != before {
+        let _ = crate::integrations::update_tool_servers(state, project_id, |servers| {
+            if let Some(s) = servers.iter_mut().find(|s| s.name == server.name) {
+                (s.blocked, s.tools_sha256) = (server.blocked.clone(), server.tools_sha256.clone());
+            }
+            Ok(())
+        });
+        crate::integrations::broadcast(state, project_id);
+    }
+    match &server.blocked {
+        Some(why) => Err(ApiError::new(StatusCode::FORBIDDEN, format!("The tool server \"{}\" is blocked until the owner approves it in the Inbox: {why}", server.name))),
+        None => Ok(Bytes::from(bytes)),
+    }
+}
+
+/// The server and its key, when the server is registered in this project and ticked on the caller's seat.
+fn target(state: &AppState, caller: &McpCaller, server: &str) -> Result<(ToolServer, Option<String>), ApiError> {
     let ticked = crate::team::load(state, &caller.project_id).is_some_and(|m| {
         m.team.iter().any(|a| a["id"] == caller.agent_id.as_str() && a["mcp"].as_array().is_some_and(|names| names.iter().any(|n| n == server)))
     });
@@ -97,8 +151,7 @@ fn target(state: &AppState, caller: &McpCaller, server: &str) -> Result<(String,
     } else {
         None
     };
-    let ToolServerTransport::Http { url } = entry.transport;
-    Ok((url, key))
+    Ok((entry, key))
 }
 
 /// The `tools/call` requests in a JSON-RPC message or batch, as `(tool, arguments)`.

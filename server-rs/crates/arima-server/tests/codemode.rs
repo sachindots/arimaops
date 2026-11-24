@@ -33,9 +33,7 @@ async fn get(app: &Router, pid: &str, token: &str) -> (StatusCode, Value) {
 
 #[tokio::test]
 async fn declarations_follow_the_switch_the_seat_and_the_last_check() {
-    // SAFETY: set before this test's own threads start; this binary has no other test.
-    unsafe { std::env::set_var("ARIMA_ALLOW_PRIVATE_CONNECTIONS", "1") };
-    let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([9u8; 32]), ServerConfig::default());
+    let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([9u8; 32]), ServerConfig { allow_private_connections: true, ..ServerConfig::default() });
     state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
     let pid = state.default_project().unwrap().0;
     team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();

@@ -41,6 +41,7 @@ async fn spawn_m2_server() -> (SocketAddr, AppState, TempDir) {
         trust_proxy: false,
         same_origin: false,
         data_root: Some(dir.path().to_path_buf()),
+        allow_private_connections: false,
     };
     let state = AppState::new(db, vault, cfg);
     state
