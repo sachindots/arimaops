@@ -142,6 +142,18 @@ export function TerminalView({ agentId, autoFocus = true }: { agentId: string; a
       // Shift+Enter: xterm.js sends a plain Enter (\r), which submits. Send Alt+Enter (ESC \r)
       // instead, which Claude Code and Codex read as "new line".
       term.attachCustomKeyEventHandler((e) => {
+        if (e.type === "keydown" && e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+          const mac = navigator.platform.includes("Mac");
+          const sequence = e.key === "ArrowLeft" ? (mac ? "\x1bb" : "\x1b[1;5D")
+            : e.key === "ArrowRight" ? (mac ? "\x1bf" : "\x1b[1;5C")
+              : e.key === "ArrowUp" && !mac ? "\x1b[1;5A"
+                : e.key === "ArrowDown" && !mac ? "\x1b[1;5B" : undefined;
+          if (sequence) {
+            officeActions.sendTerminalInput(agentId, sequence);
+            e.preventDefault();
+            return false;
+          }
+        }
         if (e.key !== "Enter" || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return true;
         if (e.type === "keydown") officeActions.sendTerminalInput(agentId, "\x1b\r");
         e.preventDefault();
