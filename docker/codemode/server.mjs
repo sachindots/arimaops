@@ -41,6 +41,16 @@ function unwrap(res) {
   return res.content ?? null;
 }
 
+/** HQ's own message from a refused call, which the SDK wraps in its transport error. */
+function hqMessage(e) {
+  const body = /(\{"error":.*\})\s*$/.exec(e.message)?.[1];
+  try {
+    return body ? JSON.parse(body).error : e.message;
+  } catch {
+    return e.message;
+  }
+}
+
 const run = createRunner();
 
 async function codemode(code) {
@@ -64,7 +74,12 @@ async function codemode(code) {
     return await run(code, {
       namespaces,
       search,
-      call: async (ns, tool, args) => unwrap(await (await client(ns)).callTool({ name: decl.namespaces[ns].tools[tool], arguments: args })),
+      call: async (ns, tool, args) => {
+        const res = await (await client(ns)).callTool({ name: decl.namespaces[ns].tools[tool], arguments: args }).catch((e) => {
+          throw new Error(hqMessage(e));
+        });
+        return unwrap(res);
+      },
     });
   } finally {
     for (const c of clients.values()) c.then((x) => x.close()).catch(() => {});
