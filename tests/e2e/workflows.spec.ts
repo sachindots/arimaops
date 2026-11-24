@@ -199,7 +199,7 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
     await page.getByRole("navigation", { name: "Team sections" }).getByRole("button", { name: /^Chat/i }).click();
     // The Team thread shows every message, including the answer typed to the agent.
     await expect(
-      page.getByText('Set up the upload bucket — Form: create {"intro":"Uploads go to one bucket per project.","bucket":"team-docs","region":"us-east","features":["encryption"],"used":38}'),
+      page.getByRole("region", { name: "Team chat" }).getByText('Set up the upload bucket — Form: create {"intro":"Uploads go to one bucket per project.","bucket":"team-docs","region":"us-east","features":["encryption"],"used":38}'),
     ).toBeVisible();
     errors.assertClean("agent-form");
   });
