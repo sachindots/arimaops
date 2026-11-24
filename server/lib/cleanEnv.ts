@@ -33,4 +33,5 @@ export const SCRUB_SHELL =
   // otherwise a key in your profile would silently bill every subscription agent.
   `unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN OPENAI_API_KEY CODEX_API_KEY GEMINI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY OPENROUTER_API_KEY DEEPSEEK_API_KEY CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX; ` +
   `[ -n "$CLAUDECODE" ] && unset ANTHROPIC_BASE_URL; ` +
-  `for __hq_v in $(env | sed -n 's/^\\(CLAUDECODE\\|CLAUDE_CODE_[A-Z0-9_]*\\|CLAUDE_AGENT_SDK_[A-Z0-9_]*\\|CLAUDE_DESKTOP_[A-Z0-9_]*\\|CLAUDE_PLUGIN_[A-Z0-9_]*\\|CLAUDE_PREVIEW_[A-Z0-9_]*\\|CLAUDE_AUTOCOMPACT_[A-Z0-9_]*\\|CLAUDE_PID\\|CLAUDE_EFFORT\\|CODEX_SANDBOX[A-Z0-9_]*\\|CODEX_THREAD_ID\\)=.*/\\1/p'); do unset "$__hq_v"; done; unset __hq_v; `;
+  // -E: alternation in a basic pattern (\|) is GNU-only, and macOS sed would match nothing.
+  `for __hq_v in $(env | sed -nE 's/^(CLAUDECODE|CLAUDE_CODE_[A-Z0-9_]*|CLAUDE_AGENT_SDK_[A-Z0-9_]*|CLAUDE_DESKTOP_[A-Z0-9_]*|CLAUDE_PLUGIN_[A-Z0-9_]*|CLAUDE_PREVIEW_[A-Z0-9_]*|CLAUDE_AUTOCOMPACT_[A-Z0-9_]*|CLAUDE_PID|CLAUDE_EFFORT|CODEX_SANDBOX[A-Z0-9_]*|CODEX_THREAD_ID)=.*/\\1/p'); do unset "$__hq_v"; done; unset __hq_v; `;
