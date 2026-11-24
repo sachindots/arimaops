@@ -41,8 +41,9 @@ function atomicWrite(file: string, text: string) {
   writeFileSync(tmp, text);
   // File times come from the kernel's coarse clock, a few ms behind Date.now(): set it exactly, so a report written
   // right after a finding's update never looks older than it (the findings-report gate compares the two).
-  const now = new Date();
-  utimesSync(tmp, now, now);
+  // Half a millisecond later: Node 20/22 round the seconds float down, so an exact stamp can read back 1 ms early.
+  const at = (Date.now() + 0.5) / 1000;
+  utimesSync(tmp, at, at);
   renameSync(tmp, file);
 }
 
