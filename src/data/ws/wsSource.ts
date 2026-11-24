@@ -252,7 +252,7 @@ export function createWsSource(project = "", opts: { watch?: boolean } = {}): Of
     setToolServerKey: (name, key) => send("setToolServerKey", name, key),
     addPack: (url, plugin) => send("addPack", url, plugin ?? ""),
     checkPackUpdates: (id) => send("checkPackUpdates", id ?? ""),
-    removePack: (id) => send("removePack", id),
+    removePack: (id, deleteKeys) => send("removePack", id, !!deleteKeys),
     answerApproval: (agentId, approvalId, decision) => send("answerApproval", agentId, approvalId, decision),
     resolveAccess: (requestId, decision) => send("resolveAccess", requestId, decision),
     answerDecision: (id, input) => send("answerDecision", id, input),

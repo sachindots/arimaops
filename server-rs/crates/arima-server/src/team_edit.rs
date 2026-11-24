@@ -79,6 +79,33 @@ pub(crate) fn drop_role_skills(state: &AppState, project_id: &str, drop: impl Fn
     })
 }
 
+/// Makes `pack`'s skill refs exactly `refs` on the roles in `role_ids` and none on the others, then rebuilds the
+/// agents that copy them. Other skills keep their place, so running it again changes nothing.
+pub(crate) fn set_pack_skills(state: &AppState, project_id: &str, pack: &str, role_ids: &[String], refs: &[String]) -> Result<(), String> {
+    let of_pack = |s: &str| s.rsplit_once('@').is_some_and(|(p, _)| p == pack);
+    mutate(state, project_id, |model, _| {
+        for role in model.template["roles"].as_array_mut().into_iter().flatten() {
+            let wanted: &[String] = if role["id"].as_str().is_some_and(|id| role_ids.iter().any(|r| r == id)) { refs } else { &[] };
+            let had = role.get("skills").is_some();
+            let mut skills = role["skills"].as_array().cloned().unwrap_or_default();
+            skills.retain(|s| s.as_str().map(str::trim).is_none_or(|s| !of_pack(s) || wanted.iter().any(|w| w == s)));
+            for r in wanted {
+                if !skills.iter().any(|s| s.as_str().map(str::trim) == Some(r.as_str())) {
+                    skills.push(Value::String(r.clone()));
+                }
+            }
+            if had || !skills.is_empty() {
+                role["skills"] = Value::Array(skills);
+            }
+        }
+        for idx in 0..model.team.len() {
+            let seat = seat_of(&model.team[idx]);
+            rebuild(model, idx, &seat);
+        }
+        Ok(())
+    })
+}
+
 /// Loads, edits, saves and broadcasts. `f` may also run SQL on `conn`, inside the same transaction.
 pub(crate) fn mutate(
     state: &AppState,

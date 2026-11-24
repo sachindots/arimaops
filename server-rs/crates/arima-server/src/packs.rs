@@ -249,13 +249,14 @@ fn prepare(state: &AppState, url: &str, plugin: Option<&str>, rev: &str) -> Resu
 }
 
 /// Lists each tool server's tools (with the project's key, when it has one) and records their hash.
-async fn probe_servers(state: &AppState, project_id: &str, entry: &mut PackEntry) -> Vec<String> {
+async fn probe_servers(state: &AppState, project_id: &str, id: &str, entry: &mut PackEntry) -> Vec<String> {
     let existing = int::tool_servers(state, project_id);
     let mut notes = Vec::new();
     for (name, server) in &mut entry.tool_servers {
         let ToolServerTransport::Http { url } = &server.transport;
         let has_key = existing.iter().any(|s| s.name == *name && s.has_key);
-        let key = if has_key { crate::runtime::vault_secret(state, &int::mcp_secret_id(project_id, name)).ok().flatten() } else { None };
+        let key_id = if has_key { int::mcp_secret_id(project_id, name) } else { kept_key_id(project_id, id, name) };
+        let key = crate::runtime::vault_secret(state, &key_id).ok().flatten();
         match int::probe(name, url, key).await {
             Ok(tools) => {
                 server.tools_sha256 = Some(tools_hash(&tools));
@@ -349,11 +350,26 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
             secrets: after.secrets.clone(),
             ignored: after.ignored.clone(),
             findings: after.scan.blocked.iter().map(|l| format!("block {l}")).chain(after.scan.warnings.iter().map(|l| format!("warn {l}"))).collect(),
+            roles: default_roles(state, project_id, id, before),
         },
         note: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     }
+}
+
+/// The roles an approval gives the pack's skills unless the owner picks others: on an update, the roles that already
+/// name one of them; on install, or when the approved pack had no skills, every role.
+fn default_roles(state: &AppState, project_id: &str, id: &str, approved: Option<&PackEntry>) -> Vec<String> {
+    let Some(model) = crate::team::load(state, project_id) else { return vec![] };
+    let keep = approved.is_some_and(|a| !a.skills.is_empty());
+    let names_pack = |r: &Value| r["skills"].as_array().into_iter().flatten().filter_map(Value::as_str).any(|s| s.trim().rsplit_once('@').is_some_and(|(p, _)| p == id));
+    model.template["roles"].as_array().into_iter().flatten().filter(|r| !keep || names_pack(r)).filter_map(|r| r["id"].as_str().map(str::to_owned)).collect()
+}
+
+/// Where a removed pack's tool-server key waits, scoped to that pack so only its reinstall gets it back.
+fn kept_key_id(project_id: &str, pack: &str, name: &str) -> String {
+    format!("mcp-kept:{project_id}:{pack}:{name}")
 }
 
 fn post(state: &AppState, decision: &VisualDecision) -> Result<(), String> {
@@ -426,6 +442,15 @@ fn block_reason(approved: Option<&String>, live: Option<&String>) -> Option<Stri
 /// blocked while their tools differ from the approved ones. Servers the pack no longer has leave every seat.
 fn apply_servers(state: &AppState, project_id: &str, id: &str, entry: &PackEntry) -> Result<(), String> {
     let ours = |s: &ToolServer| matches!(&s.source, ToolServerSource::Pack { pack_id, .. } if pack_id == id);
+    let present: Vec<String> = int::tool_servers(state, project_id).into_iter().filter(|s| ours(s)).map(|s| s.name).collect();
+    let mut restored = BTreeSet::new();
+    for name in entry.tool_servers.keys().filter(|n| !present.contains(n)) {
+        let kept = kept_key_id(project_id, id, name);
+        if int::copy_secret(state, &kept, &int::mcp_secret_id(project_id, name), name)? {
+            let _ = state.inner.vault_secrets.delete(&kept);
+            restored.insert(name.clone());
+        }
+    }
     let old = int::update_tool_servers(state, project_id, |servers| {
         let old: Vec<ToolServer> = servers.iter().filter(|s| ours(s)).cloned().collect();
         servers.retain(|s| !ours(s));
@@ -435,7 +460,7 @@ fn apply_servers(state: &AppState, project_id: &str, id: &str, entry: &PackEntry
             servers.push(ToolServer {
                 name: name.clone(),
                 transport: ts.transport.clone(),
-                has_key: prev.is_some_and(|p| p.has_key),
+                has_key: prev.map_or_else(|| restored.contains(name), |p| p.has_key),
                 source: ToolServerSource::Pack { pack_id: id.to_owned(), commit: entry.source.commit.clone() },
                 check: prev.and_then(|p| p.check.clone()),
                 blocked: block_reason(ts.tools_sha256.as_ref(), live.as_ref()),
@@ -453,7 +478,7 @@ fn apply_servers(state: &AppState, project_id: &str, id: &str, entry: &PackEntry
 
 /// Records the owner's answer on a `PackReview` card. Only the card the entry is waiting on counts.
 pub fn on_decision(state: &AppState, decision: &VisualDecision) {
-    let DecisionPayload::PackReview { pack, .. } = &decision.payload else { return };
+    let DecisionPayload::PackReview { pack, roles, .. } = &decision.payload else { return };
     if decision.status == DecisionStatus::Open {
         return;
     }
@@ -477,7 +502,12 @@ pub fn on_decision(state: &AppState, decision: &VisualDecision) {
         }
         None
     };
-    let saved = save_lock(state, pid, &lock).and_then(|()| applied.map_or(Ok(()), |e| apply_servers(state, pid, pack, &e)));
+    let saved = save_lock(state, pid, &lock).and_then(|()| {
+        let Some(e) = applied else { return Ok(()) };
+        apply_servers(state, pid, pack, &e)?;
+        let refs: Vec<String> = e.skills.keys().map(|s| format!("{pack}@{s}")).collect();
+        crate::team_edit::set_pack_skills(state, pid, pack, roles, &refs)
+    });
     if let Err(e) = saved {
         tracing::warn!(project_id = pid, pack, "couldn't record the pack answer: {e}");
     }
@@ -554,7 +584,7 @@ fn check_repo_url(url: &str) -> Result<(), String> {
 async fn install(state: &AppState, project_id: &str, url: String, plugin: Option<String>, rev: String) -> Result<String, String> {
     let st = state.clone();
     let (id, mut entry) = tokio::task::spawn_blocking(move || prepare(&st, &url, plugin.as_deref(), &rev)).await.map_err(|e| e.to_string())??;
-    let notes = probe_servers(state, project_id, &mut entry).await;
+    let notes = probe_servers(state, project_id, &id, &mut entry).await;
     stage(state, project_id, &id, entry, &notes)?;
     int::broadcast(state, project_id);
     Ok(id)
@@ -593,22 +623,30 @@ pub async fn check_updates(state: &AppState, project_id: &str, args: &[Value]) -
     if errors.is_empty() { Ok(()) } else { Err(errors.join(" ")) }
 }
 
-/// `removePack [id]`: drops the pack's lock entry, its tool servers (with their keys and seat selections) and the
-/// roles' references to its skills. Skills leave agents at their next start.
+/// `removePack [id, deleteKeys?]`: drops the pack's lock entry, its tool servers (with their seat selections) and the
+/// roles' references to its skills. Skills leave agents at their next start. The servers' keys are kept for a
+/// reinstall of the same pack unless `deleteKeys` is true.
 pub fn remove_pack(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let id = arg(args, 0, 200);
+    let delete_keys = args.get(1).and_then(Value::as_bool).unwrap_or(false);
     let mut lock = lock(state, project_id);
     let entry = lock.packs.remove(&id).ok_or_else(|| format!("No pack {id} in this project."))?;
     if let Some(r) = &entry.review {
         dismiss(state, r, "The pack was removed.");
     }
     save_lock(state, project_id, &lock)?;
-    let names: Vec<String> = int::tool_servers(state, project_id)
-        .into_iter()
-        .filter(|s| matches!(&s.source, ToolServerSource::Pack { pack_id, .. } if *pack_id == id))
-        .map(|s| s.name)
-        .collect();
-    int::drop_servers(state, project_id, &names)?;
+    let servers: Vec<ToolServer> =
+        int::tool_servers(state, project_id).into_iter().filter(|s| matches!(&s.source, ToolServerSource::Pack { pack_id, .. } if *pack_id == id)).collect();
+    if delete_keys {
+        for name in entry.tool_servers.keys().chain(entry.update.iter().flat_map(|u| u.tool_servers.keys())) {
+            let _ = state.inner.vault_secrets.delete(&kept_key_id(project_id, &id, name));
+        }
+    } else {
+        for s in servers.iter().filter(|s| s.has_key) {
+            int::copy_secret(state, &int::mcp_secret_id(project_id, &s.name), &kept_key_id(project_id, &id, &s.name), &s.name)?;
+        }
+    }
+    int::drop_servers(state, project_id, &servers.into_iter().map(|s| s.name).collect::<Vec<_>>())?;
     let _ = crate::team_edit::drop_role_skills(state, project_id, |s| s.rsplit_once('@').is_some_and(|(p, _)| p == id));
     int::broadcast(state, project_id);
     Ok(())
@@ -715,7 +753,7 @@ mod tests {
     use std::process::Command;
 
     use arima_auth::VaultKey;
-    use arima_core::ServerRole;
+    use arima_core::{QuestionAnswer, ServerRole};
     use arima_db::{Db, ResolveDecisionInput};
 
     use crate::ServerConfig;
@@ -801,6 +839,19 @@ mod tests {
     fn answer(state: &AppState, id: &str, status: DecisionStatus) {
         let d = state.inner.decisions.resolve(id, ResolveDecisionInput { status: Some(status), ..Default::default() }, ServerRole::Owner).unwrap();
         on_decision(state, &d);
+    }
+
+    fn approve_for(state: &AppState, id: &str, roles: &[&str]) {
+        let answers = vec![QuestionAnswer { question_id: "roles".into(), selected_option_ids: roles.iter().map(|r| (*r).to_owned()).collect(), other_text: None }];
+        let input = ResolveDecisionInput { status: Some(DecisionStatus::Resolved), answers: Some(answers), ..Default::default() };
+        on_decision(state, &state.inner.decisions.resolve(id, input, ServerRole::Owner).unwrap());
+    }
+
+    /// Each role id with the skills it names from `pack`.
+    fn pack_refs(state: &AppState, pid: &str, pack: &str) -> Vec<(String, Vec<String>)> {
+        let model = crate::team::load(state, pid).unwrap();
+        let of = |v: &Value| v["skills"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|s| s.starts_with(&format!("{pack}@"))).map(str::to_owned).collect();
+        model.template["roles"].as_array().unwrap().iter().map(|r| (r["id"].as_str().unwrap().to_owned(), of(r))).collect()
     }
 
     fn review(state: &AppState, pid: &str, id: &str) -> VisualDecision {
@@ -982,10 +1033,76 @@ mod tests {
         remove_pack(&state, &pid, &[json!(id)]).unwrap();
         assert!(lock(&state, &pid).packs.is_empty());
         assert!(int::tool_servers(&state, &pid).is_empty());
-        assert!(crate::runtime::vault_secret(&state, &int::mcp_secret_id(&pid, "acme")).unwrap().is_none());
+        assert!(crate::runtime::vault_secret(&state, &int::mcp_secret_id(&pid, "acme")).unwrap().is_none(), "no server of that name can read a kept key");
         assert_eq!(seat(&state, &pid)["mcp"], json!([]));
         assert_eq!(seat(&state, &pid)["skills"], json!(["frontend-design"]), "the role and its agents lose the pack's skills");
         assert!(crate::skills::approved_skills(&state, &pid, &r).is_empty());
+    }
+
+    #[test]
+    fn approval_gives_pack_skills_to_the_chosen_roles_and_an_update_keeps_them() {
+        let (_tmp, state, pid, repo, _) = setup();
+        let all: Vec<String> = pack_refs(&state, &pid, "x").into_iter().map(|(r, _)| r).collect();
+        assert!(all.len() >= 2, "the dev template has several roles");
+        let (id, _) = read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        let card = review(&state, &pid, &id);
+        let DecisionPayload::PackReview { roles, .. } = &card.payload else { panic!() };
+        assert_eq!(*roles, all, "an install defaults to every role");
+
+        approve_for(&state, &card.id, &[all[1].as_str()]);
+        let review_ref = vec![format!("{id}@review")];
+        let refs = pack_refs(&state, &pid, &id);
+        assert!(refs.iter().all(|(r, s)| if *r == all[1] { *s == review_ref } else { s.is_empty() }), "{refs:?}");
+        assert_eq!(crate::skills::approved_skills(&state, &pid, &all[1]).len(), 1);
+        assert!(crate::skills::approved_skills(&state, &pid, &all[0]).is_empty());
+        let model = crate::team::load(&state, &pid).unwrap();
+        for seat in &model.team {
+            let has = seat["skills"].as_array().unwrap().contains(&json!(review_ref[0]));
+            assert_eq!(has, seat["roleId"] == json!(all[1]), "seats copy their role: {seat}");
+        }
+
+        // An update defaults to the roles already chosen; approving it again adds nothing twice.
+        write(&repo, &[("plugins/acme-tools/skills/lint/SKILL.md", &skill("lint", "Lint it."))]);
+        assert!(read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.").1);
+        let card = review(&state, &pid, &id);
+        let DecisionPayload::PackReview { roles, .. } = &card.payload else { panic!() };
+        assert_eq!(*roles, [all[1].clone()]);
+        answer(&state, &card.id, DecisionStatus::Resolved);
+        let both = vec![format!("{id}@lint"), format!("{id}@review")];
+        let sorted = |v: &[String]| { let mut v = v.to_vec(); v.sort(); v };
+        assert!(pack_refs(&state, &pid, &id).iter().all(|(r, s)| if *r == all[1] { sorted(s) == both } else { s.is_empty() }));
+        let before = crate::team::load(&state, &pid).unwrap().template;
+        crate::team_edit::set_pack_skills(&state, &pid, &id, &[all[1].clone()], &both).unwrap();
+        assert_eq!(crate::team::load(&state, &pid).unwrap().template, before, "re-applying is a no-op");
+    }
+
+    #[test]
+    fn a_default_approval_gives_every_role_the_pack_skills() {
+        let (_tmp, state, pid, repo, _) = setup();
+        let (id, _) = read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
+        assert!(pack_refs(&state, &pid, &id).iter().all(|(_, s)| *s == [format!("{id}@review")]));
+    }
+
+    #[test]
+    fn a_removed_pack_keeps_its_keys_for_a_reinstall_unless_told_to_delete_them() {
+        let (_tmp, state, pid, repo, _) = setup();
+        let key = |state: &AppState| crate::runtime::vault_secret(state, &int::mcp_secret_id(&pid, "acme")).unwrap();
+        let (id, _) = read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
+        int::set_tool_server_key(&state, &pid, &[json!("acme"), json!("acme-key")]).unwrap();
+
+        remove_pack(&state, &pid, &[json!(id)]).unwrap();
+        assert!(key(&state).is_none() && int::tool_servers(&state, &pid).is_empty());
+        read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
+        assert_eq!(key(&state).as_deref(), Some("acme-key"), "the reinstall reuses the kept key");
+        assert!(int::tool_servers(&state, &pid)[0].has_key);
+
+        remove_pack(&state, &pid, &[json!(id), json!(true)]).unwrap();
+        read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
+        assert!(key(&state).is_none() && !int::tool_servers(&state, &pid)[0].has_key, "a deleted key is gone for good");
     }
 
     #[tokio::test]

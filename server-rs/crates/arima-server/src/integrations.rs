@@ -247,7 +247,7 @@ pub(crate) fn live_projects(state: &AppState) -> Vec<(String, String)> {
 }
 
 /// Copies one vault secret to a new id. `Ok(false)` when there was none to copy.
-fn copy_secret(state: &AppState, from: &str, to: &str, label: &str) -> Result<bool, String> {
+pub(crate) fn copy_secret(state: &AppState, from: &str, to: &str, label: &str) -> Result<bool, String> {
     let Some(key) = crate::runtime::vault_secret(state, from)? else { return Ok(false) };
     state.store_vault_secret(Some(to), "mcp", "mcp", label, &key).map_err(db_err)?;
     Ok(true)

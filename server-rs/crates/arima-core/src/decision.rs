@@ -189,6 +189,10 @@ pub enum DecisionPayload {
         ignored: Vec<String>,
         /// Scan findings, blocking ones first.
         findings: Vec<String>,
+        /// The roles that get the pack's skills on approval: the default when the card is filed, then the owner's
+        /// answer (a `roles` question answer).
+        #[serde(default)]
+        roles: Vec<String>,
     },
     OverflowFallback {
         #[serde(rename = "agentId")]
