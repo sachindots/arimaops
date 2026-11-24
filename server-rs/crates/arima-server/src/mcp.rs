@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use arima_auth::{record_audit, redact_json_value, AuditWrite};
 use arima_core::{
-    DecisionPayload, DecisionStatus, MeetingKind, MeetingUrgency, OpinionSide, PermissionPayload,
+    DecisionPayload, DecisionStatus, FormPayload, MeetingKind, MeetingUrgency, OpinionSide, PermissionPayload,
     QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload, ServerRole,
     VisualDecision, VoiceProvider, WsServerEvent,
 };
@@ -250,7 +250,7 @@ pub fn unknown_tool_names(text: &str) -> Vec<&str> {
 pub const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "ask_user",
-        description: "Ask the owner structured multiple-choice questions; mark the recommended option. Answers arrive as a message.",
+        description: "Ask the owner structured multiple-choice questions; mark the recommended option. Or send `ui`, an agent form, instead of `questions`. Answers arrive as a message.\nExample ui: {\"components\": [\n  {\"id\": \"root\", \"component\": \"Column\", \"children\": [\"name\", \"go\"]},\n  {\"id\": \"name\", \"component\": \"TextField\", \"label\": \"Name\", \"value\": {\"@path\": \"/name\"}},\n  {\"id\": \"go\", \"component\": \"ButtonRow\", \"buttons\": [{\"label\": \"Send\", \"variant\": \"primary\", \"action\": {\"event\": {\"name\": \"send\"}}}]}\n], \"data\": {\"name\": \"\"}}",
         input_schema: || {
             object(
                 json!({
@@ -288,7 +288,8 @@ pub const TOOLS: &[ToolDef] = &[
                             },
                             "required": ["prompt"]
                         }
-                    }
+                    },
+                    "ui": arima_core::form::ui_schema()
                 }),
                 &["title"],
             )
@@ -741,6 +742,18 @@ fn tool_ask_user(
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
+    let form = match args.get("ui").filter(|ui| !ui.is_null()) {
+        None => None,
+        Some(_) if args.get("questions").is_some_and(|q| !q.is_null()) => return Err(invalid("send `questions` or `ui`, not both".into())),
+        Some(ui) => Some(arima_core::form::validate(ui).map_err(|errors| {
+            let mut lines: Vec<String> = errors.iter().take(10).map(ToString::to_string).collect();
+            if errors.len() > 10 {
+                lines.push(format!("and {} more", errors.len() - 10));
+            }
+            invalid(format!("invalid ui:\n{}", lines.join("\n")))
+        })?),
+    };
+
     let mut questions: Vec<QuestionPrompt> = Vec::new();
     if let Some(q_arr) = args.get("questions").and_then(Value::as_array) {
         for (idx, q_val) in q_arr.iter().enumerate() {
@@ -817,7 +830,7 @@ fn tool_ask_user(
         }
     }
 
-    if questions.is_empty() {
+    if questions.is_empty() && form.is_none() {
         questions.push(QuestionPrompt {
             id: "q1".into(),
             prompt: title.clone(),
@@ -850,10 +863,10 @@ fn tool_ask_user(
         waiting: true,
         owner_only,
         status: DecisionStatus::Open,
-        payload: DecisionPayload::Question(QuestionPayload {
-            questions,
-            answers: Vec::new(),
-        }),
+        payload: match form {
+            Some(form) => DecisionPayload::Form(FormPayload { form, answer: None }),
+            None => DecisionPayload::Question(QuestionPayload { questions, answers: Vec::new() }),
+        },
         note: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,

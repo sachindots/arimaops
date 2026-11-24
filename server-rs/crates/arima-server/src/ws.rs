@@ -10,7 +10,7 @@ use arima_auth::{
     AuthContext, CommandVerdict, SESSION_COOKIE_NAME,
 };
 use arima_core::{
-    DecisionPayload, DecisionStatus, MeetingKind, MeetingMinutes, MeetingUrgency,
+    DecisionPayload, DecisionStatus, FormAnswer, MeetingKind, MeetingMinutes, MeetingUrgency,
     OutboxMessageKind, QuestionAnswer, ServerRole, VoiceProvider, WsClientMessage, WsCommandAck,
     WsServerEvent,
 };
@@ -797,6 +797,7 @@ pub fn exec_answer_decision(
 
     let mut status = Some(DecisionStatus::Resolved);
     let mut answers: Option<Vec<QuestionAnswer>> = None;
+    let mut form_answer: Option<FormAnswer> = None;
     let mut chosen_side: Option<String> = None;
     let mut permission_resolution: Option<String> = None;
     let mut meeting_action: Option<String> = None;
@@ -831,6 +832,12 @@ pub fn exec_answer_decision(
             if let Ok(parsed) = serde_json::from_value::<Vec<QuestionAnswer>>(ans_val.clone()) {
                 answers = Some(parsed);
             }
+        }
+        if let Some(fa) = input_val.get("formAnswer") {
+            if fa.to_string().len() > arima_core::form::MAX_BYTES {
+                return Err("form answer is larger than 32 KiB".into());
+            }
+            form_answer = Some(serde_json::from_value(fa.clone()).map_err(|e| format!("invalid formAnswer: {e}"))?);
         }
         if let Some(cs) = input_val
             .get("chosenSide")
@@ -869,6 +876,7 @@ pub fn exec_answer_decision(
             ResolveDecisionInput {
                 status,
                 answers,
+                form_answer,
                 chosen_side: chosen_side.clone(),
                 permission_resolution,
                 note: note.clone(),

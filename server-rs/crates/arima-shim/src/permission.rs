@@ -216,6 +216,7 @@ impl PermissionInterceptor {
                 ResolveDecisionInput {
                     status: Some(status),
                     answers: None,
+                    form_answer: None,
                     chosen_side: None,
                     permission_resolution: Some(verdict.as_str().to_owned()),
                     note: note.clone(),

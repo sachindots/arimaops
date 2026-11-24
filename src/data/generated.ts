@@ -39,7 +39,7 @@ export type MeetingSession = { id: string, projectId: string, kind: MeetingKind,
 
 export type DecisionStatus = "open" | "resolved" | "dismissed";
 
-export type DecisionKind = "question" | "second-opinion" | "disagreement" | "permission" | "meeting-request" | "spec-approval" | "plan-approval" | "gate-approval" | "send-proposal" | "memory-review" | "spend-alert" | "skill-scan" | "pack-review" | "overflow-fallback" | "info";
+export type DecisionKind = "question" | "second-opinion" | "disagreement" | "permission" | "meeting-request" | "spec-approval" | "plan-approval" | "gate-approval" | "send-proposal" | "memory-review" | "spend-alert" | "skill-scan" | "pack-review" | "overflow-fallback" | "info" | "form";
 
 export type QuestionOption = { id: string, label: string, description: string | null, recommended: boolean, };
 
@@ -69,6 +69,12 @@ before: string | null,
  */
 after: string | null, };
 
+export type FormSpec = { components: Array<JsonValue>, data: { [key: string]: JsonValue }, };
+
+export type FormAnswer = { action: string, componentId: string, context: JsonValue, data: JsonValue, };
+
+export type FormPayload = { form: FormSpec, answer: FormAnswer | null, };
+
 export type DecisionPayload = { "kind": "question" } & QuestionPayload | { "kind": "second-opinion" } & SecondOpinionPayload | { "kind": "disagreement" } & SecondOpinionPayload | { "kind": "permission" } & PermissionPayload | { "kind": "meeting-request", meetingId: string, meetingKind: MeetingKind, urgency: MeetingUrgency, participantIds: Array<string>, agendaPreview: Array<string>, } | { "kind": "spec-approval", boardId: string, version: number, markdown: string, } | { "kind": "plan-approval", markdown: string, } | { "kind": "gate-approval", taskId: string, gateId: string, reason: string, deliverablePreview: string | null, } | { "kind": "send-proposal", connection: string, tool: string, args: JsonValue, sentAt: string | null, error: string | null, } | { "kind": "memory-review", memories: JsonValue, } | { "kind": "spend-alert", dailyUsd: number, capUsd: number, paused: boolean, } | { "kind": "skill-scan", pack: string, findings: Array<string>, } | { "kind": "pack-review", pack: string, 
 /**
  * The approved commit; none on first install.
@@ -82,7 +88,7 @@ findings: Array<string>,
  * The roles that get the pack's skills on approval: the default when the card is filed, then the owner's
  * answer (a `roles` question answer).
  */
-roles: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, };
+roles: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, } | { "kind": "form" } & FormPayload;
 
 export type VisualDecision = { id: string, projectId: string, fromId: string, taskId: string | null, title: string, details: string, waiting: boolean, ownerOnly: boolean, status: DecisionStatus, payload: DecisionPayload, note: string | null, createdAt: string, closedAt: string | null, };
 

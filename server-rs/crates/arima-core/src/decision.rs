@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
 
+use crate::form::FormPayload;
 use crate::meeting::{MeetingKind, MeetingUrgency};
 use crate::pack::PackChange;
 
@@ -35,6 +36,7 @@ pub enum DecisionKind {
     PackReview,
     OverflowFallback,
     Info,
+    Form,
 }
 
 /// One selectable option inside a structured `ask_user` prompt.
@@ -205,6 +207,8 @@ pub enum DecisionPayload {
     Info {
         markdown: String,
     },
+    /// An agent form: a checked component list the Inbox renders, and the owner's answer.
+    Form(FormPayload),
 }
 
 /// Unified decision record rendered in Inbox and inline inside Chat threads.

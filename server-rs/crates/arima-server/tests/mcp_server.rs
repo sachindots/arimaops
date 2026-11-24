@@ -4,7 +4,7 @@
 //! name only tools the server runs.
 
 use arima_auth::{SessionMeta, VaultKey, SESSION_COOKIE_NAME};
-use arima_core::ServerRole;
+use arima_core::{DecisionPayload, ServerRole};
 use arima_db::Db;
 use arima_server::mcp::{unknown_tool_names, McpRegistry, MCP_PROTOCOL_VERSION, TOOLS};
 use arima_server::{router_with_state, AppState, ServerConfig};
@@ -158,4 +158,49 @@ fn role_prompts_name_only_dispatched_tools() {
     assert!(texts.len() > 20, "found the role prompts");
     let unknown: Vec<&str> = texts.iter().flat_map(|t| unknown_tool_names(t)).collect();
     assert!(unknown.is_empty(), "role prompts name tools HQ doesn't run: {unknown:?}");
+}
+
+/// `ask_user` with `ui` files a form decision; a bad form names its path; the answer reaches the agent's outbox.
+#[tokio::test]
+async fn ask_user_with_a_form_files_it_and_delivers_the_answer() {
+    let (state, pid) = state_with(Db::open_in_memory().unwrap());
+    let app = router_with_state(state.clone());
+    let path = format!("/api/projects/{pid}/mcp");
+    let auth = format!("Bearer {}", state.inner.mcp.issue_agent_token(&pid, "lead"));
+    let h = [(AUTHORIZATION.as_str(), auth.as_str())];
+    let ask = |args: Value| rpc("tools/call", json!({ "name": "ask_user", "arguments": args }));
+    let ui = json!({
+        "components": [
+            { "id": "root", "component": "Column", "children": ["name", "go"] },
+            { "id": "name", "component": "TextField", "label": "Name", "value": { "@path": "/name" } },
+            { "id": "go", "component": "ButtonRow", "buttons": [{ "label": "Send", "variant": "primary", "action": { "event": { "name": "send" } } }] }
+        ],
+        "data": { "name": "" }
+    });
+
+    let mut bad = ui.clone();
+    bad["components"][1]["options"] = json!([]);
+    let (_, rejected) = post(&app, &path, &h, ask(json!({ "title": "Name it", "ui": bad }))).await;
+    assert_eq!(rejected["error"]["code"], -32602);
+    assert_eq!(rejected["error"]["message"], "invalid ui:\n/ui/components/1/options: unknown property for TextField");
+    let (_, both) = post(&app, &path, &h, ask(json!({ "title": "Name it", "ui": ui, "questions": [{ "prompt": "?" }] }))).await;
+    assert_eq!(both["error"]["message"], "send `questions` or `ui`, not both");
+    assert!(state.inner.decisions.list_by_project(&pid, None).unwrap().is_empty(), "a rejected form stores nothing");
+
+    let (_, filed) = post(&app, &path, &h, ask(json!({ "title": "Name it", "ui": ui }))).await;
+    let id = filed["result"]["structuredContent"]["decisionId"].as_str().unwrap().to_owned();
+    let stored = state.inner.decisions.get(&id).unwrap().unwrap();
+    let DecisionPayload::Form(form) = &stored.payload else { panic!("a form decision: {:?}", stored.payload) };
+    assert_eq!((Value::Array(form.form.components.clone()), form.answer.clone()), (ui["components"].clone(), None));
+    assert!(!stored.owner_only);
+
+    let answer = json!({ "action": "send", "componentId": "go", "context": {}, "data": { "name": "Ada" } });
+    arima_server::ws::exec_answer_decision(&state, &[json!(id), json!({ "status": "resolved", "formAnswer": answer })], ServerRole::Operator).unwrap();
+    let out = state.inner.supervisor.poll_next_outbox(&pid, "lead", 0, 0).unwrap().expect("the answer is queued for the agent");
+    let sent: Value = serde_json::from_str(&out.payload_json).unwrap();
+    assert_eq!((sent["payload"]["kind"].as_str(), &sent["payload"]["answer"]), (Some("form"), &answer));
+
+    let big = json!({ "action": "send", "componentId": "go", "context": {}, "data": { "x": "y".repeat(40_000) } });
+    let err = arima_server::ws::exec_answer_decision(&state, &[json!(id), json!({ "formAnswer": big })], ServerRole::Owner).unwrap_err();
+    assert_eq!(err, "form answer is larger than 32 KiB");
 }

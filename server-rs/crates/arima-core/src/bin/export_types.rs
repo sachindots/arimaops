@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 
 use arima_core::{
     AgentInstruction, AuditEntry, AuthUser, BoundingBox, ConsoleErrorEntry, DecisionKind,
-    DecisionPayload, DecisionStatus, DeviceSession, ElementSelection, FeedbackRoute,
+    DecisionPayload, DecisionStatus, DeviceSession, ElementSelection, FeedbackRoute, FormAnswer,
+    FormPayload, FormSpec,
     MeetingAgendaItem, MeetingKind, MeetingMinutes, MeetingSession, MeetingStatus, MeetingTurn,
     MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PackApproval, PackChange, PackEntry, PackLock, PackScan, PackSkill, PackSource, PackToolServer, PasskeyInfo, PermissionPayload,
     PreviewMode, PreviewTarget, PreviewTargetStatus, ProjectRole, ProposedDecision, ProposedTask,
@@ -70,6 +71,9 @@ pub fn render_typescript() -> String {
     push_decl::<SecondOpinionPayload>(&mut out);
     push_decl::<PermissionPayload>(&mut out);
     push_decl::<PackChange>(&mut out);
+    push_decl::<FormSpec>(&mut out);
+    push_decl::<FormAnswer>(&mut out);
+    push_decl::<FormPayload>(&mut out);
     push_decl::<DecisionPayload>(&mut out);
     push_decl::<VisualDecision>(&mut out);
 
@@ -129,6 +133,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from("src/data/generated.ts"));
     let ts = render_typescript();
     write_atomic(&dest, &ts)?;
+    let catalog = serde_json::to_string_pretty(&arima_core::form::catalog_json())? + "\n";
+    write_atomic(&dest.with_file_name("form-catalog.json"), &catalog)?;
     Ok(())
 }
 
@@ -151,6 +157,7 @@ mod tests {
             "export type VoiceProvider",
             "export type VisualDecision",
             "export type DecisionPayload",
+            "export type FormPayload",
             "export type VisualFeedback",
             "export type FeedbackRoute",
             "export type OutboxMessage",

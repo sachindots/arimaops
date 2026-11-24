@@ -1,0 +1,480 @@
+{
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Column"
+        },
+        {
+          "$ref": "#/components/Text"
+        },
+        {
+          "$ref": "#/components/TextField"
+        },
+        {
+          "$ref": "#/components/Select"
+        },
+        {
+          "$ref": "#/components/CheckList"
+        },
+        {
+          "$ref": "#/components/Table"
+        },
+        {
+          "$ref": "#/components/ButtonRow"
+        },
+        {
+          "$ref": "#/components/Meter"
+        },
+        {
+          "$ref": "#/components/Chart"
+        }
+      ]
+    },
+    "anyFunction": false
+  },
+  "catalogId": "arimaops:forms/1",
+  "components": {
+    "ButtonRow": {
+      "description": "Buttons that submit the form.",
+      "properties": {
+        "buttons": {
+          "description": "One or more buttons.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "additionalProperties": false,
+                "properties": {
+                  "event": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "context": {
+                        "type": "object"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "event"
+                ],
+                "type": "object"
+              },
+              "label": {
+                "type": "string"
+              },
+              "variant": {
+                "enum": [
+                  "primary",
+                  "default"
+                ]
+              }
+            },
+            "required": [
+              "label",
+              "action"
+            ],
+            "type": "object"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array"
+        },
+        "component": {
+          "const": "ButtonRow"
+        }
+      },
+      "required": [
+        "component",
+        "buttons"
+      ],
+      "type": "object"
+    },
+    "Chart": {
+      "description": "A small line chart.",
+      "properties": {
+        "component": {
+          "const": "Chart"
+        },
+        "label": {
+          "description": "Visible label.",
+          "type": "string"
+        },
+        "points": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 200,
+              "type": "array"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Values, oldest first."
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "points"
+      ],
+      "type": "object"
+    },
+    "CheckList": {
+      "description": "Option rows to tick: one, or several when multi.",
+      "properties": {
+        "component": {
+          "const": "CheckList"
+        },
+        "label": {
+          "description": "Visible label.",
+          "type": "string"
+        },
+        "multi": {
+          "description": "Allow several. Defaults to false.",
+          "type": "boolean"
+        },
+        "options": {
+          "description": "The choices.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "label"
+            ],
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        "values": {
+          "additionalProperties": false,
+          "description": "Where the ticked values go (a list).",
+          "properties": {
+            "@path": {
+              "description": "JSON pointer into data, e.g. /name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "@path"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "options",
+        "values"
+      ],
+      "type": "object"
+    },
+    "Column": {
+      "description": "Stacks its children top to bottom.",
+      "properties": {
+        "children": {
+          "description": "Child component ids, in order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "component": {
+          "const": "Column"
+        }
+      },
+      "required": [
+        "component",
+        "children"
+      ],
+      "type": "object"
+    },
+    "Meter": {
+      "description": "A bar showing value of max.",
+      "properties": {
+        "component": {
+          "const": "Meter"
+        },
+        "label": {
+          "description": "Visible label.",
+          "type": "string"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Full scale."
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Current value."
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "value",
+        "max"
+      ],
+      "type": "object"
+    },
+    "Select": {
+      "description": "Pick one option from a menu.",
+      "properties": {
+        "component": {
+          "const": "Select"
+        },
+        "label": {
+          "description": "Visible label.",
+          "type": "string"
+        },
+        "options": {
+          "description": "The choices.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "label"
+            ],
+            "type": "object"
+          },
+          "maxItems": 50,
+          "type": "array"
+        },
+        "value": {
+          "additionalProperties": false,
+          "description": "Where the picked value goes.",
+          "properties": {
+            "@path": {
+              "description": "JSON pointer into data, e.g. /name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "@path"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "options",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Table": {
+      "description": "A read-only table.",
+      "properties": {
+        "columns": {
+          "description": "Column headings.",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "type": "array"
+        },
+        "component": {
+          "const": "Table"
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                },
+                "type": "array"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Rows of cells (text or numbers)."
+        }
+      },
+      "required": [
+        "component",
+        "columns",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "Text": {
+      "description": "Plain text, no Markdown.",
+      "properties": {
+        "component": {
+          "const": "Text"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "The text."
+        },
+        "variant": {
+          "description": "Defaults to body.",
+          "enum": [
+            "body",
+            "heading",
+            "caption"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "text"
+      ],
+      "type": "object"
+    },
+    "TextField": {
+      "description": "A text input.",
+      "properties": {
+        "component": {
+          "const": "TextField"
+        },
+        "label": {
+          "description": "Visible label.",
+          "type": "string"
+        },
+        "multiline": {
+          "description": "Several lines.",
+          "type": "boolean"
+        },
+        "placeholder": {
+          "description": "Hint shown while empty.",
+          "type": "string"
+        },
+        "value": {
+          "additionalProperties": false,
+          "description": "Where the answer goes.",
+          "properties": {
+            "@path": {
+              "description": "JSON pointer into data, e.g. /name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "@path"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "component",
+        "label",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "protocolVersion": "1.0",
+  "title": "Agent forms"
+}

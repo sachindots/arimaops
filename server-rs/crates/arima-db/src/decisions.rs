@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use arima_core::{
-    DecisionPayload, DecisionStatus, QuestionAnswer, ServerRole, VisualDecision,
+    DecisionPayload, DecisionStatus, FormAnswer, QuestionAnswer, ServerRole, VisualDecision,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
@@ -34,7 +34,8 @@ pub fn classify_owner_only(payload: &DecisionPayload, explicit: bool) -> bool {
         | DecisionPayload::Permission(_)
         | DecisionPayload::MeetingRequest { .. }
         | DecisionPayload::OverflowFallback { .. }
-        | DecisionPayload::Info { .. } => false,
+        | DecisionPayload::Info { .. }
+        | DecisionPayload::Form(_) => false,
     }
 }
 
@@ -71,6 +72,7 @@ fn payload_kind_str(payload: &DecisionPayload) -> &'static str {
         DecisionPayload::PackReview { .. } => "pack-review",
         DecisionPayload::OverflowFallback { .. } => "overflow-fallback",
         DecisionPayload::Info { .. } => "info",
+        DecisionPayload::Form(_) => "form",
     }
 }
 
@@ -91,6 +93,7 @@ fn format_ts_ms(ms: i64) -> String {
 pub struct ResolveDecisionInput {
     pub status: Option<DecisionStatus>,
     pub answers: Option<Vec<QuestionAnswer>>,
+    pub form_answer: Option<FormAnswer>,
     pub chosen_side: Option<String>,
     pub permission_resolution: Option<String>,
     pub note: Option<String>,
@@ -254,6 +257,11 @@ impl DecisionsRepo {
                 DecisionPayload::Question(q) => {
                     if let Some(ans) = input.answers {
                         q.answers = ans;
+                    }
+                }
+                DecisionPayload::Form(f) => {
+                    if let Some(ans) = input.form_answer {
+                        f.answer = Some(ans);
                     }
                 }
                 DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {

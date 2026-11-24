@@ -141,7 +141,8 @@ fn line_for(m: &OutboxMessage) -> Option<String> {
             "The owner answered decision {}: {}. {} {}",
             text("decisionId"),
             text("status"),
-            clean(&p["payload"].to_string()),
+            // A form's answer, not the form itself, which could fill the line on its own.
+            clean(&if p["payload"]["kind"] == "form" { &p["payload"]["answer"] } else { &p["payload"] }.to_string()),
             clean(&text("note"))
         )),
         OutboxMessageKind::VisualFeedback => Some("The owner sent visual feedback on the preview. Check the feedback folder in your workspace.".to_owned()),
@@ -190,4 +191,17 @@ pub fn kick_after_start(state: &AppState, project_id: &str, agent_id: &str) {
         tokio::time::sleep(START_GRACE).await;
         deliver_pending(&state, &project, &agent).await;
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_form_answer_types_the_answer_not_the_form() {
+        let form = json!({ "components": [{ "id": "root", "component": "Text", "text": "x".repeat(3_000) }], "data": {} });
+        let payload = json!({ "decisionId": "dec-1", "status": "resolved", "note": null, "payload": { "kind": "form", "form": form, "answer": { "action": "send", "componentId": "go", "context": {}, "data": { "name": "Ada" } } } });
+        let m = OutboxMessage { project_id: "p".into(), agent_id: "lead".into(), epoch: 1, seq: 1, kind: OutboxMessageKind::DecisionAnswer, payload_json: payload.to_string(), created_at: 0, acked_at: None };
+        assert_eq!(line_for(&m).unwrap(), r#"The owner answered decision dec-1: resolved. {"action":"send","componentId":"go","context":{},"data":{"name":"Ada"}} "#);
+    }
 }
