@@ -62,3 +62,16 @@ jobs:
       - run: apt-get update -qq && apt-get install -y -qq git >/dev/null
       - run: "! command -v make && ! command -v g++ && ! command -v python3"
       - run: node scripts/smoke-test.mjs pack/*.tgz 7431
+
+  # Known-vulnerability scan of both Rust lockfiles. cargo audit fails on vulnerabilities
+  # and only prints warnings for unmaintained or yanked crates.
+  rust-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: cargo install cargo-audit --locked
+      # RUSTSEC-2023-0071 (rsa timing side channel on private-key operations) comes in through
+      # webauthn-rs 0.6 -> crypto-glue, which pins a release candidate with no patched version;
+      # HQ only verifies RSA signatures. Remove the ignore when webauthn-rs moves to rsa >= 0.10.0.
+      - run: cargo audit --file server-rs/Cargo.lock --ignore RUSTSEC-2023-0071
+      - run: cargo audit --file apps/client/src-tauri/Cargo.lock

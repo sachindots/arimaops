@@ -2,7 +2,7 @@
 # ArimaOps v2.0 — Single-Binary Multi-Stage HQ Dockerfile (embeds React dist/ into static Rust binary)
 
 # Stage 1: Build the React UI bundle (dist/)
-FROM node:22-slim AS ui-builder
+FROM node:24-trixie-slim AS ui-builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@12.23.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
@@ -14,10 +14,10 @@ COPY src ./src
 RUN pnpm exec vite build
 
 # Stage 2: Build the release Rust arima-server binary embedding dist/
-FROM rust:1.100.0-slim-bookworm AS rust-builder
+FROM rust:1.100.0-slim-trixie AS rust-builder
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libssl-dev ca-certificates \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY server-rs ./server-rs
 COPY --from=ui-builder /app/dist ./dist
@@ -25,7 +25,7 @@ ENV ARIMA_DIST_DIR=/app/dist
 RUN cargo build --release --manifest-path server-rs/Cargo.toml --bin arima-server
 
 # Stage 3: Minimal non-root runtime image
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git tini \
     && rm -rf /var/lib/apt/lists/* \
