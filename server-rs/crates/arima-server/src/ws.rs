@@ -115,12 +115,22 @@ impl WsHub {
         }
     }
 
-    /// Serializes `event` once and enqueues to every active subscriber without blocking slow peers.
+    /// Serializes `event` once and enqueues it without blocking slow peers: to the sockets of the project it belongs
+    /// to, or to every socket when it names no project.
     pub fn broadcast_event(&self, event: &WsServerEvent) {
         let Ok(payload) = serde_json::to_string(event) else {
             return;
         };
-        self.broadcast_raw_json(&payload);
+        let project = match event {
+            WsServerEvent::DecisionUpdated { decision } => Some(&decision.project_id),
+            WsServerEvent::FeedbackCreated { feedback } => Some(&feedback.project_id),
+            WsServerEvent::MeetingUpdated { meeting } => Some(&meeting.project_id),
+            _ => None,
+        };
+        match project {
+            Some(pid) => self.broadcast_project(pid, &payload),
+            None => self.broadcast_raw_json(&payload),
+        }
     }
 
     /// Sends a frame only to sockets showing `project_id`. It describes a change, so the cached snapshot is dropped.
@@ -689,7 +699,7 @@ async fn execute_ws_command(
         "setCompany" => crate::planning::set_company(state, project_id, args),
         "updateStack" => crate::planning::update_stack(state, project_id, args),
         "answerDecision" | "resolveDecision" | "resolveActionItem" => {
-            exec_answer_decision(state, args, actor_role)
+            exec_answer_decision(state, project_id, args, actor_role)
         }
         "recordGate" => exec_record_gate(state, project_id, actor_name, actor_role, args),
         "startMeeting" => exec_start_meeting(state, project_id, actor_name, args),
@@ -769,6 +779,7 @@ async fn execute_ws_command(
 /// to the requesting agent, and broadcasts `WsServerEvent::DecisionUpdated`.
 pub fn exec_answer_decision(
     state: &AppState,
+    project_id: &str,
     args: &[Value],
     actor_role: ServerRole,
 ) -> Result<(), String> {
@@ -794,6 +805,10 @@ pub fn exec_answer_decision(
     } else {
         return Err("missing decisionId".into());
     };
+    // The caller's role was worked out for `project_id`, so only that project's cards may be answered with it.
+    if !state.inner.decisions.get(&decision_id).map_err(|e| e.to_string())?.is_some_and(|d| d.project_id == project_id) {
+        return Err("Decision not found.".into());
+    }
 
     let mut status = Some(DecisionStatus::Resolved);
     let mut answers: Option<Vec<QuestionAnswer>> = None;
@@ -1552,5 +1567,56 @@ mod audit_tests {
         assert!(!c.to_string().contains("sk-ant") && c.to_string().contains("work"));
         let d = audit_args("testAccountKey", &[json!("anthropic"), json!("sk-ant-secret-value"), json!("req-1")]);
         assert!(!d.to_string().contains("sk-ant") && d.to_string().contains("anthropic"));
+    }
+}
+
+#[cfg(test)]
+mod project_scope_tests {
+    use super::*;
+    use arima_core::{DecisionPayload, DecisionStatus, VisualDecision};
+
+    fn card(project_id: &str) -> VisualDecision {
+        VisualDecision {
+            id: format!("dec-{project_id}"),
+            project_id: project_id.to_owned(),
+            from_id: "lead".into(),
+            task_id: None,
+            title: "Which way?".into(),
+            details: String::new(),
+            waiting: true,
+            owner_only: false,
+            status: DecisionStatus::Open,
+            payload: DecisionPayload::Info { markdown: "x".into() },
+            note: None,
+            created_at: Utc::now().to_rfc3339(),
+            closed_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_card_is_answered_only_from_its_own_project() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        state.inner.db.transaction(|c| c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-b', 'b', 'B', '/w/b', 9, 9)", []).map_err(arima_db::DbError::from)).unwrap();
+        let b_card = state.inner.decisions.upsert(&card("proj-b")).unwrap();
+
+        let err = exec_answer_decision(&state, &a, &[json!(b_card.id), json!("optionA")], ServerRole::Owner).unwrap_err();
+        assert_eq!(err, "Decision not found.");
+        assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Open, "B's card is untouched");
+        exec_answer_decision(&state, "proj-b", &[json!(b_card.id), json!("optionA")], ServerRole::Operator).unwrap();
+        assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Resolved);
+    }
+
+    #[test]
+    fn decision_events_reach_only_their_projects_sockets() {
+        let hub = WsHub::default();
+        let (tx_a, mut rx_a) = mpsc::channel(8);
+        let (tx_b, mut rx_b) = mpsc::channel(8);
+        hub.register("dev-a", tx_a, "proj-a", true);
+        hub.register("dev-b", tx_b, "proj-b", true);
+        hub.broadcast_event(&WsServerEvent::DecisionUpdated { decision: card("proj-a") });
+        assert!(matches!(rx_a.try_recv(), Ok(WsOutbound::Text(t)) if t.contains("dec-proj-a")));
+        assert!(rx_b.try_recv().is_err(), "project B's sockets never see A's card");
     }
 }
