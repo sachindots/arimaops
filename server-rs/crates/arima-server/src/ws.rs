@@ -637,7 +637,11 @@ async fn execute_ws_command(
         "saveAccount" => crate::secrets::save_account(state, project_id, args),
         "testAccountKey" => crate::key_test::run(state, project_id, args).await,
         "removeAccount" => crate::secrets::remove_account(state, project_id, args),
-        "setEgressMode" => crate::egress::set_mode(state, project_id, args),
+        "setEgressMode" => {
+            crate::egress::set_mode(state, project_id, args)?;
+            state.inner.runtime.release_network(state, project_id, false).await;
+            Ok(())
+        }
         "allowEgressHost" => crate::egress::allow_host(state, project_id, args),
         "ignoreEgressHost" => crate::egress::ignore_host(state, project_id, args),
         "removeEgressRule" => crate::egress::remove_rule(state, project_id, args),

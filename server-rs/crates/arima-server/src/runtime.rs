@@ -70,10 +70,18 @@ impl RuntimeConfig {
         }
     }
 
-    /// The per-HQ network enforce-mode agents start on: internal, so HQ (attached to it too) is the only way out.
+    /// The network a project's enforce-mode agents start on: internal, so HQ (attached to it too) is their only way
+    /// out, and one per project, so agents of different projects can't reach each other. Named from HQ's network
+    /// and the project's slug in Docker's name characters; a name over 63 characters is cut and ends in a hash of
+    /// the whole, so it stays the same for the project and distinct from other projects'.
     #[must_use]
-    pub fn internal_network(&self) -> String {
-        format!("{}-internal", self.network)
+    pub fn internal_network(&self, slug: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let name: String = format!("{}-internal-{slug}", self.network).chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') { c } else { '-' }).collect();
+        if name.len() <= 63 {
+            return name;
+        }
+        format!("{}-{}", &name[..54], hex::encode(&Sha256::digest(name.as_bytes())[..4]))
     }
 
     /// HQ's container and the host name agents use for it, which enforce mode needs to put HQ on their network.
@@ -278,12 +286,42 @@ impl AgentRuntime {
         removed
     }
 
-    /// Stops every running agent of a project (used when the project is deleted).
+    /// Stops every running agent of a project and removes its internal network (used when the project is deleted).
     pub async fn stop_project(&self, state: &AppState, project_id: &str) {
         let agents: Vec<String> = self.sessions.lock().map(|m| m.keys().filter(|(p, _)| p == project_id).map(|(_, a)| a.clone()).collect()).unwrap_or_default();
         for agent in agents {
             let _ = self.stop(state, project_id, &agent).await;
         }
+        self.release_network(state, project_id, true).await;
+    }
+
+    fn project_network(&self, state: &AppState, project_id: &str) -> String {
+        self.config.internal_network(&crate::team::project_slug(state, project_id).unwrap_or_else(|| project_id.to_owned()))
+    }
+
+    /// The network an agent starts on: its project's internal one with HQ attached under `alias` in enforce mode.
+    async fn prepare_network(&self, state: &AppState, project_id: &str, enforce: Option<&(String, String)>) -> Result<(), String> {
+        let Some((hq, alias)) = enforce else {
+            return self.engine.ensure_network(&self.config.network, false).await.map_err(|e| e.to_string());
+        };
+        let net = self.project_network(state, project_id);
+        self.engine.ensure_network(&net, true).await.map_err(|e| e.to_string())?;
+        self.engine.connect_network(&net, hq, std::slice::from_ref(alias)).await.map_err(|e| format!("couldn't put HQ on the agents' internal network: {e}"))
+    }
+
+    /// Takes HQ off a project's internal network and removes it, once none of the project's agents runs or is
+    /// starting and the project has left enforce mode (or, with `deleted`, is going away). Best effort: a network
+    /// that is already gone or still has containers on it is left as it is.
+    pub async fn release_network(&self, state: &AppState, project_id: &str, deleted: bool) {
+        let busy = self.sessions.lock().map_or(true, |m| m.keys().any(|(p, _)| p == project_id)) || self.starting.lock().map_or(true, |s| s.iter().any(|(p, _)| p == project_id));
+        if !self.config.enabled || busy || (!deleted && crate::egress::mode(state, project_id) == crate::egress::EgressMode::Enforce) {
+            return;
+        }
+        let net = self.project_network(state, project_id);
+        if let Some(hq) = &self.config.hq_container {
+            let _ = self.engine.disconnect_network(&net, hq).await;
+        }
+        let _ = self.engine.remove_network(&net).await;
     }
 
     pub async fn stop(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<(), String> {
@@ -292,8 +330,12 @@ impl AgentRuntime {
         state.inner.mcp.revoke_agent_token(project_id, agent_id);
         state.inner.egress.revoke(project_id, agent_id);
         let target = session.as_ref().map_or(name, |s| s.container.clone());
-        self.engine.stop(&target, 10).await.map_err(|e| e.to_string())?;
-        self.engine.remove(&target).await.map_err(|e| e.to_string())
+        let stopped = match self.engine.stop(&target, 10).await {
+            Ok(()) => self.engine.remove(&target).await,
+            Err(e) => Err(e),
+        };
+        self.release_network(state, project_id, false).await;
+        stopped.map_err(|e| e.to_string())
     }
 
     /// Starts an agent's container and begins streaming its terminal. A running agent is left as it is.
@@ -311,13 +353,7 @@ impl AgentRuntime {
         }
         self.engine.ping().await.map_err(|e| e.to_string())?;
         let plan = self.plan(state, project_id, agent_id)?;
-        if let Some((hq, alias)) = &plan.enforce {
-            let net = self.config.internal_network();
-            self.engine.ensure_network(&net, true).await.map_err(|e| e.to_string())?;
-            self.engine.connect_network(&net, hq, std::slice::from_ref(alias)).await.map_err(|e| format!("couldn't put HQ on the agents' internal network: {e}"))?;
-        } else {
-            self.engine.ensure_network(&self.config.network, false).await.map_err(|e| e.to_string())?;
-        }
+        self.prepare_network(state, project_id, plan.enforce.as_ref()).await?;
         self.engine.ensure_image(&self.config.image).await.map_err(|e| e.to_string())?;
         let _ = self.engine.remove(&plan.container).await;
         let id = self.engine.create_container(&plan.container, &plan.body).await.map_err(|e| e.to_string())?;
@@ -373,6 +409,7 @@ impl AgentRuntime {
         if still_ours {
             let exit = self.engine.inspect(&session.container).await.ok().flatten().map_or(0, |c| c.exit_code);
             let _ = self.engine.remove(&session.container).await;
+            self.release_network(state, project_id, false).await;
             state.inner.mcp.revoke_agent_token(project_id, agent_id);
             state.inner.egress.revoke(project_id, agent_id);
             let _ = state.inner.supervisor.stop_agent(project_id, agent_id).await;
@@ -479,7 +516,7 @@ impl AgentRuntime {
                 "CapDrop": ["ALL"],
                 "SecurityOpt": ["no-new-privileges"],
                 "Tmpfs": { "/tmp": "rw,nosuid,size=256m" },
-                "NetworkMode": if enforce.is_some() { self.config.internal_network() } else { self.config.network.clone() },
+                "NetworkMode": if enforce.is_some() { self.config.internal_network(&slug) } else { self.config.network.clone() },
                 "Init": true,
                 "RestartPolicy": { "Name": "no" }
             }
@@ -564,7 +601,7 @@ mod tests {
         in_container.hq_container = Some("0123abcd".into());
         let rt = AgentRuntime::new(in_container);
         let enforced = rt.plan(&state, &pid, &id).unwrap();
-        assert_eq!(enforced.body["HostConfig"]["NetworkMode"], "net-internal");
+        assert_eq!(enforced.body["HostConfig"]["NetworkMode"], "net-internal-demo");
         assert_eq!(enforced.enforce, Some(("0123abcd".to_owned(), "hq".to_owned())), "HQ joins under the name agents use for it");
         assert!(!state.inner.egress.policy(&pid, &id).unwrap().observe, "the proxy refuses for this agent");
         crate::egress::set_mode(&state, &pid, &[json!("observe")]).unwrap();
@@ -611,6 +648,107 @@ mod tests {
         rt.plan(&state, &pid, &id).unwrap();
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
         assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"]);
+    }
+
+    /// A Docker stand-in that knows only the networks created through it, and logs each request as "METHOD path body".
+    async fn fake_docker(dir: &std::path::Path) -> (PathBuf, Arc<Mutex<Vec<String>>>) {
+        let path = dir.join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let seen = log.clone();
+        tokio::spawn(async move {
+            let mut networks = std::collections::HashSet::new();
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let (mut raw, mut buf) = (Vec::new(), [0u8; 4096]);
+                let text = loop {
+                    let n = stream.read(&mut buf).await.unwrap_or(0);
+                    raw.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&raw).into_owned();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let len = head.lines().find_map(|l| l.strip_prefix("Content-Length: ")).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+                        if body.len() >= len || n == 0 {
+                            break text;
+                        }
+                    } else if n == 0 {
+                        break text;
+                    }
+                };
+                let mut words = text.split_whitespace();
+                let (method, path) = (words.next().unwrap_or("").to_owned(), words.next().unwrap_or("").to_owned());
+                let request = text.split_once("\r\n\r\n").map_or("", |(_, b)| b);
+                seen.lock().unwrap().push(format!("{method} {path} {request}").trim_end().to_owned());
+                let (status, body) = match method.as_str() {
+                    "GET" if networks.contains(path.trim_start_matches("/networks/")) => (200, r#"{"Internal":true,"Containers":{}}"#),
+                    "GET" => (404, "{}"),
+                    "DELETE" => (204, ""),
+                    _ if path == "/networks/create" => {
+                        networks.insert(serde_json::from_str::<Value>(request).unwrap()["Name"].as_str().unwrap().to_owned());
+                        (201, "{}")
+                    }
+                    _ => (200, "{}"),
+                };
+                let _ = stream.write_all(format!("HTTP/1.0 {status} X\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes()).await;
+            }
+        });
+        (path, log)
+    }
+
+    #[tokio::test]
+    async fn each_enforce_project_gets_its_own_internal_network_until_it_leaves_enforce_or_is_deleted() {
+        use crate::{team, team_edit as edit};
+        let root = tempfile::TempDir::new().unwrap();
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([7u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
+        let demo = state.default_project().unwrap().0;
+        state.inner.db.transaction(|c| c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-two', 'two', 'Two', '/w/two', 9, 9)", []).map_err(arima_db::DbError::from)).unwrap();
+        let (socket, log) = fake_docker(root.path()).await;
+        let mut rt = AgentRuntime::new(RuntimeConfig {
+            enabled: true,
+            image: "img".into(),
+            network: "net".into(),
+            workspaces_root: root.path().into(),
+            workspaces_host_root: root.path().into(),
+            hq_url: Some("http://arima-hq:7420".into()),
+            egress_port: 8420,
+            hq_container: Some("0123abcd".into()),
+        });
+        rt.engine = DockerEngine::new(&socket);
+        let take = || std::mem::take(&mut *log.lock().unwrap());
+
+        let mut nets = Vec::new();
+        for pid in [demo.as_str(), "proj-two"] {
+            team::complete_welcome(&state, pid, &[json!({ "templateId": "dev" })]).unwrap();
+            edit::set_team_mode(&state, pid, &[json!("container")]).unwrap();
+            crate::egress::set_mode(&state, pid, &[json!("enforce")]).unwrap();
+            let agent = team::load(&state, pid).unwrap().team[0]["id"].as_str().unwrap().to_owned();
+            let plan = rt.plan(&state, pid, &agent).unwrap();
+            rt.prepare_network(&state, pid, plan.enforce.as_ref()).await.unwrap();
+            nets.push(plan.body["HostConfig"]["NetworkMode"].as_str().unwrap().to_owned());
+        }
+        assert_eq!(nets, ["net-internal-demo", "net-internal-two"], "each enforce project starts its agents on its own network");
+        let seen = take();
+        for net in &nets {
+            assert!(seen.iter().any(|r| r.starts_with("POST /networks/create {") && r.contains(&format!(r#""Name":"{net}""#)) && r.contains(r#""Internal":true"#)), "{seen:?}");
+            assert!(seen.iter().any(|r| r.starts_with(&format!("POST /networks/{net}/connect ")) && r.contains(r#""Container":"0123abcd""#) && r.contains(r#""Aliases":["arima-hq"]"#)), "HQ joins {net} under its name: {seen:?}");
+        }
+
+        rt.release_network(&state, &demo, false).await;
+        assert!(take().is_empty(), "a project still in enforce keeps its network");
+        crate::egress::set_mode(&state, &demo, &[json!("observe")]).unwrap();
+        rt.release_network(&state, &demo, false).await;
+        assert_eq!(take(), [r#"POST /networks/net-internal-demo/disconnect {"Container":"0123abcd","Force":true}"#, "DELETE /networks/net-internal-demo"], "leaving enforce with nothing running removes it");
+
+        rt.stop_project(&state, "proj-two").await;
+        assert_eq!(take(), [r#"POST /networks/net-internal-two/disconnect {"Container":"0123abcd","Force":true}"#, "DELETE /networks/net-internal-two"], "deleting a project removes its network");
+    }
+
+    #[test]
+    fn a_long_project_network_name_is_cut_to_63_characters_and_stays_distinct() {
+        let cfg = RuntimeConfig { enabled: true, image: String::new(), network: "arima-agents".into(), workspaces_root: PathBuf::new(), workspaces_host_root: PathBuf::new(), hq_url: None, egress_port: 0, hq_container: None };
+        let (a, b) = (cfg.internal_network(&format!("{}a", "x".repeat(80))), cfg.internal_network(&format!("{}b", "x".repeat(80))));
+        assert!(a.len() == 63 && b.len() == 63 && a != b, "{a} {b}");
+        assert_eq!(a, cfg.internal_network(&format!("{}a", "x".repeat(80))), "the same project always gets the same name");
+        assert_eq!(cfg.internal_network("my proj!"), "arima-agents-internal-my-proj-", "only Docker's name characters");
     }
 
 }

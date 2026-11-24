@@ -404,7 +404,7 @@ export interface AccessRequest {
   observed?: boolean;
 }
 
-/** Allow once lets that agent reach the host for 15 minutes; project adds a rule for every agent of the project.
+/** Allow once lets that agent reach the host for 60 minutes; project adds a rule for every agent of the project.
  * "agent" and "everyone" are the frozen v1 server's answers, kept so it still compiles. */
 export type AccessDecision = "once" | "project" | "deny" | "agent" | "everyone";
 

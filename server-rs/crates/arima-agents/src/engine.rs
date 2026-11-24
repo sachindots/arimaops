@@ -141,6 +141,25 @@ impl DockerEngine {
         self.expect("POST", &format!("/networks/{}/connect", encode(network)), Some(&body), &[200]).await.map(|_| ())
     }
 
+    /// Detaches `container` from `network`. A network that is already gone is fine.
+    pub async fn disconnect_network(&self, network: &str, container: &str) -> Result<()> {
+        let body = json!({ "Container": container, "Force": true });
+        let reply = self.send("POST", &format!("/networks/{}/disconnect", encode(network)), Some(&body)).await?;
+        match reply.status {
+            200 | 404 => Ok(()),
+            s => Err(engine_err(format!("Docker answered {s} detaching {container} from {network}: {}", reply.message()))),
+        }
+    }
+
+    /// Removes a network. A missing one is fine; Docker refuses one that still has containers on it.
+    pub async fn remove_network(&self, name: &str) -> Result<()> {
+        let reply = self.send("DELETE", &format!("/networks/{}", encode(name)), None).await?;
+        match reply.status {
+            204 | 404 => Ok(()),
+            s => Err(engine_err(format!("Docker answered {s} removing network {name}: {}", reply.message()))),
+        }
+    }
+
     /// Creates a container from a Docker create body and returns its id.
     pub async fn create_container(&self, name: &str, body: &Value) -> Result<String> {
         let reply = self.expect("POST", &format!("/containers/create?name={}", encode(name)), Some(body), &[201]).await?;

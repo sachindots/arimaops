@@ -2,7 +2,7 @@
 
 //! Agent egress: each project's mode, the policy an agent gets at start, its proxy credential, and the hosts
 //! enforce mode would block. Agents reach the internet through HQ's egress proxy, which names them by the
-//! credential in their proxy URL. In enforce mode agents sit on an internal network where that proxy is the only
+//! credential in their proxy URL. In enforce mode agents sit on their project's internal network where that proxy is the only
 //! way out, and each refused host becomes one Inbox access request per agent.
 
 use std::collections::HashMap;
@@ -189,8 +189,8 @@ impl PolicyProvider for ProxyPolicy {
 
 /// How long "Allow once" lets one agent reach a host. One blocked step (a clone, an install) opens many
 /// connections to the same host, often in parallel and with retries, so a connection count would either cut
-/// the step off halfway or stop meaning "once"; a short window covers the step and then closes by itself.
-pub const ALLOW_ONCE_MS: i64 = 15 * 60 * 1000;
+/// the step off halfway or stop meaning "once"; an hour covers the step and then closes by itself.
+pub const ALLOW_ONCE_MS: i64 = 60 * 60 * 1000;
 
 /// A rule for one host and port, as the owner's allow list writes it.
 fn rule_for(host: &str, port: u16) -> String {
@@ -254,7 +254,7 @@ pub fn access_requests(state: &AppState, project_id: &str) -> Value {
                     };
                     Ok(json!({
                         "id": r.get::<_, i64>(0)?.to_string(), "agentId": r.get::<_, String>(1)?,
-                        "domain": rule_for(&r.get::<_, String>(2)?, r.get(3)?), "reason": "Refused by enforce mode. Allow once lets this agent reach it for 15 minutes.",
+                        "domain": rule_for(&r.get::<_, String>(2)?, r.get(3)?), "reason": "Refused by enforce mode. Allow once lets this agent reach it for 60 minutes.",
                         "at": iso(r.get(5)?), "status": status, "observed": true,
                     }))
                 })?
@@ -500,7 +500,11 @@ mod tests {
         assert_eq!(reqs.len(), 3);
         let id = |agent: &str, domain: &str| reqs.iter().find(|r| r.0 == agent && r.1 == domain).unwrap().2.clone();
 
+        let before = Utc::now().timestamp_millis();
         resolve_access(&state, &pid, &[json!(id("ada", "api.stripe.com")), json!("once")]).unwrap();
+        let expires: i64 = state.inner.db.read(|c| c.query_row("SELECT expires_at FROM egress_access WHERE agent_id = 'ada' AND host = 'api.stripe.com'", [], |r| r.get(0)).map_err(DbError::from)).unwrap();
+        let window = expires - before;
+        assert!((60 * 60_000..60 * 60_000 + 5_000).contains(&window), "allow once lasts 60 minutes, not 15: {window} ms");
         assert_eq!(allowed_once(&state, &pid, "ada"), ["api.stripe.com"]);
         assert!(allowed_once(&state, &pid, "grace").is_empty(), "allow once is for that agent only");
         assert!(project_rules(&state, &pid).is_empty(), "and adds no project rule");
