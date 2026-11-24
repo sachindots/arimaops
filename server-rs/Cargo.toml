@@ -14,7 +14,7 @@ members = [
 version = "2.0.0-alpha.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
-rust-version = "1.85"
+rust-version = "1.89"
 
 [workspace.dependencies]
 aes-gcm = "0.11"
@@ -28,6 +28,7 @@ axum = { version = "0.8", features = ["ws"] }
 base32 = "0.5"
 base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
+crypto-glue = "0.2"
 ed25519-dalek = { version = "3", features = ["rand_core"] }
 futures-util = "0.3"
 hex = "0.4"
@@ -38,7 +39,7 @@ qrcode = "0.15"
 rand = "0.10"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.43", features = ["bundled", "backup"] }
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -56,4 +57,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ts-rs = { version = "10", features = ["serde-json-impl", "chrono-impl"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
-webauthn-rs = "0.5"
+webauthn-rs = "0.6"
