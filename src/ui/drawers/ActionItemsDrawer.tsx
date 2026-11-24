@@ -121,7 +121,8 @@ export function ActionItemsDrawer() {
           </Plain>
         ),
         approve: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "once"),
-        reject: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "deny"),
+        // A swipe only dismisses: Deny is permanent, so it takes the explicit button.
+        reject: isViewer ? undefined : () => officeActions.resolveAccess(r.id, "dismiss"),
       });
     for (const bl of a.blocked)
       entries.push({

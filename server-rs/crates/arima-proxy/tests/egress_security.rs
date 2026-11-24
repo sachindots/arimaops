@@ -237,7 +237,7 @@ async fn enforce_refuses_unlisted_hosts_with_an_inbox_answer_and_private_address
     assert!(plain.starts_with("HTTP/1.1 403"), "quiet hosts are refused too, without a request");
     let (denied, _) = send_connect(proxy.addr(), "denied.example:443", &cred).await;
     assert!(denied.starts_with("HTTP/1.1 403"));
-    // Listed but private: observe would let it through (the direct route is open there); enforce refuses it.
+    // Listed but private, with no owner rule naming it: refused.
     let private = connect_reply(proxy.addr(), "10.255.255.1:80", &cred).await;
     assert!(private.starts_with("HTTP/1.1 403") && private.contains("restricted"), "{private}");
     let (scoped, _) = send_connect(proxy.addr(), &format!("127.0.0.1:{}", echo.port()), &cred).await;
@@ -245,4 +245,18 @@ async fn enforce_refuses_unlisted_hosts_with_an_inbox_answer_and_private_address
 
     assert_eq!(*provider.blocked.lock().unwrap(), [("ada".to_owned(), "unlisted.example".to_owned(), 443)], "only the unlisted host files a request");
     assert!(provider.seen.lock().unwrap().is_empty(), "enforce doesn't report would-blocks");
+}
+
+#[tokio::test]
+async fn observe_mode_records_private_targets_but_never_bridges_to_them_without_an_owner_rule() {
+    let creds = ProxyCredentials::new();
+    let token = creds.issue(ContainerIdentity { project_id: "p1".into(), agent_id: "ada".into(), container_name: "hq-p1-ada".into() });
+    let provider = Arc::new(Observing { policy: EgressPolicy { observe: true, ..EgressPolicy::default() }, ..Observing::default() });
+    let proxy = EgressProxy::start("127.0.0.1:0".parse().unwrap(), creds, Arc::clone(&provider) as Arc<dyn PolicyProvider>).await.unwrap();
+    let cred = basic("ada", &token);
+
+    // Another project's internal network, which HQ is attached to and this agent is not.
+    let reply = connect_reply(proxy.addr(), "172.30.0.5:5432", &cred).await;
+    assert!(reply.starts_with("HTTP/1.1 403") && reply.contains("restricted"), "{reply}");
+    assert_eq!(*provider.seen.lock().unwrap(), [("ada".to_owned(), "172.30.0.5".to_owned(), 5432)], "the owner sees it in the would-block list");
 }

@@ -410,7 +410,8 @@ export interface AccessRequest {
 
 /** Allow once lets that agent reach the host for 60 minutes; project adds a rule for every agent of the project.
  * "agent" and "everyone" are the frozen v1 server's answers, kept so it still compiles. */
-export type AccessDecision = "once" | "project" | "deny" | "agent" | "everyone";
+/** `dismiss` drops a waiting request unanswered (asked again next time); `clear` takes a denied host off the deny list. */
+export type AccessDecision = "once" | "project" | "deny" | "agent" | "everyone" | "dismiss" | "clear";
 
 // ---------------------------------------------------------------- Live state
 

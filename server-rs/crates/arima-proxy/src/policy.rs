@@ -112,9 +112,14 @@ pub struct EgressPolicy {
     pub outbound_hosts: Vec<String>,
     pub allow_unknown_loopback_peer: bool,
     /// Observe mode: a request the policy would refuse goes through and is reported to
-    /// [`PolicyProvider::record_would_block`] instead. Off (enforce), it is refused, reported to
-    /// [`PolicyProvider::record_blocked`], and private addresses are refused unless explicitly scoped.
+    /// [`PolicyProvider::record_would_block`] instead. Off (enforce), it is refused and reported to
+    /// [`PolicyProvider::record_blocked`]. Private addresses are refused in both modes unless the host is
+    /// explicitly scoped or in [`Self::private_allow`].
     pub observe: bool,
+    /// Hosts the owner named in an explicit rule, which may resolve to a private (never loopback or metadata)
+    /// address. Anything else reaching a private address goes nowhere: HQ sits on networks agents don't share,
+    /// such as other projects' internal networks.
+    pub private_allow: Vec<String>,
     /// Hosts the CLIs call on their own (telemetry): never reported.
     pub quiet: Vec<String>,
 }

@@ -91,13 +91,13 @@ pub fn project_rules(state: &AppState, project_id: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The policy an agent gets at start, never stored: the shared base, its CLI's hosts, the project's rules and
-/// the seat's own allow list; the seat's deny list and cloud metadata are denied.
+/// The policy an agent gets at start, never stored: the shared base, its CLI's hosts and the seat's own allow list;
+/// the seat's deny list and cloud metadata are denied. The project's rules are added per request by [`ProxyPolicy`],
+/// so adding or removing one reaches running agents at once.
 #[must_use]
-pub fn policy(mode: EgressMode, cli_egress: &[&str], project_rules: &[String], seat: &Value) -> EgressPolicy {
+pub fn policy(mode: EgressMode, cli_egress: &[&str], seat: &Value) -> EgressPolicy {
     let seat_list = |key: &str| seat["sandbox"][key].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>();
     let mut allow: Vec<String> = BASE.iter().chain(cli_egress).map(|h| (*h).to_owned()).collect();
-    allow.extend(project_rules.iter().cloned());
     allow.extend(seat_list("allow"));
     let mut deny: Vec<String> = METADATA.iter().map(|h| (*h).to_owned()).collect();
     deny.extend(seat_list("deny"));
@@ -109,8 +109,8 @@ pub fn policy(mode: EgressMode, cli_egress: &[&str], project_rules: &[String], s
 pub fn proxy_env(hq_url: &str, port: u16, agent_id: &str, token: &str) -> Vec<(String, String)> {
     let Some(host) = url::Url::parse(hq_url).ok().and_then(|u| u.host_str().map(str::to_owned)) else { return Vec::new() };
     let proxy = format!("http://{agent_id}:{token}@{host}:{port}");
-    // Private ranges stay direct for clients that read CIDR entries, as they were before the proxy.
-    let no_proxy = format!("localhost,127.0.0.1,::1,{},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", host.trim_matches(['[', ']']));
+    // Private ranges go through the proxy too, so observe mode records them and an owner rule can allow them.
+    let no_proxy = format!("localhost,127.0.0.1,::1,{}", host.trim_matches(['[', ']']));
     let mut env: Vec<(String, String)> = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"].iter().map(|k| ((*k).to_owned(), proxy.clone())).collect();
     env.extend([("NO_PROXY".to_owned(), no_proxy.clone()), ("no_proxy".to_owned(), no_proxy), ("NODE_USE_ENV_PROXY".to_owned(), "1".to_owned())]);
     env
@@ -142,17 +142,6 @@ impl AgentEgress {
     pub(crate) fn policy(&self, project_id: &str, agent_id: &str) -> Option<EgressPolicy> {
         self.policies.read().ok()?.get(&(project_id.to_owned(), agent_id.to_owned())).cloned()
     }
-
-    /// A rule the owner just allowed applies to the project's running agents at once, not only at their next start.
-    fn allow_running(&self, project_id: &str, rule: &str) {
-        if let Ok(mut map) = self.policies.write() {
-            for ((p, _), policy) in map.iter_mut() {
-                if p == project_id && !policy.allow.iter().any(|r| r == rule) {
-                    policy.allow.push(rule.to_owned());
-                }
-            }
-        }
-    }
 }
 
 /// What HQ's egress proxy asks: the caller's policy (plus the project's engagement scope) and where to record.
@@ -163,6 +152,11 @@ impl PolicyProvider for ProxyPolicy {
         Box::pin(async move {
             let id = identity?;
             let mut policy = self.0.inner.egress.policy(&id.project_id, &id.agent_id)?;
+            // Read per request, so a rule the owner adds or removes applies to running agents at once. A rule that
+            // names one host (not a wildcard) is also what lets it resolve to a private address (owner decision Q6).
+            let rules = project_rules(&self.0, &id.project_id);
+            policy.private_allow.extend(rules.iter().filter(|r| !r.starts_with("*.")).cloned());
+            policy.allow.extend(rules);
             policy.allow.extend(allowed_once(&self.0, &id.project_id, &id.agent_id));
             if let Some(scope) = self.0.inner.egress_policy.policy_for_project(&id.project_id) {
                 policy.scope_allow_targets = scope.scope_allow_targets;
@@ -265,15 +259,34 @@ pub fn access_requests(state: &AppState, project_id: &str) -> Value {
     Value::Array(rows)
 }
 
-/// `resolveAccess [id, "once" | "project" | "deny"]` (owner only), for a request still waiting.
+/// `resolveAccess [id, "once" | "project" | "deny" | "dismiss" | "clear"]` (owner only). The first four answer a
+/// waiting request; `dismiss` (a swipe) drops it unanswered, so the next refusal asks again. A deny is permanent for
+/// that agent and host until `clear` takes it off the project's deny list (owner decision Q7).
 pub fn resolve_access(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let id = args.first().and_then(Value::as_str).and_then(|s| s.parse::<i64>().ok()).ok_or("That access request doesn't exist.")?;
     let now = Utc::now().timestamp_millis();
+    let drop_from = match args.get(1).and_then(Value::as_str).unwrap_or("") {
+        "dismiss" => Some(("pending", "That access request was already answered.")),
+        "clear" => Some(("denied", "That host isn't denied.")),
+        _ => None,
+    };
+    if let Some((from, gone)) = drop_from {
+        let dropped = state
+            .inner
+            .db
+            .transaction(|conn| conn.execute("DELETE FROM egress_access WHERE id = ?1 AND project_id = ?2 AND status = ?3", rusqlite::params![id, project_id, from]).map_err(DbError::from))
+            .map_err(|e| e.to_string())?;
+        if dropped == 0 {
+            return Err(gone.into());
+        }
+        broadcast(state, project_id);
+        return Ok(());
+    }
     let (status, expires) = match args.get(1).and_then(Value::as_str).unwrap_or("") {
         "once" => ("once", Some(now + ALLOW_ONCE_MS)),
         "project" => ("project", None),
         "deny" => ("denied", None),
-        _ => return Err("Answer once, project or deny.".into()),
+        _ => return Err("Answer once, project, deny, dismiss or clear.".into()),
     };
     let (host, port) = state
         .inner
@@ -395,12 +408,11 @@ pub fn allow_host(state: &AppState, project_id: &str, args: &[Value]) -> Result<
             Ok::<_, DbError>(())
         })
         .map_err(|e| e.to_string())?;
-    state.inner.egress.allow_running(project_id, &rule);
     broadcast(state, project_id);
     Ok(())
 }
 
-/// `removeEgressRule [rule]` (owner only). Running agents keep it until their next start.
+/// `removeEgressRule [rule]` (owner only). Running agents lose it at once.
 pub fn remove_rule(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let rule = args.first().and_then(Value::as_str).unwrap_or("");
     state
@@ -439,22 +451,40 @@ mod tests {
     #[test]
     fn the_policy_joins_base_cli_project_and_seat_rules() {
         let seat = json!({ "sandbox": { "allow": ["api.stripe.com"], "deny": ["registry.npmjs.org"] } });
-        let p = policy(EgressMode::Observe, crate::cli::adapter("claude").unwrap().egress, &["auth.example.dev:8443".into()], &seat);
+        let p = policy(EgressMode::Observe, crate::cli::adapter("claude").unwrap().egress, &seat);
         let allowed = |h: &str, port| host_matches(&p.allow, h, port);
         assert!(allowed("api.anthropic.com", 443) && allowed("github.com", 443) && allowed("index.crates.io", 443) && allowed("proxy.golang.org", 443));
         assert!(allowed("registry-1.docker.io", 443) && allowed("files.pythonhosted.org", 443));
-        assert!(allowed("api.stripe.com", 443) && allowed("auth.example.dev", 8443) && !allowed("auth.example.dev", 443));
+        assert!(allowed("api.stripe.com", 443));
         assert!(!allowed("api.openai.com", 443), "another CLI's hosts aren't in this one's policy");
         assert!(host_matches(&p.deny, "registry.npmjs.org", 443) && host_matches(&p.deny, "169.254.169.254", 80), "seat deny and metadata");
         assert!(host_matches(&p.quiet, "o123.ingest.sentry.io", 443) && p.observe);
-        assert!(!policy(EgressMode::Enforce, &[], &[], &seat).observe, "enforce refuses instead of recording");
+        assert!(!policy(EgressMode::Enforce, &[], &seat).observe, "enforce refuses instead of recording");
         for a in &crate::cli::ADAPTERS {
             assert!(!a.egress.is_empty(), "{} lists its provider hosts", a.id);
         }
     }
 
-    #[test]
-    fn projects_start_in_observe_and_would_blocks_are_counted_allowed_and_ignored() {
+    /// The policy the proxy applies to agent `ada`'s next request.
+    async fn running(state: &AppState, pid: &str) -> EgressPolicy {
+        let id = ContainerIdentity { project_id: pid.to_owned(), agent_id: "ada".into(), container_name: "hq-demo-ada".into() };
+        ProxyPolicy(state.clone()).policy_for("127.0.0.1".parse().unwrap(), Some(&id)).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn only_a_rule_naming_one_host_lets_it_resolve_to_a_private_address() {
+        let (state, pid) = demo();
+        state.inner.egress.admit(&pid, "ada", "hq-demo-ada", policy(EgressMode::Enforce, &[], &json!({ "sandbox": { "allow": ["seat.example"] } })));
+        allow_host(&state, &pid, &[json!("git.corp.example"), json!(443)]).unwrap();
+        allow_host(&state, &pid, &[json!("*.corp.example"), json!(443)]).unwrap();
+        let p = running(&state, &pid).await;
+        assert!(host_matches(&p.private_allow, "git.corp.example", 443));
+        assert!(!host_matches(&p.private_allow, "db.corp.example", 443), "a wildcard rule never opens private addresses");
+        assert!(!host_matches(&p.private_allow, "seat.example", 443), "nor does a seat's own allow list");
+    }
+
+    #[tokio::test]
+    async fn projects_start_in_observe_and_would_blocks_are_counted_allowed_and_ignored() {
         let (state, pid) = demo();
         assert_eq!(mode(&state, &pid), EgressMode::Observe);
         assert!(set_mode(&state, &pid, &[json!("lockdown")]).is_err());
@@ -471,11 +501,11 @@ mod tests {
         assert_eq!(stripe["agents"].as_array().unwrap().len(), 2);
         assert!(!stripe["firstSeen"].as_str().unwrap().is_empty());
 
-        let token = state.inner.egress.admit(&pid, "ada", "hq-demo-ada", policy(EgressMode::Observe, &[], &[], &json!({})));
+        let token = state.inner.egress.admit(&pid, "ada", "hq-demo-ada", policy(EgressMode::Observe, &[], &json!({})));
         assert!(state.inner.egress.credentials.identify("ada", &token).is_some());
         allow_host(&state, &pid, &[json!("api.stripe.com"), json!(443)]).unwrap();
         assert_eq!(project_rules(&state, &pid), ["api.stripe.com"]);
-        assert!(host_matches(&state.inner.egress.policy(&pid, "ada").unwrap().allow, "api.stripe.com", 443), "a running agent gets the rule at once");
+        assert!(host_matches(&running(&state, &pid).await.allow, "api.stripe.com", 443), "a running agent gets the rule at once");
         assert!(allow_host(&state, &pid, &[json!("169.254.169.254"), json!(80)]).is_err());
 
         ignore_host(&state, &pid, &[json!("telemetry.example"), json!(443)]).unwrap();
@@ -484,6 +514,7 @@ mod tests {
 
         remove_rule(&state, &pid, &[json!("api.stripe.com")]).unwrap();
         assert!(project_rules(&state, &pid).is_empty());
+        assert!(!host_matches(&running(&state, &pid).await.allow, "api.stripe.com", 443), "and loses a removed one at once");
         state.inner.egress.revoke(&pid, "ada");
         assert!(state.inner.egress.credentials.identify("ada", &token).is_none());
     }
@@ -525,11 +556,33 @@ mod tests {
     }
 
     #[test]
+    fn a_swipe_dismisses_and_a_denied_host_can_be_cleared() {
+        let (state, pid) = demo();
+        let row = |state: &AppState, host: &str| access_requests(state, &pid).as_array().unwrap().iter().find(|r| r["domain"] == host).cloned();
+        request_access(&state, &pid, "ada", "cdn.example", 443);
+        let id = row(&state, "cdn.example").unwrap()["id"].clone();
+        resolve_access(&state, &pid, &[id.clone(), json!("dismiss")]).unwrap();
+        assert!(row(&state, "cdn.example").is_none(), "a dismissed request leaves no answer behind");
+        assert!(request_access(&state, &pid, "ada", "cdn.example", 443), "and the next refusal asks again");
+
+        let id = row(&state, "cdn.example").unwrap()["id"].clone();
+        resolve_access(&state, &pid, &[id.clone(), json!("deny")]).unwrap();
+        assert_eq!(row(&state, "cdn.example").unwrap()["status"], "denied", "the deny list shows it");
+        assert!(!request_access(&state, &pid, "ada", "cdn.example", 443), "a deny holds");
+        assert!(resolve_access(&state, "proj-other", &[id.clone(), json!("clear")]).is_err(), "only from its own project");
+        resolve_access(&state, &pid, &[id.clone(), json!("clear")]).unwrap();
+        assert!(row(&state, "cdn.example").is_none());
+        assert!(request_access(&state, &pid, "ada", "cdn.example", 443), "a cleared deny asks again");
+        assert!(resolve_access(&state, &pid, &[id, json!("clear")]).is_err(), "only a denied host can be cleared");
+    }
+
+    #[test]
     fn proxy_env_names_the_agent_and_keeps_hq_direct() {
         let env: HashMap<String, String> = proxy_env("http://arima-hq:7420", 8420, "ada", "tok").into_iter().collect();
         assert_eq!(env["HTTPS_PROXY"], "http://ada:tok@arima-hq:8420");
         assert_eq!(env["http_proxy"], env["HTTPS_PROXY"]);
         assert!(env["NO_PROXY"].split(',').any(|h| h == "arima-hq") && env["no_proxy"].contains("localhost"));
+        assert!(!env["NO_PROXY"].contains("10.0.0.0/8") && !env["NO_PROXY"].contains("192.168."), "private ranges go through the proxy, so observe records them");
         assert_eq!(env["NODE_USE_ENV_PROXY"], "1");
     }
 }

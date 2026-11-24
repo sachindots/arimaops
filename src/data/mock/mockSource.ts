@@ -779,6 +779,13 @@ export function createMockSource(): OfficeDataSource {
 
     resolveAccess(requestId, decision) {
       const req = world.snap.accessRequests?.find((r) => r.id === requestId);
+      if (decision === "dismiss" || decision === "clear") {
+        if (req && req.status === (decision === "dismiss" ? "pending" : "denied")) {
+          world.snap.accessRequests = world.snap.accessRequests?.filter((r) => r.id !== requestId);
+          world.configChanged();
+        }
+        return;
+      }
       if (!req || req.status !== "pending") return;
       req.status = decision === "deny" ? "denied" : "allowed";
       world.emit({ type: "access.updated", request: { ...req } });

@@ -493,7 +493,7 @@ impl AgentRuntime {
         let enforce = if egress == crate::egress::EgressMode::Enforce { Some(self.config.enforce_hq()?) } else { None };
         // Without an HQ address agents can't reach the proxy either, so they keep going straight out.
         if let Some(hq) = self.config.hq_url.as_deref().filter(|_| egress != crate::egress::EgressMode::Off) {
-            let policy = crate::egress::policy(egress, adapter.egress, &crate::egress::project_rules(state, project_id), agent);
+            let policy = crate::egress::policy(egress, adapter.egress, agent);
             let token = state.inner.egress.admit(project_id, agent_id, &container, policy);
             env.extend(crate::egress::proxy_env(hq, self.config.egress_port, agent_id, &token));
         }
