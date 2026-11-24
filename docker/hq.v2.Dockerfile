@@ -5,7 +5,7 @@
 FROM node:22-slim AS ui-builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 COPY scripts/fix-node-pty.mjs ./scripts/fix-node-pty.mjs
 RUN pnpm install --frozen-lockfile
 COPY index.html tsconfig.json vite.config.ts ./

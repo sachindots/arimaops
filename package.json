@@ -79,6 +79,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@a2ui/react": "0.16.1",
+    "@a2ui/web_core": "0.16.1",
     "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
@@ -99,6 +101,7 @@
     "tsx": "^4.23.15",
     "typescript": "~5.8.3",
     "vite": "^6.4.4",
+    "zod3": "npm:zod@3.25.76",
     "zustand": "^5.0.15"
   }
 }
