@@ -169,6 +169,56 @@ test.describe("Workflows: Home, Work, Inbox, Meetings & Preview/Annotate (?mock=
     errors.assertClean("inbox-visual-decisions");
   });
 
+  test("Inbox: an agent form fills by keyboard and pointer, submits its data to the agent, and fits 375px", async ({ page }) => {
+    const errors = attachErrorCollector(page);
+    await gotoMock(page, { width: 375, height: 812 });
+    await gotoWorkspace(page, "Inbox");
+    const list = page.getByRole("listbox", { name: "Waiting on you" });
+    await list.getByRole("option", { name: /Set up the upload bucket/i }).locator("button").first().click();
+    const card = page.getByRole("article", { name: "Set up the upload bucket" });
+    await expect(card.getByText("Uploads go to one bucket per project.")).toBeVisible();
+    await assertNoHorizontalOverflow(page, "agent-form-375");
+    await assertZeroNativeSelects(page, "agent-form-375");
+
+    await card.getByLabel("Bucket name").fill("team-docs");
+    await card.getByRole("combobox", { name: "Region" }).click();
+    await page.getByRole("listbox", { name: "Region" }).getByRole("option", { name: "US East (Virginia)" }).click();
+    await expect(card.getByRole("combobox", { name: "Region" })).toHaveText(/US East/);
+    const encryption = card.getByRole("button", { name: /Encryption at rest/ });
+    await encryption.focus();
+    await page.keyboard.press("Space");
+    await expect(encryption).toHaveAttribute("aria-pressed", "true");
+    await expect(card.getByRole("meter", { name: "Storage used" })).toHaveAttribute("aria-valuenow", "38");
+    await expect(card.getByRole("img", { name: "Uploads per day" })).toBeVisible();
+    await expect(card.getByRole("columnheader", { name: "Storage class" })).toBeVisible();
+
+    await card.getByRole("button", { name: "Create bucket" }).click();
+    await expect(list.getByRole("option", { name: /Set up the upload bucket/i })).toHaveCount(0);
+
+    await gotoWorkspace(page, "Team");
+    await page.getByRole("navigation", { name: "Team sections" }).getByRole("button", { name: /^Chat/i }).click();
+    // The Team thread shows every message, including the answer typed to the agent.
+    await expect(
+      page.getByText('Set up the upload bucket — Form: create {"intro":"Uploads go to one bucket per project.","bucket":"team-docs","region":"us-east","features":["encryption"],"used":38}'),
+    ).toBeVisible();
+    errors.assertClean("agent-form");
+  });
+
+  test("Inbox: a viewer sees an agent form read-only", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("hq-role", "viewer"));
+    const errors = attachErrorCollector(page);
+    await gotoMock(page, { width: 1280, height: 1000 });
+    await gotoWorkspace(page, "Inbox");
+    await page.getByRole("listbox", { name: "Waiting on you" }).getByRole("option", { name: /Set up the upload bucket/i }).locator("button").first().click();
+    const card = page.getByRole("article", { name: "Set up the upload bucket" });
+    await expect(card.getByLabel("Bucket name")).toBeDisabled();
+    await expect(card.getByRole("combobox", { name: "Region" })).toBeDisabled();
+    await expect(card.getByRole("button", { name: /Versioning/ })).toBeDisabled();
+    await expect(card.getByRole("button", { name: "Create bucket" })).toBeDisabled();
+    await expect(card.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
+    errors.assertClean("agent-form-viewer");
+  });
+
   test("Team -> Meetings: toggle Join Call and commit Meeting Minutes modal", async ({ page }) => {
     const errors = attachErrorCollector(page);
     await gotoMock(page, { width: 1440, height: 900 });

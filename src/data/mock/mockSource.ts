@@ -837,7 +837,7 @@ export function createMockSource(): OfficeDataSource {
           input.chosenSide ? `Chosen: ${input.chosenSide}`
           : input.resolution ? `Permission: ${input.resolution}`
           : input.answers?.length ? `Answered ${input.answers.length} question(s)`
-          : input.formAnswer ? `Form: ${input.formAnswer.action}`
+          : input.formAnswer ? `Form: ${input.formAnswer.action} ${JSON.stringify(input.formAnswer.data)}`
           : dec.status;
         world.message("you", dec.fromId, `${dec.title} — ${summary}${dec.note ? ` (${dec.note})` : ""}`);
       }
