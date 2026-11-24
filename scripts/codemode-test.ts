@@ -80,8 +80,15 @@ const child = (code: string) =>
     c.on("close", (status: number | null) => resolve({ out, err, status }));
   });
 process.env.ARIMA_MCP_TOKEN = "mcp_secret-token";
+process.env.ARIMA_CODEMODE_PARENT_ONLY = "parent";
 let c = await child("process.stdout.write(JSON.stringify(process.env))");
-check("the child's environment is empty, no token", c.out === "{}", c);
+const childEnv = JSON.parse(c.out || "{}");
+// macOS and Windows add a few OS variables to every process even with env {}; nothing of the parent's may get through.
+check(
+  "the child's environment holds nothing of the parent's, no token",
+  !c.out.includes("mcp_secret-token") && !("ARIMA_MCP_TOKEN" in childEnv) && !("ARIMA_CODEMODE_PARENT_ONLY" in childEnv) && (process.platform !== "linux" || c.out === "{}"),
+  c,
+);
 c = await child("require('fs').writeFileSync('/tmp/codemode-should-not-exist', 'x')");
 check("file writes are denied", /ERR_ACCESS_DENIED/.test(c.err) && c.status !== 0, c.err.slice(0, 300));
 c = await child("require('child_process').spawnSync('true')");

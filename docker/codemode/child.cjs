@@ -2,6 +2,8 @@
 // One codemode run. The parent starts this with an empty environment under Node's permission model, sends one
 // `run` line on stdin, answers each `call` line, and kills the process when the run ends or overstays.
 "use strict";
+// Some OSes add variables to every process even when started with env {}; drop them before any agent code runs.
+for (const k of Object.keys(process.env)) delete process.env[k];
 const vm = require("node:vm");
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
