@@ -664,7 +664,14 @@ async fn execute_ws_command(
             crate::integrations::refresh_mcp(state, project_id, &[args.first().map_or(Value::Null, |a| a["name"].clone())]).await
         }
         "removeMcp" => crate::integrations::remove_mcp(state, project_id, args),
-        "copyMcp" => crate::integrations::copy_mcp(state, project_id, args),
+        "copyMcp" => {
+            // The caller is Owner here (RBAC); copying a key out of another project needs Owner there too (owner decision Q4).
+            let from = args.first().and_then(Value::as_str).unwrap_or("");
+            if !is_owner_in(state, actor_uid, from) {
+                return Err("Copying a tool server needs the Owner role in the project it comes from.".into());
+            }
+            crate::integrations::copy_mcp(state, project_id, args)
+        }
         "setToolServerKey" => crate::integrations::set_tool_server_key(state, project_id, args),
         "addPack" => crate::packs::add_pack(state, project_id, args).await,
         "checkPackUpdates" => crate::packs::check_updates(state, project_id, args).await,
@@ -1332,6 +1339,14 @@ fn inspect_command_context(
     (target_agent_local, decision_owner_only)
 }
 
+/// Whether the signed-in user (none: the bootstrap session, which is the owner) is Owner of the project.
+fn is_owner_in(state: &AppState, user_id: Option<&str>, project_id: &str) -> bool {
+    let Some(uid) = user_id else { return true };
+    let Some(user) = state.inner.auth.get_user_by_id(uid).ok().flatten().filter(|u| !u.disabled) else { return false };
+    let project_role = state.inner.auth.get_project_role(project_id, uid).ok().flatten();
+    effective_role(user.role, project_role) == ServerRole::Owner
+}
+
 fn is_agent_local_in_project(state: &AppState, project_id: &str, agent_id: &str) -> bool {
     let Ok(Some(cfg_raw)) = state.inner.db.read(|conn| {
         use rusqlite::OptionalExtension;
@@ -1623,6 +1638,28 @@ mod project_scope_tests {
         let err = execute_ws_command(&state, &pid, None, "op", ServerRole::Operator, "updateRole", &args).await.unwrap_err();
         assert!(err.contains("Only the owner"), "{err}");
         assert_eq!(crate::team::load(&state, &pid).unwrap().template["roles"][0], role, "the role is unchanged");
+    }
+
+    #[tokio::test]
+    async fn copying_a_tool_server_needs_owner_in_both_projects() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        state.inner.db.transaction(|c| {
+            c.execute("INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('proj-b', 'b', 'B', '/w/b', 9, 9)", [])?;
+            c.execute("INSERT INTO users (id, name, password_hash, role, created_at) VALUES ('u-op', 'op', 'h', 'operator', 1)", [])
+        }.map_err(arima_db::DbError::from)).unwrap();
+        crate::integrations::add_mcp(&state, &a, &[json!({ "name": "docs", "url": "https://docs.example/mcp", "apiKey": "a-key" })]).unwrap();
+        state.inner.auth.set_project_role("proj-b", "u-op", ServerRole::Owner).unwrap();
+        let copy = [json!(a), json!("docs")];
+
+        let err = execute_ws_command(&state, "proj-b", Some("u-op"), "op", ServerRole::Owner, "copyMcp", &copy).await.unwrap_err();
+        assert!(err.contains("Owner role in the project it comes from"), "{err}");
+        assert!(crate::integrations::tool_servers(&state, "proj-b").is_empty(), "Owner of B only: A's key stays in A");
+
+        state.inner.auth.set_project_role(&a, "u-op", ServerRole::Owner).unwrap();
+        execute_ws_command(&state, "proj-b", Some("u-op"), "op", ServerRole::Owner, "copyMcp", &copy).await.unwrap();
+        assert!(crate::integrations::tool_servers(&state, "proj-b")[0].has_key);
     }
 
     #[test]
