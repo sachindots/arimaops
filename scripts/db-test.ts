@@ -31,7 +31,7 @@ const now = Date.now();
   const have = tables(dir);
   check("a fresh database gets every core table", want.every((t) => have.includes(t)), have.join(","));
   check("its version is the last migration", schemaVersion(db) === MIGRATIONS.length);
-  check("the database stays private to this user", (statSync(join(dir, DB_FILE)).mode & 0o777) === 0o600);
+  check("the database stays private to this user", process.platform === "win32" || (statSync(join(dir, DB_FILE)).mode & 0o777) === 0o600);
 
   migrate(db);
   check("migrating again changes nothing", schemaVersion(db) === MIGRATIONS.length);

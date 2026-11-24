@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-memory-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-memory-"));
 process.env.ARIMA_MASTER_KEY = "11".repeat(32);
 const { hqDb, migrate, MIGRATIONS } = await import("../server/lib/db");
 const { SqliteMemory, memoryState } = await import("../server/memory");
@@ -414,7 +414,7 @@ const db = freshDb();
   check("backups run at 03:00 tonight, or tomorrow once it's past", nextBackupAt(new Date(2026, 10, 12, 2, 0)).getTime() === new Date(2026, 10, 12, 3, 0).getTime() && nextBackupAt(new Date(2026, 10, 12, 3, 0)).getTime() === new Date(2026, 10, 13, 3, 0).getTime());
   const dir = mkdtempSync(join(tmpdir(), "arima-backups-"));
   const file = backupDb(db, dir, new Date(2026, 10, 12, 3));
-  check("tonight's backup is a private copy of the whole database", existsSync(file) && (statSync(file).mode & 0o077) === 0 && listBackups(dir).join() === "2026-11-12");
+  check("tonight's backup is a private copy of the whole database", existsSync(file) && (process.platform === "win32" || (statSync(file).mode & 0o077) === 0) && listBackups(dir).join() === "2026-11-12");
   const copy = new DatabaseSync(file, { readOnly: true });
   check("it holds memories and ledgers, and search works in it", count(copy, "SELECT count(*) AS n FROM memories") === count(db, "SELECT count(*) AS n FROM memories") &&
     count(copy, "SELECT count(*) AS n FROM memory_text WHERE memory_text MATCH 'statusCheckRollup'") > 0);
@@ -471,7 +471,7 @@ const db = freshDb();
   check("the printable record escapes the project's name", html.includes("Acme &lt;Corp&gt;") && !html.includes("<Corp>") && !/<script/i.test(html));
   const rdir = mkdtempSync(join(tmpdir(), "arima-records-"));
   const name = saveRecord(rec, rdir);
-  check("the record is saved as private JSON and HTML", ["json", "html"].every((x) => existsSync(join(rdir, `${name}.${x}`)) && (statSync(join(rdir, `${name}.${x}`)).mode & 0o077) === 0));
+  check("the record is saved as private JSON and HTML", ["json", "html"].every((x) => existsSync(join(rdir, `${name}.${x}`)) && (process.platform === "win32" || (statSync(join(rdir, `${name}.${x}`)).mode & 0o077) === 0)));
 }
 
 console.log(fails ? `\n${fails} failed` : "\nall passed");

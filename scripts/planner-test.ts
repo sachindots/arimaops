@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-plan-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-plan-"));
 const { Planner } = await import("../server/planner");
 const { BLANK_TEMPLATE } = await import("../src/data/templates");
 const { hqDb } = await import("../server/lib/db");

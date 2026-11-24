@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-company-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-company-"));
 const { accounts } = await import("../server/credentials/registry");
 const { accountModels, checkAccountModel, modelIds } = await import("../server/models");
 const { Sessions } = await import("../server/sessions");
@@ -49,7 +49,7 @@ const hub = {
 };
 const sessions = new Sessions(hub as never, "fixture-token");
 const claudeArgs = runArgs(worker, "hq-test-worker", "/work-test", [], null, 7420);
-assert.ok(claudeArgs.includes(`${containerLogHome("hq-test-worker")}/projects:/auth/claude/projects`));
+assert.ok(claudeArgs.includes(`${join(containerLogHome("hq-test-worker"), "projects")}:/auth/claude/projects`));
 const write = adapters.claude.writeFiles;
 try {
   adapters.claude.writeFiles = async () => { throw new Error("workspace-prepared-without-subscription-login"); };

@@ -8,7 +8,7 @@ import { BRAND } from "../src/data/brand";
 
 const LEGACY_HOMES: readonly string[] = BRAND.legacyHomeDirs;
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import type { AgentCli, Tokens } from "../src/data/types";
 
 export type { Tokens };
@@ -115,7 +115,7 @@ export class UsageMeter {
   /** The same totals per model. Codex logs without a model name count under `fallbackModel`. */
   readByModel(cli: AgentCli, dir: string, cliHome: string | null = null, fallbackModel = "unknown"): ByModel | null {
     // The same folder under its earlier paths (~/.hq before the move to ~/.arima): the CLIs filed those logs by path.
-    const dirs = [dir, ...LEGACY_HOMES.map((h) => dir.replace(`/${BRAND.homeDir}/`, `/${h}/`)).filter((d) => d !== dir)];
+    const dirs = [dir, ...LEGACY_HOMES.map((h) => dir.replace(`${sep}${BRAND.homeDir}${sep}`, `${sep}${h}${sep}`)).filter((d) => d !== dir)];
     try {
       const out: ByModel = {};
       if (cli === "claude") {

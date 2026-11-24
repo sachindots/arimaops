@@ -17,7 +17,7 @@ if (spawnSync("python3", ["--version"]).status !== 0) {
 }
 
 const HOME = mkdtempSync(join(tmpdir(), "arima-stream-"));
-process.env.HOME = HOME;
+process.env.HOME = process.env.USERPROFILE = HOME;
 const { StreamEngine } = await import("../server/streamEngine");
 const { writeRunner, RUNNER_FILE } = await import("../server/streamRunner");
 const { startHttp } = await import("../server/http");

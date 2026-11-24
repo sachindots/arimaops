@@ -4,7 +4,7 @@ import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readDoc } from "../server/lib/docs";
+import { openDb, readDoc } from "../server/lib/docs";
 import { FcmSender, parseServiceAccount, PushDevices, pushAlert, type PushAlert } from "../server/push";
 import { Users } from "../server/users";
 import { RemoteGuard } from "../server/remote";
@@ -54,7 +54,7 @@ const devices = new PushDevices((deviceId, userId) => guard.device(deviceId, fal
 const token = (name: string) => `${name}-fixture-token-long-enough`;
 devices.register({ deviceId: ownerDevice, userId: owner.id, token: token("owner"), server: "https://hq.example" });
 devices.register({ deviceId: viewerDevice, userId: viewer.id, token: token("viewer"), server: "https://hq.example" });
-assert.equal(statSync(join(dir, "arima.db")).mode & 0o777, 0o600);
+if (process.platform !== "win32") assert.equal(statSync(join(dir, "arima.db")).mode & 0o777, 0o600); // no POSIX modes on Windows
 assert.throws(() => devices.register({ deviceId: "bad", userId: owner.id, token: token("bad"), server: "http://remote.example" }));
 await devices.notify({ ...alert, operatorsOnly: true });
 assert.deepEqual(deliveries.map(d => d.token), [token("owner")]);
@@ -134,6 +134,7 @@ try {
   assert.equal((await register({ cookie: session, origin: "https://hq.example" })).status, 401);
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
+  for (const d of [dir, join(dir, "guard")]) openDb(d).close(); // Windows can't delete a database file that is still open
   rmSync(dir, { recursive: true, force: true });
 }
 console.log("Push checks passed: JWT signing, OAuth cache, delivery, roles, revocation, rotation, expiry, triggers, deduplication, and HTTP authentication.");

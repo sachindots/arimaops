@@ -2,10 +2,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 const HOME = mkdtempSync(join(tmpdir(), "arima-rename-"));
-process.env.HOME = HOME;
+process.env.HOME = process.env.USERPROFILE = HOME;
 const { migrateHome, migrateLegacy } = await import("../server/project");
 const { repoDirOf, projectHome } = await import("../server/paths");
 const { writeSettings } = await import("../server/agentFiles");
@@ -44,7 +44,7 @@ git(loose, "init", "-q");
 mkdirSync(join(loose, ".hq")); writeFileSync(join(loose, ".hq", "plan.json"), "{}");
 await migrateLegacy(loose, "u");
 check("an untracked .hq moves to .arima", existsSync(join(loose, ".arima", "plan.json")) && !existsSync(join(loose, ".hq")) && repoDirOf(loose) === join(loose, ".arima"));
-check("a new repo gets .arima", repoDirOf(mkdtempSync(join(tmpdir(), "arima-new-"))).endsWith("/.arima"));
+check("a new repo gets .arima", repoDirOf(mkdtempSync(join(tmpdir(), "arima-new-"))).endsWith(`${sep}.arima`));
 
 // ---------------------------------------------------------------- old hook markers are replaced, never duplicated
 const ws = mkdtempSync(join(tmpdir(), "arima-ws-"));
@@ -53,7 +53,7 @@ writeFileSync(join(ws, ".claude", "settings.local.json"), JSON.stringify({ hooks
 writeSettings(ws, { id: "nyx", cli: "claude", mode: "local", name: "Nyx" } as never, 7420, "tok");
 const stop = JSON.parse(readFileSync(join(ws, ".claude", "settings.local.json"), "utf8")).hooks.Stop as { hooks: { command: string }[] }[];
 const cmds = stop.flatMap((e) => e.hooks.map((h) => h.command));
-check("an old '# dothq-hook' is replaced by the new one; your own hooks stay", !cmds.some((c) => c.includes("old-hq-hook")) && cmds.includes("echo mine") && cmds.filter((c) => c.includes(BRAND.hookMark)).length === 1, JSON.stringify(cmds));
+check("an old '# dothq-hook' is replaced by the new one; your own hooks stay", !cmds.some((c) => c.includes("old-hq-hook")) && cmds.includes("echo mine") && cmds.filter((c) => c.includes(BRAND.hookMark) || c.includes(BRAND.hookMarkArg)).length === 1, JSON.stringify(cmds));
 
 // ---------------------------------------------------------------- token history survives the move
 const newDir = join(HOME, ".arima", "alpha", "nyx");

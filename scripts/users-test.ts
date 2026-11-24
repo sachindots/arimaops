@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { readDoc, readLines } from "../server/lib/docs";
 
 const HOME = mkdtempSync(join(tmpdir(), "arima-users-"));
-process.env.HOME = HOME;
+process.env.HOME = process.env.USERPROFILE = HOME;
 const { Users, Throttle } = await import("../server/users");
 const { RemoteGuard, totp, base32Encode } = await import("../server/remote");
 const { startHttp } = await import("../server/http");

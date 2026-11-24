@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 const homeA = mkdtempSync(join(tmpdir(), "arima-tplfile-a-"));
 const homeB = mkdtempSync(join(tmpdir(), "arima-tplfile-b-"));
-process.env.HOME = homeA;
+process.env.HOME = process.env.USERPROFILE = homeA;
 const { hqDb } = await import("../server/lib/db");
 const { copyToProject, getTemplate, listTemplates, seatsFor, seedBuiltins } = await import("../server/templates");
 const { exportTemplate, importTemplate, libraryState, packProblems } = await import("../server/templateIO");
@@ -56,7 +56,7 @@ const extra = readTemplateFile(JSON.stringify({ ...red, template: { ...red.templ
 check("fields a template doesn't have, and pins for packs it doesn't use, are dropped", !("secretSauce" in extra.template) && !extra.packs["someone/unused"]);
 
 // ---------------------------------------------------------------- import on another HQ
-process.env.HOME = homeB; // hqDb() is per home: a fresh HQ
+process.env.HOME = process.env.USERPROFILE = homeB; // hqDb() is per home: a fresh HQ
 const dbB = (await import("../server/lib/db")).hqDb();
 const sameDb = dbB === db;
 check("the second HQ is a different database", !sameDb);

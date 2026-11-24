@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-factory-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-factory-"));
 const { Planner } = await import("../server/planner");
 const { ActionItems } = await import("../server/actionItems");
 const { BLANK_TEMPLATE } = await import("../src/data/templates");

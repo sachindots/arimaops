@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { Actor, Flow, Gate, GateEvent, TeamTemplate } from "../src/data/model";
 import type { PullRequest, Task } from "../src/data/types";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-gates-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-gates-"));
 const { assertGates, gateProblem, stagesLeft } = await import("../server/gates");
 const { hqDb } = await import("../server/lib/db");
 const { gateEvents, loadPlanTables, recordGate, savePlanTables } = await import("../server/planStore");

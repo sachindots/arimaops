@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-seats-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-seats-"));
 const { hqDb } = await import("../server/lib/db");
 const { readDoc, writeDoc } = await import("../server/lib/docs");
 const { seedBuiltins } = await import("../server/templates");

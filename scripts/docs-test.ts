@@ -21,7 +21,7 @@ const fresh = () => mkdtempSync(join(tmpdir(), "arima-docs-"));
   writeFileSync(join(dir, "audit.log"), "line one\nline two\n");
   check("an existing JSON file is imported", JSON.stringify(readDoc(file)) === '{"team":["lead"]}');
   check("the JSON file is kept as a backup", !existsSync(file) && readFileSync(file + BACKUP_SUFFIX, "utf8").includes("lead"));
-  check("the database is private to this user", (statSync(join(dir, DB_FILE)).mode & 0o777) === 0o600);
+  check("the database is private to this user", process.platform === "win32" || (statSync(join(dir, DB_FILE)).mode & 0o777) === 0o600);
   writeDoc(file, { team: ["lead", "dev"] });
   check("later writes win over the backup", (readDoc<{ team: string[] }>(file)?.team.length ?? 0) === 2);
   appendLine(join(dir, "audit.log"), "line three\n");

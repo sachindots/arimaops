@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-goals-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-goals-"));
 const { hqDb } = await import("../server/lib/db");
 const { addGoal, assertGoal, goalLines, goalsOf, updateGoal } = await import("../server/goals");
 const { loadPlanTables, savePlanTables } = await import("../server/planStore");

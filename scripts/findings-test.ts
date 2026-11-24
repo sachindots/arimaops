@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readDoc, writeDoc } from "../server/lib/docs";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-find-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-find-"));
 const repo = mkdtempSync(join(tmpdir(), "hq-find-repo-"));
 const { Findings } = await import("../server/findings");
 const { ActionItems } = await import("../server/actionItems");

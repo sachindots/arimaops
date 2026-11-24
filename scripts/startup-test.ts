@@ -8,7 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-startup-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-startup-"));
 const { STARTUP_TEMPLATE } = await import("../src/data/commsTemplates");
 const { templateErrors } = await import("../src/data/model");
 const { draftsOnly, isOutboundHost, outboundMcpProblem } = await import("../src/data/outbound");

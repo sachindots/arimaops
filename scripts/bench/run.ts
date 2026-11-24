@@ -16,7 +16,8 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { DatabaseSync } from "node:sqlite";
 import WebSocket from "ws";
@@ -25,7 +26,7 @@ import { compareRuns, scoreRun, summary, type RunFacts, type RunResult } from ".
 
 export const ROOT = join(homedir(), ".arima-bench");
 export const SIGN_INS = [".claude", ".claude.json", ".codex", ".gemini"];
-export const REPO = new URL("../..", import.meta.url).pathname;
+export const REPO = fileURLToPath(new URL("../..", import.meta.url));
 
 export const names = (b: Benchmark, stamp: string) => ({ network: `arima-bench-${b.id}`, target: `arima-bench-${b.id}-target`, run: join(ROOT, "runs", `${b.id}-${stamp}`) });
 
@@ -114,7 +115,7 @@ export class Hq {
 export function startHq(home: string, repo: string, port: number): Promise<{ proc: ChildProcess; token: string }> {
   const proc = spawn(process.execPath, [join(REPO, "dist-server/main.mjs"), "--repo", repo, "--port", String(port), "--no-open"], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, HOME: home, ARIMA_MASTER_KEY: randomBytes(32).toString("hex") },
+    env: { ...process.env, HOME: home, USERPROFILE: home, ARIMA_MASTER_KEY: randomBytes(32).toString("hex") },
   });
   let log = "";
   return new Promise((done, fail) => {
@@ -333,7 +334,7 @@ async function main() {
   if (mode === "dry") console.log(`\n✓ dry run: HQ, team${b.kind === "security" ? ", lab mode, scope and target" : ""} set up and torn down; ${r.facts.findings.length} findings, $${r.facts.usd.toFixed(2)}.`);
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split("/").pop()!)) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch((e) => {
     console.error(`✗ ${e instanceof Error ? e.message : e}`);
     process.exit(1);

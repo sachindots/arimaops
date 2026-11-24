@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GhPr } from "../server/github";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-ifaces-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-ifaces-"));
 const { hqDb } = await import("../server/lib/db");
 const { SqliteMemory } = await import("../server/memory");
 const { buildServer } = await import("../server/mcp");

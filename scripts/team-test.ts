@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-team-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-team-"));
 const { saveCompany, companyText, COMPANY_MAX } = await import("../server/company");
 const { roleMd } = await import("../server/agentFiles");
 const { seatRecords } = await import("../server/metrics");

@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-overflow-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-overflow-"));
 const { Overflow } = await import("../server/overflow");
 const { ActionItems } = await import("../server/actionItems");
 const { detectLimit } = await import("../server/limits");

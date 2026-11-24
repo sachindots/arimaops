@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { readDoc } from "../server/lib/docs";
 import WebSocket from "ws";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "hq-auth-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "hq-auth-"));
 const { startHttp } = await import("../server/http");
 const { RemoteGuard } = await import("../server/remote");
 const { agentTokenFor } = await import("../server/paths");

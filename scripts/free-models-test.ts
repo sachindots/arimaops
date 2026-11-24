@@ -4,7 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.HOME = mkdtempSync(join(tmpdir(), "arima-free-"));
+process.env.HOME = process.env.USERPROFILE = mkdtempSync(join(tmpdir(), "arima-free-"));
 const { parseFreeModels, closestFree, bestFree, freeSourceOf } = await import("../src/data/freeModels");
 const { swapGoneModels, refreshFreeModels, freeModelsState, withdrawFreeModel, onFreeModels } = await import("../server/freeModels");
 const { Overflow } = await import("../server/overflow");
