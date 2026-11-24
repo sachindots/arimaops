@@ -14,4 +14,4 @@ ts-rs.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-jsonschema = { version = "=0.60.1", default-features = false }
+jsonschema = { version = "=0.63.1", default-features = false }
