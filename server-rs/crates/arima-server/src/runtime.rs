@@ -366,6 +366,17 @@ impl AgentRuntime {
             return Err("Agents can't start here: Docker isn't available to HQ. Mount the Docker socket into HQ to turn the agent runtime on.".into());
         }
         self.engine.ping().await.map_err(|e| e.to_string())?;
+        let launched = self.launch(state, project_id, agent_id).await;
+        if launched.is_err() {
+            // `plan` issues a live HQ token and proxy credential; a start that never ran must not leave them behind.
+            state.inner.mcp.revoke_agent_token(project_id, agent_id);
+            state.inner.egress.revoke(project_id, agent_id);
+        }
+        launched
+    }
+
+    /// Plans the agent's container, then creates, starts and attaches to it.
+    async fn launch(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<(), String> {
         let plan = self.plan(state, project_id, agent_id)?;
         self.prepare_network(state, project_id, plan.enforce.as_ref()).await?;
         self.engine.ensure_image(&self.config.image).await.map_err(|e| e.to_string())?;
@@ -758,6 +769,46 @@ mod tests {
             }
         });
         (path, log)
+    }
+
+    #[tokio::test]
+    async fn a_start_that_fails_after_planning_revokes_the_token_and_proxy_credential() {
+        use crate::{team, team_edit as edit};
+        let root = tempfile::TempDir::new().unwrap();
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([7u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
+        let pid = state.default_project().unwrap().0;
+        team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+        edit::set_team_mode(&state, &pid, &[json!("container")]).unwrap();
+        let agent = team::load(&state, &pid).unwrap().team[0]["id"].as_str().unwrap().to_owned();
+        // A Docker that answers everything except creating the container.
+        let socket = root.path().join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 65536];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let create = String::from_utf8_lossy(&buf[..n]).starts_with("POST /containers/create");
+                let reply = if create { "HTTP/1.0 500 X\r\nContent-Length: 2\r\n\r\n{}" } else { "HTTP/1.0 200 X\r\nContent-Length: 2\r\n\r\n{}" };
+                let _ = stream.write_all(reply.as_bytes()).await;
+            }
+        });
+        let mut rt = AgentRuntime::new(RuntimeConfig {
+            enabled: true,
+            image: "img".into(),
+            network: "net".into(),
+            workspaces_root: root.path().into(),
+            workspaces_host_root: root.path().into(),
+            hq_url: Some("http://arima-hq:7420".into()),
+            egress_port: 8420,
+            hq_container: None,
+        });
+        rt.engine = DockerEngine::new(&socket);
+
+        assert!(rt.start(&state, &pid, &agent).await.is_err());
+        let tokens: i64 = state.inner.db.read(|c| c.query_row("SELECT COUNT(*) FROM mcp_tokens WHERE agent_id = ?1", [&agent], |r| r.get(0)).map_err(arima_db::DbError::from)).unwrap();
+        assert_eq!(tokens, 0, "no HQ token outlives the failed start");
+        assert!(state.inner.egress.policy(&pid, &agent).is_none(), "nor does its proxy credential");
     }
 
     #[tokio::test]
