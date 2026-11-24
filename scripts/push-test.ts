@@ -4,7 +4,7 @@ import { generateKeyPairSync, verify } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readDoc } from "../server/lib/docs";
+import { openDb, readDoc } from "../server/lib/docs";
 import { FcmSender, parseServiceAccount, PushDevices, pushAlert, type PushAlert } from "../server/push";
 import { Users } from "../server/users";
 import { RemoteGuard } from "../server/remote";
@@ -134,6 +134,7 @@ try {
   assert.equal((await register({ cookie: session, origin: "https://hq.example" })).status, 401);
 } finally {
   await new Promise<void>(resolve => server.close(() => resolve()));
+  for (const d of [dir, join(dir, "guard")]) openDb(d).close(); // Windows can't delete a database file that is still open
   rmSync(dir, { recursive: true, force: true });
 }
 console.log("Push checks passed: JWT signing, OAuth cache, delivery, roles, revocation, rotation, expiry, triggers, deduplication, and HTTP authentication.");
