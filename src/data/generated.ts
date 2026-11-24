@@ -57,11 +57,11 @@ export type PermissionPayload = { toolName: string, commandOrPath: string, reaso
 
 export type PackChange = { 
 /**
- * "skill" or "toolServer".
+ * "file" (named by its path in the plugin) or "toolServer".
  */
 kind: string, name: string, 
 /**
- * The SKILL.md or tool descriptions as approved; none when new.
+ * The file or tool descriptions as approved; none when new.
  */
 before: string | null, 
 /**
@@ -175,7 +175,13 @@ export type PackApproval = { by: string,
  */
 at: string, };
 
-export type PackEntry = { source: PackSource, version: string | null, skills: { [key in string]?: PackSkill }, toolServers: { [key in string]?: PackToolServer }, 
+export type PackEntry = { source: PackSource, version: string | null, 
+/**
+ * The hash of every file the plugin ships (paths relative to its root): what an approval pins, and what agents
+ * get, whole and read-only. Empty in an entry read before plugins shipped whole, so it mounts nothing until
+ * re-reviewed.
+ */
+tree: string, skills: { [key in string]?: PackSkill }, toolServers: { [key in string]?: PackToolServer }, 
 /**
  * Hosts the pack says it reaches (its manifest's `network.hosts`).
  */
@@ -185,7 +191,8 @@ egress: Array<string>,
  */
 secrets: Array<string>, 
 /**
- * Parts HQ doesn't install: hooks, commands, subagents and command (stdio) tool servers.
+ * Parts HQ doesn't install: hooks, commands, subagents, command (stdio) tool servers, and files left out of the
+ * tree (binary, too large, links).
  */
 ignored: Array<string>, scan: PackScan, 
 /**
