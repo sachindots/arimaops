@@ -2,7 +2,7 @@
 # Built from the repo root:   docker build -f docker/hq.Dockerfile -t arimaops .
 # Run it with compose.yaml (host network, Docker socket, your home folder at the same path).
 
-FROM node:22-bookworm-slim AS build
+FROM node:24-trixie-slim AS build
 WORKDIR /app
 RUN npm install -g pnpm@10
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
@@ -11,7 +11,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build && pnpm prune --prod
 
-FROM node:22-bookworm-slim
+FROM node:24-trixie-slim
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
@@ -20,7 +20,7 @@ RUN apt-get update \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/github.gpg \
  && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
  && echo "deb [signed-by=/etc/apt/keyrings/github.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
- && echo "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list \
+ && echo "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian trixie stable" > /etc/apt/sources.list.d/docker.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends gh docker-ce-cli docker-buildx-plugin \
  && rm -rf /var/lib/apt/lists/*
