@@ -18,11 +18,11 @@ jobs:
             node: 24
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: node scripts/smoke-test.mjs pack/*.tgz 7431
       - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: package
           path: pack/*.tgz
@@ -54,8 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     container: node:22-bookworm-slim
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: package
           path: pack
