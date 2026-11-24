@@ -36,7 +36,7 @@ pub struct McpRegistry {
 }
 
 fn token_digest(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 impl McpRegistry {

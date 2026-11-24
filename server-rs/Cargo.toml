@@ -17,8 +17,8 @@ license = "AGPL-3.0-or-later"
 rust-version = "1.85"
 
 [workspace.dependencies]
-aes-gcm = "0.10"
-argon2 = "0.5"
+aes-gcm = "0.11"
+argon2 = "0.6"
 arima-core = { path = "crates/arima-core" }
 arima-db = { path = "crates/arima-db" }
 arima-auth = { path = "crates/arima-auth" }
@@ -28,22 +28,22 @@ axum = { version = "0.8", features = ["ws"] }
 base32 = "0.5"
 base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "3", features = ["rand_core"] }
 futures-util = "0.3"
 hex = "0.4"
-hmac = "0.12"
+hmac = "0.13"
 mime_guess = "2"
 percent-encoding = "2"
 qrcode = "0.15"
-rand = "0.8"
+rand = "0.10"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha1 = "0.10"
-sha2 = "0.10"
+sha1 = "0.11"
+sha2 = "0.11"
 subtle = "2.6"
 tempfile = "3"
 thiserror = "2"

@@ -13,8 +13,9 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::{DateTime, Utc};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::Rng;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -165,8 +166,8 @@ fn encrypt_bundle(bundle: &BackupBundle, key_material: &[u8]) -> Result<Vec<u8>>
 
     let mut salt = [0u8; 16];
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut salt);
-    OsRng.fill_bytes(&mut nonce_bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut salt);
+    UnwrapErr(SysRng).fill_bytes(&mut nonce_bytes);
 
     let key = derive_archive_key(key_material, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -180,7 +181,7 @@ fn encrypt_bundle(bundle: &BackupBundle, key_material: &[u8]) -> Result<Vec<u8>>
 
     let ciphertext = cipher
         .encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            &Nonce::from(nonce_bytes),
             Payload {
                 msg: &plaintext,
                 aad: &header,
@@ -225,7 +226,8 @@ fn decrypt_bundle(archive_bytes: &[u8], key_material: &[u8]) -> Result<BackupBun
 
     let plaintext = cipher
         .decrypt(
-            Nonce::from_slice(nonce_bytes),
+            &Nonce::try_from(nonce_bytes)
+                .map_err(|_| DbError::InvalidInput("bad backup nonce length".into()))?,
             Payload {
                 msg: ciphertext,
                 aad,

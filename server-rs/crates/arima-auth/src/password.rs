@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 
 use crate::error::{AuthError, Result};
@@ -28,9 +28,8 @@ pub fn validate_password_policy(plain: &str) -> Result<()> {
 pub async fn hash_password(plain: String) -> Result<String> {
     validate_password_policy(&plain)?;
     tokio::task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
         Argon2::default()
-            .hash_password(plain.as_bytes(), &salt)
+            .hash_password(plain.as_bytes())
             .map(|h| h.to_string())
             .map_err(|e| AuthError::Crypto(format!("argon2 hash failed: {e}")))
     })
