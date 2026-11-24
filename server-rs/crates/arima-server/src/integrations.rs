@@ -361,7 +361,7 @@ pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<
 pub(crate) fn drop_servers(state: &AppState, project_id: &str, names: &[String]) -> Result<(), String> {
     update_tool_servers(state, project_id, |servers| {
         servers.retain(|s| !names.contains(&s.name));
-        Ok(())
+        crate::codemode::store_tools(state, project_id, |all| all.retain(|n, _| !names.contains(n)))
     })?;
     for name in names {
         let _ = state.inner.vault_secrets.delete(&mcp_secret_id(project_id, name));
@@ -487,7 +487,13 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
                 (s.blocked, s.tools_sha256) = (l.blocked.clone(), l.tools_sha256.clone());
             }
         }
-        Ok(())
+        crate::codemode::store_tools(state, project_id, |all| {
+            for s in servers.iter() {
+                if let Some((_, Ok(tools))) = results.iter().find(|(n, _)| s.name == *n) {
+                    all.insert(s.name.clone(), json!(tools));
+                }
+            }
+        })
     })?;
     broadcast(state, project_id);
     Ok(())

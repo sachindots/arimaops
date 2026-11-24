@@ -6,11 +6,15 @@
 //! the map from each identifier back to the real server and tool name. The runner calls the tools through HQ with
 //! the agent's own token, so seat ticks, blocked servers, vault keys and audit apply as for a direct call.
 
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::Json;
 use serde_json::{json, Map, Value};
 
 use crate::integrations::{save_setting, setting, tool_servers};
 use crate::mcp::{McpCaller, TOOLS};
-use crate::state::AppState;
+use crate::routes::{agent_caller, ApiError};
+use crate::state::{AppState, PeerIp};
 
 /// The description's cap, in characters (about 4,000 tokens). Past it the declarations keep signatures only, and
 /// past that some tools are left for `codemode.search`.
@@ -36,6 +40,13 @@ pub fn set_switch(state: &AppState, project_id: &str, args: &[Value]) -> Result<
     save_setting(state, &switch_key(project_id), &json!(args.first().and_then(Value::as_bool) == Some(true)))?;
     crate::integrations::broadcast(state, project_id);
     Ok(())
+}
+
+/// Keeps each server's tools from its last good check, for the declarations. Called under the tool-server lock.
+pub(crate) fn store_tools(state: &AppState, project_id: &str, edit: impl FnOnce(&mut Map<String, Value>)) -> Result<(), String> {
+    let mut all = setting(state, &tools_key(project_id)).and_then(|v| v.as_object().cloned()).unwrap_or_default();
+    edit(&mut all);
+    save_setting(state, &tools_key(project_id), &Value::Object(all))
 }
 
 /// One namespace: HQ's own tools (`server` is none) or one tool server's.
@@ -159,8 +170,10 @@ fn ts(schema: &Value, docs: bool, depth: usize) -> String {
     if let Some(values) = schema["enum"].as_array().filter(|e| !e.is_empty()) {
         return union(values.iter().map(Value::to_string).collect());
     }
+    // `oneOf: [{ required: [..] }, ..]` beside `properties` only says which fields are needed; the base type stands.
+    let shapes = |alts: &Vec<Value>| alts.iter().any(|a| ["type", "properties", "enum", "const", "$ref", "anyOf", "oneOf", "allOf", "items"].iter().any(|k| a.get(k).is_some()));
     for key in ["anyOf", "oneOf"] {
-        if let Some(alts) = schema[key].as_array() {
+        if let Some(alts) = schema[key].as_array().filter(|alts| shapes(alts)) {
             return union(alts.iter().map(|a| ts(a, docs, depth + 1)).collect());
         }
     }
@@ -193,10 +206,13 @@ fn ts(schema: &Value, docs: bool, depth: usize) -> String {
 }
 
 fn object(schema: &Value, docs: bool, depth: usize) -> String {
-    let Some(props) = schema["properties"].as_object().filter(|p| !p.is_empty()) else {
+    let Some(props) = schema["properties"].as_object() else {
         let extra = &schema["additionalProperties"];
         return format!("Record<string, {}>", if extra.is_object() { ts(extra, docs, depth + 1) } else { "any".into() });
     };
+    if props.is_empty() {
+        return "{}".into();
+    }
     let required: Vec<&str> = schema["required"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     let fields: Vec<String> = props
         .iter()
@@ -279,6 +295,16 @@ pub fn declarations(apis: &[Api]) -> Value {
     json!({ "description": description(apis), "namespaces": namespaces, "index": index(apis) })
 }
 
+/// `GET /api/projects/{id}/mcp-codemode/declarations` with the agent's HQ token. Refused while the switch is off,
+/// so a runner left in a CLI started before the switch went off stops at its next call.
+pub async fn declarations_route(State(state): State<AppState>, Path(project_id): Path<String>, headers: HeaderMap, PeerIp(peer_ip): PeerIp) -> Result<Json<Value>, ApiError> {
+    let caller = agent_caller(&state, &headers, peer_ip, Some(&project_id))?;
+    if !enabled(&state, &project_id) {
+        return Err(ApiError::new(StatusCode::FORBIDDEN, "Tools as code is off for this project. Restart the agent to get its tools back."));
+    }
+    Ok(Json(declarations(&catalog(&state, &caller))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,5 +331,70 @@ mod tests {
             std::fs::write(format!("{dir}/codemode.txt"), &desc).unwrap();
         }
         assert!(codemode * 2 <= today, "today {today}, codemode {codemode}");
+    }
+
+    #[test]
+    fn every_schema_shape_becomes_its_typescript_type() {
+        let t = |s: Value| ts_type(&s, false);
+        assert_eq!(t(json!({ "type": "string" })), "string");
+        assert_eq!(t(json!({ "type": "integer", "minimum": 1, "maximum": 9 })), "number");
+        assert_eq!(t(json!({ "type": "boolean" })), "boolean");
+        assert_eq!(t(json!({ "type": ["string", "null"] })), "string | null");
+        assert_eq!(t(json!({ "enum": ["low", "high"] })), "\"low\" | \"high\"");
+        assert_eq!(t(json!({ "const": 3 })), "3");
+        assert_eq!(t(json!({ "anyOf": [{ "type": "string" }, { "type": "number" }, { "type": "integer" }] })), "string | number");
+        assert_eq!(t(json!({ "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] })), "string | string[]");
+        assert_eq!(t(json!({ "allOf": [{ "type": "string" }, { "type": "null" }] })), "(string) & (null)");
+        assert_eq!(t(json!({ "type": "array", "items": { "enum": ["a", "b"] } })), "(\"a\" | \"b\")[]");
+        assert_eq!(t(json!({ "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } })), "{ id: string }[]");
+        assert_eq!(t(json!({ "type": "array" })), "any[]");
+        assert_eq!(t(json!({ "type": "object" })), "Record<string, any>");
+        assert_eq!(t(json!({ "type": "object", "properties": {} })), "{}");
+        assert_eq!(t(json!({ "type": "object", "additionalProperties": { "type": "number" } })), "Record<string, number>");
+        assert_eq!(t(json!({ "properties": { "a-b": { "type": "string" }, "n": { "type": "object", "properties": { "x": { "type": "boolean" } } } }, "required": ["a-b"] })), "{ \"a-b\": string; n?: { x?: boolean } }");
+        assert_eq!(t(json!({ "$ref": "#/defs/x" })), "any");
+        assert_eq!(t(json!({ "type": "object", "properties": { "a": { "type": "string" }, "b": { "type": "string" } }, "oneOf": [{ "required": ["a"] }, { "required": ["b"] }] })), "{ a?: string; b?: string }");
+        assert_eq!(ts_type(&json!({ "properties": { "q": { "type": "string", "description": "Search */ words" } } }), true), "{ /** Search * / words */ q?: string }", "a description can't close its comment");
+    }
+
+    #[test]
+    fn every_hq_tool_is_declared_with_a_typed_argument_object() {
+        let d = declarations(&apis(&[(None, hq_tools())]));
+        let tools = d["namespaces"]["arima"]["tools"].as_object().unwrap();
+        assert_eq!(tools.len(), TOOLS.len());
+        for t in TOOLS {
+            assert_eq!(tools[t.name], t.name, "{} keeps its name", t.name);
+            let decl = ts_type(&(t.input_schema)(), false);
+            assert!(decl.starts_with('{') && !decl.starts_with("{ any"), "{}: {decl}", t.name);
+            assert!(d["description"].as_str().unwrap().contains(&format!("function {}(args: ", t.name)), "{}", t.name);
+        }
+        assert!(d["namespaces"]["arima"]["server"].is_null());
+    }
+
+    #[test]
+    fn names_become_unique_identifiers_that_map_back() {
+        let tools = [json!({ "name": "get-file" }), json!({ "name": "get_file" }), json!({ "name": "2fa" }), json!({ "name": "" })];
+        let set = apis(&[(None, vec![]), (Some("my-docs".into()), tools.to_vec()), (Some("search".into()), vec![]), (Some("arima".into()), vec![])]);
+        assert_eq!(set.iter().map(|a| a.ns.as_str()).collect::<Vec<_>>(), ["arima", "my_docs", "search_2", "arima_2"]);
+        let d = declarations(&set);
+        assert_eq!(d["namespaces"]["my_docs"], json!({ "server": "my-docs", "tools": { "get_file": "get-file", "get_file_2": "get_file", "_2fa": "2fa", "_": "" } }));
+        assert_eq!(d["namespaces"]["arima_2"]["server"], "arima");
+    }
+
+    #[test]
+    fn past_the_cap_the_description_keeps_signatures_and_search_finds_the_rest() {
+        let many: Vec<(Option<String>, Vec<Value>)> = std::iter::once((None, hq_tools())).chain((0..10).map(|i| (Some(format!("s{i}")), server_tools()))).collect();
+        let d = declarations(&apis(&many));
+        let desc = d["description"].as_str().unwrap();
+        assert!(desc.len() <= DESCRIPTION_CAP, "{}", desc.len());
+        assert!(desc.contains("codemode.search") && desc.contains("more tools aren't listed"), "{desc}");
+        assert!(!desc.contains("/**"), "signatures only");
+        let index = d["index"].as_array().unwrap();
+        assert_eq!(index.len(), TOOLS.len() + 210);
+        let last = index.iter().find(|e| e["name"] == "codemode.s9.get_job_logs").unwrap();
+        assert!(last["declaration"].as_str().unwrap().starts_with("/** "), "search returns the full declaration: {last}");
+
+        let small = declarations(&apis(&[(None, hq_tools())]));
+        assert!(!small["description"].as_str().unwrap().contains("codemode.search"), "under the cap there's nothing to search for");
     }
 }

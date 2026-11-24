@@ -291,6 +291,7 @@ pub fn router_with_state(state: AppState) -> Router {
         )
         .route("/mcp", post(mcp_root_endpoint))
         .route("/api/projects/{id}/mcp", post(mcp_project_endpoint))
+        .route("/api/projects/{id}/mcp-codemode/declarations", get(crate::codemode::declarations_route))
         .route(
             "/api/projects/{id}/mcp/{server}",
             post(crate::mcp_forward::forward).get(crate::mcp_forward::forward).delete(crate::mcp_forward::forward).layer(axum::extract::DefaultBodyLimit::max(crate::mcp_forward::MAX_REQUEST_BYTES)),
