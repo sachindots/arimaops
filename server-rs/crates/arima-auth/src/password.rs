@@ -38,7 +38,14 @@ pub async fn hash_password(plain: String) -> Result<String> {
 }
 
 /// Verifies `plain` against a PHC Argon2id string on a blocking worker thread.
+///
+/// Empty hashes (e.g. users imported from v1 without password hashes) fail cleanly
+/// with constant-time dummy work instead of a hash parse error.
 pub async fn verify_password(plain: String, phc_hash: String) -> Result<bool> {
+    if phc_hash.is_empty() {
+        verify_dummy_password(plain).await;
+        return Ok(false);
+    }
     if plain.chars().count() > MAX_PASSWORD_LEN {
         return Ok(false);
     }
@@ -61,4 +68,17 @@ pub async fn verify_dummy_password(plain: String) {
         }
     })
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn empty_hash_returns_false_without_crypto_error() {
+        let ok = verify_password("some-candidate-password".into(), String::new())
+            .await
+            .expect("empty hash should return Ok(false), not an error");
+        assert!(!ok);
+    }
 }
