@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use crate::form::FormPayload;
 use crate::meeting::{MeetingKind, MeetingUrgency};
-use crate::pack::PackChange;
+use crate::pack::{PackChange, PackFileSummary};
 
 /// Lifecycle state of a visual decision shown in Inbox and inline Chat.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -185,7 +185,16 @@ pub enum DecisionPayload {
         /// The approved commit; none on first install.
         from: Option<String>,
         to: String,
+        /// Tree hash of the approved pack; none on first install. Used to fetch collapsed file diffs on demand.
+        #[serde(default, rename = "fromTree")]
+        from_tree: Option<String>,
+        /// Tree hash of the pack under review. Used to fetch collapsed file diffs on demand.
+        #[serde(default, rename = "toTree")]
+        to_tree: String,
         changed: Vec<PackChange>,
+        /// Changed files outside `skills/`, `agents/`, `resources/` and `SKILL.md` references, shown collapsed.
+        #[serde(default, rename = "otherFiles")]
+        other_files: Vec<PackFileSummary>,
         egress: Vec<String>,
         secrets: Vec<String>,
         ignored: Vec<String>,

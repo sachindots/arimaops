@@ -160,9 +160,13 @@ function Conversation({
   );
   const threadDecisions = useMemo(
     () =>
-      (snap.visualDecisions ?? []).filter(
-        (d) => d.status === "open" && (thread === TEAM || d.fromId === thread),
-      ),
+      (snap.visualDecisions ?? [])
+        .filter(
+          (d) =>
+            (d.status === "open" || d.payload.kind === "form") &&
+            (thread === TEAM || d.fromId === thread),
+        )
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     [snap.visualDecisions, thread],
   );
   const end = useRef<HTMLDivElement>(null);
@@ -200,7 +204,7 @@ function Conversation({
       </header>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6" aria-live="polite">
-        {list.length === 0 && <p className="text-[13px] text-muted">{agent ? `No messages with ${agent.name} yet.` : "No messages yet. Ask the team something below."}</p>}
+        {list.length === 0 && threadDecisions.length === 0 && <p className="text-[13px] text-muted">{agent ? `No messages with ${agent.name} yet.` : "No messages yet. Ask the team something below."}</p>}
         {list.map((m, i) => {
           const prev = list[i - 1];
           const newDay = !prev || new Date(prev.at).toDateString() !== new Date(m.at).toDateString();

@@ -6,8 +6,8 @@
 //! Container mode only. HQ reaches Docker through its Unix socket (see `arima_agents::DockerEngine`), so mounting
 //! that socket into HQ is what turns the runtime on. Without it every start answers with a plain error.
 
-use std::collections::{BTreeSet, HashMap};
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use arima_agents::{DockerEngine, DEFAULT_CONTAINER_CPUS, DEFAULT_CONTAINER_MEMORY_MB};
@@ -148,6 +148,18 @@ pub fn refresh_role(existing: Option<&str>, role: &str) -> String {
     match (text.find(START), text.find(END)) {
         (Some(a), Some(b)) if a < b => format!("{}{block}{}", &text[..a], text[b + END.len()..].trim_start_matches('\n')),
         _ => block,
+    }
+}
+
+/// Pre-creates a bind mount's target directory inside the agent's workspace so HQ (the container's non-root user)
+/// owns every intermediate folder (such as `.claude/` or `.agents/`) instead of Docker creating them as `root:root`.
+fn ensure_mountpoint(workspace_dir: &Path, container_path: &str) -> Result<(), String> {
+    let Some(rel) = container_path.strip_prefix("/workspace/") else { return Ok(()) };
+    let host = workspace_dir.join(rel);
+    match std::fs::create_dir_all(&host) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && host.is_dir() => Ok(()),
+        Err(e) => Err(format!("couldn't prepare mount point {container_path}: {e}")),
     }
 }
 
@@ -497,24 +509,42 @@ impl AgentRuntime {
         let workspace_host = self.config.workspaces_host_root.join(&slug).join(agent_id).display().to_string();
         let mut binds = vec![format!("{workspace_host}:/workspace:rw")];
         // Copied outside every agent's /workspace and mounted read-only, so an agent can't edit a skill it was given.
-        // A pack skill comes from inside its whole plugin tree, which is also mounted, so its sibling files are there.
+        // Each skill in the CLI's skills_dir is a symlink inside a read-only view directory pointing into the
+        // read-only mounted plugin tree (or standalone skill mount), so relative paths like `../../resources/...`
+        // resolve physically inside the plugin while keeping both the plugin and the skills_dir read-only.
         if let Some(skills_dir) = adapter.skills_dir {
             let role_id = agent["roleId"].as_str().unwrap_or_default();
             let mut plugin_roots = BTreeSet::new();
+            let mut standalone_mounted = BTreeSet::new();
+            let mut links = BTreeMap::new();
             for skill in crate::skills::approved_skills(state, project_id, role_id) {
                 let Some(plugin) = &skill.plugin else {
-                    crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
-                    let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
-                    binds.push(format!("{}:{skills_dir}/{}:ro", host.display(), skill.name));
+                    if let std::collections::btree_map::Entry::Vacant(e) = links.entry(skill.name.clone()) {
+                        crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
+                        let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
+                        let target = format!("{}/.arima/skills/{}", crate::cli::AGENT_HOME, skill.name);
+                        if standalone_mounted.insert(skill.name) {
+                            ensure_mountpoint(&dir, &target)?;
+                            binds.push(format!("{}:{target}:ro", host.display()));
+                        }
+                        e.insert(target);
+                    }
                     continue;
                 };
                 let tree = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(crate::packs::STORED_PLUGIN);
                 let root = format!("{}/{}", crate::cli::AGENT_HOME, plugin.dir);
                 if plugin_roots.insert(root.clone()) {
                     crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, crate::packs::STORED_PLUGIN, &skill.files)?;
+                    ensure_mountpoint(&dir, &root)?;
                     binds.push(format!("{}:{root}:ro", tree.display()));
                 }
-                binds.push(format!("{}:{skills_dir}/{}:ro", tree.join(&plugin.skill).display(), skill.name));
+                links.entry(skill.name).or_insert_with(|| format!("{root}/{}", plugin.skill));
+            }
+            if !links.is_empty() {
+                let view_hash = crate::skills::store_links(&self.config.workspaces_root.join(SKILLS_FOLDER), &links)?;
+                let view_host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join("views").join(&view_hash);
+                ensure_mountpoint(&dir, skills_dir)?;
+                binds.push(format!("{}:{skills_dir}:ro", view_host.display()));
             }
             // One variable can name one plugin: with several, each skill's plugin is still at its own path.
             if let [root] = Vec::from_iter(plugin_roots).as_slice() {

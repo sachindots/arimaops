@@ -113,3 +113,20 @@ pub struct PackChange {
     /// None when the item goes away.
     pub after: Option<String>,
 }
+
+/// Summary of a changed shipped file outside the primary review folders (`skills/`, `agents/`, `resources/`,
+/// and files a `SKILL.md` references). Shown collapsed on the review card; its full diff is fetched on expand.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PackFileSummary {
+    pub path: String,
+    /// `"added"`, `"changed"`, or `"removed"`.
+    pub change: String,
+    /// Size in bytes (after, or before when removed).
+    pub bytes: u32,
+    /// Scan result for this file: `"clean"`, `"warn"`, or `"block"`.
+    pub scan: String,
+    /// Number of scan findings on this file.
+    #[serde(default)]
+    pub findings: u32,
+}

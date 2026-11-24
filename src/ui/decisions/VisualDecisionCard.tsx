@@ -226,7 +226,7 @@ export function VisualDecisionCard({
         <MeetingRequestCard decision={decision} payload={decision.payload} compact={compact} />
       ) : decision.payload.kind === "form" ? (
         <Suspense fallback={<p className="m-0 text-[13px] text-muted">Loading the form…</p>}>
-          <FormCard key={decision.status} decision={decision} payload={decision.payload} />
+          <FormCard key={`${decision.id}:${decision.status}:${decision.closedAt ?? ""}`} decision={decision} payload={decision.payload} />
         </Suspense>
       ) : (
         <div className="flex flex-col gap-3">
@@ -235,7 +235,15 @@ export function VisualDecisionCard({
               <SafeMarkdown markdown={decision.payload.markdown} />
             </div>
           )}
-          {decision.payload.kind === "pack-review" && <PackReviewBody payload={decision.payload} roles={resolved ? decision.payload.roles : packRoles} onRoles={resolved || isViewer ? undefined : setPackRoles} />}
+          {decision.payload.kind === "pack-review" && (
+            <PackReviewBody
+              decisionId={decision.id}
+              projectId={decision.projectId}
+              payload={decision.payload}
+              roles={resolved ? decision.payload.roles : packRoles}
+              onRoles={resolved || isViewer ? undefined : setPackRoles}
+            />
+          )}
           {decision.payload.kind === "gate-approval" && (
             <div className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3 text-[13px]">
               <div>

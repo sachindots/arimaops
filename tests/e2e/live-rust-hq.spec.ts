@@ -1,9 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "@playwright/test";
 import { attachErrorCollector, drawCanvasStroke, gotoWorkspace, openSettings } from "./helpers";
 
@@ -720,6 +722,185 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     const e2eConn = connListJson.connections.find((c) => c.id === "e2e-slack");
     expect(e2eConn).toBeTruthy();
     expect(e2eConn!.hasSecret).toBe(true);
+
+    // 9. Agent forms over the real MCP + WebSocket stack: ask_user(ui) -> Inbox -> browser answer -> outbox + read-only history
+    const agentId = "cipher";
+    const mcpToken = `mcp_e2e_form_${crypto.randomBytes(12).toString("hex")}`;
+    const tokenHash = crypto.createHash("sha256").update(mcpToken).digest("hex");
+    const dbPath = path.join(tempHome, "arima.db");
+    {
+      const db = new DatabaseSync(dbPath);
+      db.prepare(
+        "INSERT INTO mcp_tokens (project_id, agent_id, token_hash, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(project_id, agent_id) DO UPDATE SET token_hash = excluded.token_hash, created_at = excluded.created_at",
+      ).run(projectId, agentId, tokenHash, Date.now());
+      db.close();
+    }
+
+    const askRes = await fetch(`${hqOrigin}/api/projects/${encodeURIComponent(projectId)}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: hqOrigin,
+        Authorization: `Bearer ${mcpToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ask_user",
+          arguments: {
+            title: "Configure release pipeline",
+            details: "Choose the release channel and tag prefix before tagging.",
+            ui: {
+              components: [
+                { id: "root", component: "Column", children: ["intro", "prefix", "channel", "checks", "go"] },
+                { id: "intro", component: "Text", text: { "@path": "/intro" } },
+                { id: "prefix", component: "TextField", label: "Tag prefix", value: { "@path": "/prefix" }, placeholder: "v" },
+                {
+                  id: "channel",
+                  component: "Select",
+                  label: "Release channel",
+                  options: [
+                    { value: "stable", label: "Stable" },
+                    { value: "beta", label: "Beta" },
+                  ],
+                  value: { "@path": "/channel" },
+                },
+                {
+                  id: "checks",
+                  component: "CheckList",
+                  label: "Pre-release checks",
+                  multi: true,
+                  options: [
+                    { value: "sign", label: "Sign artifacts" },
+                    { value: "notes", label: "Draft release notes" },
+                  ],
+                  values: { "@path": "/checks" },
+                },
+                {
+                  id: "go",
+                  component: "ButtonRow",
+                  buttons: [
+                    {
+                      label: "Confirm release",
+                      variant: "primary",
+                      action: { event: { name: "confirm", context: { prefix: { "@path": "/prefix" } } } },
+                    },
+                    { label: "Cancel", action: { event: { name: "cancel" } } },
+                  ],
+                },
+              ],
+              data: { intro: "Release settings for this project.", prefix: "", channel: "stable", checks: [] },
+            },
+          },
+        },
+      }),
+    });
+    expect(askRes.status).toBe(200);
+    const askJson = (await askRes.json()) as {
+      result?: { structuredContent?: { decisionId: string; status: string } };
+      error?: { message: string };
+    };
+    expect(askJson.error, `MCP ask_user failed: ${JSON.stringify(askJson.error)}`).toBeUndefined();
+    const formDecisionId = askJson.result?.structuredContent?.decisionId ?? "";
+    expect(formDecisionId).toBeTruthy();
+
+    // Close Settings modal if still open from step 7c, then open Inbox and answer the live form card
+    const doneSettingsBtn = page.getByRole("button", { name: "Done" });
+    if (await doneSettingsBtn.isVisible().catch(() => false)) {
+      await doneSettingsBtn.click();
+    }
+    await gotoWorkspace(page, "Inbox");
+    const waitingList = page.getByRole("listbox", { name: "Waiting on you" });
+    const formOption = waitingList.getByRole("option", { name: /Configure release pipeline/i });
+    await expect(formOption).toBeVisible({ timeout: 10_000 });
+    await formOption.locator("button").first().click();
+
+    const formCard = page.getByRole("article", { name: "Configure release pipeline" });
+    await expect(formCard.getByText("Release settings for this project.")).toBeVisible();
+    await formCard.getByLabel("Tag prefix").fill("rel-");
+    await formCard.getByRole("combobox", { name: "Release channel" }).click();
+    await page.getByRole("listbox", { name: "Release channel" }).getByRole("option", { name: "Beta" }).click();
+    await formCard.getByRole("button", { name: /Sign artifacts/i }).click();
+    await formCard.getByRole("button", { name: "Confirm release" }).click();
+
+    // Form leaves the open Inbox list once answered
+    await expect(waitingList.getByRole("option", { name: /Configure release pipeline/i })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+
+    // Verify resolved decision via HQ REST API
+    const decsRes = await fetch(`${hqOrigin}/api/projects/${encodeURIComponent(projectId)}/decisions`, {
+      headers: { Cookie: `hq_sid=${hqSid!.value}` },
+    });
+    expect(decsRes.status).toBe(200);
+    const decsJson = (await decsRes.json()) as {
+      decisions: Array<{
+        id: string;
+        status: string;
+        payload: {
+          kind: string;
+          answer?: {
+            action: string;
+            componentId: string;
+            context: Record<string, unknown>;
+            data: { prefix: string; channel: string; checks: string[] };
+          };
+        };
+      }>;
+    };
+    const resolvedDec = decsJson.decisions.find((d) => d.id === formDecisionId);
+    expect(resolvedDec).toBeTruthy();
+    expect(resolvedDec!.status).toBe("resolved");
+    expect(resolvedDec!.payload.kind).toBe("form");
+    expect(resolvedDec!.payload.answer?.action).toBe("confirm");
+    expect(resolvedDec!.payload.answer?.context).toEqual({ prefix: "rel-" });
+    expect(resolvedDec!.payload.answer?.data).toMatchObject({
+      prefix: "rel-",
+      channel: "beta",
+      checks: ["sign"],
+    });
+
+    // Verify the answer reached Cipher's durable SQLite outbox
+    {
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      const rows = db
+        .prepare("SELECT kind, payload_json FROM agent_outbox WHERE project_id = ? AND agent_id = ? ORDER BY epoch DESC, seq DESC")
+        .all(projectId, agentId) as Array<{ kind: string; payload_json: string }>;
+      db.close();
+      const hit = rows
+        .filter((r) => r.kind === "decision-answer")
+        .map((r) => JSON.parse(r.payload_json) as { decisionId: string; status: string; payload: { kind: string; answer?: { action: string; data: { prefix: string; channel: string; checks: string[] } } } })
+        .find((p) => p.decisionId === formDecisionId);
+      expect(hit, `Expected decision-answer outbox entry for ${formDecisionId}, saw: ${JSON.stringify(rows)}`).toBeTruthy();
+      expect(hit!.status).toBe("resolved");
+      expect(hit!.payload.kind).toBe("form");
+      expect(hit!.payload.answer?.action).toBe("confirm");
+      expect(hit!.payload.answer?.data).toMatchObject({
+        prefix: "rel-",
+        channel: "beta",
+        checks: ["sign"],
+      });
+    }
+
+    // Verify answered form is visible read-only with its submitted answer in Inbox Closed and Cipher's Chat thread
+    await page.getByRole("button", { name: /^Closed \(/i }).click();
+    await page.getByRole("button", { name: /Configure release pipeline/i }).click();
+    const closedCard = page.getByRole("article", { name: "Configure release pipeline" });
+    await expect(closedCard.getByLabel("Tag prefix")).toHaveValue("rel-");
+    await expect(closedCard.getByLabel("Tag prefix")).toBeDisabled();
+    await expect(closedCard.getByRole("combobox", { name: "Release channel" })).toBeDisabled();
+    await expect(closedCard.getByRole("status")).toContainText("Answered: Confirm release");
+
+    await gotoWorkspace(page, "Team");
+    await page.getByRole("navigation", { name: "Team sections" }).getByRole("button", { name: /^Chat/i }).click();
+    await page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: /Cipher/i }).click();
+    const chatCard = page.getByRole("article", { name: "Configure release pipeline" });
+    await expect(chatCard).toBeVisible();
+    await expect(chatCard.getByLabel("Tag prefix")).toHaveValue("rel-");
+    await expect(chatCard.getByLabel("Tag prefix")).toBeDisabled();
+    await expect(chatCard.getByRole("status")).toContainText("Answered: Confirm release");
 
     errors.assertClean("live-rust-hq-e2e");
     await context.close();

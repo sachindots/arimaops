@@ -1,8 +1,11 @@
-import type { DecisionPayload } from "../../data/generated";
+import { useState } from "react";
+import type { DecisionPayload, PackFileSummary } from "../../data/generated";
 import { useOffice } from "../../store/office";
+import { Icon } from "../deck/Icon";
 
 type PackReview = Extract<DecisionPayload, { kind: "pack-review" }>;
 type Line = { op: " " | "+" | "-"; text: string };
+export type LoadedPackDiff = { before: string | null; after: string | null };
 
 /** A line diff by longest common subsequence. Very large pairs show as all removed then all added, never truncated. */
 export function lineDiff(before: string | null, after: string | null): Line[] {
@@ -24,7 +27,25 @@ export function lineDiff(before: string | null, after: string | null): Line[] {
   return out;
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  return kb < 10 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`;
+}
+
 const COLOR = { "+": "var(--color-green)", "-": "var(--color-red)", " ": "inherit" };
+
+function DiffPre({ before, after }: { before: string | null; after: string | null }) {
+  return (
+    <pre className="scroll-thin m-0 max-h-[480px] overflow-auto whitespace-pre-wrap break-words font-term text-[12px]">
+      {lineDiff(before, after).map((l, i) => (
+        <div key={i} style={{ color: COLOR[l.op] }}>
+          {l.op} {l.text}
+        </div>
+      ))}
+    </pre>
+  );
+}
 
 function List({ label, items }: { label: string; items: string[] }) {
   if (items.length === 0) return null;
@@ -60,8 +81,131 @@ function RolePicker({ roles, onRoles }: { roles: string[]; onRoles?: (ids: strin
   );
 }
 
-/** Everything a pack review asks about, in full: each changed file of the plugin and tool list as a diff, and which roles get its skills. */
-export function PackReviewBody({ payload, roles, onRoles }: { payload: PackReview; roles: string[]; onRoles?: (ids: string[]) => void }) {
+function scanLabel(file: PackFileSummary): { text: string; className: string } {
+  if (file.scan === "block") return { text: `${file.findings || 1} block`, className: "text-red font-medium" };
+  if (file.scan === "warn") return { text: `${file.findings || 1} warn`, className: "text-amber font-medium" };
+  return { text: "clean", className: "text-muted" };
+}
+
+async function fetchPackFile(projectId: string, decisionId: string, filePath: string): Promise<LoadedPackDiff> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/decisions/${encodeURIComponent(decisionId)}/pack-file?path=${encodeURIComponent(filePath)}`,
+    { credentials: "same-origin" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as { before: string | null; after: string | null };
+  return { before: data.before, after: data.after };
+}
+
+/** Collapsed list of shipped files outside skills/, agents/, resources/ and SKILL.md references, expandable per file. */
+function OtherFilesList({
+  files,
+  loadFile,
+}: {
+  files: PackFileSummary[];
+  loadFile: (path: string) => Promise<LoadedPackDiff>;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [loaded, setLoaded] = useState<Record<string, { state: "loading" } | { state: "ready"; diff: LoadedPackDiff } | { state: "error"; message: string }>>({});
+
+  if (files.length === 0) return null;
+  const blockedCount = files.filter((f) => f.scan === "block").length;
+  const warnCount = files.filter((f) => f.scan === "warn").length;
+
+  const toggle = (filePath: string) => {
+    const nextOpen = !expanded[filePath];
+    setExpanded((prev) => ({ ...prev, [filePath]: nextOpen }));
+    if (nextOpen && !loaded[filePath]) {
+      setLoaded((prev) => ({ ...prev, [filePath]: { state: "loading" } }));
+      void loadFile(filePath).then(
+        (diff) => setLoaded((prev) => ({ ...prev, [filePath]: { state: "ready", diff } })),
+        (err: unknown) =>
+          setLoaded((prev) => ({
+            ...prev,
+            [filePath]: { state: "error", message: err instanceof Error ? err.message : "Could not load diff." },
+          })),
+      );
+    }
+  };
+
+  return (
+    <section
+      className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/30"
+      aria-label="Other shipped files"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hairline)] px-3 py-2">
+        <div className="text-[13px] font-semibold text-ink">
+          Other shipped files ({files.length})
+        </div>
+        <div className="flex items-center gap-2 text-[12px]">
+          {blockedCount > 0 && <span className="font-medium text-red">{blockedCount} blocked</span>}
+          {warnCount > 0 && <span className="font-medium text-amber">{warnCount} with warnings</span>}
+          {blockedCount === 0 && warnCount === 0 && <span className="text-muted">all clean</span>}
+          <span className="text-muted">· hashed and scanned</span>
+        </div>
+      </div>
+      <ul className="scroll-thin m-0 max-h-[320px] list-none divide-y divide-[var(--border-hairline)] overflow-y-auto p-0">
+        {files.map((file) => {
+          const isOpen = !!expanded[file.path];
+          const entry = loaded[file.path];
+          const scan = scanLabel(file);
+          const changeLabel = file.change === "added" ? "new" : file.change;
+          return (
+            <li key={file.path}>
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() => toggle(file.path)}
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-cream-2/60"
+              >
+                <Icon name={isOpen ? "expand_more" : "chevron_right"} size={16} className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1 truncate font-term text-[12px] text-ink">{file.path}</span>
+                <span className="shrink-0 text-[12px] text-muted">{changeLabel}</span>
+                <span className="shrink-0 font-term text-[12px] text-muted">{formatBytes(file.bytes)}</span>
+                <span className={`shrink-0 text-[12px] ${scan.className}`}>{scan.text}</span>
+              </button>
+              {isOpen && (
+                <div className="border-t border-[var(--border-hairline)] bg-cream-2/50 px-3 py-2">
+                  {!entry || entry.state === "loading" ? (
+                    <p className="m-0 text-[12px] text-muted">Loading diff…</p>
+                  ) : entry.state === "error" ? (
+                    <p className="m-0 text-[12px] text-red">{entry.message}</p>
+                  ) : (
+                    <DiffPre before={entry.diff.before} after={entry.diff.after} />
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** Pack review: full inline diffs for skills/, agents/, resources/, SKILL.md references and tool servers;
+ *  all other shipped files as a collapsed list expandable per file; plus egress, secrets, findings and roles. */
+export function PackReviewBody({
+  decisionId,
+  projectId,
+  payload,
+  roles,
+  onRoles,
+  loadFile,
+}: {
+  decisionId: string;
+  projectId: string;
+  payload: PackReview;
+  roles: string[];
+  onRoles?: (ids: string[]) => void;
+  loadFile?: (path: string) => Promise<LoadedPackDiff>;
+}) {
+  const otherFiles = payload.otherFiles ?? [];
+  const fetcher = loadFile ?? ((p: string) => fetchPackFile(projectId, decisionId, p));
+
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[13px] text-muted">
@@ -74,15 +218,10 @@ export function PackReviewBody({ payload, roles, onRoles }: { payload: PackRevie
             {c.kind === "toolServer" ? "Tool server" : "File"} <span className="font-term">{c.name}</span>
             <span className="ml-2 text-[12px] font-normal text-muted">{c.before === null ? "new" : c.after === null ? "removed" : "changed"}</span>
           </div>
-          <pre className="scroll-thin m-0 max-h-[480px] overflow-auto whitespace-pre-wrap break-words font-term text-[12px]">
-            {lineDiff(c.before, c.after).map((l, i) => (
-              <div key={i} style={{ color: COLOR[l.op] }}>
-                {l.op} {l.text}
-              </div>
-            ))}
-          </pre>
+          <DiffPre before={c.before} after={c.after} />
         </div>
       ))}
+      <OtherFilesList files={otherFiles} loadFile={fetcher} />
       <List label="Hosts it says it reaches" items={payload.egress} />
       <List label="Secrets it asks for" items={payload.secrets} />
       <List label="Not installed" items={payload.ignored} />

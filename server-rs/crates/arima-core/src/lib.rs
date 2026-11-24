@@ -28,6 +28,6 @@ pub use meeting::{
     MeetingStatus, MeetingTurn, MeetingUrgency, ProposedDecision, ProposedTask, VoiceProvider,
 };
 pub use outbox::{OutboxMessage, OutboxMessageKind};
-pub use pack::{PackApproval, PackChange, PackEntry, PackLock, PackScan, PackSkill, PackSource, PackToolServer};
+pub use pack::{PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer};
 pub use protocol::{WsClientMessage, WsCommandAck, WsServerEvent};
 pub use tool_server::{ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport};

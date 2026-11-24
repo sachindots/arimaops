@@ -9,6 +9,7 @@
 //! an Inbox `SkillScan` card. A pin never moves on its own; `refresh_skill` re-resolves it, and a new hash needs a
 //! new approval. At mount time the stored files are hashed again, so a changed folder is never handed to an agent.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -367,6 +368,68 @@ pub(crate) fn read_stored(dir: &Path) -> Option<Vec<(String, Vec<u8>)>> {
     let mut out = Vec::new();
     walk(dir, dir, &mut out)?;
     Some(out)
+}
+
+/// Reads one stored plain file at `<root>/<hash>/<folder>/<rel_path>`, refusing symlinks and unsafe paths.
+pub(crate) fn read_stored_file(root: &Path, hash: &str, folder: &str, rel_path: &str) -> Option<Vec<u8>> {
+    if hash.is_empty() || !hash.bytes().all(|b| b.is_ascii_hexdigit()) || !safe_repo_path(folder) || !safe_repo_path(rel_path) {
+        return None;
+    }
+    let mut cur = root.join(hash).join(folder);
+    if std::fs::symlink_metadata(&cur).ok()?.file_type().is_symlink() {
+        return None;
+    }
+    for part in rel_path.split('/') {
+        cur.push(part);
+        let md = std::fs::symlink_metadata(&cur).ok()?;
+        if md.file_type().is_symlink() {
+            return None;
+        }
+    }
+    std::fs::read(&cur).ok()
+}
+
+/// Reads a content-addressed skills view directory (`<name> -> <container target>` symlinks only).
+fn read_stored_links(dir: &Path) -> Option<BTreeMap<String, String>> {
+    let mut out = BTreeMap::new();
+    for entry in std::fs::read_dir(dir).ok()? {
+        let entry = entry.ok()?;
+        if !entry.file_type().ok()?.is_symlink() {
+            return None;
+        }
+        let name = entry.file_name().to_str()?.to_owned();
+        let target = std::fs::read_link(entry.path()).ok()?.to_str()?.to_owned();
+        out.insert(name, target);
+    }
+    Some(out)
+}
+
+/// Writes a content-addressed read-only view directory under `<root>/views/<hash>/` holding symlinks from each
+/// skill name to its container target path. Rewrites atomically if missing or altered on disk.
+pub(crate) fn store_links(root: &Path, links: &BTreeMap<String, String>) -> Result<String, String> {
+    let joined: String = links.iter().map(|(name, target)| format!("{name}\0{target}\n")).collect();
+    let hash = sha_hex(joined.as_bytes());
+    let views = root.join("views");
+    let final_dir = views.join(&hash);
+    if read_stored_links(&final_dir).is_some_and(|existing| existing == *links) {
+        return Ok(hash);
+    }
+    std::fs::create_dir_all(&views).map_err(|e| format!("couldn't store the skills view: {e}"))?;
+    let tmp = views.join(format!(".tmp-{}", uuid::Uuid::new_v4().simple()));
+    let write = || -> std::io::Result<()> {
+        std::fs::create_dir_all(&tmp)?;
+        for (name, target) in links {
+            if !valid_skill_name(name) {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid skill name {name}")));
+            }
+            std::os::unix::fs::symlink(target, tmp.join(name))?;
+        }
+        let _ = std::fs::remove_dir_all(&final_dir);
+        std::fs::rename(&tmp, &final_dir)
+    };
+    let r = write().map_err(|e| format!("couldn't store the skills view: {e}"));
+    let _ = std::fs::remove_dir_all(&tmp);
+    r.map(|()| hash)
 }
 
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SkillPin> {
@@ -837,13 +900,26 @@ mod tests {
         assert_eq!(binds(&rt).as_array().unwrap().len(), 1, "a pending skill isn't mounted");
         answer(&state, pin.decision_id.as_deref().unwrap(), DecisionStatus::Resolved);
         let mounted = binds(&rt);
-        assert_eq!(mounted[1], format!("/host/ws/.arima-skills/{}/diff-review:/workspace/.agent-home/.claude/skills/diff-review:ro", pin.hash));
+        assert_eq!(mounted[1], format!("/host/ws/.arima-skills/{}/diff-review:/workspace/.agent-home/.arima/skills/diff-review:ro", pin.hash));
+        let view_bind = mounted[2].as_str().unwrap();
+        assert!(view_bind.starts_with("/host/ws/.arima-skills/views/") && view_bind.ends_with(":/workspace/.agent-home/.claude/skills:ro"), "{view_bind}");
+        let view_hash = view_bind.strip_prefix("/host/ws/.arima-skills/views/").unwrap().split(':').next().unwrap();
+        assert_eq!(
+            std::fs::read_link(ws.join(".arima-skills/views").join(view_hash).join("diff-review")).unwrap(),
+            PathBuf::from("/workspace/.agent-home/.arima/skills/diff-review")
+        );
         assert_eq!(std::fs::read_to_string(ws.join(".arima-skills").join(&pin.hash).join("diff-review/SKILL.md")).unwrap(), GOOD);
 
-        // A copy altered on disk is rewritten from the approved store at the next start.
+        // A copy or view symlink altered on disk is rewritten from the approved store at the next start.
         std::fs::write(ws.join(".arima-skills").join(&pin.hash).join("diff-review/SKILL.md"), "tampered").unwrap();
+        std::fs::remove_file(ws.join(".arima-skills/views").join(view_hash).join("diff-review")).unwrap();
+        std::os::unix::fs::symlink("/etc", ws.join(".arima-skills/views").join(view_hash).join("diff-review")).unwrap();
         assert_eq!(binds(&rt), mounted);
         assert_eq!(std::fs::read_to_string(ws.join(".arima-skills").join(&pin.hash).join("diff-review/SKILL.md")).unwrap(), GOOD);
+        assert_eq!(
+            std::fs::read_link(ws.join(".arima-skills/views").join(view_hash).join("diff-review")).unwrap(),
+            PathBuf::from("/workspace/.agent-home/.arima/skills/diff-review")
+        );
     }
 
     #[test]

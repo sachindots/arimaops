@@ -41,6 +41,7 @@ interface Entry {
 
 const KIND_ICON: Record<string, string> = {
   question: "help", "second-opinion": "compare_arrows", disagreement: "warning", permission: "terminal", "meeting-request": "groups",
+  "pack-review": "extension", form: "dynamic_form",
   plan: "account_tree", spec: "description", gate: "verified", lesson: "school", skills: "extension", overflow: "swap_horiz",
   send: "send", spend: "payments", approval: "undo", memory: "neurology", info: "info", request: "assignment_ind",
 };
@@ -154,10 +155,21 @@ export function ActionItemsDrawer() {
   });
 
   if (!snap || !a) return null;
+  const closedDecisions = (snap.visualDecisions ?? [])
+    .filter((d) => d.status !== "open")
+    .sort((x, y) => (y.closedAt ?? y.createdAt).localeCompare(x.closedAt ?? x.createdAt))
+    .slice(0, 20);
   const closed = (snap.actionItems ?? [])
     .filter((i) => i.status !== "open")
     .sort((x, y) => (y.closedAt ?? "").localeCompare(x.closedAt ?? ""))
     .slice(0, 20);
+  const closedTotal = closedDecisions.length + closed.length;
+  const selectedClosed = closedDecisions.find((d) => d.id === selected) ?? null;
+  const activeDetail = selectedClosed
+    ? { key: selectedClosed.id, detail: <VisualDecisionCard decision={selectedClosed} /> }
+    : current
+      ? { key: current.key, detail: current.detail }
+      : null;
 
   return (
     <>
@@ -170,7 +182,7 @@ export function ActionItemsDrawer() {
           <ul className="scroll-thin m-0 min-h-0 flex-1 list-none overflow-y-auto p-2" role="listbox" aria-label="Waiting on you">
             {entries.length === 0 && <li className="p-4 text-[13px] text-muted">All clear. When an agent needs a decision, approval or meeting, it shows up here.</li>}
             {entries.map((e) => {
-              const on = e === current;
+              const on = !selectedClosed && e === current;
               return (
                 <li key={e.key} role="option" aria-selected={on}>
                   <button
@@ -204,13 +216,40 @@ export function ActionItemsDrawer() {
               );
             })}
           </ul>
-          {closed.length > 0 && (
+          {closedTotal > 0 && (
             <div className="border-t border-[var(--border-hairline)] px-4 py-2">
-              <button className="text-[13px] text-muted hover:text-ink" onClick={() => setShowClosed(!showClosed)}>
-                {showClosed ? "Hide closed" : `Closed (${closed.length})`}
+              <button type="button" className="text-[13px] text-muted hover:text-ink" onClick={() => setShowClosed(!showClosed)}>
+                {showClosed ? "Hide closed" : `Closed (${closedTotal})`}
               </button>
               {showClosed && (
-                <ul className="scroll-thin mt-1 flex max-h-[220px] list-none flex-col overflow-y-auto p-0 text-[12px] text-muted">
+                <ul className="scroll-thin mt-1 flex max-h-[260px] list-none flex-col overflow-y-auto p-0 text-[12px] text-muted">
+                  {closedDecisions.map((d) => {
+                    const isPicked = selectedClosed?.id === d.id;
+                    return (
+                      <li key={d.id} className="border-t border-[var(--border-hairline)] py-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelected(d.id)}
+                          aria-pressed={isPicked}
+                          className={`flex w-full cursor-pointer items-start gap-2 rounded-lg px-2 py-1 text-left transition-colors ${isPicked ? "bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-ink" : "hover:bg-cream-2"}`}
+                        >
+                          <Icon name={KIND_ICON[d.payload.kind] ?? "check_circle"} size={15} className="mt-0.5 shrink-0 text-muted" />
+                          <span className="min-w-0 flex-1">
+                            <span className={d.status === "dismissed" ? "line-through" : "font-medium text-ink"}>{d.title}</span>
+                            <span className="block text-[12px] text-muted">
+                              {who(d.fromId)} · {d.status === "resolved" ? "answered" : "dismissed"}
+                              {d.closedAt ? ` ${ago(d.closedAt, now)} ago` : ""}
+                            </span>
+                          </span>
+                        </button>
+                        {!splitPane && isPicked && (
+                          <div className="px-1 pt-2 pb-3">
+                            <VisualDecisionCard decision={d} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                   {closed.map((i) => (
                     <li key={i.id} className="border-t border-[var(--border-hairline)] py-1.5">
                       <span className={i.status === "dismissed" ? "line-through" : ""}>{i.title}</span> · {i.kind === "memory" ? "Team memory" : who(i.fromId)} ·{" "}
@@ -225,7 +264,7 @@ export function ActionItemsDrawer() {
         </div>
         {splitPane && (
           <section className="scroll-thin min-w-0 flex-1 overflow-y-auto px-8 py-6" aria-label="Selected item">
-            {current ? <div key={current.key} className="mx-auto max-w-[760px]">{current.detail}</div> : <p className="text-[13px] text-muted">Nothing selected.</p>}
+            {activeDetail ? <div key={activeDetail.key} className="mx-auto max-w-[760px]">{activeDetail.detail}</div> : <p className="text-[13px] text-muted">Nothing selected.</p>}
           </section>
         )}
       </div>

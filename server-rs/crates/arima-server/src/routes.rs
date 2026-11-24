@@ -154,6 +154,10 @@ pub fn router_with_state(state: AppState) -> Router {
             post(resolve_project_decision),
         )
         .route(
+            "/api/projects/{id}/decisions/{decision_id}/pack-file",
+            get(get_pack_review_file),
+        )
+        .route(
             "/api/projects/{id}/meetings",
             get(list_project_meetings).post(create_project_meeting),
         )
@@ -1583,6 +1587,31 @@ async fn task_history(
         Ok::<_, DbError>(out)
     })?;
     Ok(Json(json!({ "events": events, "gates": gates })))
+}
+
+#[derive(Debug, Deserialize)]
+struct PackFileQuery {
+    path: String,
+}
+
+async fn get_pack_review_file(
+    State(state): State<AppState>,
+    Path((project_id, decision_id)): Path<(String, String)>,
+    Query(query): Query<PackFileQuery>,
+    headers: HeaderMap,
+    PeerIp(peer_ip): PeerIp,
+) -> Result<Json<Value>, ApiError> {
+    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::GET)?;
+    let _session = require_session(&state, &ctx, false)?;
+    let (before, after) = crate::packs::read_review_file(&state, &project_id, &decision_id, &query.path).map_err(|msg| {
+        let status = if msg.contains("not found") || msg.contains("not part") {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        ApiError::new(status, msg)
+    })?;
+    Ok(Json(json!({ "path": query.path, "before": before, "after": after })))
 }
 
 async fn list_project_decisions(

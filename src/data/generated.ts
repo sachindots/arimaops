@@ -69,6 +69,24 @@ before: string | null,
  */
 after: string | null, };
 
+export type PackFileSummary = { path: string, 
+/**
+ * `"added"`, `"changed"`, or `"removed"`.
+ */
+change: string, 
+/**
+ * Size in bytes (after, or before when removed).
+ */
+bytes: number, 
+/**
+ * Scan result for this file: `"clean"`, `"warn"`, or `"block"`.
+ */
+scan: string, 
+/**
+ * Number of scan findings on this file.
+ */
+findings: number, };
+
 export type FormSpec = { components: Array<JsonValue>, data: { [key: string]: JsonValue }, };
 
 export type FormAnswer = { action: string, componentId: string, context: JsonValue, data: JsonValue, };
@@ -79,7 +97,19 @@ export type DecisionPayload = { "kind": "question" } & QuestionPayload | { "kind
 /**
  * The approved commit; none on first install.
  */
-from: string | null, to: string, changed: Array<PackChange>, egress: Array<string>, secrets: Array<string>, ignored: Array<string>, 
+from: string | null, to: string, 
+/**
+ * Tree hash of the approved pack; none on first install. Used to fetch collapsed file diffs on demand.
+ */
+fromTree: string | null, 
+/**
+ * Tree hash of the pack under review. Used to fetch collapsed file diffs on demand.
+ */
+toTree: string, changed: Array<PackChange>, 
+/**
+ * Changed files outside `skills/`, `agents/`, `resources/` and `SKILL.md` references, shown collapsed.
+ */
+otherFiles: Array<PackFileSummary>, egress: Array<string>, secrets: Array<string>, ignored: Array<string>, 
 /**
  * Scan findings, blocking ones first.
  */
