@@ -55,6 +55,28 @@ export type SecondOpinionPayload = { taskId: string | null, gateId: string | nul
 
 export type PermissionPayload = { toolName: string, commandOrPath: string, reason: string, scopeHint: string | null, resolution: string | null, };
 
+export type PackAgent = { 
+/**
+ * Relative path inside the plugin tree, e.g. `agents/zoom_out.md`.
+ */
+path: string, 
+/**
+ * Sanitised sub-agent identifier (1-64 of `a-z0-9-_`).
+ */
+name: string, 
+/**
+ * Short description passed to the CLI for sub-agent selection.
+ */
+description: string, 
+/**
+ * Frontmatter keys present in the source file that HQ drops when rendering native agent files.
+ */
+droppedFields: Array<string>, 
+/**
+ * SHA-256 hex digest of the source file's bytes in the approved plugin tree.
+ */
+sha256: string, };
+
 export type PackChange = { 
 /**
  * "file" (named by its path in the plugin) or "toolServer".
@@ -109,7 +131,11 @@ toTree: string, changed: Array<PackChange>,
 /**
  * Changed shipped files other than SKILL.md and agents/*.md, shown collapsed.
  */
-otherFiles: Array<PackFileSummary>, egress: Array<string>, secrets: Array<string>, ignored: Array<string>, 
+otherFiles: Array<PackFileSummary>, 
+/**
+ * Sub-agents discovered under `agents/*.md` and registered with a whitelisted set of fields.
+ */
+agents: Array<PackAgent>, egress: Array<string>, secrets: Array<string>, ignored: Array<string>, 
 /**
  * Scan findings, blocking ones first.
  */
@@ -222,7 +248,7 @@ export type PackEntry = { source: PackSource, version: string | null,
  * get, whole and read-only. Empty in an entry read before plugins shipped whole, so it mounts nothing until
  * re-reviewed.
  */
-tree: string, skills: { [key in string]?: PackSkill }, toolServers: { [key in string]?: PackToolServer }, 
+tree: string, skills: { [key in string]?: PackSkill }, agents: { [key in string]?: PackAgent }, toolServers: { [key in string]?: PackToolServer }, 
 /**
  * Hosts the pack says it reaches (its manifest's `network.hosts`).
  */
@@ -232,8 +258,8 @@ egress: Array<string>,
  */
 secrets: Array<string>, 
 /**
- * Parts HQ doesn't install: hooks, commands, subagents, command (stdio) tool servers, and files left out of the
- * tree (binary, too large, links).
+ * Parts HQ doesn't install: hooks, commands, command (stdio) tool servers, excess/unreadable agent files, and
+ * files left out of the tree (binary, too large, links).
  */
 ignored: Array<string>, scan: PackScan, 
 /**

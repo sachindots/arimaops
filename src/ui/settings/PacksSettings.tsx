@@ -33,9 +33,9 @@ export function PacksSettings() {
   return (
     <div className="flex flex-col gap-5">
       <p className="m-0 text-[13px] text-muted">
-        A pack brings skills and tool servers from a git repo in the plugin catalog layout. Each pack is pinned to one commit and approved per project: nothing reaches an agent until you
-        approve its review in the Inbox. Hooks, commands, subagents and tool servers that run a local command are never installed. A role names a pack skill as{" "}
-        <span className="font-term">pack@skill</span>.
+        A pack brings skills, sub-agents and tool servers from a git repo in the plugin catalog layout. Each pack is pinned to one commit and approved per project: nothing reaches an agent until you
+        approve its review in the Inbox. Roles that use a pack&apos;s skills also receive its whitelisted sub-agents; hooks, commands and tool servers that run a local command are never installed. A role
+        names a pack skill as <span className="font-term">pack@skill</span>.
       </p>
 
       <section>
@@ -114,6 +114,17 @@ export function PacksSettings() {
                         <span key={name} className="chip font-term text-[12px]" style={s && blocked(s.path) ? { ["--c" as string]: "var(--color-red)" } : undefined}>
                           {name}
                           {s && blocked(s.path) ? " (blocked by the scanner)" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {Object.keys(e.agents ?? {}).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                      <span className="text-muted">Sub-agents:</span>
+                      {Object.entries(e.agents ?? {}).map(([name, agent]) => (
+                        <span key={name} className="chip font-term text-[12px]" style={agent && blocked(agent.path) ? { ["--c" as string]: "var(--color-red)" } : undefined}>
+                          {name}
+                          {agent && blocked(agent.path) ? " (blocked by the scanner)" : ""}
                         </span>
                       ))}
                     </div>

@@ -805,7 +805,7 @@ pub fn check_operator_refs(state: &AppState, project_id: &str, skills: &Value) -
 }
 
 /// Every skill a project's role names: built-in ids, refs and pack skills.
-fn role_skills(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<String> {
+pub(crate) fn role_skills(state: &AppState, project_id: &str, role_id: Option<&str>) -> Vec<String> {
     let Some(model) = crate::team::load(state, project_id) else { return vec![] };
     let mut refs: Vec<String> = model.template["roles"]
         .as_array()

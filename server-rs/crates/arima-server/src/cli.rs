@@ -44,6 +44,17 @@ pub struct McpLaunch {
     pub env: Vec<(String, String)>,
 }
 
+/// Native file format a CLI expects inside its user-level `agents_dir`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentFormat {
+    ClaudeMd,
+    CodexToml,
+    GeminiMd,
+    CopilotAgentMd,
+    OpencodeMd,
+    AgyMd,
+}
+
 pub struct CliAdapter {
     /// The id stored on an agent (`agent.cli`), which is also the program run in the container.
     pub id: &'static str,
@@ -60,6 +71,10 @@ pub struct CliAdapter {
     pub mcp: fn(&[McpServer], &str) -> McpLaunch,
     /// The user-level folder inside the container where the CLI discovers Agent Skills; None without skills support.
     pub skills_dir: Option<&'static str>,
+    /// The user-level folder inside the container where the CLI discovers sub-agents; None uses the role-file fallback.
+    pub agents_dir: Option<&'static str>,
+    /// Native file format rendered into `agents_dir` for this CLI.
+    pub agent_format: AgentFormat,
     /// Hosts the CLI needs for its model providers' APIs and its own sign-in (egress rules, see `crate::egress`).
     pub egress: &'static [&'static str],
 }
@@ -88,6 +103,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[("anthropic", &["ANTHROPIC_API_KEY"])],
         mcp: mcp_claude,
         skills_dir: Some("/workspace/.agent-home/.claude/skills"),
+        agents_dir: Some("/workspace/.agent-home/.claude/agents"),
+        agent_format: AgentFormat::ClaudeMd,
         egress: &["anthropic.com", "*.anthropic.com", "claude.ai", "*.claude.ai", "claude.com", "*.claude.com"],
     },
     CliAdapter {
@@ -99,6 +116,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[("openai", &["OPENAI_API_KEY"])],
         mcp: mcp_codex,
         skills_dir: Some("/workspace/.agent-home/.agents/skills"),
+        agents_dir: Some("/workspace/.agent-home/.codex/agents"),
+        agent_format: AgentFormat::CodexToml,
         egress: &["openai.com", "*.openai.com", "chatgpt.com", "*.chatgpt.com"],
     },
     CliAdapter {
@@ -110,6 +129,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[("openai", &["OPENAI_API_KEY"]), ("openrouter", &["OPENROUTER_API_KEY"])],
         mcp: mcp_opencode,
         skills_dir: Some("/workspace/.agent-home/.config/opencode/skills"),
+        agents_dir: Some("/workspace/.agent-home/.config/opencode/agents"),
+        agent_format: AgentFormat::OpencodeMd,
         egress: &["opencode.ai", "*.opencode.ai", "models.dev", "openai.com", "*.openai.com", "openrouter.ai", "*.openrouter.ai", "api.deepseek.com"],
     },
     CliAdapter {
@@ -121,6 +142,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[("google", &["GEMINI_API_KEY", "GOOGLE_API_KEY"])],
         mcp: mcp_gemini,
         skills_dir: Some("/workspace/.agent-home/.gemini/skills"),
+        agents_dir: Some("/workspace/.agent-home/.gemini/agents"),
+        agent_format: AgentFormat::GeminiMd,
         egress: &["*.googleapis.com", "accounts.google.com", "*.google.com", "*.gstatic.com"],
     },
     CliAdapter {
@@ -132,6 +155,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[],
         mcp: mcp_copilot,
         skills_dir: Some("/workspace/.agent-home/.copilot/skills"),
+        agents_dir: Some("/workspace/.agent-home/.copilot/agents"),
+        agent_format: AgentFormat::CopilotAgentMd,
         egress: &["*.githubcopilot.com", "github.com", "*.github.com"],
     },
     CliAdapter {
@@ -143,6 +168,8 @@ pub const ADAPTERS: [CliAdapter; 6] = [
         provider_env: &[],
         mcp: mcp_agy,
         skills_dir: Some("/workspace/.agent-home/.gemini/config/skills"),
+        agents_dir: Some("/workspace/.agent-home/.gemini/config/agents"),
+        agent_format: AgentFormat::AgyMd,
         egress: &["antigravity.google", "*.googleapis.com", "accounts.google.com", "*.google.com", "*.gstatic.com"],
     },
 ];
@@ -387,6 +414,7 @@ mod tests {
         assert_eq!(ui.len(), ADAPTERS.len(), "{ui:?}");
         for a in &ADAPTERS {
             assert!(a.skills_dir.is_none_or(|d| d.starts_with(&format!("{AGENT_HOME}/")) && d.ends_with("/skills")), "{}", a.id);
+            assert!(a.agents_dir.is_none_or(|d| d.starts_with(&format!("{AGENT_HOME}/")) && d.ends_with("/agents")), "{}", a.id);
         }
     }
 

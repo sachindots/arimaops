@@ -14,13 +14,14 @@
 //!
 //! The project's lock (`packs:{project_id}`) is the trust record. Install, update and a pack server's changed live
 //! tool list all go through one `PackReview` Inbox card; until it is approved agents keep the approved entry. Hooks,
-//! commands, subagents and command tool servers are listed as ignored, never installed; `agents/` ships as files.
+//! commands and command tool servers are listed as ignored, never installed; `agents/*.md` ship in the plugin tree
+//! and register natively as sub-agents with whitelisted metadata (`name`, `description` and instructions).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use arima_core::{
-    DecisionPayload, DecisionStatus, PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer, ToolServer,
-    ToolServerSource, ToolServerTransport, VisualDecision, WsServerEvent,
+    DecisionPayload, DecisionStatus, PackAgent, PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer,
+    ToolServer, ToolServerSource, ToolServerTransport, VisualDecision, WsServerEvent,
 };
 use arima_proxy::{is_imds_host_literal, normalize_scope_rule};
 use chrono::Utc;
@@ -67,6 +68,16 @@ pub fn owner_of<'a>(lock: &'a PackLock, skill_ref: &str) -> Option<&'a PackEntry
     lock.packs.get(skill_ref.rsplit_once('@')?.0)
 }
 
+/// Subfolder under `.agent-home/.arima/plugins/` where a pack's read-only plugin tree is mounted.
+pub(crate) fn plugin_mount_dir(pack_id: &str) -> Option<String> {
+    let dir = pack_id
+        .replace(':', "/")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || "-_./".contains(c) { c } else { '-' })
+        .collect::<String>();
+    skills::safe_repo_path(&dir).then(|| format!(".arima/plugins/{dir}"))
+}
+
 /// `(name, tree hash, mount)` of a pack skill the owner approved. Skills share their plugin tree, so a blocking scan
 /// finding anywhere in it holds back every skill of the pack.
 #[must_use]
@@ -78,8 +89,8 @@ pub fn approved_skill(lock: &PackLock, skill_ref: &str) -> Option<(String, Strin
         Some(dir) if dir != "." => skill.path.strip_prefix(&format!("{dir}/"))?,
         _ => skill.path.as_str(),
     };
-    let dir = id.replace(':', "/").chars().map(|c| if c.is_ascii_alphanumeric() || "-_./".contains(c) { c } else { '-' }).collect::<String>();
-    skills::safe_repo_path(&dir).then(|| (name.to_owned(), entry.tree.clone(), skills::PluginMount { dir: format!(".arima/plugins/{dir}"), skill: in_tree.to_owned() }))
+    let dir = plugin_mount_dir(id)?;
+    Some((name.to_owned(), entry.tree.clone(), skills::PluginMount { dir, skill: in_tree.to_owned() }))
 }
 
 /// The hash a pack approval pins for a tool server: sha256 of its normalised tool list in canonical JSON
@@ -208,8 +219,40 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located, all
     }
     skills::store(store, &hash, STORED_PLUGIN, &files)?;
 
-    let m = &loc.manifest;
     let mut ignored: BTreeSet<String> = left_out.into_iter().collect();
+    let mut agent_files: Vec<(&str, &[u8])> = files
+        .iter()
+        .filter(|(p, _)| p.starts_with("agents/") && p.ends_with(".md"))
+        .map(|(p, c)| (p.as_str(), c.as_slice()))
+        .collect();
+    agent_files.sort_by(|a, b| a.0.cmp(b.0));
+    let mut agents_out: BTreeMap<String, PackAgent> = BTreeMap::new();
+    for (path, bytes) in agent_files {
+        let Some(parsed) = crate::subagents::parse_agent_md(path, bytes) else {
+            ignored.insert(format!("{path} (empty or unreadable sub-agent)"));
+            continue;
+        };
+        if agents_out.len() >= crate::subagents::MAX_PACK_AGENTS {
+            ignored.insert(format!("{path} (over the {} sub-agent limit per pack)", crate::subagents::MAX_PACK_AGENTS));
+            continue;
+        }
+        if agents_out.contains_key(&parsed.name) {
+            ignored.insert(format!("{path} (duplicate sub-agent name \"{}\")", parsed.name));
+            continue;
+        }
+        agents_out.insert(
+            parsed.name.clone(),
+            PackAgent {
+                path: path.to_owned(),
+                name: parsed.name,
+                description: parsed.description,
+                dropped_fields: parsed.dropped_fields,
+                sha256: skills::sha_hex(bytes),
+            },
+        );
+    }
+
+    let m = &loc.manifest;
     let mut tool_servers = BTreeMap::new();
     if let Some(dir) = &loc.dir {
         let read = |p: &str| tree.file(p);
@@ -237,9 +280,6 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located, all
     for part in NOT_INSTALLED.into_iter().filter(|p| has(p)) {
         ignored.insert(format!("{part}/"));
     }
-    if has("agents") {
-        ignored.insert("agents/ as subagents (its files ship for skills to read)".into());
-    }
     let egress: BTreeSet<String> = m["network"]["hosts"]
         .as_array()
         .into_iter()
@@ -254,6 +294,7 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located, all
         version: m["version"].as_str().map(str::to_owned),
         tree: hash,
         skills: skills_out,
+        agents: agents_out,
         tool_servers,
         egress: egress.into_iter().collect(),
         secrets,
@@ -304,7 +345,7 @@ async fn probe_servers(state: &AppState, project_id: &str, id: &str, entry: &mut
 
 /// Everything a reviewer sees, so two entries with the same review are the same pack.
 fn same_review(a: &PackEntry, b: &PackEntry) -> bool {
-    a.tree == b.tree && a.skills == b.skills && a.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)).eq(b.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)))
+    a.tree == b.tree && a.skills == b.skills && a.agents == b.agents && a.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)).eq(b.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)))
         && a.egress == b.egress
         && a.secrets == b.secrets
         && a.ignored == b.ignored
@@ -457,6 +498,7 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
             to_tree: after.tree.clone(),
             changed,
             other_files,
+            agents: after.agents.values().cloned().collect(),
             egress: after.egress.clone(),
             secrets: after.secrets.clone(),
             ignored: after.ignored.clone(),
@@ -1024,11 +1066,13 @@ mod tests {
         assert_eq!(entry.source.path.as_deref(), Some("plugins/acme-tools"));
         assert_eq!(entry.egress, ["api.acme.dev"], "metadata hosts are never a grant");
         assert_eq!(entry.secrets, ["ACME_TOKEN"]);
-        assert_eq!(entry.ignored, ["agents/ as subagents (its files ship for skills to read)", "commands/", "hooks/", "tool server local (runs a local command)"]);
+        assert_eq!(entry.ignored, ["commands/", "hooks/", "tool server local (runs a local command)"]);
+        assert_eq!(entry.agents.keys().collect::<Vec<_>>(), ["helper"]);
+        assert_eq!(entry.agents["helper"].description, "a helper");
         assert!(entry.approved.is_none() && entry.tool_servers.len() == 1);
 
         let card = review(&state, &pid, &id);
-        let DecisionPayload::PackReview { from, to, changed, other_files, ignored, egress, secrets, .. } = &card.payload else { panic!("not a pack review") };
+        let DecisionPayload::PackReview { from, to, changed, other_files, agents, ignored, egress, secrets, .. } = &card.payload else { panic!("not a pack review") };
         assert!(card.owner_only && from.is_none() && *to == commit);
         assert_eq!(
             changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
@@ -1040,18 +1084,22 @@ mod tests {
             [(".claude-plugin/plugin.json", "added", "clean")],
             "other shipped files show collapsed with path, size, and scan status"
         );
+        assert_eq!(agents.iter().map(|a| (a.name.as_str(), a.path.as_str())).collect::<Vec<_>>(), [("helper", "agents/helper.md")]);
         assert!(changed[1].after.as_deref().unwrap().contains("Review the diff.") && changed[2].after.as_deref().unwrap().contains("Search docs."), "full texts, never truncated");
-        assert_eq!((ignored.len(), egress.len(), secrets.len()), (4, 1, 1));
+        assert_eq!((ignored.len(), egress.len(), secrets.len()), (3, 1, 1));
 
         // Nothing reaches agents before approval.
         crate::team_edit::update_role(&state, &pid, &[json!(role(&state, &pid)), json!({ "skills": [format!("{id}@review")] })]).unwrap();
         assert!(crate::skills::approved_skills(&state, &pid, &role(&state, &pid)).is_empty());
+        assert!(crate::subagents::approved_for_role(&state, &pid, &role(&state, &pid)).is_empty());
         assert!(int::tool_servers(&state, &pid).is_empty());
         assert!(crate::skills::list_pins(&state).is_empty() && crate::skills::pin_role_skills(&state, &pid).is_empty(), "pack skills never go through the standalone pin flow");
 
         approve_for(&state, &card.id, &[role(&state, &pid).as_str()]);
         let mounted = crate::skills::approved_skills(&state, &pid, &role(&state, &pid));
         assert_eq!(mounted.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["review"]);
+        let mounted_agents = crate::subagents::approved_for_role(&state, &pid, &role(&state, &pid));
+        assert_eq!(mounted_agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["helper"]);
         let servers = int::tool_servers(&state, &pid);
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].source, ToolServerSource::Pack { pack_id: id.clone(), commit: commit.clone() });
@@ -1320,16 +1368,17 @@ mod tests {
         let (id, entry) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
         assert_eq!(id, "acme/egm:egm");
         assert_eq!(entry.skills.keys().collect::<Vec<_>>(), ["egm-review", "egm-review-loop"]);
+        assert_eq!(entry.agents.keys().collect::<Vec<_>>(), ["egm-zoom-out"]);
         assert!(entry.scan.blocked.is_empty(), "{:?}", entry.scan.blocked);
         assert_eq!(
             entry.ignored,
-            [".claude-plugin/icon.png (binary, 1 KB)", "agents/ as subagents (its files ship for skills to read)", "hooks/"],
+            [".claude-plugin/icon.png (binary, 1 KB)", "hooks/"],
             "a binary is listed and left out; hooks never ship"
         );
         let tree = entry.tree.clone();
         stage(&state, &pid, &id, entry, &[]).unwrap();
         let card = review(&state, &pid, &id);
-        let DecisionPayload::PackReview { changed, other_files, .. } = &card.payload else { panic!() };
+        let DecisionPayload::PackReview { changed, other_files, agents, .. } = &card.payload else { panic!() };
         assert_eq!(
             changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
             [
@@ -1344,6 +1393,7 @@ mod tests {
             [".claude-plugin/marketplace.json", ".claude-plugin/plugin.json", "resources/execution_instructions.md"],
             "all other shipped files appear in the collapsed list"
         );
+        assert_eq!(agents.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["egm-zoom-out"]);
         assert_eq!(read_review_file(&state, &pid, &card.id, "resources/execution_instructions.md").unwrap(), (None, Some("Shared rules.".into())));
         assert!(card.details.contains(&tree[..12]), "the card names the files hash");
         answer(&state, &card.id, DecisionStatus::Resolved);
@@ -1365,23 +1415,39 @@ mod tests {
         let host = format!("/host/ws/.arima-skills/{tree}/plugin");
         let root = "/workspace/.agent-home/.arima/plugins/acme/egm/egm";
 
-        // Verify both Codex and Claude mount the plugin tree :ro and a :ro skills_dir view of symlinks into it,
+        // Verify both Codex and Claude mount the plugin tree :ro, a :ro skills_dir view, and a :ro native agents_dir view,
         // and that container-side physical path resolution from `<skills_dir>/<name>/<rel>` lands inside the plugin.
-        for (cli, skills_dir) in [("codex", "/workspace/.agent-home/.agents/skills"), ("claude", "/workspace/.agent-home/.claude/skills")] {
+        for (cli, skills_dir, agents_dir, rendered_name, role_file) in [
+            ("codex", "/workspace/.agent-home/.agents/skills", "/workspace/.agent-home/.codex/agents", "egm-zoom-out.toml", "AGENTS.md"),
+            ("claude", "/workspace/.agent-home/.claude/skills", "/workspace/.agent-home/.claude/agents", "egm-zoom-out.md", "CLAUDE.md"),
+        ] {
             crate::team_edit::update_role(&state, &pid, &[json!(r), json!({ "cli": cli, "skills": [format!("{id}@egm-review"), format!("{id}@egm-review-loop")] })]).unwrap();
             let body = rt.plan(&state, &pid, &agent).unwrap().body;
             let binds: Vec<&str> = body["HostConfig"]["Binds"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-            assert_eq!(binds.len(), 3, "{cli}: workspace + plugin tree + skills view: {binds:?}");
+            assert_eq!(binds.len(), 4, "{cli}: workspace + plugin tree + skills view + agents view: {binds:?}");
             assert_eq!(binds[1], format!("{host}:{root}:ro"), "{cli}: whole plugin mounted read-only");
             let view_prefix = "/host/ws/.arima-skills/views/";
             let view_suffix = format!(":{skills_dir}:ro");
             assert!(binds[2].starts_with(view_prefix) && binds[2].ends_with(&view_suffix), "{cli}: {}", binds[2]);
             let view_hash = binds[2].strip_prefix(view_prefix).unwrap().strip_suffix(&view_suffix).unwrap();
 
+            let agents_prefix = "/host/ws/.arima-skills/agent-views/";
+            let agents_suffix = format!(":{agents_dir}:ro");
+            assert!(binds[3].starts_with(agents_prefix) && binds[3].ends_with(&agents_suffix), "{cli}: {}", binds[3]);
+            let agents_hash = binds[3].strip_prefix(agents_prefix).unwrap().strip_suffix(&agents_suffix).unwrap();
+
             // Pre-created mountpoints on host keep parent CLI folders owned by the container user, not root.
             let agent_ws = ws.join("demo").join(&agent);
             assert!(agent_ws.join(skills_dir.strip_prefix("/workspace/").unwrap()).is_dir(), "{cli}: skills_dir mountpoint pre-created");
+            assert!(agent_ws.join(agents_dir.strip_prefix("/workspace/").unwrap()).is_dir(), "{cli}: agents_dir mountpoint pre-created");
             assert!(agent_ws.join(root.strip_prefix("/workspace/").unwrap()).is_dir(), "{cli}: plugin mountpoint pre-created");
+
+            let rendered_file = ws.join(".arima-skills/agent-views").join(agents_hash).join(rendered_name);
+            let rendered_text = std::fs::read_to_string(&rendered_file).unwrap();
+            assert!(rendered_text.contains("A simplicity reviewer."), "{cli}: {rendered_text}");
+            let role_text = std::fs::read_to_string(agent_ws.join(role_file)).unwrap();
+            let wants_note = crate::cli::adapter(cli).unwrap().agent_format == crate::cli::AgentFormat::CodexToml;
+            assert_eq!(role_text.contains("## Sub-agents"), wants_note, "{cli}: {role_text}");
 
             let env: Vec<&str> = body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
             assert!(env.contains(&format!("CLAUDE_PLUGIN_ROOT={root}").as_str()) && env.contains(&format!("PLUGIN_ROOT={root}").as_str()), "{env:?}");
@@ -1445,8 +1511,10 @@ mod tests {
             (Some("Shared rules.".into()), Some("Shared rules, changed.".into()))
         );
         assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash == tree), "agents keep the approved tree");
+        assert!(crate::subagents::approved_for_role(&state, &pid, &r).iter().all(|a| a.tree == tree), "sub-agents keep the approved tree");
         answer(&state, &card.id, DecisionStatus::Resolved);
         assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash != tree && s.files.iter().any(|(p, c)| p == "resources/execution_instructions.md" && c == b"Shared rules, changed.")));
+        assert!(crate::subagents::approved_for_role(&state, &pid, &r).iter().all(|a| a.tree != tree));
     }
 
     #[test]
@@ -1734,5 +1802,93 @@ mod tests {
             t.join().unwrap();
         }
         assert_eq!(lock(&state, &pid).packs.len(), 80, "no write was lost");
+    }
+
+    #[test]
+    fn old_pack_lock_without_agents_deserializes_cleanly() {
+        let raw = r#"{
+            "v": 1,
+            "packs": {
+                "acme/tools": {
+                    "source": { "repo": "https://github.com/acme/tools.git", "commit": "0123456789012345678901234567890123456789" },
+                    "skills": {}
+                }
+            }
+        }"#;
+        let parsed: PackLock = serde_json::from_str(raw).unwrap();
+        assert!(parsed.packs["acme/tools"].agents.is_empty());
+    }
+
+    #[test]
+    fn caps_pack_agents_at_twenty_and_lists_excess_in_ignored() {
+        let (tmp, state, _, _, _) = setup();
+        let repo = tmp.path().join("acme").join("many-agents");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, &["init", "-q"]);
+        let mut files: Vec<(String, String)> = vec![
+            (".claude-plugin/marketplace.json".into(), r#"{ "plugins": [ { "name": "many", "source": "./" } ] }"#.into()),
+            ("skills/review/SKILL.md".into(), skill("review", "Review code.")),
+        ];
+        for i in 0..22 {
+            files.push((format!("agents/agent_{i:02}.md"), format!("---\nname: a-{i:02}\ndescription: Agent {i}\n---\nInstructions {i}.\n")));
+        }
+        let refs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        write(&repo, &refs);
+
+        let (_, entry) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
+        assert_eq!(entry.agents.len(), crate::subagents::MAX_PACK_AGENTS);
+        assert!(entry.ignored.iter().any(|l| l.contains("agents/agent_20.md") && l.contains("20 sub-agent limit")), "{:?}", entry.ignored);
+        assert!(entry.ignored.iter().any(|l| l.contains("agents/agent_21.md") && l.contains("20 sub-agent limit")), "{:?}", entry.ignored);
+    }
+
+    #[test]
+    fn disambiguates_colliding_subagents_across_packs_and_drops_on_tampered_tree() {
+        let (tmp, state, pid, _, _) = setup();
+        let make_pack = |folder: &str, plugin_name: &str, skill_name: &str| {
+            let repo = tmp.path().join("org").join(folder);
+            std::fs::create_dir_all(&repo).unwrap();
+            sh(&repo, &["init", "-q"]);
+            let cat = format!(r#"{{ "plugins": [ {{ "name": "{plugin_name}", "source": "./" }} ] }}"#);
+            let sk = skill(skill_name, "Skill instructions.");
+            write(
+                &repo,
+                &[
+                    (".claude-plugin/marketplace.json", cat.as_str()),
+                    (&format!("skills/{skill_name}/SKILL.md"), &sk),
+                    ("agents/reviewer.md", "---\nname: reviewer\ndescription: General reviewer.\n---\nCheck diffs."),
+                    ("agents/unique.md", &format!("---\nname: {plugin_name}-unique\ndescription: Unique helper.\n---\nUnique body.")),
+                ],
+            );
+            repo
+        };
+        let repo_a = make_pack("pack-a", "alpha", "alpha-skill");
+        let repo_b = make_pack("pack-b", "beta", "beta-skill");
+        let mut pack_ids = Vec::new();
+        for repo in [&repo_a, &repo_b] {
+            let (id, entry) = prepare(&state, &url(repo), None, "HEAD").unwrap();
+            stage(&state, &pid, &id, entry, &[]).unwrap();
+            answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
+            pack_ids.push(id);
+        }
+
+        let r = role(&state, &pid);
+        crate::team_edit::update_role(
+            &state,
+            &pid,
+            &[json!(r), json!({ "skills": [format!("{}@alpha-skill", pack_ids[0]), format!("{}@beta-skill", pack_ids[1])] })],
+        )
+        .unwrap();
+
+        let resolved = crate::subagents::approved_for_role(&state, &pid, &r);
+        let names: BTreeSet<&str> = resolved.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, BTreeSet::from(["alpha-reviewer", "alpha-unique", "beta-reviewer", "beta-unique"]));
+
+        // Tampering with stored files causes approved_for_role to reject that pack's sub-agents.
+        let alpha_tree = lock(&state, &pid).packs[&pack_ids[0]].tree.clone();
+        let stored_agent = crate::skills::data_root(&state).unwrap().join(alpha_tree).join(STORED_PLUGIN).join("agents/reviewer.md");
+        std::fs::write(&stored_agent, "tampered").unwrap();
+        let after_tamper = crate::subagents::approved_for_role(&state, &pid, &r);
+        let after_names: BTreeSet<&str> = after_tamper.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(after_names, BTreeSet::from(["beta-unique", "reviewer"]), "only untampered pack mounts; uncollided name reverts cleanly");
     }
 }
