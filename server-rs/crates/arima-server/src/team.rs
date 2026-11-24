@@ -193,40 +193,8 @@ pub(crate) fn save(conn: &rusqlite::Connection, project_id: &str, model: &TeamMo
     Ok(())
 }
 
-/// SHA-256 of built-in `roleMd` texts that earlier HQ builds shipped (assets/team-data.json at c8b6f86 and
-/// 576d527) and that name tools the tool server no longer runs, with the (template, role) whose current text
-/// replaces them. Roles shared across templates had one text, so one entry covers all of them.
-const RETIRED_ROLE_MD: &[(&str, &str, &str)] = &[
-    ("0228e26a3b1929545b6f8cfb37d5d8da6447c2657f02a3a145b0970170eccbd8", "dev", "lead"),
-    ("e733a652ec2ce7e3f0e6cebf4a6f53af05e4bfd99d5c1d2b366f5e0637615031", "security-red", "lead"),
-    ("43bcd278238593cc8993d6942396d52e2e461f37ab2ac2fdbd66268dbf8d6948", "security-red", "recon"),
-    ("5a318f1c47c5a7fcd882d53301dde4d0e5760b138b50023c709e329e9943b3cf", "security-red", "exploit"),
-    ("04b609cffbc7534c83eab5c921e746ee3269ae0f2f40179a35f5d27425903486", "security-red", "reporter"),
-    ("e8331d6f775f06ac90db7e35b82209e5a8cb037e3c5537398022aef1ee0206ee", "security-red", "second-opinion"),
-    ("e8430a6e2c9f95df24e2d080c5e3540cd0f33f986c2d5537133a7da19d0bc241", "security-purple", "lead"),
-    ("10f2df0d3f153969d05075bda9682a3f74c7c927851ffd353297afaf04262b75", "security-purple", "defender"),
-    ("ba425696840b35a651b513c93e24af66a80346c0a0feabf2c27e4513e0d4170f", "security-blue", "lead"),
-    ("8d13671b95b7a725552869cf6a2a69ab85695597ba760dae7857a5520ec50deb", "security-blue", "analyst"),
-    ("b036b0540175f873787f925e7d3bbc78a87940ca64ed391a071734fb9cabc455", "security-blue", "responder"),
-    ("27f405998fa915c32c5edfea72e927be9d185f8b125b531d27f9849d3827873c", "blank", "lead"),
-];
-
-/// The current built-in text for a role prompt that still equals a retired built-in version.
-fn current_builtin_role_md(role_md: &str) -> Option<&'static Value> {
-    use sha2::{Digest, Sha256};
-    let digest = hex::encode(Sha256::digest(role_md.as_bytes()));
-    let (_, template_id, role_id) = RETIRED_ROLE_MD.iter().find(|(h, _, _)| *h == digest)?;
-    Some(&role_of(template_by_id(template_id)?, role_id)?["roleMd"])
-}
-
-/// Every role prompt a team config holds: the template's roles and each seat's resolved copy.
-fn role_texts_mut(model: &mut TeamModel) -> impl Iterator<Item = &mut Value> {
-    let roles = model.template["roles"].as_array_mut().into_iter().flatten();
-    roles.chain(model.team.iter_mut()).filter_map(|v| v.get_mut("roleMd")).filter(|v| v.is_string())
-}
-
-/// Boot step: brings every project's untouched built-in role prompts up to the current text, and raises one
-/// Inbox notice per project whose edited prompts still name tools HQ doesn't run. Safe to run on every boot.
+/// Boot step: brings every project's unedited built-in role prompts up to the current text.
+/// Roles edited by a user (`roleMdEdited: true`) are left untouched. Safe to run on every boot.
 pub fn refresh_builtin_role_prompts(state: &AppState) {
     let ids: Vec<String> = state
         .inner
@@ -239,59 +207,37 @@ pub fn refresh_builtin_role_prompts(state: &AppState) {
         .unwrap_or_default();
     for pid in ids {
         let Some(mut model) = load(state, &pid) else { continue };
+        let Some(builtin) = model.template["id"].as_str().and_then(template_by_id) else { continue };
         let mut updated = 0;
-        for md in role_texts_mut(&mut model) {
-            if let Some(current) = md.as_str().and_then(current_builtin_role_md) {
-                *md = current.clone();
+        if let Some(roles) = model.template["roles"].as_array_mut() {
+            for role in roles.iter_mut() {
+                if role["roleMdEdited"] == true {
+                    continue;
+                }
+                let Some(current) = role["id"].as_str().and_then(|id| role_of(builtin, id)).map(|r| &r["roleMd"]) else {
+                    continue;
+                };
+                if role["roleMd"] != *current {
+                    role["roleMd"] = current.clone();
+                    updated += 1;
+                }
+            }
+        }
+        for seat in &mut model.team {
+            let Some(role) = seat["roleId"].as_str().and_then(|id| role_of(&model.template, id)) else {
+                continue;
+            };
+            if role["roleMdEdited"] != true && seat["roleMd"] != role["roleMd"] {
+                seat["roleMd"] = role["roleMd"].clone();
                 updated += 1;
             }
         }
         if updated > 0 {
             match state.inner.db.transaction(|conn| save(conn, &pid, &model)) {
-                Ok(()) => tracing::info!(project = %pid, updated, "refreshed built-in role prompts to the current tool names"),
+                Ok(()) => tracing::info!(project = %pid, updated, "refreshed built-in role prompts to the current text"),
                 Err(e) => tracing::warn!(project = %pid, error = %e, "couldn't refresh built-in role prompts"),
             }
         }
-        let mut unknown: Vec<String> = role_texts_mut(&mut model)
-            .filter_map(|v| v.as_str())
-            .flat_map(|t| crate::mcp::unknown_tool_names(t).into_iter().map(str::to_owned).collect::<Vec<_>>())
-            .collect();
-        unknown.sort_unstable();
-        unknown.dedup();
-        if !unknown.is_empty() {
-            raise_unknown_tools_notice(state, &pid, &unknown);
-        }
-    }
-}
-
-fn raise_unknown_tools_notice(state: &AppState, project_id: &str, unknown: &[String]) {
-    use arima_core::{DecisionPayload, DecisionStatus, VisualDecision};
-    // One notice per project, ever: a fixed id, created only if absent, so a dismissed notice stays dismissed.
-    let id = format!("dec-role-tools-{project_id}");
-    if !matches!(state.inner.decisions.get(&id), Ok(None)) {
-        return;
-    }
-    let names = unknown.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ");
-    let decision = VisualDecision {
-        id,
-        project_id: project_id.to_owned(),
-        from_id: "hq".into(),
-        task_id: None,
-        title: "Edited role prompts name tools HQ doesn't run".into(),
-        details: format!("Update these role prompts in Agents: {names}"),
-        waiting: false,
-        owner_only: true,
-        status: DecisionStatus::Open,
-        payload: DecisionPayload::Info {
-            markdown: format!("Some role prompts in this project were edited and still mention {names}. HQ's tool server no longer runs these tools, so agents that try them get an error. Edit the role prompts in Agents to use the current tool names."),
-        },
-        note: None,
-        created_at: Utc::now().to_rfc3339(),
-        closed_at: None,
-    };
-    match state.inner.decisions.upsert(&decision) {
-        Ok(_) => tracing::info!(project = %project_id, tools = %names, "raised an Inbox notice for role prompts naming unknown tools"),
-        Err(e) => tracing::warn!(project = %project_id, error = %e, "couldn't raise the unknown-tools notice"),
     }
 }
 
@@ -432,8 +378,7 @@ pub fn complete_welcome(state: &AppState, project_id: &str, args: &[Value]) -> R
         })
         .map_err(|e: DbError| e.to_string())?;
 
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -468,34 +413,25 @@ mod tests {
     }
 
     #[test]
-    fn retired_role_texts_point_at_a_current_text_that_is_not_itself_retired() {
-        for (_, template_id, role_id) in RETIRED_ROLE_MD {
-            let current = role_of(template_by_id(template_id).unwrap(), role_id).unwrap()["roleMd"].as_str().unwrap();
-            assert!(current_builtin_role_md(current).is_none(), "{template_id}/{role_id} would be rewritten every boot");
-        }
-    }
-
-    #[test]
-    fn boot_refresh_updates_untouched_built_in_prompts_keeps_edits_and_raises_one_notice() {
+    fn boot_refresh_updates_unedited_roles_and_keeps_edited_ones() {
         let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([7u8; 32]), crate::ServerConfig::default());
         state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
         let pid = state.default_project().unwrap().0;
         complete_welcome(&state, &pid, &[json!({ "templateId": "security-red" })]).unwrap();
 
         let current = role_of(template_by_id("security-red").unwrap(), "recon").unwrap()["roleMd"].as_str().unwrap().to_owned();
-        // The recon prompt as 576d527 shipped it: only this line changed.
-        let retired = current.replace("send the plan with ask_user (ownerOnly) and wait for the owner's answer.", "submit_plan and wait for the owner.");
-        assert_ne!(retired, current);
-        let edited = "My own lead prompt: use `create_task` for each target.";
+        let stale = "Old recon prompt before role refresh.";
         let mut model = load(&state, &pid).unwrap();
         for role in model.template["roles"].as_array_mut().unwrap().iter_mut().chain(model.team.iter_mut()) {
-            match role["roleId"].as_str().or(role["id"].as_str()) {
-                Some("recon") => role["roleMd"] = json!(retired),
-                Some("lead") => role["roleMd"] = json!(edited),
-                _ => {}
+            if role["roleId"].as_str().or(role["id"].as_str()) == Some("recon") {
+                role["roleMd"] = json!(stale);
             }
         }
         state.inner.db.transaction(|conn| save(conn, &pid, &model)).unwrap();
+
+        // Editing a role via update_role marks `roleMdEdited: true`, even with snake_case words like `user_id`.
+        let edited = "My own lead prompt: mention `user_id` and `create_task`.";
+        crate::team_edit::update_role(&state, &pid, &[json!("lead"), json!({ "roleMd": edited })]).unwrap();
 
         refresh_builtin_role_prompts(&state);
         refresh_builtin_role_prompts(&state);
@@ -507,12 +443,12 @@ mod tests {
                 .map(|r| r["roleMd"].as_str().unwrap().to_owned()).collect()
         };
         let recon = texts("recon");
-        assert!(recon.len() >= 2 && recon.iter().all(|t| *t == current), "template role and seat copies are refreshed");
+        assert!(recon.len() >= 2 && recon.iter().all(|t| *t == current), "unedited template role and seat copies are refreshed");
+        assert_eq!(role_of(&model.template, "lead").unwrap()["roleMdEdited"], json!(true));
         assert!(texts("lead").iter().all(|t| t == edited), "an edited prompt is never overwritten");
 
         let notices: Vec<_> = state.inner.decisions.list_by_project(&pid, None).unwrap().into_iter().filter(|d| d.id.starts_with("dec-role-tools-")).collect();
-        assert_eq!(notices.len(), 1, "one notice per project across boots");
-        assert!(notices[0].details.contains("`create_task`"));
+        assert!(notices.is_empty(), "snake_case words in edited role prompts never raise notices");
     }
 
     #[test]

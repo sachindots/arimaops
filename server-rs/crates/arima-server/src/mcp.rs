@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-
 use arima_auth::{record_audit, redact_json_value, AuditWrite};
 use arima_core::{
     DecisionPayload, DecisionStatus, FormPayload, MeetingKind, MeetingUrgency, OpinionSide, PermissionPayload,
@@ -12,27 +8,18 @@ use arima_core::{
 };
 use arima_db::{is_owner_only_gate, CreateFindingInput, CreateMemoryInput, Db, DbError, MemoryStatusFilter};
 use chrono::Utc;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
 
 use crate::meetings::{start_or_request_meeting, StartMeetingInput};
 use crate::state::AppState;
 
-/// Per-`(project_id, agent_id)` cached MCP handler entry.
-#[derive(Debug)]
-pub struct CachedMcpHandler {
-    pub project_id: String,
-    pub agent_id: String,
-    pub invocations: AtomicU64,
-}
-
-/// Registry of cached per-`(project_id, agent_id)` MCP handlers. Bearer tokens live in `mcp_tokens` as SHA-256 digests.
+/// Registry of agent MCP bearer tokens. Tokens live in `mcp_tokens` as SHA-256 digests.
 #[derive(Debug)]
 pub struct McpRegistry {
     db: Db,
-    handlers: Mutex<HashMap<(String, String), Arc<CachedMcpHandler>>>,
 }
 
 fn token_digest(token: &str) -> String {
@@ -42,7 +29,7 @@ fn token_digest(token: &str) -> String {
 impl McpRegistry {
     #[must_use]
     pub fn new(db: Db) -> Self {
-        Self { db, handlers: Mutex::default() }
+        Self { db }
     }
 
     /// Issues (or replaces) the bearer token for `(project_id, agent_id)`; only its digest is stored.
@@ -62,68 +49,30 @@ impl McpRegistry {
         token
     }
 
-    /// Revokes the bearer token for `(project_id, agent_id)` and drops its cached handler.
+    /// Revokes the bearer token for `(project_id, agent_id)`.
     pub fn revoke_agent_token(&self, project_id: &str, agent_id: &str) {
         let _ = self.db.transaction(|conn| {
             conn.execute("DELETE FROM mcp_tokens WHERE project_id = ?1 AND agent_id = ?2", rusqlite::params![project_id, agent_id])?;
             Ok::<_, DbError>(())
         });
-        if let Ok(mut guard) = self.handlers.lock() {
-            guard.remove(&(project_id.to_owned(), agent_id.to_owned()));
-        }
     }
 
-    /// Verifies a bearer token against every stored digest in constant time and returns `(project_id, agent_id)`.
+    /// Looks up a bearer token by its SHA-256 digest and returns `(project_id, agent_id)`.
     #[must_use]
     pub fn verify_bearer_token(&self, candidate: &str) -> Option<(String, String)> {
         let cand = token_digest(candidate);
-        let rows = self
-            .db
+        self.db
             .read(|conn| {
-                let mut stmt = conn.prepare("SELECT project_id, agent_id, token_hash FROM mcp_tokens")?;
-                let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(DbError::from)
+                conn.query_row(
+                    "SELECT project_id, agent_id FROM mcp_tokens WHERE token_hash = ?1",
+                    [&cand],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                )
+                .optional()
+                .map_err(DbError::from)
             })
-            .ok()?;
-        let mut matched = None;
-        for (project_id, agent_id, hash) in rows {
-            if bool::from(hash.as_bytes().ct_eq(cand.as_bytes())) {
-                matched = Some((project_id, agent_id));
-            }
-        }
-        matched
-    }
-
-    /// Returns the cached [`CachedMcpHandler`] for `(project_id, agent_id)`, creating it once on first access.
-    pub fn get_or_create_handler(
-        &self,
-        project_id: &str,
-        agent_id: &str,
-    ) -> Arc<CachedMcpHandler> {
-        let mut guard = self.handlers.lock().expect("mcp handlers lock");
-        let entry = guard
-            .entry((project_id.to_owned(), agent_id.to_owned()))
-            .or_insert_with(|| {
-                Arc::new(CachedMcpHandler {
-                    project_id: project_id.to_owned(),
-                    agent_id: agent_id.to_owned(),
-                    invocations: AtomicU64::new(0),
-                })
-            })
-            .clone();
-        entry.invocations.fetch_add(1, Ordering::Relaxed);
-        entry
-    }
-
-    /// Returns the invocation count for `(project_id, agent_id)` on its cached handler instance.
-    #[must_use]
-    pub fn handler_invocations(&self, project_id: &str, agent_id: &str) -> u64 {
-        self.handlers
-            .lock()
             .ok()
-            .and_then(|g| g.get(&(project_id.to_owned(), agent_id.to_owned())).cloned())
-            .map(|h| h.invocations.load(Ordering::Relaxed))
-            .unwrap_or(0)
+            .flatten()
     }
 }
 
@@ -195,7 +144,7 @@ pub struct ToolDef {
     pub name: &'static str,
     pub description: &'static str,
     pub input_schema: fn() -> Value,
-    run: fn(&AppState, &McpCaller, &CachedMcpHandler, &Value) -> ToolResult,
+    run: fn(&AppState, &McpCaller, &Value) -> ToolResult,
 }
 
 fn str_prop(description: &str) -> Value {
@@ -238,15 +187,6 @@ fn second_opinion_schema() -> Value {
     )
 }
 
-/// Snake-case words in a prompt are read as tool names; returns the ones this tool server doesn't run.
-#[must_use]
-pub fn unknown_tool_names(text: &str) -> Vec<&str> {
-    text.split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
-        .filter(|w| w.contains('_') && !w.starts_with('_') && !w.ends_with('_'))
-        .filter(|w| !TOOLS.iter().any(|t| t.name == *w))
-        .collect()
-}
-
 pub const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "ask_user",
@@ -270,19 +210,14 @@ pub const TOOLS: &[ToolDef] = &[
                                 "options": {
                                     "type": "array",
                                     "items": {
-                                        "anyOf": [
-                                            { "type": "string" },
-                                            {
-                                                "type": "object",
-                                                "properties": {
-                                                    "id": { "type": "string" },
-                                                    "label": { "type": "string" },
-                                                    "description": { "type": "string" },
-                                                    "recommended": { "type": "boolean" }
-                                                },
-                                                "required": ["label"]
-                                            }
-                                        ]
+                                        "type": "object",
+                                        "properties": {
+                                            "id": { "type": "string" },
+                                            "label": { "type": "string" },
+                                            "description": { "type": "string" },
+                                            "recommended": { "type": "boolean" }
+                                        },
+                                        "required": ["label"]
                                     }
                                 }
                             },
@@ -300,13 +235,13 @@ pub const TOOLS: &[ToolDef] = &[
         name: "propose_second_opinion",
         description: "Put Option A and Option B side by side for the owner to choose.",
         input_schema: second_opinion_schema,
-        run: |s, c, h, a| tool_second_opinion(s, c, h, a, false),
+        run: |s, c, a| tool_second_opinion(s, c, a, false),
     },
     ToolDef {
         name: "report_disagreement",
         description: "Escalate a disagreement between agents with each side's rationale.",
         input_schema: second_opinion_schema,
-        run: |s, c, h, a| tool_second_opinion(s, c, h, a, true),
+        run: |s, c, a| tool_second_opinion(s, c, a, true),
     },
     ToolDef {
         name: "request_meeting",
@@ -381,13 +316,13 @@ pub const TOOLS: &[ToolDef] = &[
         name: "get_visual_feedback",
         description: "List the visual feedback the owner left on this project's preview.",
         input_schema: || object(json!({}), &[]),
-        run: |s, _, h, _| tool_get_visual_feedback(s, h),
+        run: |s, c, _| tool_get_visual_feedback(s, c),
     },
     ToolDef {
         name: "list_tasks",
         description: "List this project's board tasks.",
         input_schema: || object(json!({}), &[]),
-        run: |s, _, h, _| tool_list_tasks(s, h),
+        run: |s, c, _| tool_list_tasks(s, c),
     },
     ToolDef {
         name: "update_task",
@@ -405,14 +340,14 @@ pub const TOOLS: &[ToolDef] = &[
                 &["id", "title"],
             )
         },
-        run: |s, _, h, a| tool_update_task(s, h, a),
+        run: tool_update_task,
     },
     ToolDef {
         name: "assign_task",
         description: "Give a task to an agent on this project's team.",
         input_schema: || object(json!({ "taskId": str_prop("Task id."), "agentId": str_prop("Agent id.") }), &["taskId", "agentId"]),
-        run: |s, _, h, a| {
-            crate::team_edit::assign_task(s, &h.project_id, &[json!(arg_str(a, "taskId")), json!(arg_str(a, "agentId"))]).map_err(invalid)?;
+        run: |s, c, a| {
+            crate::team_edit::assign_task(s, &c.project_id, &[json!(arg_str(a, "taskId")), json!(arg_str(a, "agentId"))]).map_err(invalid)?;
             Ok(json!({ "ok": true }))
         },
     },
@@ -420,8 +355,8 @@ pub const TOOLS: &[ToolDef] = &[
         name: "create_board",
         description: "Create a board for a body of work; returns its id.",
         input_schema: || object(json!({ "title": str_prop("Board title.") }), &["title"]),
-        run: |s, _, h, a| {
-            let id = crate::planning::create_board(s, &h.project_id, arg_str(a, "title")).map_err(invalid)?;
+        run: |s, c, a| {
+            let id = crate::planning::create_board(s, &c.project_id, arg_str(a, "title")).map_err(invalid)?;
             Ok(json!({ "ok": true, "boardId": id }))
         },
     },
@@ -431,8 +366,8 @@ pub const TOOLS: &[ToolDef] = &[
         input_schema: || {
             object(json!({ "boardId": str_prop("Board id."), "specMarkdown": str_prop("The spec, Markdown.") }), &["boardId", "specMarkdown"])
         },
-        run: |s, _, h, a| {
-            let version = crate::planning::write_spec(s, &h.project_id, arg_str(a, "boardId"), arg_str(a, "specMarkdown")).map_err(invalid)?;
+        run: |s, c, a| {
+            let version = crate::planning::write_spec(s, &c.project_id, arg_str(a, "boardId"), arg_str(a, "specMarkdown")).map_err(invalid)?;
             Ok(json!({ "ok": true, "specVersion": version }))
         },
     },
@@ -440,7 +375,7 @@ pub const TOOLS: &[ToolDef] = &[
         name: "list_goals",
         description: "List this project's goals with their progress.",
         input_schema: || object(json!({}), &[]),
-        run: |s, _, h, _| Ok(json!({ "goals": crate::planning::goals_for(s, &h.project_id) })),
+        run: |s, c, _| Ok(json!({ "goals": crate::planning::goals_for(s, &c.project_id) })),
     },
     ToolDef {
         name: "update_goal",
@@ -458,8 +393,8 @@ pub const TOOLS: &[ToolDef] = &[
                 &["id"],
             )
         },
-        run: |s, _, h, a| {
-            crate::planning::update_goal(s, &h.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
+        run: |s, c, a| {
+            crate::planning::update_goal(s, &c.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
             Ok(json!({ "ok": true }))
         },
     },
@@ -467,8 +402,8 @@ pub const TOOLS: &[ToolDef] = &[
         name: "send_message",
         description: "Send a chat message to a teammate, to the lead, or to the owner (\"you\").",
         input_schema: || object(json!({ "to": str_prop("Agent id, \"lead\", or \"you\" for the owner."), "text": str_prop("The message.") }), &["to", "text"]),
-        run: |s, _, h, a| {
-            crate::delivery::send_from_agent(s, &h.project_id, &h.agent_id, arg_str(a, "to"), arg_str(a, "text")).map_err(invalid)?;
+        run: |s, c, a| {
+            crate::delivery::send_from_agent(s, &c.project_id, &c.agent_id, arg_str(a, "to"), arg_str(a, "text")).map_err(invalid)?;
             Ok(json!({ "ok": true }))
         },
     },
@@ -495,7 +430,7 @@ pub const TOOLS: &[ToolDef] = &[
                 &["title", "target"],
             )
         },
-        run: |s, _, h, a| tool_report_finding(s, h, a),
+        run: tool_report_finding,
     },
     ToolDef {
         name: "update_finding",
@@ -514,8 +449,8 @@ pub const TOOLS: &[ToolDef] = &[
                 &["id"],
             )
         },
-        run: |s, _, h, a| {
-            crate::memory_cmds::update_finding(s, &h.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
+        run: |s, c, a| {
+            crate::memory_cmds::update_finding(s, &c.project_id, &[json!(arg_str(a, "id")), a.clone()]).map_err(invalid)?;
             Ok(json!({ "ok": true }))
         },
     },
@@ -523,24 +458,7 @@ pub const TOOLS: &[ToolDef] = &[
         name: "check_scope",
         description: "Check whether a host or URL is inside the engagement scope and allowed by the egress proxy.",
         input_schema: || object(json!({ "target": str_prop("Host or URL.") }), &["target"]),
-        run: |s, _, h, a| tool_check_scope(s, h, a),
-    },
-    ToolDef {
-        name: "propose_send",
-        description: "Propose an external send (mail, post, CRM write) through a tool connection; the owner approves it in Inbox.",
-        input_schema: || {
-            object(
-                json!({
-                    "connection": str_prop("Tool connection name."),
-                    "tool": str_prop("Tool on that connection."),
-                    "args": { "type": "object", "description": "Arguments for that tool." },
-                    "summary": str_prop("What will be sent, for the owner."),
-                    "taskId": str_prop("Task this is for.")
-                }),
-                &["connection", "tool"],
-            )
-        },
-        run: |s, _, h, a| tool_propose_send(s, h, a),
+        run: tool_check_scope,
     },
     ToolDef {
         name: "recall",
@@ -551,9 +469,9 @@ pub const TOOLS: &[ToolDef] = &[
                 &["query"],
             )
         },
-        run: |s, _, h, a| {
+        run: |s, c, a| {
             let limit = a.get("limit").and_then(Value::as_u64).map_or(12, |n| n.clamp(1, 50));
-            let mut found = s.inner.memory.search(&h.project_id, Some(arg_str(a, "query")), MemoryStatusFilter::All).map_err(server)?;
+            let mut found = s.inner.memory.search(&c.project_id, Some(arg_str(a, "query")), MemoryStatusFilter::All).map_err(server)?;
             found.truncate(usize::try_from(limit).unwrap_or(12));
             Ok(json!({ "memories": found }))
         },
@@ -590,8 +508,8 @@ pub const TOOLS: &[ToolDef] = &[
         name: "keep_out_of_memory",
         description: "Add a person's name to the project's keep-out list; it is masked in every memory, now and later.",
         input_schema: || object(json!({ "name": str_prop("The name, at least 2 characters.") }), &["name"]),
-        run: |s, _, h, a| {
-            crate::memory_cmds::keep_out_of_memory(s, &h.project_id, &[json!(arg_str(a, "name"))]).map_err(invalid)?;
+        run: |s, c, a| {
+            crate::memory_cmds::keep_out_of_memory(s, &c.project_id, &[json!(arg_str(a, "name"))]).map_err(invalid)?;
             Ok(json!({ "ok": true }))
         },
     },
@@ -613,7 +531,6 @@ fn server(e: DbError) -> (i32, String) {
 pub fn handle_mcp_rpc(state: &AppState, caller: &McpCaller, req: McpJsonRpcRequest) -> Option<McpJsonRpcResponse> {
     let _ = req.jsonrpc;
     let rpc_id = req.id?;
-    let handler = state.inner.mcp.get_or_create_handler(&caller.project_id, &caller.agent_id);
 
     Some(match req.method.as_str() {
         "initialize" => McpJsonRpcResponse::ok(
@@ -635,7 +552,7 @@ pub fn handle_mcp_rpc(state: &AppState, caller: &McpCaller, req: McpJsonRpcReque
             let tool_name = req.params.get("name").and_then(Value::as_str).unwrap_or("").to_owned();
             let args = req.params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             let res = match TOOLS.iter().find(|t| t.name == tool_name) {
-                Some(tool) => (tool.run)(state, caller, &handler, &args),
+                Some(tool) => (tool.run)(state, caller, &args),
                 None => Err((-32602, format!("Unknown tool: {tool_name}"))),
             };
             let _ = record_audit(
@@ -664,8 +581,8 @@ pub fn handle_mcp_rpc(state: &AppState, caller: &McpCaller, req: McpJsonRpcReque
     })
 }
 
-fn tool_related(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandler, args: &Value) -> ToolResult {
-    let all = state.inner.memory.search(&handler.project_id, None, MemoryStatusFilter::All).map_err(server)?;
+fn tool_related(state: &AppState, caller: &McpCaller, args: &Value) -> ToolResult {
+    let all = state.inner.memory.search(&caller.project_id, None, MemoryStatusFilter::All).map_err(server)?;
     let memory_id = arg_str(args, "memoryId");
     let topics: Vec<String> = if memory_id.is_empty() {
         // The memory store keeps `about` trimmed and lower-cased.
@@ -680,7 +597,7 @@ fn tool_related(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandle
     Ok(json!({ "memories": related }))
 }
 
-fn tool_remember(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandler, args: &Value) -> ToolResult {
+fn tool_remember(state: &AppState, caller: &McpCaller, args: &Value) -> ToolResult {
     let mut about: Vec<String> = args
         .get("about")
         .and_then(Value::as_array)
@@ -693,7 +610,7 @@ fn tool_remember(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandl
         .inner
         .memory
         .insert(
-            &handler.project_id,
+            &caller.project_id,
             CreateMemoryInput {
                 id: None,
                 mem_type: arg_str(args, "type").to_owned(),
@@ -708,43 +625,72 @@ fn tool_remember(state: &AppState, _caller: &McpCaller, handler: &CachedMcpHandl
             DbError::InvalidInput(msg) => invalid(msg),
             other => server(other),
         })?;
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(&handler.project_id));
-    state.inner.ws_hub.broadcast_snapshot(&handler.project_id, &snapshot);
+    crate::ws::refresh(state, &caller.project_id);
     Ok(json!({ "ok": true, "memory": memory }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AskUserArgs {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    details: String,
+    #[serde(default)]
+    task_id: Option<String>,
+    #[serde(default)]
+    owner_only: bool,
+    #[serde(default)]
+    questions: Option<Vec<AskQuestionInput>>,
+    #[serde(default)]
+    ui: Option<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AskQuestionInput {
+    #[serde(default)]
+    id: Option<String>,
+    prompt: String,
+    #[serde(default)]
+    multi_select: bool,
+    #[serde(default = "default_true")]
+    allow_other: bool,
+    #[serde(default)]
+    options: Vec<AskOptionInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AskOptionInput {
+    #[serde(default)]
+    id: Option<String>,
+    label: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    recommended: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn tool_ask_user(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
-    let title = args
-        .get("title")
-        .or_else(|| args.get("question"))
-        .and_then(Value::as_str)
-        .unwrap_or("Question from agent")
-        .to_owned();
-    let details = args
-        .get("details")
-        .or_else(|| args.get("context"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_owned();
-    let task_id = args
-        .get("taskId")
-        .or_else(|| args.get("task_id"))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let owner_only = args
-        .get("ownerOnly")
-        .or_else(|| args.get("owner_only"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let parsed: AskUserArgs = serde_json::from_value(args.clone())
+        .map_err(|e| invalid(format!("invalid ask_user arguments: {e}")))?;
+    let title = parsed
+        .title
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| "Question from agent".to_owned());
 
-    let form = match args.get("ui").filter(|ui| !ui.is_null()) {
+    let form = match parsed.ui.as_ref().filter(|ui| !ui.is_null()) {
         None => None,
-        Some(_) if args.get("questions").is_some_and(|q| !q.is_null()) => return Err(invalid("send `questions` or `ui`, not both".into())),
+        Some(_) if parsed.questions.is_some() => return Err(invalid("send `questions` or `ui`, not both".into())),
         Some(ui) => Some(arima_core::form::validate(ui).map_err(|errors| {
             let mut lines: Vec<String> = errors.iter().take(10).map(ToString::to_string).collect();
             if errors.len() > 10 {
@@ -754,81 +700,29 @@ fn tool_ask_user(
         })?),
     };
 
-    let mut questions: Vec<QuestionPrompt> = Vec::new();
-    if let Some(q_arr) = args.get("questions").and_then(Value::as_array) {
-        for (idx, q_val) in q_arr.iter().enumerate() {
-            if let Ok(parsed) = serde_json::from_value::<QuestionPrompt>(q_val.clone()) {
-                questions.push(parsed);
-                continue;
-            }
-            let q_id = q_val
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .unwrap_or_else(|| format!("q{}", idx + 1));
-            let prompt = q_val
-                .get("prompt")
-                .or_else(|| q_val.get("question"))
-                .and_then(Value::as_str)
-                .unwrap_or(&title)
-                .to_owned();
-            let multi_select = q_val
-                .get("multiSelect")
-                .or_else(|| q_val.get("multi_select"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let allow_other = q_val
-                .get("allowOther")
-                .or_else(|| q_val.get("allow_other"))
-                .and_then(Value::as_bool)
-                .unwrap_or(true);
-            let mut options = Vec::new();
-            if let Some(opt_arr) = q_val.get("options").and_then(Value::as_array) {
-                for (oidx, o_val) in opt_arr.iter().enumerate() {
-                    if let Some(s) = o_val.as_str() {
-                        options.push(QuestionOption {
-                            id: format!("opt_{}", oidx + 1),
-                            label: s.to_owned(),
-                            description: None,
-                            recommended: oidx == 0 || s.contains("(Recommended)"),
-                        });
-                    } else {
-                        let oid = o_val
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| format!("opt_{}", oidx + 1));
-                        let label = o_val
-                            .get("label")
-                            .and_then(Value::as_str)
-                            .unwrap_or("Option")
-                            .to_owned();
-                        let description = o_val
-                            .get("description")
-                            .and_then(Value::as_str)
-                            .map(str::to_owned);
-                        let recommended = o_val
-                            .get("recommended")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false);
-                        options.push(QuestionOption {
-                            id: oid,
-                            label,
-                            description,
-                            recommended,
-                        });
-                    }
-                }
-            }
-            questions.push(QuestionPrompt {
-                id: q_id,
-                prompt,
-                multi_select,
-                allow_other,
-                options,
-            });
-        }
-    }
+    let mut questions: Vec<QuestionPrompt> = parsed
+        .questions
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .map(|(idx, q)| QuestionPrompt {
+            id: q.id.filter(|id| !id.is_empty()).unwrap_or_else(|| format!("q{}", idx + 1)),
+            prompt: q.prompt,
+            multi_select: q.multi_select,
+            allow_other: q.allow_other,
+            options: q
+                .options
+                .into_iter()
+                .enumerate()
+                .map(|(oidx, o)| QuestionOption {
+                    id: o.id.filter(|id| !id.is_empty()).unwrap_or_else(|| format!("opt_{}", oidx + 1)),
+                    label: o.label,
+                    description: o.description,
+                    recommended: o.recommended,
+                })
+                .collect(),
+        })
+        .collect();
 
     if questions.is_empty() && form.is_none() {
         questions.push(QuestionPrompt {
@@ -855,13 +749,13 @@ fn tool_ask_user(
 
     let decision = VisualDecision {
         id: format!("dec-q-{}", uuid::Uuid::new_v4().simple()),
-        project_id: handler.project_id.clone(),
-        from_id: handler.agent_id.clone(),
-        task_id,
+        project_id: caller.project_id.clone(),
+        from_id: caller.agent_id.clone(),
+        task_id: parsed.task_id,
         title,
-        details,
+        details: parsed.details,
         waiting: true,
-        owner_only,
+        owner_only: parsed.owner_only,
         status: DecisionStatus::Open,
         payload: match form {
             Some(form) => DecisionPayload::Form(FormPayload { form, answer: None }),
@@ -944,8 +838,7 @@ fn parse_opinion_side(val: Option<&Value>, default_label: &str, default_author: 
 
 fn tool_second_opinion(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
     is_disagreement: bool,
 ) -> Result<Value, (i32, String)> {
@@ -996,7 +889,7 @@ fn tool_second_opinion(
     let option_a = parse_opinion_side(
         args.get("optionA").or_else(|| args.get("option_a")),
         "Option A",
-        &handler.agent_id,
+        &caller.agent_id,
     );
     let option_b = parse_opinion_side(
         args.get("optionB").or_else(|| args.get("option_b")),
@@ -1023,8 +916,8 @@ fn tool_second_opinion(
 
     let decision = VisualDecision {
         id: format!("dec-so-{}", uuid::Uuid::new_v4().simple()),
-        project_id: handler.project_id.clone(),
-        from_id: handler.agent_id.clone(),
+        project_id: caller.project_id.clone(),
+        from_id: caller.agent_id.clone(),
         task_id,
         title,
         details,
@@ -1059,8 +952,7 @@ fn tool_second_opinion(
 
 fn tool_request_meeting(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let title = args
@@ -1102,7 +994,7 @@ fn tool_request_meeting(
                 .map(str::to_owned)
                 .collect()
         })
-        .unwrap_or_else(|| vec!["lead".into(), handler.agent_id.clone()]);
+        .unwrap_or_else(|| vec!["lead".into(), caller.agent_id.clone()]);
 
     let agenda_titles: Vec<String> = args
         .get("agenda")
@@ -1128,13 +1020,13 @@ fn tool_request_meeting(
     let (meeting, _, decision) = start_or_request_meeting(
         state,
         StartMeetingInput {
-            project_id: handler.project_id.clone(),
+            project_id: caller.project_id.clone(),
             kind,
             title,
             urgency,
             moderator_id,
             participant_ids,
-            requested_by: handler.agent_id.clone(),
+            requested_by: caller.agent_id.clone(),
             agenda_titles,
             voice_enabled: false,
             voice_provider: VoiceProvider::BrowserWebSpeech,
@@ -1154,8 +1046,7 @@ fn tool_request_meeting(
 
 fn tool_record_gate(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let task_id = args
@@ -1181,7 +1072,7 @@ fn tool_record_gate(
         .get("byId")
         .or_else(|| args.get("by_id"))
         .and_then(Value::as_str)
-        .unwrap_or(&handler.agent_id);
+        .unwrap_or(&caller.agent_id);
 
     // Agents can never record an owner-only gate (a merge waiver); only the owner can, from the UI.
     if is_owner_only_gate(gate_id, gate_state, by_id) {
@@ -1195,7 +1086,7 @@ fn tool_record_gate(
         .inner
         .gates
         .record_gate(
-            &handler.project_id,
+            &caller.project_id,
             task_id,
             gate_id,
             gate_state,
@@ -1213,8 +1104,7 @@ fn tool_record_gate(
 
 fn tool_request_access(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let tool_name = args
@@ -1248,8 +1138,8 @@ fn tool_request_access(
 
     let decision = VisualDecision {
         id: format!("dec-perm-{}", uuid::Uuid::new_v4().simple()),
-        project_id: handler.project_id.clone(),
-        from_id: handler.agent_id.clone(),
+        project_id: caller.project_id.clone(),
+        from_id: caller.agent_id.clone(),
         task_id,
         title: format!("Allow {} on `{}`?", tool_name, command_or_path),
         details: reason.clone(),
@@ -1290,8 +1180,7 @@ fn tool_request_access(
 
 fn tool_attach_evidence(
     state: &AppState,
-    _caller: &McpCaller,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let task_id = args
@@ -1307,7 +1196,7 @@ fn tool_attach_evidence(
 
     let evidence = json!({
         "sha": sha,
-        "by": handler.agent_id,
+        "by": caller.agent_id,
         "at": now_iso,
         "steps": steps,
         "shots": shots,
@@ -1320,7 +1209,7 @@ fn tool_attach_evidence(
             conn.execute(
                 "INSERT OR IGNORE INTO boards (id, project_id, name, status, created_at, updated_at)
                  VALUES ('B1', ?1, 'Main Board', 'active', ?2, ?2)",
-                rusqlite::params![handler.project_id, now_ms],
+                rusqlite::params![caller.project_id, now_ms],
             )?;
             let data_json = json!({ "evidence": evidence }).to_string();
             conn.execute(
@@ -1329,7 +1218,7 @@ fn tool_attach_evidence(
                  ON CONFLICT(project_id, id) DO UPDATE SET
                     data_json = excluded.data_json,
                     updated_at = excluded.updated_at",
-                rusqlite::params![task_id, handler.project_id, data_json, now_ms],
+                rusqlite::params![task_id, caller.project_id, data_json, now_ms],
             )?;
             Ok::<_, DbError>(())
         })
@@ -1344,7 +1233,7 @@ fn tool_attach_evidence(
 
 fn tool_get_visual_feedback(
     state: &AppState,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
 ) -> Result<Value, (i32, String)> {
     let items = state
         .inner
@@ -1356,7 +1245,7 @@ fn tool_get_visual_feedback(
                  WHERE project_id = ?1
                  ORDER BY created_at DESC",
             )?;
-            let rows = stmt.query_map([&handler.project_id], |r| {
+            let rows = stmt.query_map([&caller.project_id], |r| {
                 Ok(json!({
                     "id": r.get::<_, String>(0)?,
                     "pageUrl": r.get::<_, String>(1)?,
@@ -1379,7 +1268,7 @@ fn tool_get_visual_feedback(
     Ok(json!({ "feedback": items }))
 }
 
-fn tool_list_tasks(state: &AppState, handler: &CachedMcpHandler) -> Result<Value, (i32, String)> {
+fn tool_list_tasks(state: &AppState, caller: &McpCaller) -> Result<Value, (i32, String)> {
     let tasks = state
         .inner
         .db
@@ -1390,7 +1279,7 @@ fn tool_list_tasks(state: &AppState, handler: &CachedMcpHandler) -> Result<Value
                  WHERE project_id = ?1
                  ORDER BY created_at ASC",
             )?;
-            let rows = stmt.query_map([&handler.project_id], |r| {
+            let rows = stmt.query_map([&caller.project_id], |r| {
                 Ok(json!({
                     "id": r.get::<_, String>(0)?,
                     "boardId": r.get::<_, String>(1)?,
@@ -1414,7 +1303,7 @@ fn tool_list_tasks(state: &AppState, handler: &CachedMcpHandler) -> Result<Value
 
 fn tool_update_task(
     state: &AppState,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let task_id = args
@@ -1441,7 +1330,7 @@ fn tool_update_task(
     let owner_id = args
         .get("ownerId")
         .and_then(Value::as_str)
-        .or(Some(handler.agent_id.as_str()));
+        .or(Some(caller.agent_id.as_str()));
     let now_ms = Utc::now().timestamp_millis();
 
     state
@@ -1451,7 +1340,7 @@ fn tool_update_task(
             conn.execute(
                 "INSERT OR IGNORE INTO boards (id, project_id, name, status, created_at, updated_at)
                  VALUES (?1, ?2, 'Main Board', 'active', ?3, ?3)",
-                rusqlite::params![board_id, handler.project_id, now_ms],
+                rusqlite::params![board_id, caller.project_id, now_ms],
             )?;
             conn.execute(
                 "INSERT INTO tasks (id, project_id, board_id, stage_id, status, title, owner_id, created_at, updated_at)
@@ -1464,7 +1353,7 @@ fn tool_update_task(
                     updated_at = excluded.updated_at",
                 rusqlite::params![
                     task_id,
-                    handler.project_id,
+                    caller.project_id,
                     board_id,
                     stage_id,
                     status,
@@ -1477,7 +1366,7 @@ fn tool_update_task(
                 "INSERT INTO task_events (project_id, task_id, status, stage_id, owner_id, at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 rusqlite::params![
-                    handler.project_id,
+                    caller.project_id,
                     task_id,
                     status,
                     stage_id,
@@ -1504,7 +1393,7 @@ fn tool_update_task(
 
 fn tool_report_finding(
     state: &AppState,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let title = args
@@ -1577,7 +1466,7 @@ fn tool_report_finding(
             .unwrap_or("")
             .to_owned(),
         evidence_refs,
-        reporter_id: Some(handler.agent_id.clone()),
+        reporter_id: Some(caller.agent_id.clone()),
         verified: args
             .get("verified")
             .and_then(Value::as_bool)
@@ -1587,7 +1476,7 @@ fn tool_report_finding(
     let finding = state
         .inner
         .findings
-        .create_finding(&handler.project_id, input)
+        .create_finding(&caller.project_id, input)
         .map_err(|e| (-32602, e.to_string()))?;
 
     Ok(json!({
@@ -1598,7 +1487,7 @@ fn tool_report_finding(
 
 fn tool_check_scope(
     state: &AppState,
-    handler: &CachedMcpHandler,
+    caller: &McpCaller,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
     let target = args
@@ -1616,18 +1505,18 @@ fn tool_check_scope(
     if state
         .inner
         .egress_policy
-        .policy_for_project(&handler.project_id)
+        .policy_for_project(&caller.project_id)
         .is_none()
     {
-        if let Ok(scope) = state.inner.findings.get_scope(&handler.project_id) {
-            let _ = state.sync_project_scope_to_proxy(&handler.project_id, &scope);
+        if let Ok(scope) = state.inner.findings.get_scope(&caller.project_id) {
+            let _ = state.sync_project_scope_to_proxy(&caller.project_id, &scope);
         }
     }
 
     let check = state
         .inner
         .egress_policy
-        .check_target(&handler.project_id, target);
+        .check_target(&caller.project_id, target);
 
     Ok(json!({
         "ok": true,
@@ -1637,81 +1526,6 @@ fn tool_check_scope(
         "outOfScope": check.out_of_scope,
         "blockedImds": check.blocked_imds,
         "reason": check.reason,
-    }))
-}
-
-fn tool_propose_send(
-    state: &AppState,
-    handler: &CachedMcpHandler,
-    args: &Value,
-) -> Result<Value, (i32, String)> {
-    let connection = args
-        .get("connection")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_owned();
-    let tool = args
-        .get("tool")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_owned();
-    if connection.is_empty() || tool.is_empty() {
-        return Err((-32602, "connection and tool are required for propose_send".into()));
-    }
-    let send_args = args.get("args").cloned().unwrap_or_else(|| json!({}));
-    let summary = args
-        .get("summary")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("Approve external send via {connection}.{tool}"));
-    let task_id = args
-        .get("taskId")
-        .or_else(|| args.get("task_id"))
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-
-    let decision = VisualDecision {
-        id: format!("dec-send-{}", uuid::Uuid::new_v4().simple()),
-        project_id: handler.project_id.clone(),
-        from_id: handler.agent_id.clone(),
-        task_id,
-        title: format!("Send via {connection}: {tool}"),
-        details: summary,
-        waiting: true,
-        owner_only: true,
-        status: DecisionStatus::Open,
-        payload: DecisionPayload::SendProposal {
-            connection,
-            tool,
-            args: send_args,
-            sent_at: None,
-            error: None,
-        },
-        note: None,
-        created_at: Utc::now().to_rfc3339(),
-        closed_at: None,
-    };
-
-    let saved = state
-        .inner
-        .decisions
-        .upsert(&decision)
-        .map_err(|e| (-32000, e.to_string()))?;
-    state
-        .inner
-        .ws_hub
-        .broadcast_event(&WsServerEvent::DecisionUpdated {
-            decision: saved.clone(),
-        });
-
-    Ok(json!({
-        "ok": true,
-        "decision": saved,
-        "ownerOnly": saved.owner_only,
     }))
 }
 

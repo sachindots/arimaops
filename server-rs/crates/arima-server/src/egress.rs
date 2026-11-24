@@ -170,13 +170,13 @@ impl PolicyProvider for ProxyPolicy {
 
     fn record_would_block(&self, identity: &ContainerIdentity, host: &str, port: u16) {
         if record(&self.0, &identity.project_id, &identity.agent_id, host, port) {
-            broadcast(&self.0, &identity.project_id);
+            crate::ws::refresh(&self.0, &identity.project_id);
         }
     }
 
     fn record_blocked(&self, identity: &ContainerIdentity, host: &str, port: u16) {
         if request_access(&self.0, &identity.project_id, &identity.agent_id, host, port) {
-            broadcast(&self.0, &identity.project_id);
+            crate::ws::refresh(&self.0, &identity.project_id);
         }
     }
 }
@@ -279,7 +279,7 @@ pub fn resolve_access(state: &AppState, project_id: &str, args: &[Value]) -> Res
         if dropped == 0 {
             return Err(gone.into());
         }
-        broadcast(state, project_id);
+        crate::ws::refresh(state, project_id);
         return Ok(());
     }
     let (status, expires) = match args.get(1).and_then(Value::as_str).unwrap_or("") {
@@ -305,7 +305,7 @@ pub fn resolve_access(state: &AppState, project_id: &str, args: &[Value]) -> Res
     if status == "project" {
         allow_host(state, project_id, &[json!(host), json!(port)])
     } else {
-        broadcast(state, project_id);
+        crate::ws::refresh(state, project_id);
         Ok(())
     }
 }
@@ -369,11 +369,6 @@ pub fn snapshot(state: &AppState, project_id: &str) -> Value {
     json!({ "mode": mode(state, project_id).as_str(), "rules": project_rules(state, project_id), "wouldBlock": rows })
 }
 
-fn broadcast(state: &AppState, project_id: &str) {
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
-}
-
 fn host_port(args: &[Value]) -> Result<(String, u16), String> {
     let host = args.first().and_then(Value::as_str).map(str::trim).unwrap_or("").to_ascii_lowercase();
     let port = args.get(1).and_then(Value::as_u64).and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0).ok_or("A port is required.")?;
@@ -391,7 +386,7 @@ pub fn set_mode(state: &AppState, project_id: &str, args: &[Value]) -> Result<()
         .db
         .transaction(|conn| conn.execute("UPDATE projects SET egress_mode = ?1 WHERE id = ?2", rusqlite::params![mode.as_str(), project_id]).map_err(DbError::from))
         .map_err(|e| e.to_string())?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -408,7 +403,7 @@ pub fn allow_host(state: &AppState, project_id: &str, args: &[Value]) -> Result<
             Ok::<_, DbError>(())
         })
         .map_err(|e| e.to_string())?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -420,7 +415,7 @@ pub fn remove_rule(state: &AppState, project_id: &str, args: &[Value]) -> Result
         .db
         .transaction(|conn| conn.execute("DELETE FROM egress_rules WHERE project_id = ?1 AND rule = ?2", rusqlite::params![project_id, rule]).map_err(DbError::from))
         .map_err(|e| e.to_string())?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -432,7 +427,7 @@ pub fn ignore_host(state: &AppState, project_id: &str, args: &[Value]) -> Result
         .db
         .transaction(|conn| conn.execute("UPDATE egress_would_block SET ignored = 1 WHERE project_id = ?1 AND host = ?2 AND port = ?3", rusqlite::params![project_id, host, port]).map_err(DbError::from))
         .map_err(|e| e.to_string())?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 

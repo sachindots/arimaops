@@ -634,8 +634,7 @@ async fn execute_ws_command(
     match cmd {
         "recheckSetup" => {
             state.inner.runtime.refresh().await;
-            let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+            refresh(state, project_id);
             Ok(())
         }
         "ping" | "refreshSbx" => Ok(()),
@@ -685,9 +684,6 @@ async fn execute_ws_command(
         "checkPackUpdates" => crate::packs::check_updates(state, project_id, args).await,
         "removePack" => crate::packs::remove_pack(state, project_id, args),
         "setAgentMcp" => crate::integrations::set_agent_mcp(state, project_id, args),
-        "saveConnection" => crate::integrations::save_connection(state, project_id, args),
-        "removeConnection" => crate::integrations::remove_connection(state, project_id, args),
-        "checkConnection" => crate::integrations::check_connection(state, project_id, args).await,
         "exportTemplate" => crate::integrations::export_template(state, project_id),
         "importTemplate" => crate::integrations::import_template(state, project_id, args),
         "setTeamMode" => crate::team_edit::set_team_mode(state, project_id, args),
@@ -747,8 +743,7 @@ async fn execute_ws_command(
                 return Err(e);
             }
             state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "running", "note": null }).to_string());
-            let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+            refresh(state, project_id);
             crate::delivery::kick_after_start(state, project_id, agent_id);
             crate::usage_watch::watch(state, project_id, agent_id);
             Ok(())
@@ -776,8 +771,7 @@ async fn execute_ws_command(
                 .map_err(|e| e.to_string())?;
             let stopped = state.inner.runtime.stop(state, project_id, agent_id).await;
             state.inner.ws_hub.broadcast_project(project_id, &json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "stopped", "note": null }).to_string());
-            let snapshot = build_initial_snapshot(state, Some(project_id));
-            state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+            refresh(state, project_id);
             stopped
         }
         "createBoard" => crate::planning::create_board(state, project_id, args.first().and_then(Value::as_str).unwrap_or("")).map(drop),
@@ -1340,7 +1334,7 @@ fn inspect_command_context(
                 decision_owner_only = true;
             }
         }
-    } else if matches!(cmd, "recordGate" | "sendProposal") {
+    } else if cmd == "recordGate" {
         decision_owner_only = true;
     }
 
@@ -1390,6 +1384,12 @@ fn is_decision_owner_only(state: &AppState, decision_id: &str) -> bool {
         .ok()
         .flatten()
         .is_some_and(|d| d.owner_only)
+}
+
+/// Rebuilds `project_id`'s snapshot and pushes it to every socket watching that project.
+pub(crate) fn refresh(state: &AppState, project_id: &str) {
+    let snapshot = build_initial_snapshot(state, Some(project_id));
+    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
 }
 
 #[must_use]
@@ -1526,7 +1526,6 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
             "skillPacks": crate::skills::pack_views(state, project_id),
             "packs": crate::packs::snapshot(state, project_id),
             "mcp": crate::integrations::mcp_state(state, project_id, &team, &now),
-            "connections": crate::integrations::connections_state(state),
             "setup": crate::integrations::setup_state(state, &now),
             "features": { "shell": false, "sandboxTab": false },
             "sbx": crate::secrets::sbx_state(state, project_id, &agent_ids, &now),

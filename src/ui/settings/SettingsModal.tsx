@@ -11,7 +11,6 @@ import { SandboxSettingsTab } from "./SandboxSettings";
 import { StackSettings } from "./StackSettings";
 import { McpSettings } from "./McpSettings";
 import { PacksSettings } from "./PacksSettings";
-import { ConnectionsSettings } from "./ConnectionsSettings";
 import { LicenseCard } from "./LicenseCard";
 import { TeamSettings } from "./TeamSettings";
 import { WorkflowSettings } from "./WorkflowSettings";
@@ -45,7 +44,7 @@ const GROUPS: { label: string; items: { id: SettingsTab; label: string; hint: st
   {
     label: "Integrations & Data",
     items: [
-      { id: "mcp", label: "Tool servers and connections", hint: "Servers and services for agents" },
+      { id: "mcp", label: "Tool servers", hint: "MCP servers for agents" },
       { id: "packs", label: "Packs", hint: "Skills and tool servers from git catalogs" },
       { id: "memory", label: "Memory", hint: "Extraction, keep-out, backups" },
     ],
@@ -63,12 +62,7 @@ function Section({ tab, agentId }: { tab: SettingsTab; agentId?: string }) {
       {tab === "license" && <LicenseCard />}
       {tab === "workflow" && <WorkflowSettings />}
       {tab === "stack" && <StackSettings />}
-      {tab === "mcp" && (
-        <>
-          <McpSettings />
-          <ConnectionsSettings />
-        </>
-      )}
+      {tab === "mcp" && <McpSettings />}
       {tab === "packs" && <PacksSettings />}
       {tab === "sandbox" && <SandboxSettingsTab initialAgentId={agentId} />}
       {tab === "boards" && <BoardsSettings />}

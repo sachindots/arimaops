@@ -36,11 +36,6 @@ fn text(v: &Value, max: usize) -> String {
     v.as_str().unwrap_or("").trim().chars().take(max).collect()
 }
 
-fn broadcast(state: &AppState, project_id: &str) {
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
-}
-
 fn db_err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -116,14 +111,14 @@ pub fn set_env_var(state: &AppState, project_id: &str, args: &[Value]) -> Result
         return Err("A variable needs a value of up to 20,000 characters.".into());
     }
     put(state, project_id, &agent, "env", &name, value)?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
 pub fn remove_env_var(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     let agent = scope(state, project_id, args.first().unwrap_or(&Value::Null))?;
     drop_row(state, project_id, &agent, "env", &text(args.get(1).unwrap_or(&Value::Null), 120))?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -138,7 +133,7 @@ pub fn set_secret(state: &AppState, project_id: &str, args: &[Value]) -> Result<
         return Err("A key can't be empty.".into());
     }
     put(state, project_id, &agent, "key", &service, value)?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -149,7 +144,7 @@ pub fn remove_secret(state: &AppState, project_id: &str, args: &[Value]) -> Resu
         return Err(format!("\"{service}\" isn't a service HQ stores keys for."));
     }
     drop_row(state, project_id, &agent, "key", &service)?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -311,7 +306,7 @@ pub fn save_account(state: &AppState, project_id: &str, args: &[Value]) -> Resul
         state.inner.vault_secrets.upsert(&vault_id, "account", &provider, &label, &row.secret_enc).map_err(db_err)?;
     }
     state.inner.db.transaction(|conn| put_setting(conn, &format!("account-fields:{id}"), &Value::Object(fields))).map_err(db_err)?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -329,7 +324,7 @@ pub fn remove_account(state: &AppState, project_id: &str, args: &[Value]) -> Res
             Ok::<_, DbError>(())
         })
         .map_err(db_err)?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 

@@ -19,11 +19,6 @@ fn text(v: &Value, max: usize) -> String {
     v.as_str().unwrap_or("").trim().chars().take(max).collect()
 }
 
-fn broadcast(state: &AppState, project_id: &str) {
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
-}
-
 fn write(state: &AppState, project_id: &str, f: impl FnOnce(&rusqlite::Connection) -> Result<(), String>) -> Result<(), String> {
     state
         .inner
@@ -33,7 +28,7 @@ fn write(state: &AppState, project_id: &str, f: impl FnOnce(&rusqlite::Connectio
             DbError::InvalidInput(msg) => msg,
             other => other.to_string(),
         })?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 

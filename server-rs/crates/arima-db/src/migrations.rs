@@ -76,7 +76,31 @@ const MIGRATIONS: &[Migration] = &[
         name: "014_skill_approvals",
         sql: SKILL_APPROVALS_SCHEMA,
     },
+    Migration {
+        version: 15,
+        name: "015_cleanup_retired_artifacts",
+        sql: CLEANUP_RETIRED_ARTIFACTS_SCHEMA,
+    },
 ];
+
+/// Adds an index on `mcp_tokens.token_hash` for direct lookup, retires the six dead visual decision
+/// kinds into plain `info` cards (dismissing open ones), and drops the retired tool connections registry.
+const CLEANUP_RETIRED_ARTIFACTS_SCHEMA: &str = r#"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
+
+UPDATE visual_decisions
+SET status = CASE status WHEN 'open' THEN 'dismissed' ELSE status END,
+    waiting = 0,
+    closed_at = COALESCE(closed_at, CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+    payload_json = json_object('kind', 'info', 'markdown', COALESCE(NULLIF(details, ''), title))
+WHERE json_extract(payload_json, '$.kind') IN (
+    'spec-approval', 'plan-approval', 'gate-approval',
+    'send-proposal', 'spend-alert', 'overflow-fallback'
+);
+
+DROP TABLE IF EXISTS tool_connections;
+DELETE FROM server_settings WHERE key LIKE 'connection-meta:%';
+"#;
 
 /// Each project's own answer on a pinned skill's current hash, like a pack's approval. `skill_pins` keeps the
 /// fetched files (content-addressed, shared) and the scanner's verdict; `decision_id` here is the project's Inbox

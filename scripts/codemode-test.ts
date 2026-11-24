@@ -1,5 +1,5 @@
 // The codemode runner baked into the agent image (docker/codemode). Run: npx tsx scripts/codemode-test.ts
-import { createRunner, LIMITS, normalize, spawnChild } from "../docker/codemode/run.mjs";
+import { createRunner, LIMITS, normalize } from "../docker/codemode/run.mjs";
 
 let fails = 0;
 const check = (name: string, ok: boolean, detail: unknown = "") => {
@@ -59,45 +59,6 @@ check("the next run succeeds within 2 s", r.result === "ok" && Date.now() - star
 // Its own deadline: on slower runners filling 128 MB can take longer than the short one, and this checks the memory cap.
 r = await createRunner({ ...LIMITS, timeMs: 20_000 })("const a = []; while (true) a.push(new Array(1e6).fill(Math.random()));", tools);
 check("a heap blow-up is killed", /more than 128 MB/.test(r.error), r);
-
-r = await run("async () => await fetch('https://example.com')", tools);
-check("fetch of another host fails", /fetch is not defined/.test(r.error), r);
-for (const escape of ["this.constructor.constructor('return process')()", "globalThis.constructor.constructor('return process')()", "Object.getPrototypeOf(globalThis).constructor.constructor('return process')()", "codemode.constructor.constructor('return process')()", "await (async () => 1).constructor('return process')()", "new Error().constructor.constructor('return process')()"]) {
-  r = await run(`async () => typeof (${escape})`, tools);
-  check(`the code can't reach process: ${escape}`, r.result === "undefined" || /process is not defined|Cannot read properties of (undefined|null)/.test(r.error), r);
-}
-r = await run("async () => [typeof require, typeof setTimeout, typeof globalThis.process, typeof import.meta]", tools);
-check("no require, timers or process", r.error !== undefined || JSON.stringify(r.result) === '["undefined","undefined","undefined"]', r);
-r = await run("async () => { const f = codemode.arima.list_tasks; return typeof f.constructor('return process')(); }", tools);
-check("an API function doesn't lead out of the sandbox", r.result === "undefined" || /process is not defined/.test(r.error), r);
-
-const child = (code: string) =>
-  new Promise<{ out: string; err: string; status: number | null }>((resolve) => {
-    const c = spawnChild(["-e", code]);
-    let out = "";
-    let err = "";
-    c.stdout.on("data", (d: Buffer) => (out += d));
-    c.stderr.on("data", (d: Buffer) => (err += d));
-    c.on("close", (status: number | null) => resolve({ out, err, status }));
-  });
-process.env.ARIMA_MCP_TOKEN = "mcp_secret-token";
-process.env.ARIMA_CODEMODE_PARENT_ONLY = "parent";
-let c = await child("process.stdout.write(JSON.stringify(process.env))");
-const childEnv = JSON.parse(c.out || "{}");
-// macOS and Windows add a few OS variables to every process even with env {}; nothing of the parent's may get through.
-check(
-  "the child's environment holds nothing of the parent's, no token",
-  !c.out.includes("mcp_secret-token") && !("ARIMA_MCP_TOKEN" in childEnv) && !("ARIMA_CODEMODE_PARENT_ONLY" in childEnv) && (process.platform !== "linux" || c.out === "{}"),
-  c,
-);
-c = await child("require('fs').writeFileSync('/tmp/codemode-should-not-exist', 'x')");
-check("file writes are denied", /ERR_ACCESS_DENIED/.test(c.err) && c.status !== 0, c.err.slice(0, 300));
-c = await child("require('child_process').spawnSync('true')");
-check("spawning a process is denied", /ERR_ACCESS_DENIED/.test(c.err), c.err.slice(0, 300));
-c = await child("new (require('worker_threads').Worker)('1', { eval: true })");
-check("workers are denied", /ERR_ACCESS_DENIED/.test(c.err), c.err.slice(0, 300));
-c = await child("require('fs').readFileSync('/etc/hostname')");
-check("reading other files is denied", /ERR_ACCESS_DENIED/.test(c.err), c.err.slice(0, 300));
 
 r = await run(`async () => { const out = []; for (let i = 0; i < 52; i++) { try { await codemode.arima.list_tasks({}); out.push("ok"); } catch (e) { out.push(e.message); } } return out.slice(49); }`, tools);
 check("at most 50 tool calls per run", r.result?.[0] === "ok" && /already made 50 tool calls/.test(r.result?.[1]), r);

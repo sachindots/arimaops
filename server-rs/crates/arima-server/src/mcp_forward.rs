@@ -125,7 +125,7 @@ async fn checked_tool_list(state: &AppState, project_id: &str, mut server: ToolS
             }
             Ok(())
         });
-        crate::integrations::broadcast(state, project_id);
+        crate::ws::refresh(state, project_id);
     }
     match &server.blocked {
         Some(why) => Err(ApiError::new(StatusCode::FORBIDDEN, format!("The tool server \"{}\" is blocked until the owner approves it in the Inbox: {why}", server.name))),

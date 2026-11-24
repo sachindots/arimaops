@@ -11,20 +11,14 @@ use crate::{Db, DbError, Result};
 /// Determines whether a [`VisualDecision`] must be restricted strictly to [`ServerRole::Owner`].
 ///
 /// Prevents the v1 30-minute stall auto-escalation bug and blocks operators from approving
-/// owner-only gates, specs, plans, outbound send proposals, memory reviews, spend alerts,
-/// or skill scans.
+/// owner-only gates, memory reviews, skill scans, or pack reviews.
 #[must_use]
 pub fn classify_owner_only(payload: &DecisionPayload, explicit: bool) -> bool {
     if explicit {
         return true;
     }
     match payload {
-        DecisionPayload::SpecApproval { .. }
-        | DecisionPayload::PlanApproval { .. }
-        | DecisionPayload::GateApproval { .. }
-        | DecisionPayload::SendProposal { .. }
-        | DecisionPayload::MemoryReview { .. }
-        | DecisionPayload::SpendAlert { .. }
+        DecisionPayload::MemoryReview { .. }
         | DecisionPayload::SkillScan { .. }
         | DecisionPayload::PackReview { .. } => true,
         DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {
@@ -33,7 +27,6 @@ pub fn classify_owner_only(payload: &DecisionPayload, explicit: bool) -> bool {
         DecisionPayload::Question(_)
         | DecisionPayload::Permission(_)
         | DecisionPayload::MeetingRequest { .. }
-        | DecisionPayload::OverflowFallback { .. }
         | DecisionPayload::Info { .. }
         | DecisionPayload::Form(_) => false,
     }
@@ -62,15 +55,9 @@ fn payload_kind_str(payload: &DecisionPayload) -> &'static str {
         DecisionPayload::Disagreement(_) => "disagreement",
         DecisionPayload::Permission(_) => "permission",
         DecisionPayload::MeetingRequest { .. } => "meeting-request",
-        DecisionPayload::SpecApproval { .. } => "spec-approval",
-        DecisionPayload::PlanApproval { .. } => "plan-approval",
-        DecisionPayload::GateApproval { .. } => "gate-approval",
-        DecisionPayload::SendProposal { .. } => "send-proposal",
         DecisionPayload::MemoryReview { .. } => "memory-review",
-        DecisionPayload::SpendAlert { .. } => "spend-alert",
         DecisionPayload::SkillScan { .. } => "skill-scan",
         DecisionPayload::PackReview { .. } => "pack-review",
-        DecisionPayload::OverflowFallback { .. } => "overflow-fallback",
         DecisionPayload::Info { .. } => "info",
         DecisionPayload::Form(_) => "form",
     }

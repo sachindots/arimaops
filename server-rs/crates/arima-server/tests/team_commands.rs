@@ -292,7 +292,7 @@ async fn secrets_accounts_and_proxy_never_expose_values() {
 }
 
 #[tokio::test]
-async fn sandbox_mcp_connections_and_template_library() {
+async fn sandbox_mcp_and_template_library() {
     use arima_server::integrations as int;
     // The test's MCP server listens on loopback, which HQ refuses unless the host's owner opts in.
     let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([5u8; 32]), ServerConfig { allow_private_connections: true, ..ServerConfig::default() });
@@ -324,29 +324,6 @@ async fn sandbox_mcp_connections_and_template_library() {
     int::remove_mcp(&state, &pid, &[json!("docs")]).unwrap();
     assert_eq!(team::load(&state, &pid).unwrap().team[0]["mcp"], json!([]), "removing a server detaches it from the project's seats");
     assert!(int::remove_mcp(&state, &pid, &[json!("docs")]).is_err());
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let (mut s, _) = listener.accept().await.unwrap();
-        let mut buf = vec![0u8; 4096];
-        let n = s.read(&mut buf).await.unwrap();
-        let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
-        assert!(req.contains("authorization: bearer conn-key-9"), "the stored key is sent as a bearer token");
-        let body = r#"{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"search","description":"find things"},{"name":"send_note","description":"post"}]}}"#;
-        s.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
-    });
-    int::save_connection(&state, &pid, &[json!({ "name": "notes", "url": format!("http://127.0.0.1:{port}/mcp"), "apiKey": "conn-key-9", "roles": ["lead"], "read": ["search"], "send": "send_note" })]).unwrap();
-    int::check_connection(&state, &pid, &[json!("notes")]).await.unwrap();
-    let conn = int::connections_state(&state).remove(0);
-    assert_eq!((conn["tools"].as_array().unwrap().len(), conn["hasKey"].as_bool(), conn["send"].as_str(), conn["read"].clone()), (2, Some(true), Some("send_note"), json!(["search"])));
-    assert!(conn["probedAt"].is_string() && !conn.to_string().contains("conn-key-9"));
-    int::save_connection(&state, &pid, &[json!({ "name": "notes", "apiKey": "" })]).unwrap();
-    assert_eq!(int::connections_state(&state)[0]["hasKey"], false, "an empty key removes it");
-    int::remove_connection(&state, &pid, &[json!("notes")]).unwrap();
-    assert!(int::connections_state(&state).is_empty());
-    assert!(int::check_connection(&state, &pid, &[json!("notes")]).await.is_err());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();

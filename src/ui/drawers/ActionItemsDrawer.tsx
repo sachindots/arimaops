@@ -3,7 +3,6 @@ import { BRAND } from "../../data/brand";
 import type { ActionItem } from "../../data/types";
 import { isViewer, officeActions, selectAttention, useOffice } from "../../store/office";
 import { ui, useUi } from "../../store/ui";
-import { useAuth } from "../../store/auth";
 import { ago, Dot, useNow } from "../kit";
 import { Icon } from "../deck/Icon";
 import { VisualDecisionCard } from "../decisions/VisualDecisionCard";
@@ -329,9 +328,7 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
           {expanded ? "Show less" : "Show all"}
         </button>
       )}
-      {item.kind === "send" && item.send ? (
-        <SendProposal item={item} send={item.send} />
-      ) : item.kind === "skills" ? (
+      {item.kind === "skills" ? (
         <div className="mt-2 flex items-center gap-2">
           <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "done")}>
             Approve
@@ -383,42 +380,6 @@ function Item({ item, from, now }: { item: ActionItem; from?: { id: string; name
       </div>
       )}
     </article>
-  );
-}
-
-/** An agent's proposed send: the exact call, and Send (owner only) makes it once. */
-function SendProposal({ item, send }: { item: ActionItem; send: NonNullable<ActionItem["send"]> }) {
-  const owner = useAuth((s) => s.role === "owner" || s.status === "none"); // "none": the demo, no sign-in
-  const [busy, setBusy] = useState(false);
-  useEffect(() => setBusy(false), [send.error, send.sentAt]);
-  return (
-    <div className="mt-2 flex flex-col gap-2">
-      <div className="text-[12px] text-muted">
-        HQ calls <span className="font-term text-ink">{send.tool}</span> on {send.connection} with exactly this, once, when you click Send:
-      </div>
-      <pre className="scroll-thin max-h-[240px] overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--border-hairline)] bg-cream-2 p-2 font-term text-[12px] text-ink">{JSON.stringify(send.args, null, 2)}</pre>
-      {send.error && (
-        <p className="text-[13px] text-red" role="alert">
-          {send.error}
-        </p>
-      )}
-      <div className="flex items-center gap-2">
-        <button
-          className="btn min-h-[44px] px-3 text-[13px]"
-          disabled={!owner || busy}
-          title={owner ? undefined : "Only the owner sends"}
-          onClick={() => {
-            setBusy(true);
-            officeActions.sendProposal(item.id);
-          }}
-        >
-          {busy ? "Sending…" : send.error ? "Send again" : "Send"}
-        </button>
-        <button className="btn min-h-[44px] px-2 text-[12px]" onClick={() => officeActions.resolveActionItem(item.id, "dismissed")}>
-          Don't send
-        </button>
-      </div>
-    </div>
   );
 }
 

@@ -26,15 +26,9 @@ pub enum DecisionKind {
     Disagreement,
     Permission,
     MeetingRequest,
-    SpecApproval,
-    PlanApproval,
-    GateApproval,
-    SendProposal,
     MemoryReview,
-    SpendAlert,
     SkillScan,
     PackReview,
-    OverflowFallback,
     Info,
     Form,
 }
@@ -139,41 +133,8 @@ pub enum DecisionPayload {
         #[serde(rename = "agendaPreview")]
         agenda_preview: Vec<String>,
     },
-    SpecApproval {
-        #[serde(rename = "boardId")]
-        board_id: String,
-        version: u32,
-        markdown: String,
-    },
-    PlanApproval {
-        markdown: String,
-    },
-    GateApproval {
-        #[serde(rename = "taskId")]
-        task_id: String,
-        #[serde(rename = "gateId")]
-        gate_id: String,
-        reason: String,
-        #[serde(rename = "deliverablePreview")]
-        deliverable_preview: Option<String>,
-    },
-    SendProposal {
-        connection: String,
-        tool: String,
-        args: Value,
-        #[serde(rename = "sentAt")]
-        sent_at: Option<String>,
-        error: Option<String>,
-    },
     MemoryReview {
         memories: Value,
-    },
-    SpendAlert {
-        #[serde(rename = "dailyUsd")]
-        daily_usd: f64,
-        #[serde(rename = "capUsd")]
-        cap_usd: f64,
-        paused: bool,
     },
     SkillScan {
         pack: String,
@@ -192,7 +153,7 @@ pub enum DecisionPayload {
         #[serde(default, rename = "toTree")]
         to_tree: String,
         changed: Vec<PackChange>,
-        /// Changed files outside `skills/`, `agents/`, `resources/` and `SKILL.md` references, shown collapsed.
+        /// Changed shipped files other than SKILL.md and agents/*.md, shown collapsed.
         #[serde(default, rename = "otherFiles")]
         other_files: Vec<PackFileSummary>,
         egress: Vec<String>,
@@ -204,14 +165,6 @@ pub enum DecisionPayload {
         /// answer (a `roles` question answer).
         #[serde(default)]
         roles: Vec<String>,
-    },
-    OverflowFallback {
-        #[serde(rename = "agentId")]
-        agent_id: String,
-        #[serde(rename = "taskId")]
-        task_id: String,
-        cli: String,
-        model: String,
     },
     Info {
         markdown: String,

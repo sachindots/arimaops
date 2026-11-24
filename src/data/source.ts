@@ -21,7 +21,6 @@ import type {
   Goal,
   GoalPatch,
   ToolConnection,
-  ConnectionInput,
   AgentStatus,
   Board,
   Environment,
@@ -82,7 +81,7 @@ export type OfficeEvent =
   | { type: "memory.updated"; memory: MemoryState }
   | { type: "company.updated"; company: string }
   | { type: "goals.updated"; goals: Goal[] }
-  | { type: "connections.updated"; connections: ToolConnection[] }
+  | { type: "connections.updated"; connections: ToolConnection[] } // v1 server/commands.ts only; deleted when v1 retires
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }
@@ -150,11 +149,6 @@ export interface OfficeDataSource {
   addGoal(goal: { title: string; metric?: string; target?: string }): void;
   updateGoal(id: string, patch: GoalPatch): void;
   setTaskGoal(taskId: string, goalId: string | null): void;
-  /** Owner only: the services HQ calls for the agents, and sending a proposed message (server/connections.ts). */
-  saveConnection(input: ConnectionInput): void;
-  removeConnection(name: string): void;
-  checkConnection(name: string): void;
-  sendProposal(itemId: string): void;
 
   // agent sessions
   startAgent(id: string): void;

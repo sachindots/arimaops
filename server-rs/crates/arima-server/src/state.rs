@@ -9,9 +9,8 @@ use arima_agents::AgentSupervisor;
 use arima_auth::{AuthError, AuthService, VaultKey};
 use arima_core::VoiceProvider;
 use arima_db::{
-    ConnectionsRepo, Db, DecisionsRepo, FactoryRepo, FeedbackRepo, FindingsRepo, GatesRepo,
-    MeetingsRepo, MemoryRepo, OutboxRepo, ProjectScope, UsageRepo, VaultSecretMeta,
-    VaultSecretRepo,
+    Db, DecisionsRepo, FactoryRepo, FeedbackRepo, FindingsRepo, GatesRepo, MeetingsRepo,
+    MemoryRepo, OutboxRepo, ProjectScope, UsageRepo, VaultSecretMeta, VaultSecretRepo,
 };
 use arima_proxy::{
     normalize_preview_domain, normalize_strict_origin, ContainerIpRegistry,
@@ -97,7 +96,6 @@ pub struct AppStateInner {
     pub feedback: FeedbackRepo,
     pub findings: FindingsRepo,
     pub factory: FactoryRepo,
-    pub connections: ConnectionsRepo,
     pub license: LicenseService,
     pub meetings: MeetingsRepo,
     pub memory: MemoryRepo,
@@ -144,7 +142,6 @@ impl AppState {
         let feedback = FeedbackRepo::new(db.clone());
         let findings = FindingsRepo::new(db.clone());
         let factory = FactoryRepo::new(db.clone());
-        let connections = ConnectionsRepo::new(db.clone());
         let license = LicenseService::new(db.clone());
         let meetings = MeetingsRepo::new(db.clone());
         let memory = MemoryRepo::new(db.clone());
@@ -171,7 +168,6 @@ impl AppState {
                 feedback,
                 findings,
                 factory,
-                connections,
                 license,
                 meetings,
                 memory,

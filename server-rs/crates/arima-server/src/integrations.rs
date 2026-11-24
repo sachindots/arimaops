@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//! Integrations and sandbox settings over the WebSocket: MCP server registry, tool connections, per-agent
+//! Integrations and sandbox settings over the WebSocket: MCP server registry, per-agent
 //! sandbox limits, lab mode, and template import and export.
 //!
 //! Commands that need a live terminal, sandbox or OAuth runtime (see [`unsupported`]) answer with a plain
@@ -18,11 +18,6 @@ const TEMPLATE_FORMAT: &str = "arimaops-template";
 
 fn text(v: &Value, max: usize) -> String {
     v.as_str().unwrap_or("").trim().chars().take(max).collect()
-}
-
-pub(crate) fn broadcast(state: &AppState, project_id: &str) {
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
 }
 
 fn db_err(e: impl std::fmt::Display) -> String {
@@ -76,7 +71,6 @@ pub fn unsupported(cmd: &str) -> Option<&'static str> {
         "authMcp" => "Signing in to an MCP server isn't available in this HQ build yet.",
         "finishGithubApp" => "Creating the GitHub App from HQ isn't available in this HQ build yet.",
         "answerApproval" => "Sandbox approvals come from the sandbox runtime, which this HQ build doesn't have yet.",
-        "sendProposal" => "Sending a proposed action isn't available in this HQ build yet.",
         "addToSuite" => "Adding a task to the benchmark suite isn't available in this HQ build yet.",
         _ => return None,
     })
@@ -299,7 +293,7 @@ pub fn add_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<(),
         servers.push(ToolServer { name, transport: ToolServerTransport::Http { url }, has_key: !key.is_empty(), source: ToolServerSource::Manual, check: None, tools_sha256: None, blocked: None });
         Ok(())
     })?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -323,7 +317,7 @@ pub fn copy_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<()
         servers.push(ToolServer { has_key, check: None, ..entry });
         Ok(())
     })?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -336,7 +330,7 @@ pub fn remove_mcp(state: &AppState, project_id: &str, args: &[Value]) -> Result<
         Some(_) => {}
     }
     drop_servers(state, project_id, &[name])?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -374,7 +368,7 @@ pub fn set_tool_server_key(state: &AppState, project_id: &str, args: &[Value]) -
         entry.has_key = !key.is_empty();
         Ok(())
     })?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -478,68 +472,7 @@ pub async fn refresh_mcp(state: &AppState, project_id: &str, args: &[Value]) -> 
             }
         })
     })?;
-    broadcast(state, project_id);
-    Ok(())
-}
-
-// ---------------------------------------------------------------- tool connections
-
-fn conn_meta_key(name: &str) -> String {
-    format!("connection-meta:{name}")
-}
-
-fn strings(v: &Value, max: usize) -> Vec<String> {
-    v.as_array().map(|a| a.iter().map(|s| text(s, 80)).filter(|s| !s.is_empty()).take(max).collect()).unwrap_or_default()
-}
-
-pub fn save_connection(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
-    let input = args.first().cloned().unwrap_or(Value::Null);
-    let name = text(&input["name"], 40);
-    if !valid_name(&name) {
-        return Err("A connection name uses lowercase letters, digits and dashes.".into());
-    }
-    let existing = state.inner.connections.list().map_err(db_err)?.into_iter().find(|c| c.id == name);
-    let url = Some(text(&input["url"], 500)).filter(|u| !u.is_empty()).or_else(|| existing.as_ref().map(|c| c.endpoint.clone())).ok_or("A connection needs a URL.")?;
-    check_endpoint(&url, state.inner.config.allow_private_connections)?;
-    let key = input["apiKey"].as_str().map(str::trim);
-    let enc = match key {
-        Some(k) if !k.is_empty() => Some(state.inner.auth.vault().encrypt(format!("tool-connection:{name}").as_bytes(), k.as_bytes()).map_err(db_err)?),
-        _ => None,
-    };
-    state.inner.connections.upsert(&name, "mcp", &name, &url, enc.as_deref()).map_err(db_err)?;
-    if key == Some("") {
-        state
-            .inner
-            .db
-            .transaction(|conn| {
-                conn.execute("UPDATE tool_connections SET secret_enc = NULL WHERE id = ?1", [&name])?;
-                Ok::<_, DbError>(())
-            })
-            .map_err(db_err)?;
-    }
-    let mut meta = setting(state, &conn_meta_key(&name)).unwrap_or_else(|| json!({}));
-    if input.get("roles").is_some() {
-        meta["roles"] = json!(strings(&input["roles"], 20));
-    }
-    if input.get("read").is_some() {
-        meta["read"] = json!(strings(&input["read"], 100));
-    }
-    if input.get("send").is_some() {
-        let send = text(&input["send"], 80);
-        meta["send"] = if send.is_empty() { Value::Null } else { json!(send) };
-    }
-    save_setting(state, &conn_meta_key(&name), &meta)?;
-    broadcast(state, project_id);
-    Ok(())
-}
-
-pub fn remove_connection(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
-    let name = text(args.first().unwrap_or(&Value::Null), 40);
-    if !state.inner.connections.delete(&name).map_err(db_err)? {
-        return Err(format!("No connection \"{name}\"."));
-    }
-    drop_setting(state, &conn_meta_key(&name))?;
-    broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -592,7 +525,7 @@ pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, res
         Ok(())
     });
     if changed.is_ok() {
-        broadcast(state, project_id);
+        crate::ws::refresh(state, project_id);
     }
     changed.is_ok()
 }
@@ -616,49 +549,6 @@ pub(crate) async fn probe(state: &AppState, name: &str, endpoint: &str, bearer: 
     };
     // The request has its own timeout; this also bounds the name lookup and reading the body.
     tokio::time::timeout(std::time::Duration::from_secs(10), call).await.map_err(|_| format!("{name} didn't answer in time."))?
-}
-
-pub async fn check_connection(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
-    let name = text(args.first().unwrap_or(&Value::Null), 40);
-    let conn = state.inner.connections.list().map_err(db_err)?.into_iter().find(|c| c.id == name).ok_or_else(|| format!("No connection \"{name}\"."))?;
-    let mut bearer = None;
-    if conn.has_secret {
-        let enc: Option<String> = state
-            .inner
-            .db
-            .read(|c| c.query_row("SELECT secret_enc FROM tool_connections WHERE id = ?1", [&name], |r| r.get(0)).optional().map_err(DbError::from))
-            .map_err(db_err)?
-            .flatten();
-        bearer = enc.and_then(|e| state.inner.auth.vault().decrypt(format!("tool-connection:{name}").as_bytes(), &e).ok()).map(|b| String::from_utf8_lossy(&b).into_owned());
-    }
-    let tools = probe(state, &name, &conn.endpoint, bearer).await?;
-    let mut meta = setting(state, &conn_meta_key(&name)).unwrap_or_else(|| json!({}));
-    meta["tools"] = json!(tools);
-    meta["probedAt"] = json!(Utc::now().to_rfc3339());
-    save_setting(state, &conn_meta_key(&name), &meta)?;
-    broadcast(state, project_id);
-    Ok(())
-}
-
-/// The connections section of the snapshot: no keys, only whether one is stored.
-#[must_use]
-pub fn connections_state(state: &AppState) -> Vec<Value> {
-    state
-        .inner
-        .connections
-        .list()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|c| {
-            let meta = setting(state, &conn_meta_key(&c.id)).unwrap_or_else(|| json!({}));
-            json!({
-                "name": c.id, "url": c.endpoint, "roles": meta["roles"].as_array().cloned().unwrap_or_default(),
-                "read": meta["read"].as_array().cloned().unwrap_or_default(), "send": meta.get("send").cloned().unwrap_or(Value::Null),
-                "tools": meta["tools"].as_array().cloned().unwrap_or_default(), "probedAt": meta.get("probedAt").cloned().unwrap_or(Value::Null),
-                "hasKey": c.has_secret
-            })
-        })
-        .collect()
 }
 
 // ---------------------------------------------------------------- template library
@@ -696,7 +586,7 @@ pub fn import_template(state: &AppState, project_id: &str, args: &[Value]) -> Re
     };
     state.inner.ws_hub.broadcast_project(project_id, &event.to_string());
     if result.is_ok() {
-        broadcast(state, project_id);
+        crate::ws::refresh(state, project_id);
     }
     result.map(|_| ())
 }

@@ -118,15 +118,9 @@ const KIND_META: Record<string, { icon: string; badge: string; color: string }> 
   disagreement: { icon: "warning", badge: "Disagreement", color: "var(--color-amber)" },
   permission: { icon: "terminal", badge: "CLI Permission", color: "var(--color-amber)" },
   "meeting-request": { icon: "groups", badge: "Meeting Request", color: "var(--accent)" },
-  "spec-approval": { icon: "description", badge: "Spec Approval", color: "var(--accent)" },
-  "plan-approval": { icon: "account_tree", badge: "Plan Approval", color: "var(--accent)" },
-  "gate-approval": { icon: "verified", badge: "Gate Approval", color: "var(--color-amber)" },
-  "send-proposal": { icon: "send", badge: "Outbound Send", color: "var(--color-amber)" },
   "memory-review": { icon: "neurology", badge: "Memory Review", color: "var(--accent)" },
-  "spend-alert": { icon: "payments", badge: "Spend Alert", color: "var(--color-red)" },
   "skill-scan": { icon: "extension", badge: "Skill Scan", color: "var(--accent)" },
   "pack-review": { icon: "extension", badge: "Pack review", color: "var(--accent)" },
-  "overflow-fallback": { icon: "swap_horiz", badge: "Model Fallback", color: "var(--color-amber)" },
   info: { icon: "info", badge: "Update", color: "var(--color-muted)" },
   form: { icon: "dynamic_form", badge: "Agent form", color: "var(--accent)" },
 };
@@ -243,19 +237,6 @@ export function VisualDecisionCard({
               roles={resolved ? decision.payload.roles : packRoles}
               onRoles={resolved || isViewer ? undefined : setPackRoles}
             />
-          )}
-          {decision.payload.kind === "gate-approval" && (
-            <div className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3 text-[13px]">
-              <div>
-                <span className="font-semibold text-ink">Gate: </span>
-                <span>{decision.payload.gateId}</span> ({decision.payload.reason})
-              </div>
-              {decision.payload.deliverablePreview && (
-                <div className="mt-2">
-                  <SafeMarkdown markdown={decision.payload.deliverablePreview} />
-                </div>
-              )}
-            </div>
           )}
           {!resolved && !isViewer && (
             <div className="flex flex-wrap items-center gap-2">

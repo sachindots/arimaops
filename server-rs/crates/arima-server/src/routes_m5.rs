@@ -2,11 +2,10 @@
 
 //! Milestone 5 (`v2.0-GA`) HTTP route handlers:
 //! - Factory Metrics, Native LLM Scorers, Nightly Improvement Proposals & Replay Benchmarks
-//! - Vaulted Tool Connections (`GET/POST/DELETE /api/connections`) without ever echoing secrets
 //! - `ee/` Ed25519 Licensing (`GET/POST /api/license`)
 
 use arima_auth::{record_audit, AuditWrite, VerifiedSession};
-use arima_core::{DecisionPayload, DecisionStatus, ServerRole, VisualDecision};
+use arima_core::ServerRole;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::Json;
@@ -306,153 +305,6 @@ pub(crate) async fn post_factory_benchmark(
     );
 
     Ok(Json(json!({ "benchmark": benchmark })))
-}
-
-// ---------------------------------------------------------------------------
-// Vaulted Tool Connections (`GET/POST/DELETE /api/connections`)
-// ---------------------------------------------------------------------------
-
-pub(crate) async fn list_connections(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    PeerIp(peer_ip): PeerIp,
-) -> Result<Json<Value>, ApiError> {
-    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::GET)?;
-    let _session = require_session(&state, &ctx, false)?;
-
-    let connections = state.inner.connections.list()?;
-    let pending_sends: Vec<VisualDecision> = state
-        .inner
-        .db
-        .read(|conn| {
-            let mut stmt = conn.prepare("SELECT id FROM projects WHERE archived = 0")?;
-            let pids: Vec<String> = stmt
-                .query_map([], |r| r.get::<_, String>(0))?
-                .filter_map(std::result::Result::ok)
-                .collect();
-            Ok::<_, arima_db::DbError>(pids)
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .flat_map(|pid| {
-            state
-                .inner
-                .decisions
-                .list_by_project(&pid, Some(DecisionStatus::Open))
-                .unwrap_or_default()
-        })
-        .filter(|d| matches!(d.payload, DecisionPayload::SendProposal { .. }))
-        .collect();
-
-    Ok(Json(json!({
-        "connections": connections,
-        "pendingSends": pending_sends
-    })))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct UpsertConnectionBody {
-    id: String,
-    #[serde(default)]
-    kind: String,
-    #[serde(default)]
-    label: String,
-    endpoint: String,
-    secret: Option<String>,
-}
-
-pub(crate) async fn upsert_connection(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    PeerIp(peer_ip): PeerIp,
-    Json(body): Json<UpsertConnectionBody>,
-) -> Result<Json<Value>, ApiError> {
-    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::POST)?;
-    let session = require_session(&state, &ctx, true)?;
-    let eff = require_owner_m5(
-        &state,
-        &session,
-        &ctx,
-        None,
-        "connections.upsert",
-        Some(&body.id),
-    )?;
-    require_step_up_if_remote(&session, &ctx)?;
-
-    let clean_id = body.id.trim();
-    let encrypted_secret = match body.secret.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(raw) => {
-            let aad = format!("tool-connection:{clean_id}");
-            let enc = state
-                .inner
-                .auth
-                .vault()
-                .encrypt(aad.as_bytes(), raw.as_bytes())?;
-            Some(enc)
-        }
-        None => None,
-    };
-
-    crate::integrations::check_endpoint(&body.endpoint, state.inner.config.allow_private_connections).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
-    let connection = state.inner.connections.upsert(
-        clean_id,
-        &body.kind,
-        &body.label,
-        &body.endpoint,
-        encrypted_secret.as_deref(),
-    )?;
-
-    audit_m5(
-        &state,
-        &session,
-        eff,
-        None,
-        "connections.upsert",
-        Some(&connection.id),
-        format!(
-            "saved tool connection {} kind={} endpoint={} hasSecret={}",
-            connection.id, connection.kind, connection.endpoint, connection.has_secret
-        ),
-        ctx.remote,
-        true,
-    );
-
-    Ok(Json(json!({ "ok": true, "connection": connection })))
-}
-
-pub(crate) async fn delete_connection(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-    PeerIp(peer_ip): PeerIp,
-) -> Result<Json<Value>, ApiError> {
-    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::DELETE)?;
-    let session = require_session(&state, &ctx, true)?;
-    let eff = require_owner_m5(
-        &state,
-        &session,
-        &ctx,
-        None,
-        "connections.delete",
-        Some(&id),
-    )?;
-    require_step_up_if_remote(&session, &ctx)?;
-
-    let deleted = state.inner.connections.delete(&id)?;
-    audit_m5(
-        &state,
-        &session,
-        eff,
-        None,
-        "connections.delete",
-        Some(&id),
-        format!("deleted tool connection {id} existed={deleted}"),
-        ctx.remote,
-        true,
-    );
-
-    Ok(Json(json!({ "ok": true, "deleted": deleted })))
 }
 
 // ---------------------------------------------------------------------------

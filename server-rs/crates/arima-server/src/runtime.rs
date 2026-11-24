@@ -442,8 +442,7 @@ impl AgentRuntime {
             let event = json!({ "type": "agent-status", "projectId": project_id, "agentId": agent_id, "state": "idle", "note": note });
             state.inner.ws_hub.broadcast_project(project_id, &event.to_string());
         }
-        let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-        state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+        crate::ws::refresh(state, project_id);
     }
 
     pub(crate) fn plan(&self, state: &AppState, project_id: &str, agent_id: &str) -> Result<Plan, String> {

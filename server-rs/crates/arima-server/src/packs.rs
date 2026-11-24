@@ -332,95 +332,8 @@ fn tools_text(server: &PackToolServer) -> String {
     format!("URL: {url}\n\n{}", tools.join("\n\n"))
 }
 
-/// Maximum total bytes of inline file diffs placed directly in a `PackReview` card JSON, keeping
-/// stored cards well under 300 KB even for large multi-hundred-file plugins.
-const MAX_INLINE_DIFF_BYTES: usize = 240 * 1024;
-
-/// Normalizes a relative path `raw` against `base_dir` (empty string for plugin root).
-/// Returns `None` if the path is absolute, a URL, or climbs above the plugin root.
-fn normalize_rel(base_dir: &str, raw: &str) -> Option<String> {
-    if raw.is_empty() || raw.starts_with('/') || raw.contains("://") {
-        return None;
-    }
-    let mut parts: Vec<&str> = base_dir.split('/').filter(|s| !s.is_empty()).collect();
-    for seg in raw.split('/') {
-        match seg {
-            "" | "." => {}
-            ".." => {
-                parts.pop()?;
-            }
-            other => parts.push(other),
-        }
-    }
-    (!parts.is_empty()).then(|| parts.join("/"))
-}
-
-/// Finds every file in `files` referenced by any `SKILL.md` in `files` (relative paths from the skill's folder,
-/// or plugin-root paths with `${CLAUDE_PLUGIN_ROOT}` / `${PLUGIN_ROOT}`).
-fn referenced_paths(files: &BTreeMap<String, String>) -> BTreeSet<String> {
-    const ROOT_PREFIXES: [&str; 4] = ["${CLAUDE_PLUGIN_ROOT}/", "$CLAUDE_PLUGIN_ROOT/", "${PLUGIN_ROOT}/", "$PLUGIN_ROOT/"];
-    let mut out = BTreeSet::new();
-    for (path, content) in files {
-        if path != "SKILL.md" && !path.ends_with("/SKILL.md") {
-            continue;
-        }
-        let skill_dir = path.rsplit_once('/').map_or("", |(d, _)| d);
-        for raw in content.split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | '`' | ',' | ';')) {
-            let trimmed = raw.trim_matches(|c: char| matches!(c, '.' | ':' | '*' | '!' | '?'));
-            let cleaned = trimmed.split(['#', '?']).next().unwrap_or("");
-            if cleaned.is_empty() || cleaned.contains("://") {
-                continue;
-            }
-            let (root_only, candidate) = ROOT_PREFIXES
-                .iter()
-                .find_map(|p| cleaned.strip_prefix(p).map(|rest| (true, rest)))
-                .unwrap_or((false, cleaned));
-            let is_dir_hint = candidate.ends_with('/');
-            let mut try_match = |norm: Option<String>| {
-                let Some(norm) = norm else { return };
-                if files.contains_key(&norm) {
-                    out.insert(norm);
-                } else if is_dir_hint {
-                    let prefix = format!("{norm}/");
-                    for p in files.keys() {
-                        if p.starts_with(&prefix) {
-                            out.insert(p.clone());
-                        }
-                    }
-                }
-            };
-            if root_only {
-                try_match(normalize_rel("", candidate));
-            } else {
-                try_match(normalize_rel(skill_dir, candidate));
-                if candidate.contains('/') {
-                    try_match(normalize_rel("", candidate));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Plugin-relative skill folders recorded in `entry.skills`.
-fn skill_dirs(entry: &PackEntry) -> BTreeSet<String> {
-    let prefix = entry.source.path.as_deref().filter(|d| *d != ".").map(|d| format!("{d}/"));
-    entry
-        .skills
-        .values()
-        .map(|s| match &prefix {
-            Some(p) => s.path.strip_prefix(p).unwrap_or(&s.path).to_owned(),
-            None => s.path.clone(),
-        })
-        .collect()
-}
-
-fn is_primary_file(path: &str, dirs: &BTreeSet<String>, referenced: &BTreeSet<String>) -> bool {
-    path.starts_with("skills/")
-        || path.starts_with("agents/")
-        || path.starts_with("resources/")
-        || referenced.contains(path)
-        || dirs.iter().any(|d| path == d || path.starts_with(&format!("{d}/")))
+fn is_inline_file(path: &str) -> bool {
+    path == "SKILL.md" || path.ends_with("/SKILL.md") || (path.starts_with("agents/") && path.ends_with(".md"))
 }
 
 fn matches_finding_path(line: &str, path: &str) -> bool {
@@ -442,30 +355,20 @@ fn file_scan_summary(path: &str, scan: &PackScan) -> (String, u32) {
     }
 }
 
-/// Primary changes (skills/, agents/, resources/, files a SKILL.md references, and tool servers) shown with full
-/// inline diffs, plus collapsed summaries for all other changed shipped files (fetched on expand from the content-
-/// addressed plugin store).
+/// `SKILL.md` files, `agents/*.md`, and tool servers shown with full inline diffs, plus collapsed summaries
+/// for all other changed shipped files (fetched on expand from the content-addressed plugin store).
 fn changes(state: &AppState, before: Option<&PackEntry>, after: &PackEntry) -> (Vec<PackChange>, Vec<PackFileSummary>) {
     let mut inline = Vec::new();
     let mut other = Vec::new();
-    let mut inline_bytes = 0usize;
     if before.is_none_or(|b| b.tree != after.tree) {
         let old = before.map(|b| stored_tree(state, &b.tree)).unwrap_or_default();
         let new = stored_tree(state, &after.tree);
-        let mut referenced = referenced_paths(&new);
-        referenced.extend(referenced_paths(&old));
-        let mut dirs = skill_dirs(after);
-        if let Some(b) = before {
-            dirs.extend(skill_dirs(b));
-        }
         for path in old.keys().chain(new.keys()).collect::<BTreeSet<_>>() {
             let (b, a) = (old.get(path), new.get(path));
             if b == a {
                 continue;
             }
-            let diff_bytes = b.map_or(0, String::len) + a.map_or(0, String::len);
-            if is_primary_file(path, &dirs, &referenced) && inline_bytes + diff_bytes <= MAX_INLINE_DIFF_BYTES {
-                inline_bytes += diff_bytes;
+            if is_inline_file(path) {
                 inline.push(PackChange { kind: "file".into(), name: path.clone(), before: b.cloned(), after: a.cloned() });
             } else {
                 let change = match (b, a) {
@@ -731,7 +634,7 @@ pub fn on_decision(state: &AppState, decision: &VisualDecision) {
     if let Err(e) = saved {
         tracing::warn!(project_id = pid, pack, "couldn't record the pack answer: {e}");
     }
-    int::broadcast(state, pid);
+    crate::ws::refresh(state, pid);
 }
 
 // ---------------------------------------------------------------- live tool lists (decision 2.5)
@@ -807,7 +710,7 @@ async fn install(state: &AppState, project_id: &str, url: String, plugin: Option
     check_names(state, project_id, &id, &entry)?;
     let notes = probe_servers(state, project_id, &id, &mut entry).await;
     stage(state, project_id, &id, entry, &notes)?;
-    int::broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(id)
 }
 
@@ -871,7 +774,7 @@ pub fn remove_pack(state: &AppState, project_id: &str, args: &[Value]) -> Result
     }
     int::drop_servers(state, project_id, &servers.into_iter().map(|s| s.name).collect::<Vec<_>>())?;
     let _ = crate::team_edit::drop_role_skills(state, project_id, |s| s.rsplit_once('@').is_some_and(|(p, _)| p == id));
-    int::broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -1431,18 +1334,17 @@ mod tests {
             changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
             [
                 ("file", "agents/zoom_out.md"),
-                ("file", "resources/execution_instructions.md"),
                 ("file", "skills/egm-review-loop/SKILL.md"),
                 ("file", "skills/egm-review/SKILL.md"),
             ],
-            "the review shows primary files inline"
+            "the review shows SKILL.md and agents/*.md inline"
         );
         assert_eq!(
             other_files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
-            [".claude-plugin/marketplace.json", ".claude-plugin/plugin.json"],
-            "non-primary shipped files appear in the collapsed list"
+            [".claude-plugin/marketplace.json", ".claude-plugin/plugin.json", "resources/execution_instructions.md"],
+            "all other shipped files appear in the collapsed list"
         );
-        assert_eq!(changed[1].after.as_deref(), Some("Shared rules."));
+        assert_eq!(read_review_file(&state, &pid, &card.id, "resources/execution_instructions.md").unwrap(), (None, Some("Shared rules.".into())));
         assert!(card.details.contains(&tree[..12]), "the card names the files hash");
         answer(&state, &card.id, DecisionStatus::Resolved);
 
@@ -1535,10 +1437,12 @@ mod tests {
         let (_, next) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
         assert!(stage(&state, &pid, &id, next, &[]).unwrap(), "a review is filed");
         let card = review(&state, &pid, &id);
-        let DecisionPayload::PackReview { changed, .. } = &card.payload else { panic!() };
+        let DecisionPayload::PackReview { changed, other_files, .. } = &card.payload else { panic!() };
+        assert!(changed.is_empty());
+        assert_eq!(other_files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["resources/execution_instructions.md"]);
         assert_eq!(
-            changed.iter().map(|c| (c.name.as_str(), c.before.as_deref(), c.after.as_deref())).collect::<Vec<_>>(),
-            [("resources/execution_instructions.md", Some("Shared rules."), Some("Shared rules, changed."))]
+            read_review_file(&state, &pid, &card.id, "resources/execution_instructions.md").unwrap(),
+            (Some("Shared rules.".into()), Some("Shared rules, changed.".into()))
         );
         assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash == tree), "agents keep the approved tree");
         answer(&state, &card.id, DecisionStatus::Resolved);
@@ -1602,10 +1506,10 @@ mod tests {
         let DecisionPayload::PackReview { changed, other_files, findings, .. } = &card.payload else { panic!() };
         assert_eq!(
             changed.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-            ["agents/checker.md", "guides/checklist.md", "resources/rules.md", "skills/egm-review/SKILL.md"],
-            "inline full diffs include only skills/, agents/, resources/, and files referenced by SKILL.md"
+            ["agents/checker.md", "skills/egm-review/SKILL.md"],
+            "inline full diffs include only SKILL.md and agents/*.md"
         );
-        assert_eq!(other_files.len(), raw_files.len() - 4, "every remaining shipped file is listed collapsed");
+        assert_eq!(other_files.len(), raw_files.len() - 2, "every remaining shipped file is listed collapsed");
         let warned = other_files.iter().find(|f| f.path == "docs/security-note.md").unwrap();
         assert_eq!((warned.change.as_str(), warned.scan.as_str(), warned.findings), ("added", "warn", 1));
         assert!(findings.iter().any(|f| f.contains("docs/security-note.md")), "collapsed files are still scanned");

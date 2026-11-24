@@ -47,14 +47,14 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
     let operator_ok = matches!(cmd, "ping" | "elevate" | "recheckSetup" | "refreshSbx" | "refreshMcp"
         | "startAgent" | "stopAgent" | "sendMessage" | "askTeam" | "sendTerminalInput" | "resizeTerminal"
         | "closeShell" | "closeHostShell" | "forwardPort" | "unforwardPort" | "openWorkspace" | "inspectWorkspace"
-        | "answerDecision" | "resolveDecision" | "resolveActionItem" | "recordGate" | "sendProposal"
+        | "answerDecision" | "resolveDecision" | "resolveActionItem" | "recordGate"
         | "answerApproval"
         | "assignTask" | "addGoal" | "updateGoal" | "setTaskGoal" | "setTaskRunsOn" | "updateBoard" | "createBoard"
         | "updateFinding" | "keepOutOfMemory" | "decideMemories"
         | "startMeeting" | "joinMeeting" | "addMeetingTurn" | "commitMeetingMinutes" | "submitVisualFeedback"
         | "updateAgent" | "addAgent" | "setTeamMode" | "updateRole"
         | "setEnvVar" | "removeEnvVar" | "openEnvFile" | "setSecret" | "removeSecret"
-        | "exportTemplate" | "checkConnection");
+        | "exportTemplate");
     let owner_only_always = !operator_ok;
 
     let local_host_escape = matches!(
@@ -70,7 +70,7 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
 
     let owner_decision_cmd = matches!(
         cmd,
-        "resolveActionItem" | "resolveDecision" | "recordGate" | "sendProposal"
+        "resolveActionItem" | "resolveDecision" | "recordGate"
     );
 
     if matches!(role, ServerRole::Operator) {
@@ -101,7 +101,6 @@ pub fn authorize_command(cmd: &str, ctx: &AuthContext) -> CommandVerdict {
             | "testAccountKey"
             | "removeAccount"
             | "recordGate"
-            | "sendProposal"
             | "setEgressMode"
             | "allowEgressHost"
             | "resolveAccess"
@@ -143,7 +142,7 @@ mod tests {
     fn operator_is_allow_listed_and_unknown_commands_are_owner_only() {
         let op = ctx(ServerRole::Operator);
         assert_eq!(authorize_command("startAgent", &op), CommandVerdict::Allowed);
-        for cmd in ["removeAgent", "updateWorkflow", "saveConnection", "updateSandbox", "brandNewCommand"] {
+        for cmd in ["removeAgent", "updateWorkflow", "updateProject", "updateSandbox", "brandNewCommand"] {
             assert!(matches!(authorize_command(cmd, &op), CommandVerdict::Denied(_)), "{cmd}");
             assert_eq!(authorize_command(cmd, &ctx(ServerRole::Owner)), CommandVerdict::Allowed, "{cmd}");
         }
