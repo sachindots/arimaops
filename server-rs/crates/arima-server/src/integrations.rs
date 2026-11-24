@@ -209,7 +209,8 @@ fn save_tool_servers(state: &AppState, project_id: &str, servers: &[ToolServer])
 /// writers can't drop each other's change. Nothing is saved when `edit` fails. `edit` must not await or call back
 /// into this function (the lock isn't reentrant).
 pub fn update_tool_servers<R>(state: &AppState, project_id: &str, edit: impl FnOnce(&mut Vec<ToolServer>) -> Result<R, String>) -> Result<R, String> {
-    let _guard = state.inner.tool_servers_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = state.project_lock(&servers_key(project_id));
+    let _held = guard.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut servers = tool_servers(state, project_id);
     let out = edit(&mut servers)?;
     save_tool_servers(state, project_id, &servers)?;
@@ -572,12 +573,19 @@ pub(crate) async fn guarded_client(state: &AppState, endpoint: &str, timeout: st
     Ok((url, builder.build().map_err(db_err)?))
 }
 
-/// Records how a call through HQ to one of the project's servers went, the same way a live check does. A success
-/// is written only over a failed check, so working calls don't rewrite the setting each time.
-pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) {
+/// Records how a call through HQ to one of the project's servers went, the same way a live check does. Only a change
+/// is written and broadcast (a failure over a success, a different error, a success over a failure), so an agent
+/// retrying against a down server doesn't rebuild every client's snapshot on each call. Returns whether it wrote.
+pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, result: Result<(), String>) -> bool {
     let changed = update_tool_servers(state, project_id, |servers| {
         let Some(s) = servers.iter_mut().find(|s| s.name == name) else { return Err(String::new()) };
-        if result.is_ok() && s.check.as_ref().is_none_or(|c| c.ok) {
+        let same = match (&result, &s.check) {
+            (Ok(()), None) => true,
+            (_, None) => false,
+            (Ok(()), Some(c)) => c.ok,
+            (Err(e), Some(c)) => !c.ok && c.error.as_ref() == Some(e),
+        };
+        if same {
             return Err(String::new());
         }
         s.check = Some(ToolServerCheck { ok: result.is_ok(), error: result.err(), at: Utc::now().to_rfc3339() });
@@ -586,6 +594,7 @@ pub(crate) fn record_forward(state: &AppState, project_id: &str, name: &str, res
     if changed.is_ok() {
         broadcast(state, project_id);
     }
+    changed.is_ok()
 }
 
 /// One `tools/list` call through the endpoint guard, connecting only to the addresses that passed it.
@@ -797,6 +806,31 @@ mod tests {
             t.join().unwrap();
         }
         assert_eq!(tool_servers(&state, &pid).len(), 200, "no concurrent update is lost");
+    }
+
+    #[test]
+    fn one_projects_tool_server_edit_never_waits_on_anothers() {
+        let (state, a, b) = two_projects();
+        let guard = state.project_lock(&servers_key(&a));
+        let _held = guard.lock().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (st, pb) = (state.clone(), b.clone());
+        std::thread::spawn(move || tx.send(update_tool_servers(&st, &pb, |_| Ok(()))).unwrap());
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap().is_ok(), "B's edit finishes while A's lock is held");
+    }
+
+    #[test]
+    fn repeated_forward_failures_write_and_broadcast_once() {
+        let (state, pid, _) = two_projects();
+        add_mcp(&state, &pid, &[json!({ "name": "docs", "url": "https://docs.example/mcp" })]).unwrap();
+        let down = || Err("docs answered 503 Service Unavailable.".to_owned());
+        assert!(record_forward(&state, &pid, "docs", down()), "the first failure is recorded");
+        for _ in 0..5 {
+            assert!(!record_forward(&state, &pid, "docs", down()), "a retry with the same error writes nothing");
+        }
+        assert!(record_forward(&state, &pid, "docs", Err("docs answered 401 Unauthorized.".into())), "a different error is recorded");
+        assert!(record_forward(&state, &pid, "docs", Ok(())), "recovery is recorded");
+        assert!(!record_forward(&state, &pid, "docs", Ok(())));
     }
 
     /// Two projects, each with a team, plus an archived third one.

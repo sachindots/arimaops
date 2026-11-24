@@ -123,11 +123,19 @@ pub struct AppStateInner {
     pub backup_retention: usize,
     /// MCP live checks per project in the current minute: (window start, count).
     pub mcp_checks: std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, u32)>>,
-    /// Serializes every read-modify-write of a project's tool-server list (`integrations::update_tool_servers`).
-    pub tool_servers_lock: std::sync::Mutex<()>,
+    /// One lock per stored record that is edited read-modify-write (a project's tool-server list, its pack lock),
+    /// by setting key, so writers of one project never wait on another's.
+    pub record_locks: std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<()>>>>,
 }
 
 impl AppState {
+    /// The lock for one read-modify-write record (see `record_locks`).
+    #[must_use]
+    pub fn project_lock(&self, key: &str) -> Arc<std::sync::Mutex<()>> {
+        let mut locks = self.inner.record_locks.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        locks.entry(key.to_owned()).or_default().clone()
+    }
+
     #[must_use]
     pub fn new(db: Db, vault: VaultKey, config: ServerConfig) -> Self {
         let auth = AuthService::new(db.clone(), vault);
@@ -187,7 +195,7 @@ impl AppState {
                 fallback_backups_dir,
                 backup_retention: DEFAULT_BACKUP_RETENTION,
                 mcp_checks: std::sync::Mutex::default(),
-                tool_servers_lock: std::sync::Mutex::default(),
+                record_locks: std::sync::Mutex::default(),
             }),
         };
         state.sync_all_persisted_scopes_to_proxy();
