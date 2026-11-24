@@ -545,7 +545,7 @@ pub fn remove_connection(state: &AppState, project_id: &str, args: &[Value]) -> 
 
 /// Parses a `tools/list` reply, plain JSON or one server-sent `data:` event, into the normalised list: each tool's
 /// name, description, input schema and annotations, sorted by name. Its hash is what a pack's approval pins.
-fn parse_tools(body: &str) -> Vec<Value> {
+pub(crate) fn parse_tools(body: &str) -> Vec<Value> {
     let json_text = body.lines().find_map(|l| l.strip_prefix("data:")).map_or(body, str::trim);
     let mut tools: Vec<Value> = serde_json::from_str::<Value>(json_text)
         .ok()
