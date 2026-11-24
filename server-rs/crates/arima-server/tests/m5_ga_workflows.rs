@@ -5,18 +5,17 @@
 //!    improvement proposal decide, and Replay Benchmark Harness.
 //! 2. `ee/` Ed25519 Licensing (`ed25519-dalek`): valid key, tampered signature rejection,
 //!    expired key rejection & runtime fallback to Community limits, and `maxSeats` on `POST /api/users`.
-//! 3. Lossless `migrate-v1` dry-run + live migration + FTS5 search + symlink rejection +
-//!    idempotent re-run + strictly untouched source directory.
+//! 3. Migrated golden v1 fixture boots cleanly in live v2 `AppState` (teams, vault secrets,
+//!    goals, company context, custom templates, and passwordless user login refusal).
 //! 4. 20-Agent Concurrent Load Test over SQLite WAL + `OutboxRepo` + `UsageRepo` + `/mcp` + `WsHub`.
 
-use std::fs;
+use std::path::Path;
 use std::time::Instant;
 
-use arima_auth::{SessionMeta, VaultKey, SESSION_COOKIE_NAME};
+use arima_auth::{AuthError, SessionMeta, VaultKey, SESSION_COOKIE_NAME};
 use arima_core::{OutboxMessageKind, ServerRole};
 use arima_db::{
-    migrate_v1_data, Db, DbError, MemoryRepo, MemoryStatusFilter, MigrateV1Options,
-    ServerSettingsRepo, UsageEventInput,
+    migrate_v1_data, Db, DbError, MigrateV1Options, ServerSettingsRepo, UsageEventInput,
 };
 use arima_server::license::{sign_license_payload, LicensePayload};
 use arima_server::{router_with_state, AppState, ServerConfig};
@@ -25,7 +24,6 @@ use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN};
 use axum::http::{Method, Request, StatusCode};
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
-use rusqlite::Connection;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -375,138 +373,67 @@ async fn m5_ed25519_license_verify_tamper_expiry_and_seat_cap_enforcement() {
     assert_eq!(exp_lic["maxSeats"], 5);
 }
 
-#[test]
-fn m5_migrate_v1_dry_run_lossless_import_fts5_symlink_guard_and_idempotency() {
+#[tokio::test]
+async fn m5_migrated_v1_fixture_boots_cleanly_in_live_v2_server() {
     let tmp = TempDir::new().unwrap();
-    let v1_home = tmp.path().join("legacy-v1");
-    let v2_home = tmp.path().join("target-v2");
-    fs::create_dir_all(&v1_home).unwrap();
+    let v1_home = Path::new(env!("CARGO_MANIFEST_DIR")).join("../arima-db/tests/fixtures/v1-home");
+    let v2_home = tmp.path().join("v2-home");
 
-    // Seed legacy v1 projects.json, users.json, vault.enc, hq.db, per-project memory.db, and evidence/!
-    fs::write(
-        v1_home.join("projects.json"),
-        json!([
-            { "id": "proj-v1alpha", "slug": "v1alpha", "name": "Legacy Alpha", "path": "/tmp/v1alpha", "templateId": "software" }
-        ])
-        .to_string(),
-    )
-    .unwrap();
-    fs::write(
-        v1_home.join("users.json"),
-        json!([
-            { "id": "u-sachin", "name": "SachinV1", "passwordHash": "$argon2id$legacy", "role": "owner" }
-        ])
-        .to_string(),
-    )
-    .unwrap();
-    fs::write(v1_home.join("vault.enc"), b"encrypted-v1-vault-blob").unwrap();
-
-    // Legacy central hq.db with findings & tasks.
-    {
-        let conn = Connection::open(v1_home.join("hq.db")).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE tasks (id TEXT, project_id TEXT, status TEXT, title TEXT, created_at INTEGER);
-             CREATE TABLE findings (id TEXT, project_id TEXT, title TEXT, severity TEXT, cvss_score REAL, asset TEXT, status TEXT, verified INTEGER, created_at INTEGER);
-             INSERT INTO tasks VALUES ('T-V1-1', 'proj-v1alpha', 'done', 'Ship v1 migration', 1700000000000);
-             INSERT INTO findings VALUES ('F-V1-1', 'proj-v1alpha', 'Legacy SSRF Check', 'high', 8.2, 'api.v1alpha.local', 'open', 1, 1700000000000);",
-        )
-        .unwrap();
-    }
-
-    // Legacy per-project memory.db.
-    let proj_dir = v1_home.join("v1alpha");
-    fs::create_dir_all(&proj_dir).unwrap();
-    {
-        let conn = Connection::open(proj_dir.join("memory.db")).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE memories (id TEXT, mem_type TEXT, text TEXT, certified INTEGER, created_at INTEGER, last_used_at INTEGER);
-             INSERT INTO memories VALUES ('M-V1-1', 'Decision', 'Always enforce deterministic rustls TLS for egress.', 1, 1700000000000, 1700000000000);",
-        )
-        .unwrap();
-    }
-
-    // Evidence file + malicious symlink escape attempt!
-    let ev_dir = v1_home.join("evidence/v1alpha");
-    fs::create_dir_all(&ev_dir).unwrap();
-    fs::write(ev_dir.join("proof.txt"), b"legacy-evidence-data").unwrap();
-    let outside_secret = tmp.path().join("outside-secret.txt");
-    fs::write(&outside_secret, b"MUST-NOT-BE-COPIED").unwrap();
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&outside_secret, ev_dir.join("escape-link.txt")).unwrap();
-
-    // Capture source snapshot mtime/files before migration to prove --from is untouched.
-    let src_projects_before = fs::read(v1_home.join("projects.json")).unwrap();
-
-    // 1. Dry-run MUST NOT create v2_home!
-    let dry_report = migrate_v1_data(&MigrateV1Options {
-        from: v1_home.clone(),
-        to: v2_home.clone(),
-        dry_run: true,
-    })
-    .unwrap();
-    assert!(dry_report.dry_run);
-    assert_eq!(dry_report.projects, 1);
-    assert_eq!(dry_report.users, 1);
-    assert_eq!(dry_report.tasks, 1);
-    assert_eq!(dry_report.memories, 1);
-    assert_eq!(dry_report.findings, 1);
-    assert_eq!(dry_report.evidence_files, 1);
-    assert!(dry_report.vault_found);
-    #[cfg(unix)]
-    assert!(
-        dry_report
-            .warnings
-            .iter()
-            .any(|w| w.contains("symlink")),
-        "expected symlink warning, got {:?}",
-        dry_report.warnings
-    );
-    assert!(!v2_home.exists(), "dry-run must NOT write to destination");
-
-    // 2. Live migration run.
-    let live_report = migrate_v1_data(&MigrateV1Options {
+    let report = migrate_v1_data(&MigrateV1Options {
         from: v1_home.clone(),
         to: v2_home.clone(),
         dry_run: false,
+        v1_master_key: Some("fixture-v1-test-master-key-do-not-use-in-prod".into()),
+        repos: vec![v1_home.join("repos/alpha"), v1_home.join("repos/legacy-beta")],
     })
     .unwrap();
-    assert!(!live_report.dry_run);
-    assert_eq!(live_report.memories, 1);
-    assert!(v2_home.join("arima.db").is_file());
+    assert_eq!(report.projects, 2);
+    assert_eq!(report.secrets_imported, 3);
+
+    let db = Db::open(&v2_home.join("arima.db")).unwrap();
+    let vault_key = VaultKey::load_or_create(Some(&v2_home)).unwrap();
+    let state = AppState::new(db, vault_key, ServerConfig::default());
+
+    let model = arima_server::team::load(&state, "alpha").expect("migrated alpha team model");
+    assert_eq!(model.template["name"], "Dev Team Custom Alpha");
+    assert_eq!(model.team[0]["mode"], "container");
+
+    let accounts = arima_server::secrets::accounts_state(&state);
+    let ant = accounts["list"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "work-anthropic")
+        .expect("work-anthropic account surfaced from migrated vault");
+    assert_eq!(ant["secret"]["last4"], "9876");
+
+    let goals = arima_server::planning::goals_for(&state, "alpha");
+    assert!(goals.iter().any(|g| g["title"] == "Launch v2 beta"));
+
     assert_eq!(
-        fs::read(v2_home.join("v1-vault.enc")).unwrap(),
-        b"encrypted-v1-vault-blob"
+        arima_server::planning::company(&state),
+        "ArimaOps builds reliable multi-agent command decks."
     );
-    assert_eq!(
-        fs::read(v2_home.join("evidence/v1alpha/proof.txt")).unwrap(),
-        b"legacy-evidence-data"
-    );
+    assert!(arima_server::integrations::custom_template(&state, "custom-web").is_some());
+
+    let err = state
+        .inner
+        .auth
+        .login_with_password(
+            "Sachin".into(),
+            "fixture-owner-password-1".into(),
+            SessionMeta {
+                client_ip: "127.0.0.1".into(),
+                origin: Some("http://127.0.0.1:7420".into()),
+                label: "m5-migrated-login".into(),
+                remote: false,
+            },
+        )
+        .await
+        .expect_err("password-less migrated user cannot sign in with old password");
     assert!(
-        !v2_home.join("evidence/v1alpha/escape-link.txt").exists(),
-        "symlink escape must never be copied"
-    );
-
-    // 3. Idempotent second run produces zero errors and zero duplicate FTS5 rows!
-    let second_report = migrate_v1_data(&MigrateV1Options {
-        from: v1_home.clone(),
-        to: v2_home.clone(),
-        dry_run: false,
-    })
-    .unwrap();
-    assert_eq!(second_report.projects, 1);
-
-    let v2_db = Db::open(&v2_home.join("arima.db")).unwrap();
-    let mem_repo = MemoryRepo::new(v2_db.clone());
-    let hits = mem_repo
-        .search("proj-v1alpha", Some("rustls"), MemoryStatusFilter::Certified)
-        .unwrap();
-    assert_eq!(hits.len(), 1, "expected exactly 1 FTS5 hit after idempotent re-run");
-    assert_eq!(hits[0].id, "M-V1-1");
-
-    // Source directory strictly unchanged.
-    assert_eq!(
-        fs::read(v1_home.join("projects.json")).unwrap(),
-        src_projects_before
+        matches!(err, AuthError::InvalidCredentials),
+        "expected InvalidCredentials, got {err:?}"
     );
 }
 

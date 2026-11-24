@@ -71,6 +71,8 @@ fn handle_cli_subcommand() -> Result<bool, Box<dyn std::error::Error>> {
         "migrate-v1" => {
             let mut from: Option<PathBuf> = None;
             let mut to: Option<PathBuf> = None;
+            let mut master_key_file: Option<PathBuf> = None;
+            let mut repos: Vec<PathBuf> = Vec::new();
             let mut dry_run = false;
             let mut json_out = false;
             let mut i = 1usize;
@@ -78,17 +80,29 @@ fn handle_cli_subcommand() -> Result<bool, Box<dyn std::error::Error>> {
                 match args[i].as_str() {
                     "--from" => {
                         i += 1;
-                        from = args.get(i).map(PathBuf::from);
+                        let val = args.get(i).ok_or("--from requires a path")?;
+                        from = Some(PathBuf::from(val));
                     }
                     "--to" => {
                         i += 1;
-                        to = args.get(i).map(PathBuf::from);
+                        let val = args.get(i).ok_or("--to requires a path")?;
+                        to = Some(PathBuf::from(val));
+                    }
+                    "--v1-master-key-file" => {
+                        i += 1;
+                        let val = args.get(i).ok_or("--v1-master-key-file requires a path")?;
+                        master_key_file = Some(PathBuf::from(val));
+                    }
+                    "--repo" => {
+                        i += 1;
+                        let val = args.get(i).ok_or("--repo requires a path")?;
+                        repos.push(PathBuf::from(val));
                     }
                     "--dry-run" => dry_run = true,
                     "--json" => json_out = true,
                     "--help" | "-h" => {
                         println!(
-                            "Usage: arima-server migrate-v1 --from <v1_home> --to <v2_home> [--dry-run] [--json]"
+                            "Usage: arima-server migrate-v1 [--from <v1_home>] [--to <v2_home>] [--repo <path>]... [--v1-master-key-file <path>] [--dry-run] [--json]"
                         );
                         return Ok(true);
                     }
@@ -98,6 +112,14 @@ fn handle_cli_subcommand() -> Result<bool, Box<dyn std::error::Error>> {
                 }
                 i += 1;
             }
+            let v1_master_key = if let Some(key_file) = master_key_file {
+                Some(fs::read_to_string(&key_file)?.trim().to_owned())
+            } else {
+                env::var("ARIMA_V1_MASTER_KEY")
+                    .ok()
+                    .map(|s| s.trim().to_owned())
+                    .filter(|s| !s.is_empty())
+            };
             let home = env::var("HOME").unwrap_or_else(|_| ".".into());
             let from_dir = from.unwrap_or_else(|| PathBuf::from(&home).join(".arima"));
             let to_dir = to.unwrap_or_else(|| PathBuf::from(&home).join(".arima").join("v2"));
@@ -105,20 +127,29 @@ fn handle_cli_subcommand() -> Result<bool, Box<dyn std::error::Error>> {
                 from: from_dir,
                 to: to_dir,
                 dry_run,
+                v1_master_key,
+                repos,
             })?;
             if json_out {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 println!(
-                    "ArimaOps v1 -> v2 migration ({}): projects={} users={} tasks={} memories={} findings={} evidenceFiles={} vaultFound={} warnings={}",
+                    "ArimaOps v1 -> v2 migration ({}): projects={} templates={} boards={} goals={} tasks={} users={} memories={} findings={} usageEvents={} secretsImported={} secretsSkipped={} evidenceFiles={} vaultFound={} companyImported={} warnings={}",
                     if report.dry_run { "dry-run" } else { "applied" },
                     report.projects,
-                    report.users,
+                    report.templates,
+                    report.boards,
+                    report.goals,
                     report.tasks,
+                    report.users,
                     report.memories,
                     report.findings,
+                    report.usage_events,
+                    report.secrets_imported,
+                    report.secrets_skipped.len(),
                     report.evidence_files,
                     report.vault_found,
+                    report.company_imported,
                     report.warnings.len(),
                 );
                 for w in &report.warnings {

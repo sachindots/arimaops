@@ -4,8 +4,8 @@ dist
 *.local
 
 # HQ state when HQ is run on this repo itself
-.arima/
-.hq/
+/.arima/
+/.hq/
 
 # Built server for the npm package
 dist-server

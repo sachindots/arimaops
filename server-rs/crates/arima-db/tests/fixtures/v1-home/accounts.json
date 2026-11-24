@@ -1,0 +1,16 @@
+[
+  {
+    "id": "aws-bedrock",
+    "provider": "bedrock",
+    "label": "AWS Bedrock",
+    "fields": {
+      "region": "us-east-1"
+    }
+  },
+  {
+    "id": "work-anthropic",
+    "provider": "anthropic",
+    "label": "Work Anthropic",
+    "fields": {}
+  }
+]
