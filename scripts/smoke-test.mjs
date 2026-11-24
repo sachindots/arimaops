@@ -63,6 +63,37 @@ step(`version ${sh(process.execPath, [bin, "--version"]).trim()}`);
 // 2. The terminal library loads its prebuilt binary and can spawn a process.
 const req = createRequire(join(pkgRoot, "package.json"));
 const pty = req("@lydell/node-pty");
+if (win) {
+  // DIAG: temporary
+  const t0 = Date.now();
+  const variants = {
+    plain: [process.execPath, ["-e", "console.log('pty-ok')"], {}],
+    cwdEnv: [process.execPath, ["-e", "console.log('pty-ok')"], { cwd: app, env: process.env }],
+    slow: [process.execPath, ["-e", "setTimeout(()=>console.log('pty-ok'),1500)"], {}],
+    slowCwdEnv: [process.execPath, ["-e", "setTimeout(()=>console.log('pty-ok'),1500)"], { cwd: app, env: process.env }],
+    dll: [process.execPath, ["-e", "console.log('pty-ok')"], { useConptyDll: true }],
+    cmd: ["cmd.exe", ["/c", "echo pty-ok"], {}],
+  };
+  const res = {};
+  for (const [k, [f, a, o]] of Object.entries(variants)) {
+    const r = (res[k] = { events: [] });
+    try {
+      const p = pty.spawn(f, a, { cols: 80, rows: 10, ...o });
+      r.pid = p.pid;
+      p.onData((d) => r.events.push([Date.now() - t0, "data", d]));
+      p.onExit((e) => r.events.push([Date.now() - t0, "exit", e]));
+    } catch (e) {
+      r.err = String(e);
+    }
+  }
+  await new Promise((r) => setTimeout(r, 12_000));
+  for (const [k, r] of Object.entries(res)) {
+    let alive = "";
+    try { alive = execFileSync("tasklist", ["/FI", `PID eq ${r.pid}`, "/NH"], { encoding: "utf8" }).trim(); } catch (e) { alive = String(e); }
+    console.log(`DIAG ${k} pid=${r.pid} err=${r.err ?? ""} events=${JSON.stringify(r.events)} tasklist=${JSON.stringify(alive)}`);
+  }
+  console.log(`DIAG conout dir: ${JSON.stringify(Object.keys(process.env).filter((k) => /CONPTY|TERM|SESSION/i.test(k)))}`);
+}
 await new Promise((done) => {
   const p = pty.spawn(process.execPath, ["-e", "console.log('pty-ok')"], { cols: 80, rows: 10 });
   let out = "";
