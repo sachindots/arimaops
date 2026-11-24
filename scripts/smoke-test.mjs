@@ -28,6 +28,14 @@ function fail(msg) {
   cleanup();
   process.exit(1);
 }
+// Waits for `executor` to call done and fails after `ms`. The timer is cleared once done, so it can't fire during a later step.
+function within(ms, timeoutMessage, executor) {
+  let timer;
+  return new Promise((done) => {
+    timer = setTimeout(() => fail(timeoutMessage()), ms);
+    executor(done);
+  }).finally(() => clearTimeout(timer));
+}
 function cleanup() {
   if (hq && hq.exitCode === null) {
     if (win) spawnSyncKill(hq.pid);
@@ -63,43 +71,11 @@ step(`version ${sh(process.execPath, [bin, "--version"]).trim()}`);
 // 2. The terminal library loads its prebuilt binary and can spawn a process.
 const req = createRequire(join(pkgRoot, "package.json"));
 const pty = req("@lydell/node-pty");
-if (win) {
-  // DIAG: temporary
-  const t0 = Date.now();
-  const variants = {
-    plain: [process.execPath, ["-e", "console.log('pty-ok')"], {}],
-    cwdEnv: [process.execPath, ["-e", "console.log('pty-ok')"], { cwd: app, env: process.env }],
-    slow: [process.execPath, ["-e", "setTimeout(()=>console.log('pty-ok'),1500)"], {}],
-    slowCwdEnv: [process.execPath, ["-e", "setTimeout(()=>console.log('pty-ok'),1500)"], { cwd: app, env: process.env }],
-    dll: [process.execPath, ["-e", "console.log('pty-ok')"], { useConptyDll: true }],
-    cmd: ["cmd.exe", ["/c", "echo pty-ok"], {}],
-  };
-  const res = {};
-  for (const [k, [f, a, o]] of Object.entries(variants)) {
-    const r = (res[k] = { events: [] });
-    try {
-      const p = pty.spawn(f, a, { cols: 80, rows: 10, ...o });
-      r.pid = p.pid;
-      p.onData((d) => r.events.push([Date.now() - t0, "data", d]));
-      p.onExit((e) => r.events.push([Date.now() - t0, "exit", e]));
-    } catch (e) {
-      r.err = String(e);
-    }
-  }
-  await new Promise((r) => setTimeout(r, 12_000));
-  for (const [k, r] of Object.entries(res)) {
-    let alive = "";
-    try { alive = execFileSync("tasklist", ["/FI", `PID eq ${r.pid}`, "/NH"], { encoding: "utf8" }).trim(); } catch (e) { alive = String(e); }
-    console.log(`DIAG ${k} pid=${r.pid} err=${r.err ?? ""} events=${JSON.stringify(r.events)} tasklist=${JSON.stringify(alive)}`);
-  }
-  console.log(`DIAG conout dir: ${JSON.stringify(Object.keys(process.env).filter((k) => /CONPTY|TERM|SESSION/i.test(k)))}`);
-}
-await new Promise((done) => {
+await within(15_000, () => "pty spawn timed out", (done) => {
   const p = pty.spawn(process.execPath, ["-e", "console.log('pty-ok')"], { cols: 80, rows: 10 });
   let out = "";
   p.onData((d) => (out += d));
   p.onExit(() => (out.includes("pty-ok") ? done() : fail(`pty spawn printed: ${JSON.stringify(out)}`)));
-  setTimeout(() => fail("pty spawn timed out"), 15_000);
 });
 step("terminal library spawns processes");
 
@@ -112,7 +88,7 @@ sh("git", ["-c", "user.name=smoke", "-c", "user.email=smoke@example.com", "commi
 
 hq = spawn(process.execPath, [bin, "--repo", repo, "--port", String(port), "--no-open"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: home, USERPROFILE: home } });
 let log = "";
-const token = await new Promise((done) => {
+const token = await within(60_000, () => `HQ didn't start in 60s:\n${log}`, (done) => {
   const onData = (d) => {
     log += d;
     const m = log.match(/token=([a-f0-9]+)/);
@@ -121,7 +97,6 @@ const token = await new Promise((done) => {
   hq.stdout.on("data", onData);
   hq.stderr.on("data", onData);
   hq.on("exit", (code) => fail(`HQ exited early (code ${code}):\n${log}`));
-  setTimeout(() => fail(`HQ didn't start in 60s:\n${log}`), 60_000);
 });
 hq.removeAllListeners("exit");
 step("HQ started");
@@ -132,7 +107,7 @@ if (!page.ok || !html.includes("<div id=")) fail(`page: HTTP ${page.status}`);
 step("page served");
 
 const WebSocket = req("ws");
-const snap = await new Promise((done) => {
+const snap = await within(15_000, () => "no snapshot in 15s", (done) => {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${token}`, { headers: { Origin: `http://127.0.0.1:${port}` } });
   ws.on("message", (raw) => {
     const e = JSON.parse(String(raw));
@@ -142,7 +117,6 @@ const snap = await new Promise((done) => {
     }
   });
   ws.on("error", (err) => fail(`websocket: ${err.message}`));
-  setTimeout(() => fail("no snapshot in 15s"), 15_000);
 });
 if (snap.welcome !== true) fail("expected the welcome screen on a fresh repo");
 step(`snapshot ok (welcome, ${snap.setup.checks.length} setup checks)`);
