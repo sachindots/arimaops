@@ -5,8 +5,9 @@ use std::sync::Arc;
 use arima_core::{AuthUser, DeviceSession, ProjectRole, ServerRole};
 use arima_db::Db;
 use chrono::{DateTime, Utc};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::Rng;
 use rusqlite::OptionalExtension;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -1034,7 +1035,7 @@ impl AuthService {
 
 fn generate_session_token() -> (String, String) {
     let mut raw = [0u8; 32];
-    OsRng.fill_bytes(&mut raw);
+    UnwrapErr(SysRng).fill_bytes(&mut raw);
     let hex_token = hex::encode(raw);
     let hash = hash_token(&hex_token);
     (hex_token, hash)

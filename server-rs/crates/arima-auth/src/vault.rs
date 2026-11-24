@@ -5,8 +5,9 @@ use std::path::Path;
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 
 use crate::error::{AuthError, Result};
@@ -34,7 +35,7 @@ impl VaultKey {
     #[must_use]
     pub fn ephemeral() -> Self {
         let mut key = [0u8; 32];
-        OsRng.fill_bytes(&mut key);
+        UnwrapErr(SysRng).fill_bytes(&mut key);
         Self { key }
     }
 
@@ -75,7 +76,7 @@ impl VaultKey {
         }
 
         let mut key = [0u8; 32];
-        OsRng.fill_bytes(&mut key);
+        UnwrapErr(SysRng).fill_bytes(&mut key);
         let hex_key = hex::encode(key);
 
         #[cfg(unix)]
@@ -119,8 +120,8 @@ impl VaultKey {
         let cipher = Aes256Gcm::new_from_slice(&self.key)
             .map_err(|e| AuthError::Crypto(format!("cipher init failed: {e}")))?;
         let mut nonce_bytes = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        UnwrapErr(SysRng).fill_bytes(&mut nonce_bytes);
+        let nonce = &Nonce::from(nonce_bytes);
         let ct = cipher
             .encrypt(
                 nonce,
@@ -146,7 +147,8 @@ impl VaultKey {
         let ct = hex::decode(ct_hex).map_err(|_| AuthError::Crypto("bad ciphertext hex".into()))?;
         let cipher = Aes256Gcm::new_from_slice(&self.key)
             .map_err(|e| AuthError::Crypto(format!("cipher init failed: {e}")))?;
-        let nonce = Nonce::from_slice(&nonce_raw);
+        let nonce = &Nonce::try_from(nonce_raw.as_slice())
+            .map_err(|_| AuthError::Crypto("bad nonce length".into()))?;
         cipher
             .decrypt(nonce, Payload { msg: &ct, aad })
             .map_err(|_| AuthError::Crypto("decryption failed".into()))

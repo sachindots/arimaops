@@ -214,7 +214,7 @@ const RETIRED_ROLE_MD: &[(&str, &str, &str)] = &[
 /// The current built-in text for a role prompt that still equals a retired built-in version.
 fn current_builtin_role_md(role_md: &str) -> Option<&'static Value> {
     use sha2::{Digest, Sha256};
-    let digest = format!("{:x}", Sha256::digest(role_md.as_bytes()));
+    let digest = hex::encode(Sha256::digest(role_md.as_bytes()));
     let (_, template_id, role_id) = RETIRED_ROLE_MD.iter().find(|(h, _, _)| *h == digest)?;
     Some(&role_of(template_by_id(template_id)?, role_id)?["roleMd"])
 }
