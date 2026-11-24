@@ -40,7 +40,9 @@ ufw allow 443/tcp comment "HTTPS Caddy"
 ufw --force enable
 
 echo "[3/4] Preparing ${DEPLOY_DIR} with strict permissions..."
-install -d -m 0700 "${DEPLOY_DIR}" "${DEPLOY_DIR}/workspaces"
+install -d -m 0700 "${DEPLOY_DIR}"
+# HQ runs as uid 10001 in its image and writes agent workspaces here.
+install -d -m 0700 -o 10001 -g 10001 "${DEPLOY_DIR}/workspaces"
 cp "${SCRIPT_DIR}/Caddyfile" "${DEPLOY_DIR}/Caddyfile"
 cp "${SCRIPT_DIR}/compose.aws.yaml" "${DEPLOY_DIR}/compose.aws.yaml"
 cp "${SCRIPT_DIR}/.env.aws.example" "${DEPLOY_DIR}/.env.aws.example"
