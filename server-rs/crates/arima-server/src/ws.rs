@@ -133,6 +133,14 @@ impl WsHub {
         }
     }
 
+    /// Serializes `event` once and sends it only to sockets showing `project_id`, for events that don't name their
+    /// project themselves (a meeting turn names only its meeting).
+    pub fn broadcast_project_event(&self, project_id: &str, event: &WsServerEvent) {
+        if let Ok(payload) = serde_json::to_string(event) {
+            self.broadcast_project(project_id, &payload);
+        }
+    }
+
     /// Sends a frame only to sockets showing `project_id`. It describes a change, so the cached snapshot is dropped.
     pub fn broadcast_project(&self, project_id: &str, payload: &str) {
         self.forget_snapshots();
@@ -1672,5 +1680,32 @@ mod project_scope_tests {
         hub.broadcast_event(&WsServerEvent::DecisionUpdated { decision: card("proj-a") });
         assert!(matches!(rx_a.try_recv(), Ok(WsOutbound::Text(t)) if t.contains("dec-proj-a")));
         assert!(rx_b.try_recv().is_err(), "project B's sockets never see A's card");
+    }
+
+    #[test]
+    fn meeting_turns_reach_only_their_projects_sockets() {
+        use arima_core::{MeetingKind, MeetingUrgency, VoiceProvider};
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let a = state.default_project().unwrap().0;
+        let (tx_b, mut rx_b) = mpsc::channel(64);
+        state.inner.ws_hub.register("dev-b", tx_b, "proj-b", true);
+        let input = crate::meetings::StartMeetingInput {
+            project_id: a.clone(),
+            kind: MeetingKind::Standup,
+            title: "Standup".into(),
+            urgency: MeetingUrgency::Normal,
+            moderator_id: "lead".into(),
+            participant_ids: vec!["lead".into()],
+            requested_by: "lead".into(),
+            agenda_titles: vec!["Plans".into()],
+            voice_enabled: false,
+            voice_provider: VoiceProvider::BrowserWebSpeech,
+        };
+        let (meeting, _, _) = crate::meetings::start_or_request_meeting(&state, input, true).unwrap();
+        crate::meetings::add_turn_and_refresh_minutes(&state, &meeting.id, "lead", None, None, "secret plan", None, None).unwrap();
+        while let Ok(WsOutbound::Text(t)) = rx_b.try_recv() {
+            assert!(!t.contains("secret plan") && !t.contains(&meeting.id), "project B saw A's meeting: {t}");
+        }
     }
 }

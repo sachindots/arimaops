@@ -155,7 +155,7 @@ pub fn start_or_request_meeting(
         state
             .inner
             .ws_hub
-            .broadcast_event(&WsServerEvent::MeetingTurnAdded {
+            .broadcast_project_event(&session.project_id, &WsServerEvent::MeetingTurnAdded {
                 turn: turn.clone(),
             });
         Ok((session, Some(turn), None))
@@ -293,7 +293,7 @@ pub fn handle_meeting_action(
                 state
                     .inner
                     .ws_hub
-                    .broadcast_event(&WsServerEvent::MeetingTurnAdded { turn: saved_turn });
+                    .broadcast_project_event(&session.project_id, &WsServerEvent::MeetingTurnAdded { turn: saved_turn });
             }
         }
     }
@@ -376,7 +376,7 @@ pub fn add_turn_and_refresh_minutes(
     state
         .inner
         .ws_hub
-        .broadcast_event(&WsServerEvent::MeetingTurnAdded {
+        .broadcast_project_event(&session.project_id, &WsServerEvent::MeetingTurnAdded {
             turn: saved_turn.clone(),
         });
 
