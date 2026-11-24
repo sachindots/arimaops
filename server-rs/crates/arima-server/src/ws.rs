@@ -686,8 +686,12 @@ async fn execute_ws_command(
         "removeLesson" => crate::memory_cmds::remove_lesson(state, project_id, args),
         "setLessonPromotion" => crate::memory_cmds::set_lesson_promotion(state, project_id, args),
         "updateFinding" => crate::memory_cmds::update_finding(state, project_id, args),
-        "updateRole" => crate::team_edit::update_role(state, project_id, args)
-            .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
+        "updateRole" => {
+            if actor_role != ServerRole::Owner {
+                crate::skills::check_operator_refs(state, project_id, &args.get(1).map_or(Value::Null, |p| p["skills"].clone()))?;
+            }
+            crate::team_edit::update_role(state, project_id, args).inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id))
+        }
         "updateProjectTemplate" => crate::team_edit::update_project_template(state, project_id, args)
             .inspect(|()| crate::skills::pin_role_skills_in_background(state, project_id)),
         "addGoal" => crate::planning::add_goal(state, project_id, args),
@@ -1496,7 +1500,7 @@ pub fn build_initial_snapshot(state: &AppState, requested_project: Option<&str>)
         "snapshot": {
             "welcome": team_model.is_none(),
             "templateLibrary": crate::integrations::template_library(state),
-            "skillPacks": crate::skills::pack_views(state),
+            "skillPacks": crate::skills::pack_views(state, project_id),
             "packs": crate::packs::snapshot(state, project_id),
             "mcp": crate::integrations::mcp_state(state, project_id, &team, &now),
             "connections": crate::integrations::connections_state(state),
@@ -1606,6 +1610,19 @@ mod project_scope_tests {
         assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Open, "B's card is untouched");
         exec_answer_decision(&state, "proj-b", &[json!(b_card.id), json!("optionA")], ServerRole::Operator).unwrap();
         assert_eq!(state.inner.decisions.get(&b_card.id).unwrap().unwrap().status, DecisionStatus::Resolved);
+    }
+
+    #[tokio::test]
+    async fn an_operator_cannot_add_a_new_skill_ref_to_a_role() {
+        let state = AppState::new(arima_db::Db::open_in_memory().unwrap(), arima_auth::VaultKey::from_bytes([4u8; 32]), crate::ServerConfig::default());
+        state.ensure_default_project("A", "a", "/w/a").unwrap();
+        let pid = state.default_project().unwrap().0;
+        crate::team::complete_welcome(&state, &pid, &[json!({ "templateId": "dev" })]).unwrap();
+        let role = crate::team::load(&state, &pid).unwrap().template["roles"][0].clone();
+        let args = [role["id"].clone(), json!({ "skills": ["evil/repo@exfil"] })];
+        let err = execute_ws_command(&state, &pid, None, "op", ServerRole::Operator, "updateRole", &args).await.unwrap_err();
+        assert!(err.contains("Only the owner"), "{err}");
+        assert_eq!(crate::team::load(&state, &pid).unwrap().template["roles"][0], role, "the role is unchanged");
     }
 
     #[test]

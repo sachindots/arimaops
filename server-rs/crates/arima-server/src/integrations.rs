@@ -153,7 +153,7 @@ pub(crate) fn ip_blocked(ip: std::net::IpAddr, allow_private: bool) -> bool {
     arima_proxy::is_imds_or_link_local_ip(ip) || (!allow_private && arima_proxy::is_restricted_ip(ip))
 }
 
-const BLOCKED_MSG: &str = "That address is on a private network, or is a cloud metadata or link-local address, so HQ won't connect to it.";
+pub(crate) const BLOCKED_MSG: &str = "That address is on a private network, or is a cloud metadata or link-local address, so HQ won't connect to it.";
 
 /// Checks the URL's scheme and any literal address. Names are checked when they are resolved, in `resolve_endpoint`.
 pub(crate) fn check_endpoint(raw: &str, allow_private: bool) -> Result<url::Url, String> {

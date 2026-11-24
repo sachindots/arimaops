@@ -270,7 +270,7 @@ fn prepare(state: &AppState, url: &str, plugin: Option<&str>, rev: &str) -> Resu
     let root = skills::data_root(state)?;
     let scratch = root.join(format!(".fetch-{}", uuid::Uuid::new_v4().simple()));
     let result = (|| {
-        let tree = skills::fetch_tree(&scratch, url, rev)?;
+        let tree = skills::fetch_tree(&scratch, url, rev, state.inner.config.allow_private_connections)?;
         let loc = locate(|p| tree.file(p), &repo_id(url)?, plugin)?;
         let entry = build(&tree, &root, url, &loc, state.inner.config.allow_private_connections)?;
         Ok((loc.id, entry))
@@ -527,7 +527,7 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
     let short = &after.source.commit[..12.min(after.source.commit.len())];
     let title = if before.is_some() { format!("Review a change to the pack {id}") } else { format!("Install the pack {id}?") };
     let mut details = format!(
-        "From `{}` at commit `{short}`, files hash `{}`. Approve to give this project's agents the files and tool servers below; Send back leaves the project as it was. The scanner blocked {} finding(s); while any finding blocks, none of the pack's skills reach agents.",
+        "From `{}` at commit `{short}`, files hash `{}`. Approve to give this project's agents the files and tool servers below; Send back leaves the project as it was. The scanner blocked {} finding(s); while any finding blocks, none of the pack's skills reach agents. The scan is a pattern hint, not a check: it skips quoted and code text and misses wording it doesn't know, so read the files before you approve.",
         after.source.repo,
         &after.tree[..12.min(after.tree.len())],
         after.scan.blocked.len()
