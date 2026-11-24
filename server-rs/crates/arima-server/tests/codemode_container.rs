@@ -89,15 +89,10 @@ fn docker(args: &[&str]) -> Option<String> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Docker and the agent image: ARIMA_CODEMODE_IMAGE=<image> cargo test --test codemode_container -- --ignored"]
 async fn codemode_in_the_agent_container_calls_through_hq_with_its_keys_audit_and_switch() {
-    let Ok(image) = std::env::var("ARIMA_CODEMODE_IMAGE") else {
-        eprintln!("ARIMA_CODEMODE_IMAGE unset: skipping");
-        return;
-    };
-    if docker(&["image", "inspect", &image]).is_none() {
-        eprintln!("no Docker or no image {image}: skipping");
-        return;
-    }
+    let image = std::env::var("ARIMA_CODEMODE_IMAGE").expect("ARIMA_CODEMODE_IMAGE names the agent image to run");
+    assert!(docker(&["image", "inspect", &image]).is_some(), "no Docker, or no image {image}");
     let state = AppState::new(Db::open_in_memory().unwrap(), VaultKey::from_bytes([9u8; 32]), ServerConfig { allow_private_connections: true, ..ServerConfig::default() });
     state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
     let pid = state.default_project().unwrap().0;
