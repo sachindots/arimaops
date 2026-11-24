@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, lazy, Suspense, useState } from "react";
 import type { VisualDecision } from "../../data/generated";
 import { BRAND } from "../../data/brand";
 import { isViewer, officeActions, useOffice } from "../../store/office";
@@ -10,6 +10,8 @@ import { PackReviewBody } from "./PackReviewBody";
 import { PermissionCard } from "./PermissionCard";
 import { QuestionCard } from "./QuestionCard";
 import { SecondOpinionCard } from "./SecondOpinionCard";
+
+const FormCard = lazy(() => import("./FormCard"));
 
 /**
  * Safe React-element Markdown renderer for specs, plans, rationales, and summaries.
@@ -126,6 +128,7 @@ const KIND_META: Record<string, { icon: string; badge: string; color: string }> 
   "pack-review": { icon: "extension", badge: "Pack review", color: "var(--accent)" },
   "overflow-fallback": { icon: "swap_horiz", badge: "Model Fallback", color: "var(--color-amber)" },
   info: { icon: "info", badge: "Update", color: "var(--color-muted)" },
+  form: { icon: "dynamic_form", badge: "Agent form", color: "var(--accent)" },
 };
 
 export function VisualDecisionCard({
@@ -221,6 +224,10 @@ export function VisualDecisionCard({
         <PermissionCard decision={decision} payload={decision.payload} compact={compact} />
       ) : decision.payload.kind === "meeting-request" ? (
         <MeetingRequestCard decision={decision} payload={decision.payload} compact={compact} />
+      ) : decision.payload.kind === "form" ? (
+        <Suspense fallback={<p className="m-0 text-[13px] text-muted">Loading the form…</p>}>
+          <FormCard key={decision.status} decision={decision} payload={decision.payload} />
+        </Suspense>
       ) : (
         <div className="flex flex-col gap-3">
           {"markdown" in decision.payload && decision.payload.markdown && (

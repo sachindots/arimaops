@@ -812,6 +812,8 @@ export function createMockSource(): OfficeDataSource {
 
       if (dec.payload.kind === "question" && input.answers) {
         dec.payload = { ...dec.payload, answers: input.answers };
+      } else if (dec.payload.kind === "form" && input.formAnswer) {
+        dec.payload = { ...dec.payload, answer: input.formAnswer };
       } else if ((dec.payload.kind === "second-opinion" || dec.payload.kind === "disagreement") && input.chosenSide) {
         dec.payload = { ...dec.payload, chosenSide: input.chosenSide };
         if (input.chosenSide === "waive" && dec.payload.taskId && dec.payload.gateId) {
@@ -835,6 +837,7 @@ export function createMockSource(): OfficeDataSource {
           input.chosenSide ? `Chosen: ${input.chosenSide}`
           : input.resolution ? `Permission: ${input.resolution}`
           : input.answers?.length ? `Answered ${input.answers.length} question(s)`
+          : input.formAnswer ? `Form: ${input.formAnswer.action}`
           : dec.status;
         world.message("you", dec.fromId, `${dec.title} — ${summary}${dec.note ? ` (${dec.note})` : ""}`);
       }

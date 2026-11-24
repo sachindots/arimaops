@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { QuestionAnswer, QuestionPayload, VisualDecision } from "../../data/generated";
 import { isViewer, officeActions } from "../../store/office";
 import { Icon } from "../deck/Icon";
+import { OptionRow } from "./OptionRow";
 
 export function QuestionCard({
   decision,
@@ -90,53 +91,24 @@ export function QuestionCard({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              {q.options.map((opt) => {
-                const isPicked = picked.includes(opt.id);
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={resolved || isViewer}
-                    aria-pressed={isPicked}
-                    onClick={() => toggleOption(q.id, opt.id, q.multiSelect)}
-                    className={`flex w-full cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-default ${
-                      isPicked
-                        ? "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]"
-                        : "border-[var(--border-hairline)] bg-[var(--surface-card)] hover:border-[var(--border-strong)] hover:bg-cream-2/60"
-                    }`}
-                  >
-                    <Icon
-                      name={
-                        q.multiSelect
-                          ? isPicked
-                            ? "check_box"
-                            : "check_box_outline_blank"
-                          : isPicked
-                            ? "radio_button_checked"
-                            : "radio_button_unchecked"
-                      }
-                      size={18}
-                      className={`mt-0.5 shrink-0 ${isPicked ? "text-accent" : "text-muted"}`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-ink">{opt.label}</span>
-                        {opt.recommended && (
-                          <span
-                            className="chip text-[12px]"
-                            style={{ ["--c" as string]: "var(--accent)" }}
-                          >
-                            (Recommended)
-                          </span>
-                        )}
+              {q.options.map((opt) => (
+                <OptionRow
+                  key={opt.id}
+                  label={opt.label}
+                  description={compact ? null : opt.description}
+                  badge={
+                    opt.recommended && (
+                      <span className="chip text-[12px]" style={{ ["--c" as string]: "var(--accent)" }}>
+                        (Recommended)
                       </span>
-                      {opt.description && !compact && (
-                        <span className="mt-0.5 block text-[12px] text-muted">{opt.description}</span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
+                    )
+                  }
+                  picked={picked.includes(opt.id)}
+                  multi={q.multiSelect}
+                  disabled={resolved || isViewer}
+                  onClick={() => toggleOption(q.id, opt.id, q.multiSelect)}
+                />
+              ))}
             </div>
 
             {q.allowOther && !resolved && !isViewer && (

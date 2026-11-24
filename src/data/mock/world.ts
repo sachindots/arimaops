@@ -18,6 +18,7 @@ import type {
   PullRequest,
   Task,
 } from "../types";
+import type { JsonValue } from "../generated";
 import { mulberry32 } from "../../lib/random";
 import type { Preset } from "./presets";
 import { message as messageLines, slug, type TermLine } from "./terminalScripts";
@@ -514,6 +515,38 @@ export class World {
                 "P3-T02 Rate-limit Second Opinion gate resolution",
                 "Live Preview verification on :3000",
               ],
+            },
+          },
+          {
+            id: "vd-form-1",
+            projectId: pid,
+            fromId: lead?.id ?? "hq",
+            taskId: t1,
+            title: "Set up the upload bucket",
+            details: "I need a few details before I create the storage bucket for document uploads.",
+            waiting: true,
+            ownerOnly: false,
+            status: "open" as const,
+            createdAt: now(),
+            closedAt: null,
+            note: null,
+            payload: {
+              kind: "form" as const,
+              answer: null,
+              form: {
+                components: [
+                  { id: "root", component: "Column", children: ["intro", "bucket", "region", "features", "plans", "quota", "uploads", "go"] },
+                  { id: "intro", component: "Text", text: { "@path": "/intro" } },
+                  { id: "bucket", component: "TextField", label: "Bucket name", value: { "@path": "/bucket" }, placeholder: "acme-uploads" },
+                  { id: "region", component: "Select", label: "Region", value: { "@path": "/region" }, options: [{ value: "eu-west", label: "Europe (Ireland)" }, { value: "us-east", label: "US East (Virginia)" }] },
+                  { id: "features", component: "CheckList", label: "Extras", multi: true, values: { "@path": "/features" }, options: [{ value: "versioning", label: "Versioning", description: "Keep old copies of overwritten files." }, { value: "encryption", label: "Encryption at rest" }] },
+                  { id: "plans", component: "Table", columns: ["Storage class", "Price per GB", "First byte"], rows: [["Standard", "$0.023", "ms"], ["Infrequent access", "$0.0125", "ms"], ["Archive", "$0.004", "hours"]] },
+                  { id: "quota", component: "Meter", label: "Storage used", value: { "@path": "/used" }, max: 100 },
+                  { id: "uploads", component: "Chart", label: "Uploads per day", points: [4, 7, 5, 9, 12, 10, 15] },
+                  { id: "go", component: "ButtonRow", buttons: [{ label: "Create bucket", variant: "primary", action: { event: { name: "create", context: { bucket: { "@path": "/bucket" } } } } }, { label: "Not yet", action: { event: { name: "later" } } }] },
+                ] as JsonValue[],
+                data: { intro: "Uploads go to one bucket per project.", bucket: "", region: "eu-west", features: [], used: 38 },
+              },
             },
           },
         ];

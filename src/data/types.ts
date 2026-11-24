@@ -25,6 +25,7 @@ import type {
   PreviewTargetStatus,
   ProposedDecision,
   ProposedTask,
+  FormAnswer,
   QuestionAnswer,
   QuestionOption,
   QuestionPayload,
@@ -82,6 +83,7 @@ export interface AnswerDecisionInput {
   status?: "resolved" | "dismissed";
   note?: string | null;
   answers?: QuestionAnswer[];
+  formAnswer?: FormAnswer;
   chosenSide?: string | null;
   resolution?: string | null;
   meetingAction?: "join" | "snooze" | "decline" | null;
