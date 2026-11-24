@@ -77,7 +77,12 @@ from: string | null, to: string, changed: Array<PackChange>, egress: Array<strin
 /**
  * Scan findings, blocking ones first.
  */
-findings: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, };
+findings: Array<string>, 
+/**
+ * The roles that get the pack's skills on approval: the default when the card is filed, then the owner's
+ * answer (a `roles` question answer).
+ */
+roles: Array<string>, } | { "kind": "overflow-fallback", agentId: string, taskId: string, cli: string, model: string, } | { "kind": "info", markdown: string, };
 
 export type VisualDecision = { id: string, projectId: string, fromId: string, taskId: string | null, title: string, details: string, waiting: boolean, ownerOnly: boolean, status: DecisionStatus, payload: DecisionPayload, note: string | null, createdAt: string, closedAt: string | null, };
 

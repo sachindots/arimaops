@@ -269,6 +269,11 @@ impl DecisionsRepo {
                         so.chosen_side = Some(side.clone());
                     }
                 }
+                DecisionPayload::PackReview { roles, .. } => {
+                    if let Some(a) = input.answers.and_then(|a| a.into_iter().find(|a| a.question_id == "roles")) {
+                        *roles = a.selected_option_ids;
+                    }
+                }
                 DecisionPayload::Permission(perm) => {
                     if let Some(res) = input.permission_resolution {
                         perm.resolution = Some(res);

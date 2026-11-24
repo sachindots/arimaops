@@ -138,6 +138,7 @@ export function VisualDecisionCard({
   const snap = useOffice((s) => s.snap);
   const now = useNow(15_000);
   const [note, setNote] = useState(decision.note ?? "");
+  const [packRoles, setPackRoles] = useState(decision.payload.kind === "pack-review" ? decision.payload.roles : []);
   const from = snap?.config.team.find((a) => a.id === decision.fromId);
   const fromName = from?.name ?? (decision.fromId === "hq" ? BRAND.name : decision.fromId);
   const meta = KIND_META[decision.payload.kind] ?? KIND_META.info;
@@ -148,6 +149,7 @@ export function VisualDecisionCard({
     officeActions.answerDecision(decision.id, {
       status,
       note: note.trim() || null,
+      ...(decision.payload.kind === "pack-review" && { answers: [{ questionId: "roles", selectedOptionIds: packRoles, otherText: null }] }),
     });
   };
 
@@ -226,7 +228,7 @@ export function VisualDecisionCard({
               <SafeMarkdown markdown={decision.payload.markdown} />
             </div>
           )}
-          {decision.payload.kind === "pack-review" && <PackReviewBody payload={decision.payload} />}
+          {decision.payload.kind === "pack-review" && <PackReviewBody payload={decision.payload} roles={resolved ? decision.payload.roles : packRoles} onRoles={resolved || isViewer ? undefined : setPackRoles} />}
           {decision.payload.kind === "gate-approval" && (
             <div className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3 text-[13px]">
               <div>

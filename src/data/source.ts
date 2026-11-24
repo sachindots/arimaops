@@ -252,7 +252,7 @@ export interface OfficeDataSource {
   /** Reads each installed pack (or one) again; a change waits for approval before the pin moves. */
   checkPackUpdates(id?: string): void;
   /** Removes the pack's skills and tool servers from this project. */
-  removePack(id: string): void;
+  removePack(id: string, deleteKeys?: boolean): void;
   /** Answers requests an agent's sandbox blocked (sbx's approval queue). "all" with dismiss clears them all. */
   answerApproval(agentId: string, approvalId: string, decision: "allow" | "dismiss"): void;
   /** Re-reads policy rules, keys and proxy from sbx. */

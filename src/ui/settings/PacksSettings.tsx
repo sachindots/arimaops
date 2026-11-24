@@ -19,6 +19,7 @@ export function PacksSettings() {
   const owner = useAuth((s) => s.role === "owner" || s.status === "none");
   const [form, setForm] = useState({ url: "", plugin: "" });
   const [removing, setRemoving] = useState<string | null>(null);
+  const [deleteKeys, setDeleteKeys] = useState(false);
   const [keys, setKeys] = useState<Record<string, string>>({});
   if (!packs) return <p className="text-[13px] text-muted">Packs aren't available on this server.</p>;
 
@@ -73,11 +74,17 @@ export function PacksSettings() {
                     {owner &&
                       (removing === id ? (
                         <>
-                          <span className="text-[12px] text-red">Removes its skills, tool servers and their keys from this project.</span>
+                          <span className="text-[12px] text-red">Removes its skills and tool servers from this project.</span>
+                          {Object.keys(e.toolServers).length > 0 && (
+                            <label className="flex items-center gap-1.5 text-[12px]">
+                              <input type="checkbox" checked={deleteKeys} onChange={(ev) => setDeleteKeys(ev.target.checked)} />
+                              Also delete its tool servers' saved keys (kept keys come back if you add this pack again)
+                            </label>
+                          )}
                           <button
                             className="btn px-2 text-[12px]"
                             onClick={() => {
-                              officeActions.removePack(id);
+                              officeActions.removePack(id, deleteKeys);
                               setRemoving(null);
                             }}
                           >
@@ -88,7 +95,13 @@ export function PacksSettings() {
                           </button>
                         </>
                       ) : (
-                        <button className="text-[12px] underline" onClick={() => setRemoving(id)}>
+                        <button
+                          className="text-[12px] underline"
+                          onClick={() => {
+                            setRemoving(id);
+                            setDeleteKeys(false);
+                          }}
+                        >
                           Remove…
                         </button>
                       ))}
