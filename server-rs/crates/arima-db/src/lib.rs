@@ -36,9 +36,9 @@ pub use backup::{
 };
 pub use decisions::{classify_owner_only, DecisionsRepo, ResolveDecisionInput};
 pub use factory::{
-    BenchmarkCaseResult, BenchmarkRun, ConnectionsRepo, CreateProposalInput, FactoryMetricsReport,
-    FactoryRepo, FactoryWindowMetrics, ImprovementProposal, RecordScoreInput, ServerSettingsRepo,
-    TaskScoreRecord, ToolConnectionSummary,
+    BenchmarkCaseResult, BenchmarkRun, CreateProposalInput, FactoryMetricsReport, FactoryRepo,
+    FactoryWindowMetrics, ImprovementProposal, RecordScoreInput, ServerSettingsRepo,
+    TaskScoreRecord,
 };
 pub use feedback::FeedbackRepo;
 pub use findings::{

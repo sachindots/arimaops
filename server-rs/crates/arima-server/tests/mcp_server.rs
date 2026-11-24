@@ -6,7 +6,7 @@
 use arima_auth::{SessionMeta, VaultKey, SESSION_COOKIE_NAME};
 use arima_core::{DecisionPayload, ServerRole};
 use arima_db::Db;
-use arima_server::mcp::{unknown_tool_names, McpRegistry, MCP_PROTOCOL_VERSION, TOOLS};
+use arima_server::mcp::{McpRegistry, MCP_PROTOCOL_VERSION, TOOLS};
 use arima_server::{router_with_state, AppState, ServerConfig};
 use axum::body::Body;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN};
@@ -139,7 +139,7 @@ fn tokens_survive_restart_and_are_revoked() {
     assert_eq!(reopened.verify_bearer_token(&token), None);
 }
 
-/// Snake-case words in role prompts and ritual prompts are tool names; each must be one HQ's tool server runs.
+/// Snake-case words in built-in role prompts and ritual prompts are tool names; each must be one HQ's tool server runs.
 #[test]
 fn role_prompts_name_only_dispatched_tools() {
     fn prompts<'a>(v: &'a Value, key: &str, out: &mut Vec<&'a str>) {
@@ -150,14 +150,54 @@ fn role_prompts_name_only_dispatched_tools() {
             _ => {}
         }
     }
-    assert_eq!(unknown_tool_names("then submit_plan, and `list_tasks` or snake_"), ["submit_plan"]);
+    fn unknown_tools(text: &str) -> Vec<&str> {
+        text.split(|c: char| !(c.is_ascii_lowercase() || c == '_'))
+            .filter(|w| w.contains('_') && !w.starts_with('_') && !w.ends_with('_'))
+            .filter(|w| !TOOLS.iter().any(|t| t.name == *w))
+            .collect()
+    }
+    assert_eq!(unknown_tools("then submit_plan, and `list_tasks` or snake_"), ["submit_plan"]);
 
     let data: Value = serde_json::from_str(include_str!("../assets/team-data.json")).unwrap();
     let mut texts = Vec::new();
     prompts(&data, "", &mut texts);
     assert!(texts.len() > 20, "found the role prompts");
-    let unknown: Vec<&str> = texts.iter().flat_map(|t| unknown_tool_names(t)).collect();
+    let unknown: Vec<&str> = texts.iter().flat_map(|t| unknown_tools(t)).collect();
     assert!(unknown.is_empty(), "role prompts name tools HQ doesn't run: {unknown:?}");
+}
+
+/// `ask_user` accepts only the canonical camelCase schema (no field aliases, string options, or auto-recommended option 0).
+#[tokio::test]
+async fn ask_user_requires_canonical_schema() {
+    let (state, pid) = state_with(Db::open_in_memory().unwrap());
+    let app = router_with_state(state.clone());
+    let path = format!("/api/projects/{pid}/mcp");
+    let auth = format!("Bearer {}", state.inner.mcp.issue_agent_token(&pid, "lead"));
+    let h = [(AUTHORIZATION.as_str(), auth.as_str())];
+    let ask = |args: Value| rpc("tools/call", json!({ "name": "ask_user", "arguments": args }));
+
+    // String options are rejected with -32602.
+    let (_, bad_opt) = post(&app, &path, &h, ask(json!({
+        "title": "Pick one",
+        "questions": [{ "prompt": "Which?", "options": ["Alpha", "Beta"] }]
+    }))).await;
+    assert_eq!(bad_opt["error"]["code"], -32602);
+
+    // Canonical camelCase object options succeed; recommended defaults to false (not true on option 0).
+    let (_, ok_resp) = post(&app, &path, &h, ask(json!({
+        "title": "Pick one",
+        "details": "Context",
+        "questions": [{
+            "id": "q1",
+            "prompt": "Which?",
+            "options": [{ "label": "Alpha" }, { "label": "Beta", "recommended": true }]
+        }]
+    }))).await;
+    let id = ok_resp["result"]["structuredContent"]["decisionId"].as_str().unwrap().to_owned();
+    let stored = state.inner.decisions.get(&id).unwrap().unwrap();
+    let DecisionPayload::Question(q) = &stored.payload else { panic!("expected Question payload") };
+    assert!(!q.questions[0].options[0].recommended);
+    assert!(q.questions[0].options[1].recommended);
 }
 
 /// `ask_user` with `ui` files a form decision; a bad form names its path; the answer reaches the agent's outbox.

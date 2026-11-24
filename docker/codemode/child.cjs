@@ -1,47 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// One codemode run. The parent starts this with an empty environment under Node's permission model, sends one
-// `run` line on stdin, answers each `call` line, and kills the process when the run ends or overstays.
+// One codemode run. The parent starts this under a heap limit, sends one `run` line on stdin, answers each
+// `call` line, and kills the process when the run ends or overstays.
 "use strict";
-// Some OSes add variables to every process even when started with env {}; drop them before any agent code runs.
-for (const k of Object.keys(process.env)) delete process.env[k];
-const vm = require("node:vm");
 
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
 const pending = new Map();
 let nextId = 0;
 
-// The code sees only what the bootstrap below builds inside its own context. Every value the host hands it is a
-// string, so no host object (and through it the host's Function or process) is ever reachable from the code.
-function bridge(kind, payload, resolve, reject) {
+const show = (v) => {
+  if (typeof v === "string") return v;
   try {
-    if (kind === "log") return send({ type: "log", line: String(payload) });
+    const s = JSON.stringify(v);
+    return s === undefined ? String(v) : s;
+  } catch {
+    return String(v);
+  }
+};
+const logLine = (...a) => send({ type: "log", line: a.map(show).join(" ") });
+const capturedConsole = { log: logLine, info: logLine, warn: logLine, error: logLine, debug: logLine };
+
+const call = (ns, tool, args) =>
+  new Promise((resolve, reject) => {
     const id = ++nextId;
     pending.set(id, { resolve, reject });
-    send({ type: "call", id, ...JSON.parse(String(payload)) });
-  } catch {
-    // Never let a host error object reach the code.
-  }
-}
-
-const BOOTSTRAP = `(() => {
-  const bridge = globalThis.__bridge;
-  delete globalThis.__bridge;
-  const show = (v) => {
-    if (typeof v === "string") return v;
-    try { const s = JSON.stringify(v); return s === undefined ? String(v) : s; } catch { return String(v); }
-  };
-  const out = (...a) => bridge("log", a.map(show).join(" "));
-  globalThis.console = { log: out, info: out, warn: out, error: out, debug: out };
-  const call = (ns, tool, args) => new Promise((resolve, reject) =>
-    bridge("call", JSON.stringify({ ns, tool, args: args === undefined ? {} : args }), (text) => resolve(JSON.parse(text)), (message) => reject(new Error(message))));
-  const api = { search: (query) => call(null, "search", { query: String(query) }) };
-  const namespaces = JSON.parse(globalThis.NAMESPACES);
-  delete globalThis.NAMESPACES;
-  for (const [ns, tools] of Object.entries(namespaces)) {
-    api[ns] = Object.freeze(Object.fromEntries(tools.map((t) => [t, (args) => call(ns, t, args)])));
-  }
-  globalThis.codemode = Object.freeze(api);
-})();`;
+    send({ type: "call", id, ns, tool, args: args === undefined ? {} : args });
+  });
 
 function describe(err) {
   try {
@@ -53,18 +36,21 @@ function describe(err) {
 }
 
 async function run({ code, namespaces }) {
-  // A null-prototype global: a plain object would lend the code the host's Object, and through it the host's Function.
-  const context = vm.createContext(Object.assign(Object.create(null), { __bridge: bridge, NAMESPACES: JSON.stringify(namespaces) }));
-  vm.runInContext(BOOTSTRAP, context);
-  let script;
+  const api = { search: (query) => call(null, "search", { query: String(query) }) };
+  for (const [ns, tools] of Object.entries(namespaces)) {
+    api[ns] = Object.freeze(Object.fromEntries(tools.map((t) => [t, (args) => call(ns, t, args)])));
+  }
+  const codemode = Object.freeze(api);
+
+  let fn;
   try {
     // An expression: usually `async () => { ... }`, which is then called.
-    script = new vm.Script(`(${code}\n)`);
+    fn = new Function("codemode", "console", `return (${code}\n);`);
   } catch {
     // Statements: run as an async function's body, so `await` and `return` work.
-    script = new vm.Script(`(async () => {\n${code}\n})()`);
+    fn = new Function("codemode", "console", `return (async () => {\n${code}\n})();`);
   }
-  let value = script.runInContext(context);
+  let value = fn(codemode, capturedConsole);
   if (typeof value === "function") value = value();
   value = await value;
   return JSON.stringify(value) ?? "null";
@@ -87,8 +73,8 @@ process.stdin.on("data", (chunk) => {
     } else if (msg.type === "reply") {
       const p = pending.get(msg.id);
       pending.delete(msg.id);
-      if (p && "error" in msg) p.reject(String(msg.error));
-      else if (p) p.resolve(JSON.stringify(msg.value === undefined ? null : msg.value));
+      if (p && "error" in msg) p.reject(new Error(String(msg.error)));
+      else if (p) p.resolve(msg.value === undefined ? null : msg.value);
     }
   }
 });

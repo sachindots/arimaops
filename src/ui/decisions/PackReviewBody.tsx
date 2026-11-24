@@ -100,7 +100,7 @@ async function fetchPackFile(projectId: string, decisionId: string, filePath: st
   return { before: data.before, after: data.after };
 }
 
-/** Collapsed list of shipped files outside skills/, agents/, resources/ and SKILL.md references, expandable per file. */
+/** Collapsed list of shipped files other than SKILL.md and agents/*.md, expandable per file. */
 function OtherFilesList({
   files,
   loadFile,
@@ -186,7 +186,7 @@ function OtherFilesList({
   );
 }
 
-/** Pack review: full inline diffs for skills/, agents/, resources/, SKILL.md references and tool servers;
+/** Pack review: full inline diffs for SKILL.md, agents/*.md and tool servers;
  *  all other shipped files as a collapsed list expandable per file; plus egress, secrets, findings and roles. */
 export function PackReviewBody({
   decisionId,

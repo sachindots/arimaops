@@ -124,8 +124,7 @@ pub(crate) fn mutate(
             DbError::InvalidInput(msg) => msg,
             other => other.to_string(),
         })?;
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 
@@ -308,6 +307,17 @@ pub fn update_project_template(state: &AppState, project_id: &str, args: &[Value
     mutate(state, project_id, |model, _| {
         next["id"] = model.template["id"].clone();
         next["version"] = model.template["version"].clone();
+        if let Some(next_roles) = next["roles"].as_array_mut() {
+            for role in next_roles {
+                if let Some(old) = role["id"].as_str().and_then(|id| {
+                    model.template["roles"].as_array().and_then(|rs| rs.iter().find(|r| r["id"] == id))
+                }) {
+                    if old["roleMdEdited"] == true || role["roleMd"] != old["roleMd"] {
+                        role["roleMdEdited"] = json!(true);
+                    }
+                }
+            }
+        }
         set_template(model, next)
     })
 }
@@ -323,7 +333,11 @@ pub fn update_role(state: &AppState, project_id: &str, args: &[Value]) -> Result
             .ok_or_else(|| format!("No role \"{role_id}\"."))?;
         for key in ["title", "model", "roleMd", "color"] {
             if let Some(s) = patch[key].as_str() {
-                role[key] = json!(s.chars().take(8000).collect::<String>());
+                let next: String = s.chars().take(8000).collect();
+                if key == "roleMd" && role["roleMd"].as_str() != Some(next.as_str()) {
+                    role["roleMdEdited"] = json!(true);
+                }
+                role[key] = json!(next);
             }
         }
         if is_cli(&patch["cli"]) && patch["cli"] != role["cli"] {

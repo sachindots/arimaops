@@ -199,38 +199,6 @@ export function createMockSource(): OfficeDataSource {
       world.emit({ type: "goals.updated", goals: world.snap.goals });
     },
 
-    saveConnection(input) {
-      const all = world.snap.connections ?? [];
-      const old = all.find((c) => c.name === input.name);
-      const next = { name: input.name, url: input.url ?? old?.url ?? "", roles: input.roles ?? old?.roles ?? [], read: input.read ?? old?.read ?? [], send: input.send === undefined ? (old?.send ?? null) : input.send, tools: old?.tools ?? [], probedAt: old?.probedAt ?? null, hasKey: input.apiKey !== undefined ? !!input.apiKey : !!old?.hasKey };
-      world.snap.connections = [...all.filter((c) => c.name !== input.name), next];
-      world.emit({ type: "connections.updated", connections: world.snap.connections });
-    },
-
-    removeConnection(name) {
-      world.snap.connections = (world.snap.connections ?? []).filter((c) => c.name !== name);
-      world.emit({ type: "connections.updated", connections: world.snap.connections });
-    },
-
-    checkConnection(name) {
-      // The demo's pretend CRM: two tools that read and one that sends.
-      const tools = [
-        { name: "search_contacts", description: "Find contacts by name or company." },
-        { name: "get_deal", description: "Read one deal with its stage and amount." },
-        { name: "send_email", description: "Send an email from the connected mailbox." },
-      ];
-      world.snap.connections = (world.snap.connections ?? []).map((c) => (c.name === name ? { ...c, tools, probedAt: new Date().toISOString() } : c));
-      world.emit({ type: "connections.updated", connections: world.snap.connections });
-    },
-
-    sendProposal(itemId) {
-      const item = world.snap.actionItems?.find((i) => i.id === itemId);
-      if (!item?.send) return;
-      const done = { ...item, status: "done" as const, send: { ...item.send, sentAt: new Date().toISOString() }, closedAt: new Date().toISOString() };
-      world.snap.actionItems = world.snap.actionItems!.map((i) => (i.id === itemId ? done : i));
-      world.emit({ type: "action.updated", item: done });
-    },
-
     setCompany(text) {
       world.snap.company = text.trim().slice(0, 3000);
       world.emit({ type: "company.updated", company: world.snap.company });

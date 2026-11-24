@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Factory metrics, task scores, nightly improvement proposals, replay benchmarks,
-//! vaulted tool connections, and server-wide key/value settings persistence.
+//! and server-wide key/value settings persistence.
 
 use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
@@ -118,18 +118,6 @@ pub struct CreateProposalInput {
     pub rationale: String,
     pub category: String,
     pub diff_hint: String,
-}
-
-/// Public metadata for a stored vaulted tool connection (NEVER contains raw secrets!).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolConnectionSummary {
-    pub id: String,
-    pub kind: String,
-    pub label: String,
-    pub endpoint: String,
-    pub has_secret: bool,
-    pub created_at: String,
 }
 
 fn encode_score_reason(score: f64, reason: &str) -> String {
@@ -571,135 +559,6 @@ impl FactoryRepo {
             note: r.get(7)?,
             created_at: format_ts_ms(created_ms),
             decided_at: decided_ms.map(format_ts_ms),
-        })
-    }
-}
-
-/// Repository for vaulted external tool connections (`tool_connections`).
-#[derive(Debug, Clone)]
-pub struct ConnectionsRepo {
-    db: Db,
-}
-
-impl ConnectionsRepo {
-    #[must_use]
-    pub fn new(db: Db) -> Self {
-        Self { db }
-    }
-
-    pub fn upsert(
-        &self,
-        id: &str,
-        kind: &str,
-        label: &str,
-        endpoint: &str,
-        secret_enc: Option<&str>,
-    ) -> Result<ToolConnectionSummary> {
-        let clean_id = id.trim();
-        let valid_id = !clean_id.is_empty()
-            && clean_id.len() <= 64
-            && clean_id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'));
-        if !valid_id {
-            return Err(DbError::InvalidInput(
-                "connection id must be 1..=64 chars [A-Za-z0-9_-]".into(),
-            ));
-        }
-        let clean_endpoint = endpoint.trim();
-        if !(clean_endpoint.starts_with("https://") || clean_endpoint.starts_with("http://")) {
-            return Err(DbError::InvalidInput(
-                "connection endpoint must start with http:// or https://".into(),
-            ));
-        }
-        let clean_kind = if kind.trim().is_empty() {
-            "mcp"
-        } else {
-            kind.trim()
-        };
-        let clean_label = if label.trim().is_empty() {
-            clean_id
-        } else {
-            label.trim()
-        };
-        let now_ms = Utc::now().timestamp_millis();
-
-        self.db.transaction(|conn| {
-            let existing_secret: Option<String> = conn
-                .query_row(
-                    "SELECT secret_enc FROM tool_connections WHERE id = ?1",
-                    [clean_id],
-                    |r| r.get(0),
-                )
-                .optional()?
-                .flatten();
-            let final_secret = secret_enc.map(str::to_owned).or(existing_secret);
-            let has_secret = final_secret.is_some();
-
-            conn.execute(
-                "INSERT INTO tool_connections (id, kind, label, endpoint, secret_enc, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-                 ON CONFLICT(id) DO UPDATE SET
-                    kind = excluded.kind,
-                    label = excluded.label,
-                    endpoint = excluded.endpoint,
-                    secret_enc = excluded.secret_enc,
-                    updated_at = excluded.updated_at",
-                rusqlite::params![
-                    clean_id,
-                    clean_kind,
-                    clean_label,
-                    clean_endpoint,
-                    final_secret,
-                    now_ms,
-                ],
-            )?;
-            let created_ms: i64 = conn.query_row(
-                "SELECT created_at FROM tool_connections WHERE id = ?1",
-                [clean_id],
-                |r| r.get(0),
-            )?;
-            Ok::<_, DbError>(ToolConnectionSummary {
-                id: clean_id.to_owned(),
-                kind: clean_kind.to_owned(),
-                label: clean_label.to_owned(),
-                endpoint: clean_endpoint.to_owned(),
-                has_secret,
-                created_at: format_ts_ms(created_ms),
-            })
-        })
-    }
-
-    pub fn list(&self) -> Result<Vec<ToolConnectionSummary>> {
-        self.db.read(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, kind, label, endpoint, secret_enc IS NOT NULL, created_at
-                 FROM tool_connections
-                 ORDER BY created_at DESC, id ASC",
-            )?;
-            let rows = stmt.query_map([], |r| {
-                let created_ms: i64 = r.get(5)?;
-                Ok(ToolConnectionSummary {
-                    id: r.get(0)?,
-                    kind: r.get(1)?,
-                    label: r.get(2)?,
-                    endpoint: r.get(3)?,
-                    has_secret: r.get::<_, i64>(4)? != 0,
-                    created_at: format_ts_ms(created_ms),
-                })
-            })?;
-            let mut out = Vec::new();
-            for r in rows {
-                out.push(r?);
-            }
-            Ok::<_, DbError>(out)
-        })
-    }
-
-    pub fn delete(&self, id: &str) -> Result<bool> {
-        self.db.transaction(|conn| {
-            let deleted = conn.execute("DELETE FROM tool_connections WHERE id = ?1", [id])?;
-            Ok::<_, DbError>(deleted > 0)
         })
     }
 }

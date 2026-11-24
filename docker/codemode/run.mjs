@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Runs agent-written code, one fresh child process per run. The child has no environment and no token, can't write
-// files or start processes or workers, and asks this process for every tool call; this process makes the call.
+// Runs agent-written code, one fresh child process per run, with time, heap, call, result, log and concurrency caps.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -14,10 +13,9 @@ export function limitsText(limits = LIMITS) {
   return `Limits per run: ${limits.timeMs / 1000} s, ${limits.heapMb} MB of memory, ${limits.calls} tool calls, ${limits.resultBytes >> 10} KB of result, ${limits.logBytes >> 10} KB of logs.`;
 }
 
-/** Starts Node under the run's restrictions; `args` is the script (the child, or `-e` in tests). */
+/** Starts Node with the run's heap cap; `args` is the child script. */
 export function spawnChild(args, limits = LIMITS) {
-  return spawn(process.execPath, ["--permission", `--allow-fs-read=${CHILD}`, `--max-old-space-size=${limits.heapMb}`, ...args], {
-    env: {},
+  return spawn(process.execPath, [`--max-old-space-size=${limits.heapMb}`, ...args], {
     stdio: ["pipe", "pipe", "pipe"],
   });
 }

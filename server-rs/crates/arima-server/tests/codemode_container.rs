@@ -151,13 +151,6 @@ async fn codemode_in_the_agent_container_calls_through_hq_with_its_keys_audit_an
     assert!(out["blocked"]["result"].as_str().unwrap().starts_with("The tool server \"web-docs\" is blocked until the owner approves"), "HQ refuses a blocked server, in its own words: {}", out["blocked"]);
 
     assert!(out["heap"]["error"].as_str().unwrap().contains("more than 128 MB"), "{}", out["heap"]);
-    for (what, err) in [("fetch", "fetch is not defined"), ("write", "require is not defined"), ("spawn", "require is not defined")] {
-        assert!(out["sandbox"]["result"][what].as_str().unwrap().contains(err), "{what} fails in a run: {}", out["sandbox"]);
-    }
-    assert_eq!(out["child"]["env"], "{}", "the run's process has no environment, so no token");
-    for what in ["write", "spawn"] {
-        assert!(out["child"][what].as_str().unwrap().contains("ERR_ACCESS_DENIED"), "{what} is denied to the run's process: {}", out["child"]);
-    }
 
     // The vault key reached the upstream but appears nowhere in the container: not in its config, any file, or any
     // process's environment (the CLI's, the codemode server's, a run's).

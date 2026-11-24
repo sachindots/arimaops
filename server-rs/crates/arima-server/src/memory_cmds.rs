@@ -14,8 +14,7 @@ fn text(v: &Value, max: usize) -> String {
 }
 
 fn done(state: &AppState, project_id: &str) -> Result<(), String> {
-    let snapshot = crate::ws::build_initial_snapshot(state, Some(project_id));
-    state.inner.ws_hub.broadcast_snapshot(project_id, &snapshot);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 

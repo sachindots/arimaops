@@ -38,7 +38,7 @@ pub fn enabled(state: &AppState, project_id: &str) -> bool {
 /// so every running runner, follows the switch at once.
 pub fn set_switch(state: &AppState, project_id: &str, args: &[Value]) -> Result<(), String> {
     save_setting(state, &switch_key(project_id), &json!(args.first().and_then(Value::as_bool) == Some(true)))?;
-    crate::integrations::broadcast(state, project_id);
+    crate::ws::refresh(state, project_id);
     Ok(())
 }
 

@@ -68,7 +68,7 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
     errors.assertClean("m5-factory-benchmarks");
   });
 
-  test("Settings -> Tool servers and connections: add and remove vaulted tool connection without echoing secret", async ({
+  test("Settings -> Tool servers: Tools as code switch", async ({
     page,
   }) => {
     const errors = attachErrorCollector(page);
@@ -77,53 +77,18 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
     await openSettings(page);
     await page
       .getByRole("navigation", { name: "Settings sections" })
-      .getByRole("button", { name: "Tool servers and connections" })
+      .getByRole("button", { name: "Tool servers" })
       .click();
+
+    await assertZeroNativeSelects(page, "Settings/Tool servers");
+    await assertNoHorizontalOverflow(page, "Settings/Tool servers");
 
     const toolsAsCode = page.locator("section", { hasText: "Tools as code" }).getByRole("switch");
     await expect(toolsAsCode).toHaveAttribute("aria-checked", "false");
     await toolsAsCode.click();
     await expect(toolsAsCode).toHaveAttribute("aria-checked", "true");
 
-    const connSection = page.getByRole("region", { name: "Tool connections through HQ" });
-    await expect(connSection).toBeVisible();
-    await assertZeroNativeSelects(page, "Settings/Connections");
-    await assertNoHorizontalOverflow(page, "Settings/Connections");
-
-    const connList = connSection.getByRole("list", { name: "Configured tool connections" });
-    const initialCount = await connList.locator("li").count();
-    expect(initialCount).toBeGreaterThanOrEqual(2);
-
-    // Add a new vaulted connection via custom <Select>
-    const addForm = connSection.getByRole("form", { name: "Add tool connection" });
-    await addForm.locator('input[aria-label="Connection ID"]').fill("ops-webhook");
-
-    const kindSelect = addForm.locator('button[role="combobox"][aria-label="Connection kind"]');
-    await kindSelect.click();
-    const kindListbox = page.locator('[role="listbox"][aria-label="Connection kind"]');
-    await expect(kindListbox).toBeVisible();
-    await kindListbox.getByRole("option", { name: "Webhook / HTTP" }).click();
-    await expect(kindListbox).toBeHidden();
-
-    const secretValue = "whsec_e2e_never_echo_987654321";
-    await addForm.locator('input[aria-label="Connection label"]').fill("Ops Alert Webhook");
-    await addForm.locator('input[aria-label="Connection endpoint"]').fill("https://hooks.example.test/ops");
-    await addForm.locator('input[aria-label="Connection secret"]').fill(secretValue);
-    await addForm.getByRole("button", { name: "Add connection" }).click();
-
-    await expect(connList.locator("li")).toHaveCount(initialCount + 1);
-    const addedItem = connList.locator("li", { hasText: "Ops Alert Webhook" });
-    await expect(addedItem).toBeVisible();
-    await expect(addedItem).toContainText("Vaulted secret");
-    // Raw secret must NEVER appear anywhere in DOM text
-    await expect(connSection).not.toContainText(secretValue);
-
-    // Remove the added connection cleanly
-    await addedItem.getByRole("button", { name: "Remove connection ops-webhook" }).click();
-    await expect(connList.locator("li")).toHaveCount(initialCount);
-    await expect(connList.locator("li", { hasText: "Ops Alert Webhook" })).toHaveCount(0);
-
-    errors.assertClean("m5-connections");
+    errors.assertClean("m5-tool-servers");
   });
 
   test("Settings -> License & Plan: tier/seat meter display, invalid key rejection & valid key activation", async ({

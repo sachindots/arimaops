@@ -282,14 +282,6 @@ pub fn router_with_state(state: AppState) -> Router {
             post(crate::routes_m5::post_factory_benchmark),
         )
         .route(
-            "/api/connections",
-            get(crate::routes_m5::list_connections).post(crate::routes_m5::upsert_connection),
-        )
-        .route(
-            "/api/connections/{id}",
-            delete(crate::routes_m5::delete_connection),
-        )
-        .route(
             "/api/license",
             get(crate::routes_m5::get_license_route).post(crate::routes_m5::post_license_route),
         )

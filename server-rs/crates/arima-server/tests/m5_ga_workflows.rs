@@ -3,12 +3,11 @@
 //! Milestone 5 (`v2.0-GA`) integration & 20-agent concurrent load test suite:
 //! 1. Factory metrics (current vs previous 14d), native rubric scorer, Owner-only nightly
 //!    improvement proposal decide, and Replay Benchmark Harness.
-//! 2. Vaulted Tool Connections (zero raw secret echo) + `/mcp` `propose_send` `owner_only` RBAC.
-//! 3. `ee/` Ed25519 Licensing (`ed25519-dalek`): valid key, tampered signature rejection,
+//! 2. `ee/` Ed25519 Licensing (`ed25519-dalek`): valid key, tampered signature rejection,
 //!    expired key rejection & runtime fallback to Community limits, and `maxSeats` on `POST /api/users`.
-//! 4. Lossless `migrate-v1` dry-run + live migration + FTS5 search + symlink rejection +
+//! 3. Lossless `migrate-v1` dry-run + live migration + FTS5 search + symlink rejection +
 //!    idempotent re-run + strictly untouched source directory.
-//! 5. 20-Agent Concurrent Load Test over SQLite WAL + `OutboxRepo` + `UsageRepo` + `/mcp` + `WsHub`.
+//! 4. 20-Agent Concurrent Load Test over SQLite WAL + `OutboxRepo` + `UsageRepo` + `/mcp` + `WsHub`.
 
 use std::fs;
 use std::time::Instant;
@@ -238,140 +237,6 @@ async fn m5_factory_metrics_scorer_owner_proposals_and_replay_benchmark() {
     assert_eq!(m_json["proposals"].as_array().unwrap().len(), 1);
     assert_eq!(m_json["benchmarks"].as_array().unwrap().len(), 1);
     assert!(m_json["current"]["avgScore"].as_f64().unwrap() >= 0.7);
-}
-
-#[tokio::test]
-async fn m5_tool_connections_vault_no_secret_echo_and_mcp_propose_send_owner_only() {
-    let db = Db::open_in_memory().unwrap();
-    let state = AppState::new(db, VaultKey::ephemeral(), ServerConfig::default());
-    state
-        .ensure_default_project("Ops App", "ops-app", "/tmp/ops-app")
-        .unwrap();
-    let (project_id, _, _, _) = state.default_project().unwrap();
-    let (owner_tok, op_tok, view_tok) = setup_users(&state).await;
-    let app = router_with_state(state.clone());
-
-    // Operator & Viewer cannot create connections (Owner-only).
-    for tok in [&op_tok, &view_tok] {
-        assert_eq!(
-            send_json(
-                &app,
-                Method::POST,
-                "/api/connections",
-                tok,
-                Some(json!({
-                    "id": "crm",
-                    "kind": "mcp",
-                    "label": "CRM",
-                    "endpoint": "https://mcp.crm.example/rpc",
-                    "secret": "sk-top-secret-crm"
-                })),
-            )
-            .await
-            .0,
-            StatusCode::FORBIDDEN
-        );
-    }
-
-    // Owner creates vaulted connection; raw secret MUST NEVER be echoed in POST or GET!
-    let (st_add, add_json) = send_json(
-        &app,
-        Method::POST,
-        "/api/connections",
-        &owner_tok,
-        Some(json!({
-            "id": "crm",
-            "kind": "mcp",
-            "label": "Production CRM",
-            "endpoint": "https://mcp.crm.example/rpc",
-            "secret": "sk-top-secret-crm-999"
-        })),
-    )
-    .await;
-    assert_eq!(st_add, StatusCode::OK);
-    assert_eq!(add_json["connection"]["hasSecret"], true);
-    assert!(!add_json.to_string().contains("sk-top-secret-crm-999"));
-
-    // Agent invokes `/mcp` `propose_send` -> creates `owner_only = true` `SendProposal` decision!
-    let agent_tok = state.inner.mcp.issue_agent_token(&project_id, "lead");
-    let mcp_req = Request::builder()
-        .method(Method::POST)
-        .uri(format!("/api/projects/{project_id}/mcp"))
-        .header(HOST, "127.0.0.1:7420")
-        .header(ORIGIN, "http://127.0.0.1:7420")
-        .header(CONTENT_TYPE, "application/json")
-        .header(AUTHORIZATION, format!("Bearer {agent_tok}"))
-        .body(Body::from(
-            json!({
-                "jsonrpc": "2.0",
-                "id": 42,
-                "method": "tools/call",
-                "params": {
-                    "name": "propose_send",
-                    "arguments": {
-                        "connection": "crm",
-                        "tool": "send_email",
-                        "args": { "to": "client@example.com", "subject": "Status" },
-                        "summary": "Send weekly milestone summary"
-                    }
-                }
-            })
-            .to_string(),
-        ))
-        .unwrap();
-    let mcp_resp = app.clone().oneshot(mcp_req).await.unwrap();
-    assert_eq!(mcp_resp.status(), StatusCode::OK);
-    let mcp_val: Value = serde_json::from_slice(
-        &axum::body::to_bytes(mcp_resp.into_body(), 1024 * 1024)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    let dec_id = mcp_val["result"]["structuredContent"]["decision"]["id"].as_str().unwrap().to_owned();
-    assert_eq!(mcp_val["result"]["structuredContent"]["ownerOnly"], true);
-    assert_eq!(mcp_val["result"]["structuredContent"]["decision"]["payload"]["kind"], "send-proposal");
-
-    // GET /api/connections lists connection (without secret) + pendingSends!
-    let (st_list, list_json) = send_json(&app, Method::GET, "/api/connections", &view_tok, None).await;
-    assert_eq!(st_list, StatusCode::OK);
-    assert!(!list_json.to_string().contains("sk-top-secret-crm-999"));
-    assert_eq!(list_json["connections"].as_array().unwrap().len(), 1);
-    assert_eq!(list_json["pendingSends"].as_array().unwrap().len(), 1);
-
-    // Operator MUST be blocked (403) from approving `propose_send` decision; Owner succeeds!
-    let (st_op_res, _) = send_json(
-        &app,
-        Method::POST,
-        &format!("/api/projects/{project_id}/decisions/{dec_id}/resolve"),
-        &op_tok,
-        Some(json!({ "decision": "approve" })),
-    )
-    .await;
-    assert_eq!(st_op_res, StatusCode::FORBIDDEN);
-
-    let (st_own_res, _) = send_json(
-        &app,
-        Method::POST,
-        &format!("/api/projects/{project_id}/decisions/{dec_id}/resolve"),
-        &owner_tok,
-        Some(json!({ "decision": "approve", "note": "Approved send" })),
-    )
-    .await;
-    assert_eq!(st_own_res, StatusCode::OK);
-
-    // Owner deletes connection cleanly (Operator blocked).
-    assert_eq!(
-        send_json(&app, Method::DELETE, "/api/connections/crm", &op_tok, None)
-            .await
-            .0,
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        send_json(&app, Method::DELETE, "/api/connections/crm", &owner_tok, None)
-            .await
-            .0,
-        StatusCode::OK
-    );
 }
 
 #[tokio::test]

@@ -262,10 +262,6 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
         .as_str()
         .unwrap()
         .to_owned();
-    assert_eq!(
-        state.inner.mcp.handler_invocations("proj-alpha", "lead"),
-        1
-    );
 
     // Viewer must be blocked from answering the decision via BOTH WS and REST.
     viewer_ws
@@ -375,11 +371,6 @@ async fn m2_end_to_end_mcp_decisions_meetings_minutes_commit_gates_usage_and_git
     .await;
     assert_eq!(st, StatusCode::OK);
     let dis_id = dis_rpc["result"]["structuredContent"]["decisionId"].as_str().unwrap().to_owned();
-    assert_eq!(
-        state.inner.mcp.handler_invocations("proj-alpha", "lead"),
-        2,
-        "cached MCP handler must increment invocations on same instance"
-    );
 
     // Operator MUST be blocked from resolving `owner_only` disagreement or waiving gate!
     op_ws

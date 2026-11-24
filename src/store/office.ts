@@ -16,7 +16,6 @@ import type {
   AgentMode,
   AgentStatus,
   AnswerDecisionInput,
-  ConnectionInput,
   GoalPatch,
   MeetingMinutes,
   OfficeSnapshot,
@@ -233,7 +232,7 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
     case "goals.updated":
       return { ...snap, goals: e.goals };
     case "connections.updated":
-      return { ...snap, connections: e.connections };
+      return snap;
     case "spend.updated":
       return { ...snap, spend: e.spend };
     case "githubApp.updated":
@@ -393,10 +392,6 @@ export const officeActions = {
   addGoal: (goal: { title: string; metric?: string; target?: string }) => source.addGoal(goal),
   updateGoal: (id: string, patch: GoalPatch) => source.updateGoal(id, patch),
   setTaskGoal: (taskId: string, goalId: string | null) => source.setTaskGoal(taskId, goalId),
-  saveConnection: (input: ConnectionInput) => source.saveConnection(input),
-  removeConnection: (name: string) => source.removeConnection(name),
-  checkConnection: (name: string) => source.checkConnection(name),
-  sendProposal: (itemId: string) => source.sendProposal(itemId),
   addAgent: source.addAgent.bind(source),
   updateAgent: source.updateAgent.bind(source),
   updateRole: source.updateRole.bind(source),

@@ -447,6 +447,15 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     expect(proxiedHtml).toContain("Isolated Preview App");
 
     // 6. Real Browser Preview Workspace -> Freeze & Draw -> Submit Feedback -> Verify disk sync
+    // Keep browser preview isolated to our mock target so PreviewPage never auto-mounts
+    // unrelated host dev servers (e.g. a Next.js app on :3000) before the combobox switches.
+    await page.route("**/api/projects/*/preview/targets", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { targets?: Array<{ port: number }> };
+      const filtered = (body.targets ?? []).filter((t) => t.port === mockTarget!.port);
+      await route.fulfill({ response, json: { ...body, targets: filtered } });
+    });
+
     await gotoWorkspace(page, "Preview");
     await expect(page.getByRole("heading", { name: "Live preview" })).toBeVisible();
 
@@ -645,7 +654,7 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     await expect(restoreDialog).toBeHidden();
     await expect(backupSection.getByText(/Restored encrypted backup/i)).toBeVisible();
 
-    // 8. M5 (v2.0-GA) live Rust HQ round-trips: Ed25519 License, Factory Score & Replay Benchmark, Vaulted Connections (no secret echo)
+    // 8. M5 (v2.0-GA) live Rust HQ round-trips: Ed25519 License, Factory Score & Replay Benchmark
     const licRes = await fetch(`${hqOrigin}/api/license`, {
       headers: { Cookie: `hq_sid=${hqSid!.value}` },
     });
@@ -693,35 +702,6 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     };
     expect(bmJson.benchmark.name).toBe("Live E2E Replay Suite");
     expect(bmJson.benchmark.cases.length).toBe(1);
-
-    const rawSecret = "xoxb-e2e-top-secret-never-echo-424242";
-    const connCreateRes = await fetch(`${hqOrigin}/api/connections`, {
-      method: "POST",
-      headers: authedHeaders,
-      body: JSON.stringify({
-        id: "e2e-slack",
-        kind: "slack",
-        label: "E2E Slack Alerts",
-        endpoint: "https://slack.com/api/chat.postMessage",
-        secret: rawSecret,
-      }),
-    });
-    expect(connCreateRes.status).toBe(200);
-    const connCreateText = await connCreateRes.text();
-    expect(connCreateText, "POST /api/connections must NEVER echo raw secret").not.toContain(rawSecret);
-
-    const connListRes = await fetch(`${hqOrigin}/api/connections`, {
-      headers: { Cookie: `hq_sid=${hqSid!.value}` },
-    });
-    expect(connListRes.status).toBe(200);
-    const connListText = await connListRes.text();
-    expect(connListText, "GET /api/connections must NEVER echo raw secret").not.toContain(rawSecret);
-    const connListJson = JSON.parse(connListText) as {
-      connections: Array<{ id: string; hasSecret: boolean }>;
-    };
-    const e2eConn = connListJson.connections.find((c) => c.id === "e2e-slack");
-    expect(e2eConn).toBeTruthy();
-    expect(e2eConn!.hasSecret).toBe(true);
 
     // 9. Agent forms over the real MCP + WebSocket stack: ask_user(ui) -> Inbox -> browser answer -> outbox + read-only history
     const agentId = "cipher";

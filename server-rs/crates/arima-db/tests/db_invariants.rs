@@ -22,7 +22,7 @@ fn opens_with_wal_foreign_keys_and_0600_permissions() {
             })?;
         assert_eq!(fk, 1);
         assert_eq!(journal.to_lowercase(), "wal");
-        assert_eq!(schema_version, 14);
+        assert_eq!(schema_version, 15);
         Ok::<_, DbError>(())
     })
     .unwrap();
@@ -472,55 +472,54 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
     };
     repo.upsert(&q_dec).unwrap();
 
-    // 2. SpecApproval payload is automatically classified as `owner_only = true`.
-    let spec_dec = VisualDecision {
-        id: "dec-spec1".into(),
+    // 2. SkillScan payload is automatically classified as `owner_only = true`.
+    let scan_dec = VisualDecision {
+        id: "dec-scan1".into(),
         project_id: "p1".into(),
-        from_id: "lead".into(),
+        from_id: "hq".into(),
         task_id: None,
-        title: "Approve v2 Spec".into(),
-        details: "Spec approval".into(),
+        title: "Check skill acme/x".into(),
+        details: "Skill scan".into(),
         waiting: true,
         owner_only: false, // classify_owner_only must promote to true!
         status: DecisionStatus::Open,
-        payload: DecisionPayload::SpecApproval {
-            board_id: "B1".into(),
-            version: 1,
-            markdown: "# Spec".into(),
+        payload: DecisionPayload::SkillScan {
+            pack: "acme/x".into(),
+            findings: vec!["suspicious".into()],
         },
         note: None,
         created_at: "2020-01-01T00:00:00Z".into(),
         closed_at: None,
     };
-    let saved_spec = repo.upsert(&spec_dec).unwrap();
-    assert!(saved_spec.owner_only);
+    let saved_scan = repo.upsert(&scan_dec).unwrap();
+    assert!(saved_scan.owner_only);
 
-    // Stall escalation must ONLY return dec-q1 and NEVER owner_only dec-spec1!
+    // Stall escalation must ONLY return dec-q1 and NEVER owner_only dec-scan1!
     let stalled = repo
         .list_escalatable_stalled("p1", i64::MAX)
         .unwrap();
     assert_eq!(stalled.len(), 1);
     assert_eq!(stalled[0].id, "dec-q1");
 
-    // Viewer blocked on dec-q1; Operator blocked on dec-spec1; Owner succeeds on dec-spec1.
+    // Viewer blocked on dec-q1; Operator blocked on dec-scan1; Owner succeeds on dec-scan1.
     assert!(repo
         .resolve("dec-q1", ResolveDecisionInput::default(), ServerRole::Viewer)
         .is_err());
     assert!(repo
         .resolve(
-            "dec-spec1",
+            "dec-scan1",
             ResolveDecisionInput::default(),
             ServerRole::Operator
         )
         .is_err());
-    let resolved_spec = repo
+    let resolved_scan = repo
         .resolve(
-            "dec-spec1",
+            "dec-scan1",
             ResolveDecisionInput::default(),
             ServerRole::Owner,
         )
         .unwrap();
-    assert_eq!(resolved_spec.status, DecisionStatus::Resolved);
+    assert_eq!(resolved_scan.status, DecisionStatus::Resolved);
 }
 
 #[test]
@@ -659,4 +658,116 @@ fn opens_and_migrates_pre_upgrade_sqlite_db_with_fts5_and_backups() {
         .unwrap();
     assert_eq!(restored_hits.len(), 1);
     assert_eq!(restored_hits[0].id, "M-FTS-2");
+}
+
+#[test]
+fn migration_15_retires_dead_decision_kinds_and_tool_connections() {
+    use arima_core::{DecisionPayload, DecisionStatus};
+    use arima_db::DecisionsRepo;
+
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("state/arima.db");
+    let db = Db::open(&db_path).unwrap();
+
+    db.transaction(|conn| {
+        conn.execute_batch(
+            "INSERT INTO projects (id, slug, name, root_path, created_at, updated_at)
+             VALUES ('p1', 'alpha', 'Alpha', '/tmp/alpha', 1, 1);
+
+             CREATE TABLE IF NOT EXISTS tool_connections (
+                 id          TEXT PRIMARY KEY,
+                 kind        TEXT NOT NULL,
+                 label       TEXT NOT NULL,
+                 endpoint    TEXT NOT NULL,
+                 secret_enc  TEXT,
+                 created_at  INTEGER NOT NULL,
+                 updated_at  INTEGER NOT NULL
+             );
+             INSERT INTO tool_connections (id, kind, label, endpoint, secret_enc, created_at, updated_at)
+             VALUES ('crm', 'mcp', 'CRM', 'https://crm.example/mcp', NULL, 1, 1);
+             INSERT INTO server_settings (key, value_json, updated_at)
+             VALUES ('connection-meta:crm', '{}', 1), ('other-setting', '{}', 1);
+
+             INSERT INTO visual_decisions (id, project_id, from_id, title, details, waiting, owner_only, status, payload_json, created_at, closed_at)
+             VALUES
+               ('d-spec', 'p1', 'lead', 'Spec v1', 'Spec details', 1, 1, 'open', '{\"kind\":\"spec-approval\",\"boardId\":\"B1\",\"version\":1,\"markdown\":\"# Spec\"}', 100, NULL),
+               ('d-plan', 'p1', 'lead', 'Plan v1', '', 1, 1, 'open', '{\"kind\":\"plan-approval\",\"markdown\":\"# Plan\"}', 101, NULL),
+               ('d-gate', 'p1', 'lead', 'Gate', 'Gate details', 1, 1, 'resolved', '{\"kind\":\"gate-approval\",\"taskId\":\"T1\",\"gateId\":\"review\",\"reason\":\"ok\",\"deliverablePreview\":null}', 102, 200),
+               ('d-send', 'p1', 'sales', 'Send email', 'Outbound body', 1, 1, 'open', '{\"kind\":\"send-proposal\",\"connection\":\"crm\",\"tool\":\"send\",\"args\":{},\"sentAt\":null,\"error\":null}', 103, NULL),
+               ('d-spend', 'p1', 'hq', 'Spend alert', 'Over budget', 1, 1, 'open', '{\"kind\":\"spend-alert\",\"dailyUsd\":5.5,\"capUsd\":5.0,\"paused\":true}', 104, NULL),
+               ('d-over', 'p1', 'hq', 'Overflow', 'Fallback', 0, 0, 'resolved', '{\"kind\":\"overflow-fallback\",\"agentId\":\"dev\",\"taskId\":\"T2\",\"cli\":\"codex\",\"model\":\"gpt-5\"}', 105, 250),
+               ('d-keep', 'p1', 'hq', 'Current info', 'Keep me', 0, 0, 'open', '{\"kind\":\"info\",\"markdown\":\"Stay open\"}', 106, NULL);
+
+             DROP INDEX IF EXISTS idx_mcp_tokens_hash;
+             DELETE FROM schema_migrations WHERE version = 15;",
+        )?;
+        Ok::<_, DbError>(())
+    })
+    .unwrap();
+    db.checkpoint_and_close().unwrap();
+
+    let reopened = Db::open(&db_path).unwrap();
+    let list = DecisionsRepo::new(reopened.clone())
+        .list_by_project("p1", None)
+        .unwrap();
+    assert_eq!(list.len(), 7);
+
+    let find = |id: &str| list.iter().find(|d| d.id == id).unwrap();
+    for open_retired in ["d-spec", "d-plan", "d-send", "d-spend"] {
+        let d = find(open_retired);
+        assert_eq!(d.status, DecisionStatus::Dismissed, "{open_retired}");
+        assert!(!d.waiting, "{open_retired}");
+        assert!(d.closed_at.is_some(), "{open_retired}");
+        assert!(matches!(d.payload, DecisionPayload::Info { .. }), "{open_retired}");
+    }
+    assert_eq!(
+        find("d-plan").payload,
+        DecisionPayload::Info { markdown: "Plan v1".into() }
+    );
+    assert_eq!(
+        find("d-spec").payload,
+        DecisionPayload::Info { markdown: "Spec details".into() }
+    );
+
+    for closed_retired in ["d-gate", "d-over"] {
+        let d = find(closed_retired);
+        assert_eq!(d.status, DecisionStatus::Resolved, "{closed_retired}");
+        assert!(!d.waiting, "{closed_retired}");
+        assert!(matches!(d.payload, DecisionPayload::Info { .. }), "{closed_retired}");
+    }
+
+    assert_eq!(find("d-keep").status, DecisionStatus::Open);
+
+    reopened
+        .read(|conn| {
+            let conn_table: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'tool_connections'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(conn_table, 0);
+
+            let meta_left: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM server_settings WHERE key LIKE 'connection-meta:%'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(meta_left, 0);
+
+            let other_kept: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM server_settings WHERE key = 'other-setting'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(other_kept, 1);
+
+            let idx_exists: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_mcp_tokens_hash'",
+                [],
+                |r| r.get(0),
+            )?;
+            assert_eq!(idx_exists, 1);
+            Ok::<_, DbError>(())
+        })
+        .unwrap();
 }
