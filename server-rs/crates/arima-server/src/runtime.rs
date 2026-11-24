@@ -6,7 +6,7 @@
 //! Container mode only. HQ reaches Docker through its Unix socket (see `arima_agents::DockerEngine`), so mounting
 //! that socket into HQ is what turns the runtime on. Without it every start answers with a plain error.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -23,6 +23,8 @@ const DEFAULT_IMAGE: &str = "ghcr.io/sachindots/arimaops-agent:latest";
 const DEFAULT_NETWORK: &str = "arima-agents";
 /// Approved skills as agents get them, under the workspaces root but outside every agent's own folder.
 const SKILLS_FOLDER: &str = ".arima-skills";
+/// What the agent CLIs read as a plugin's root: the Claude Code name, and the name Codex documents for plugin hooks.
+const PLUGIN_ROOT_ENV: [&str; 2] = ["CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"];
 
 #[derive(Debug, Clone)]
 pub struct RuntimeConfig {
@@ -489,12 +491,28 @@ impl AgentRuntime {
         let workspace_host = self.config.workspaces_host_root.join(&slug).join(agent_id).display().to_string();
         let mut binds = vec![format!("{workspace_host}:/workspace:rw")];
         // Copied outside every agent's /workspace and mounted read-only, so an agent can't edit a skill it was given.
+        // A pack skill comes from inside its whole plugin tree, which is also mounted, so its sibling files are there.
         if let Some(skills_dir) = adapter.skills_dir {
             let role_id = agent["roleId"].as_str().unwrap_or_default();
+            let mut plugin_roots = BTreeSet::new();
             for skill in crate::skills::approved_skills(state, project_id, role_id) {
-                crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
-                let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
-                binds.push(format!("{}:{skills_dir}/{}:ro", host.display(), skill.name));
+                let Some(plugin) = &skill.plugin else {
+                    crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
+                    let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
+                    binds.push(format!("{}:{skills_dir}/{}:ro", host.display(), skill.name));
+                    continue;
+                };
+                let tree = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(crate::packs::STORED_PLUGIN);
+                let root = format!("{}/{}", crate::cli::AGENT_HOME, plugin.dir);
+                if plugin_roots.insert(root.clone()) {
+                    crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, crate::packs::STORED_PLUGIN, &skill.files)?;
+                    binds.push(format!("{}:{root}:ro", tree.display()));
+                }
+                binds.push(format!("{}:{skills_dir}/{}:ro", tree.join(&plugin.skill).display(), skill.name));
+            }
+            // One variable can name one plugin: with several, each skill's plugin is still at its own path.
+            if let [root] = Vec::from_iter(plugin_roots).as_slice() {
+                env.extend(PLUGIN_ROOT_ENV.map(|k| (k.to_owned(), root.clone())));
             }
         }
         let mut env_list: Vec<String> = env.into_iter().map(|(k, v)| format!("{k}={v}")).collect();

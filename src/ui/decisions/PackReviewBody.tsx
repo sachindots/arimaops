@@ -60,7 +60,7 @@ function RolePicker({ roles, onRoles }: { roles: string[]; onRoles?: (ids: strin
   );
 }
 
-/** Everything a pack review asks about, in full: each changed SKILL.md and tool list as a diff, and which roles get its skills. */
+/** Everything a pack review asks about, in full: each changed file of the plugin and tool list as a diff, and which roles get its skills. */
 export function PackReviewBody({ payload, roles, onRoles }: { payload: PackReview; roles: string[]; onRoles?: (ids: string[]) => void }) {
   return (
     <div className="flex flex-col gap-3">
@@ -71,7 +71,7 @@ export function PackReviewBody({ payload, roles, onRoles }: { payload: PackRevie
       {payload.changed.map((c) => (
         <div key={`${c.kind}:${c.name}`} className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3">
           <div className="mb-1.5 text-[13px] font-semibold text-ink">
-            {c.kind === "skill" ? "Skill" : "Tool server"} <span className="font-term">{c.name}</span>
+            {c.kind === "toolServer" ? "Tool server" : "File"} <span className="font-term">{c.name}</span>
             <span className="ml-2 text-[12px] font-normal text-muted">{c.before === null ? "new" : c.after === null ? "removed" : "changed"}</span>
           </div>
           <pre className="scroll-thin m-0 max-h-[480px] overflow-auto whitespace-pre-wrap break-words font-term text-[12px]">

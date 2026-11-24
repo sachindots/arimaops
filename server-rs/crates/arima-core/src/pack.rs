@@ -23,6 +23,11 @@ pub struct PackEntry {
     pub source: PackSource,
     #[serde(default)]
     pub version: Option<String>,
+    /// The hash of every file the plugin ships (paths relative to its root): what an approval pins, and what agents
+    /// get, whole and read-only. Empty in an entry read before plugins shipped whole, so it mounts nothing until
+    /// re-reviewed.
+    #[serde(default)]
+    pub tree: String,
     #[serde(default)]
     pub skills: BTreeMap<String, PackSkill>,
     #[serde(default)]
@@ -33,7 +38,8 @@ pub struct PackEntry {
     /// Secrets the pack asks for (its `userConfig` entries marked sensitive).
     #[serde(default)]
     pub secrets: Vec<String>,
-    /// Parts HQ doesn't install: hooks, commands, subagents and command (stdio) tool servers.
+    /// Parts HQ doesn't install: hooks, commands, subagents, command (stdio) tool servers, and files left out of the
+    /// tree (binary, too large, links).
     #[serde(default)]
     pub ignored: Vec<String>,
     #[serde(default)]
@@ -99,10 +105,10 @@ pub struct PackApproval {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct PackChange {
-    /// "skill" or "toolServer".
+    /// "file" (named by its path in the plugin) or "toolServer".
     pub kind: String,
     pub name: String,
-    /// The SKILL.md or tool descriptions as approved; none when new.
+    /// The file or tool descriptions as approved; none when new.
     pub before: Option<String>,
     /// None when the item goes away.
     pub after: Option<String>,

@@ -23,6 +23,11 @@ use crate::skill_scan::{scan_file, Level, ScanFinding};
 use crate::state::AppState;
 
 const MAX_SKILL_BYTES: u64 = 20 * 1024 * 1024;
+/// The largest file a pack plugin ships: a bigger one can't be read in full on the review card.
+pub(crate) const MAX_PLUGIN_FILE_BYTES: u64 = 256 * 1024;
+
+/// Files by path, relative to a skill folder or plugin root.
+pub type Files = Vec<(String, Vec<u8>)>;
 
 /// Where a skill comes from, before it is pinned.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,7 +101,7 @@ pub fn valid_skill_name(name: &str) -> bool {
 }
 
 pub(crate) fn safe_repo_path(path: &str) -> bool {
-    !path.is_empty() && path.split('/').all(|p| !p.is_empty() && p != "." && p != ".." && !p.starts_with(".git"))
+    !path.is_empty() && path.split('/').all(|p| !p.is_empty() && p != "." && p != ".." && !p.eq_ignore_ascii_case(".git"))
 }
 
 /// Parses a role's skill ref. Only `https` sources: a ref is typed by operators, and HQ's own disk is not a source.
@@ -195,19 +200,19 @@ fn git(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 pub(crate) struct Tree<'a> {
     scratch: &'a Path,
     pub commit: String,
-    /// `(mode, kind, oid, path)` for every entry.
-    entries: Vec<(String, String, String, String)>,
+    /// `(mode, kind, oid, size, path)` for every entry; size is none for submodules.
+    entries: Vec<(String, String, String, Option<u64>, String)>,
 }
 
 impl Tree<'_> {
     /// Every path in the commit.
     pub fn paths(&self) -> impl Iterator<Item = &str> {
-        self.entries.iter().map(|e| e.3.as_str())
+        self.entries.iter().map(|e| e.4.as_str())
     }
 
     /// One plain file's bytes; none when it is missing or a link.
     pub fn file(&self, path: &str) -> Option<Vec<u8>> {
-        let (_, _, oid, _) = self.entries.iter().find(|(mode, kind, _, p)| p == path && kind == "blob" && mode != "120000")?;
+        let (_, _, oid, _, _) = self.entries.iter().find(|(mode, kind, _, _, p)| p == path && kind == "blob" && mode != "120000")?;
         git(self.scratch, &["cat-file", "blob", oid]).ok()
     }
 
@@ -216,7 +221,7 @@ impl Tree<'_> {
         let prefix = format!("{dir}/");
         let mut files = Vec::new();
         let mut bytes = 0u64;
-        for (mode, kind, oid, path) in self.entries.iter().filter(|e| e.3.starts_with(&prefix)) {
+        for (mode, kind, oid, _, path) in self.entries.iter().filter(|e| e.4.starts_with(&prefix)) {
             if kind != "blob" || mode == "120000" {
                 return Err(format!("{path} is a link or submodule; skills may hold plain files only"));
             }
@@ -233,6 +238,40 @@ impl Tree<'_> {
         }
         Ok(files)
     }
+
+    /// The files a pack plugin rooted at `dir` (`.` for the whole repo) ships, relative to it, and a note for each
+    /// path it leaves out. Only text a reviewer can read in full ships: links, submodules, binary files and files over
+    /// `MAX_PLUGIN_FILE_BYTES` are left out. Paths `skip` matches are dropped without a note.
+    pub fn plugin(&self, dir: &str, skip: impl Fn(&str) -> bool) -> Result<(Files, Vec<String>), String> {
+        let prefix = if dir == "." { String::new() } else { format!("{dir}/") };
+        let (mut files, mut left_out, mut bytes) = (Vec::new(), Vec::new(), 0u64);
+        for (mode, kind, oid, size, path) in self.entries.iter().filter(|e| e.4.starts_with(&prefix)) {
+            let rel = &path[prefix.len()..];
+            let size = size.unwrap_or(0);
+            if skip(rel) {
+                continue;
+            }
+            if kind != "blob" || mode == "120000" || !safe_repo_path(rel) {
+                left_out.push(format!("{rel} (a link, submodule or unsafe path)"));
+                continue;
+            }
+            if size > MAX_PLUGIN_FILE_BYTES {
+                left_out.push(format!("{rel} (over {} KB)", MAX_PLUGIN_FILE_BYTES >> 10));
+                continue;
+            }
+            let content = git(self.scratch, &["cat-file", "blob", oid])?;
+            if !crate::skill_scan::is_text(&content) {
+                left_out.push(format!("{rel} (binary, {} KB)", size.div_ceil(1024)));
+                continue;
+            }
+            bytes += size;
+            if bytes > MAX_SKILL_BYTES {
+                return Err(format!("the plugin's text files are over {} MB", MAX_SKILL_BYTES >> 20));
+            }
+            files.push((rel.to_owned(), content));
+        }
+        Ok((files, left_out))
+    }
 }
 
 /// Fetches `rev` (`HEAD` or a full commit) of `url` into the scratch folder and lists it.
@@ -247,8 +286,8 @@ pub(crate) fn fetch_tree<'a>(scratch: &'a Path, url: &str, rev: &str) -> Result<
     if rev != "HEAD" && commit != rev {
         return Err(format!("the repo answered commit {commit}, not {rev}"));
     }
-    // Each entry: "<mode> <type> <oid>\t<path>".
-    let listing = git(scratch, &["ls-tree", "-r", "-z", "--full-tree", &commit])?;
+    // Each entry: "<mode> <type> <oid> <size>\t<path>", size "-" for submodules.
+    let listing = git(scratch, &["ls-tree", "-r", "-z", "-l", "--full-tree", &commit])?;
     let entries = listing
         .split(|b| *b == 0)
         .filter(|e| !e.is_empty())
@@ -256,7 +295,7 @@ pub(crate) fn fetch_tree<'a>(scratch: &'a Path, url: &str, rev: &str) -> Result<
             let e = String::from_utf8_lossy(e);
             let (meta, path) = e.split_once('\t')?;
             let mut m = meta.split_whitespace();
-            Some((m.next()?.to_owned(), m.next()?.to_owned(), m.next()?.to_owned(), path.to_owned()))
+            Some((m.next()?.to_owned(), m.next()?.to_owned(), m.next()?.to_owned(), m.next()?.parse().ok(), path.to_owned()))
         })
         .collect();
     Ok(Tree { scratch, commit, entries })
@@ -609,8 +648,20 @@ pub fn pin_role_skills_in_background(state: &AppState, project_id: &str) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApprovedSkill {
     pub name: String,
+    /// The hash of `files`.
     pub hash: String,
+    /// The skill folder; for a pack skill, its whole plugin tree.
     pub files: Vec<(String, Vec<u8>)>,
+    pub plugin: Option<PluginMount>,
+}
+
+/// Where a pack skill's plugin tree goes and where the skill sits in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginMount {
+    /// The tree's folder under the agent's home, like `.arima/plugins/owner/repo/plugin`.
+    pub dir: String,
+    /// The skill's folder in the tree, like `skills/review`.
+    pub skill: String,
 }
 
 /// The approved skills that `role_id` names in this project. A ref that isn't pinned, isn't approved, or whose stored
@@ -620,21 +671,24 @@ pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec
     let Ok(root) = data_root(state) else { return vec![] };
     let packs = crate::packs::lock(state, project_id);
     let mut out = Vec::new();
+    let mut trees = std::collections::HashMap::new();
     for r in role_skills(state, project_id, Some(role_id)) {
         let approved = if crate::packs::owner_of(&packs, &r).is_some() {
-            crate::packs::approved_skill(&packs, &r)
+            crate::packs::approved_skill(&packs, &r).map(|(name, hash, mount)| (name, hash, Some(mount)))
         } else if parse_ref(&r).is_ok() {
-            get_pin(state, &r).filter(|p| p.status == SkillStatus::Approved).map(|p| (p.name, p.hash))
+            get_pin(state, &r).filter(|p| p.status == SkillStatus::Approved).map(|p| (p.name, p.hash, None))
         } else {
             continue; // a built-in skill
         };
-        let Some((name, hash)) = approved else {
+        let Some((name, hash, plugin)) = approved else {
             tracing::warn!(project_id, role_id, skill = r, "skill not mounted: it isn't approved");
             continue;
         };
-        match read_stored(&root.join(&hash).join(&name)) {
-            Some(files) if skill_hash(&files) == hash => out.push(ApprovedSkill { name, hash, files }),
-            _ => tracing::warn!(project_id, role_id, skill = r, "skill not mounted: its stored files changed since approval"),
+        let dir = root.join(&hash).join(if plugin.is_some() { crate::packs::STORED_PLUGIN } else { &name });
+        // One read and hash per plugin tree, however many of its skills the role names.
+        match trees.entry(dir).or_insert_with_key(|d| read_stored(d).filter(|f| skill_hash(f) == hash)) {
+            Some(files) => out.push(ApprovedSkill { name, hash, files: files.clone(), plugin }),
+            None => tracing::warn!(project_id, role_id, skill = r, "skill not mounted: its stored files changed since approval"),
         }
     }
     out

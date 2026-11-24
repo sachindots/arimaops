@@ -7,9 +7,14 @@
 //! whole-repo skill pack. Pack ids are `owner/repo:plugin` or `owner/repo`; a role names a pack skill as
 //! `<pack id>@<skill>`. The fetch, spec check, hash, scan and store are the skills pipeline's (`skills.rs`).
 //!
+//! A pack ships as its whole plugin folder (the repo for a whole-repo pack), because skills read sibling files such
+//! as `../../resources/x.md`. Every text file in it is hashed into one tree hash, scanned and shown on the review;
+//! binary, oversized and linked files are left out and listed. Agents get the tree read-only under their home, and
+//! each skill their role names at the CLI's skills folder, from inside that tree.
+//!
 //! The project's lock (`packs:{project_id}`) is the trust record. Install, update and a pack server's changed live
 //! tool list all go through one `PackReview` Inbox card; until it is approved agents keep the approved entry. Hooks,
-//! commands, subagents and command tool servers are listed as ignored, never installed.
+//! commands, subagents and command tool servers are listed as ignored, never installed; `agents/` ships as files.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -28,7 +33,10 @@ use crate::state::AppState;
 
 const CATALOGS: [&str; 2] = [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"];
 const MANIFESTS: [&str; 2] = [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"];
-const NOT_INSTALLED: [&str; 3] = ["hooks", "commands", "agents"];
+/// Plugin folders left out of the tree: nothing runs them.
+const NOT_INSTALLED: [&str; 2] = ["hooks", "commands"];
+/// The folder a plugin tree is stored in, under its tree hash.
+pub(crate) const STORED_PLUGIN: &str = "plugin";
 
 fn lock_key(project_id: &str) -> String {
     format!("packs:{project_id}")
@@ -50,17 +58,19 @@ pub fn owner_of<'a>(lock: &'a PackLock, skill_ref: &str) -> Option<&'a PackEntry
     lock.packs.get(skill_ref.rsplit_once('@')?.0)
 }
 
-fn skill_blocked(entry: &PackEntry, skill: &PackSkill) -> bool {
-    entry.scan.blocked.iter().any(|l| l.starts_with(&format!("{}/", skill.path)))
-}
-
-/// `(name, hash)` of a pack skill the owner approved and the scanner didn't block.
+/// `(name, tree hash, mount)` of a pack skill the owner approved. Skills share their plugin tree, so a blocking scan
+/// finding anywhere in it holds back every skill of the pack.
 #[must_use]
-pub fn approved_skill(lock: &PackLock, skill_ref: &str) -> Option<(String, String)> {
+pub fn approved_skill(lock: &PackLock, skill_ref: &str) -> Option<(String, String, skills::PluginMount)> {
     let (id, name) = skill_ref.rsplit_once('@')?;
-    let entry = lock.packs.get(id).filter(|e| e.approved.is_some())?;
-    let skill = entry.skills.get(name).filter(|s| !skill_blocked(entry, s))?;
-    Some((name.to_owned(), skill.sha256.clone()))
+    let entry = lock.packs.get(id).filter(|e| e.approved.is_some() && e.scan.blocked.is_empty() && !e.tree.is_empty())?;
+    let skill = entry.skills.get(name)?;
+    let in_tree = match entry.source.path.as_deref() {
+        Some(dir) if dir != "." => skill.path.strip_prefix(&format!("{dir}/"))?,
+        _ => skill.path.as_str(),
+    };
+    let dir = id.replace(':', "/").chars().map(|c| if c.is_ascii_alphanumeric() || "-_./".contains(c) { c } else { '-' }).collect::<String>();
+    skills::safe_repo_path(&dir).then(|| (name.to_owned(), entry.tree.clone(), skills::PluginMount { dir: format!(".arima/plugins/{dir}"), skill: in_tree.to_owned() }))
 }
 
 /// The hash a pack approval pins for a tool server: sha256 of its normalised tool list in canonical JSON
@@ -145,10 +155,19 @@ fn locate(read: impl Fn(&str) -> Option<Vec<u8>>, repo: &str, plugin: Option<&st
     Ok(Located { id: format!("{repo}:{name}"), dir: Some(dir), manifest: manifest.unwrap_or_else(|| entry.clone()) })
 }
 
-/// Reads the located pack at the tree's commit: skills (checked, hashed, scanned and stored), HTTP tool servers,
-/// declared hosts and secrets, and the parts HQ won't install. Tool lists are filled in later by a live check.
+/// Reads the located pack at the tree's commit: its plugin tree (hashed, scanned and stored), its skills (checked),
+/// HTTP tool servers, declared hosts and secrets, and the parts HQ won't install. Tool lists are filled in later by a
+/// live check.
 fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> Result<PackEntry, String> {
     let paths: Vec<&str> = tree.paths().collect();
+    let root = loc.dir.as_deref().unwrap_or(".");
+    let (files, left_out) = tree.plugin(root, |p| NOT_INSTALLED.iter().any(|d| p.starts_with(&format!("{d}/"))))?;
+    let hash = skills::skill_hash(&files);
+    let mut scan = PackScan::default();
+    for f in files.iter().flat_map(|(p, c)| scan_file(p, c)) {
+        let line = format!("{}:{} {}", f.path, f.line, f.why);
+        if f.level == Level::Block { scan.blocked.push(line) } else { scan.warnings.push(line) }
+    }
     // Skill folders: `skills/<name>/SKILL.md` in a plugin; any folder with a SKILL.md in a whole-repo pack.
     let mut folders: BTreeMap<String, String> = BTreeMap::new();
     for p in &paths {
@@ -164,24 +183,19 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> 
         }
     }
     let mut skills_out = BTreeMap::new();
-    let mut scan = PackScan::default();
     for (name, folder) in &folders {
-        let files = tree.folder(folder)?;
-        skills::validate(name, &files).map_err(|e| format!("The skill {name}: {e}"))?;
-        let hash = skills::skill_hash(&files);
-        for f in files.iter().flat_map(|(p, c)| scan_file(p, c)) {
-            let line = format!("{folder}/{}:{} {}", f.path, f.line, f.why);
-            if f.level == Level::Block { scan.blocked.push(line) } else { scan.warnings.push(line) }
-        }
-        skills::store(store, &hash, name, &files)?;
-        skills_out.insert(name.clone(), PackSkill { path: folder.clone(), sha256: hash });
+        let prefix = if root == "." { format!("{folder}/") } else { format!("{}/", folder.strip_prefix(&format!("{root}/")).unwrap_or(folder)) };
+        let skill_files: Vec<(String, Vec<u8>)> = files.iter().filter_map(|(p, c)| Some((p.strip_prefix(&prefix)?.to_owned(), c.clone()))).collect();
+        skills::validate(name, &skill_files).map_err(|e| format!("The skill {name}: {e}"))?;
+        skills_out.insert(name.clone(), PackSkill { path: folder.clone(), sha256: skills::skill_hash(&skill_files) });
     }
     if folders.is_empty() && loc.dir.is_none() {
         return Err("The repo has no catalog file and no skill folders.".into());
     }
+    skills::store(store, &hash, STORED_PLUGIN, &files)?;
 
     let m = &loc.manifest;
-    let mut ignored = BTreeSet::new();
+    let mut ignored: BTreeSet<String> = left_out.into_iter().collect();
     let mut tool_servers = BTreeMap::new();
     if let Some(dir) = &loc.dir {
         let read = |p: &str| tree.file(p);
@@ -203,12 +217,14 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> 
             int::check_endpoint(url).map_err(|e| format!("The tool server {name}: {e}"))?;
             tool_servers.insert(name.clone(), PackToolServer { transport: ToolServerTransport::Http { url: url.to_owned() }, tools_sha256: None, tools: vec![] });
         }
-        let prefix = join(dir, "");
-        for part in NOT_INSTALLED {
-            if m.get(part).is_some() || paths.iter().any(|p| p.starts_with(&format!("{prefix}{part}/"))) {
-                ignored.insert(format!("{part}/"));
-            }
-        }
+    }
+    let prefix = join(root, "");
+    let has = |part: &str| m.get(part).is_some() || paths.iter().any(|p| p.starts_with(&format!("{prefix}{part}/")));
+    for part in NOT_INSTALLED.into_iter().filter(|p| has(p)) {
+        ignored.insert(format!("{part}/"));
+    }
+    if has("agents") {
+        ignored.insert("agents/ as subagents (its files ship for skills to read)".into());
     }
     let egress: BTreeSet<String> = m["network"]["hosts"]
         .as_array()
@@ -222,6 +238,7 @@ fn build(tree: &Tree<'_>, store: &std::path::Path, url: &str, loc: &Located) -> 
     Ok(PackEntry {
         source: PackSource { repo: url.to_owned(), commit: tree.commit.clone(), path: loc.dir.clone() },
         version: m["version"].as_str().map(str::to_owned),
+        tree: hash,
         skills: skills_out,
         tool_servers,
         egress: egress.into_iter().collect(),
@@ -270,7 +287,7 @@ async fn probe_servers(state: &AppState, project_id: &str, id: &str, entry: &mut
 
 /// Everything a reviewer sees, so two entries with the same review are the same pack.
 fn same_review(a: &PackEntry, b: &PackEntry) -> bool {
-    a.skills == b.skills && a.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)).eq(b.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)))
+    a.tree == b.tree && a.skills == b.skills && a.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)).eq(b.tool_servers.iter().map(|(n, s)| (n, &s.transport, &s.tools_sha256)))
         && a.egress == b.egress
         && a.secrets == b.secrets
         && a.ignored == b.ignored
@@ -279,9 +296,10 @@ fn same_review(a: &PackEntry, b: &PackEntry) -> bool {
 
 // ---------------------------------------------------------------- review cards
 
-fn skill_text(state: &AppState, name: &str, skill: &PackSkill) -> String {
-    let path = skills::data_root(state).map(|r| r.join(&skill.sha256).join(name).join("SKILL.md"));
-    path.ok().and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_else(|| "(SKILL.md isn't stored on this HQ)".into())
+/// A stored plugin tree's files by path; empty when this HQ doesn't hold it.
+fn stored_tree(state: &AppState, hash: &str) -> BTreeMap<String, String> {
+    let files = skills::data_root(state).ok().filter(|_| !hash.is_empty()).and_then(|r| skills::read_stored(&r.join(hash).join(STORED_PLUGIN)));
+    files.unwrap_or_default().into_iter().map(|(p, c)| (p, String::from_utf8_lossy(&c).into_owned())).collect()
 }
 
 fn tools_text(server: &PackToolServer) -> String {
@@ -297,19 +315,20 @@ fn tools_text(server: &PackToolServer) -> String {
     format!("URL: {url}\n\n{}", tools.join("\n\n"))
 }
 
-/// Each skill and tool server whose content differs from the approved entry, in full, before and after.
+/// Each file and tool server whose content differs from the approved entry, in full, before and after.
 fn changes(state: &AppState, before: Option<&PackEntry>, after: &PackEntry) -> Vec<PackChange> {
     let mut out = Vec::new();
-    let (no_skills, no_servers) = (BTreeMap::new(), BTreeMap::new());
-    let old_skills = before.map_or(&no_skills, |b| &b.skills);
-    let old_servers = before.map_or(&no_servers, |b| &b.tool_servers);
-    let names: BTreeSet<&String> = old_skills.keys().chain(after.skills.keys()).collect();
-    for name in names {
-        let (b, a) = (old_skills.get(name), after.skills.get(name));
-        if b.map(|s| &s.sha256) != a.map(|s| &s.sha256) {
-            out.push(PackChange { kind: "skill".into(), name: name.clone(), before: b.map(|s| skill_text(state, name, s)), after: a.map(|s| skill_text(state, name, s)) });
+    if before.is_none_or(|b| b.tree != after.tree) {
+        let (old, new) = (before.map(|b| stored_tree(state, &b.tree)).unwrap_or_default(), stored_tree(state, &after.tree));
+        for path in old.keys().chain(new.keys()).collect::<BTreeSet<_>>() {
+            let (b, a) = (old.get(path), new.get(path));
+            if b != a {
+                out.push(PackChange { kind: "file".into(), name: path.clone(), before: b.cloned(), after: a.cloned() });
+            }
         }
     }
+    let no_servers = BTreeMap::new();
+    let old_servers = before.map_or(&no_servers, |b| &b.tool_servers);
     let names: BTreeSet<&String> = old_servers.keys().chain(after.tool_servers.keys()).collect();
     for name in names {
         let (b, a) = (old_servers.get(name), after.tool_servers.get(name));
@@ -324,8 +343,9 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
     let short = &after.source.commit[..12.min(after.source.commit.len())];
     let title = if before.is_some() { format!("Review a change to the pack {id}") } else { format!("Install the pack {id}?") };
     let mut details = format!(
-        "From `{}` at commit `{short}`. Approve to give this project's agents the skills and tool servers below; Send back leaves the project as it was. The scanner blocked {} finding(s); a blocked skill isn't given to agents.",
+        "From `{}` at commit `{short}`, files hash `{}`. Approve to give this project's agents the files and tool servers below; Send back leaves the project as it was. The scanner blocked {} finding(s); while any finding blocks, none of the pack's skills reach agents.",
         after.source.repo,
+        &after.tree[..12.min(after.tree.len())],
         after.scan.blocked.len()
     );
     for n in notes {
@@ -896,14 +916,18 @@ mod tests {
         assert_eq!(entry.source.path.as_deref(), Some("plugins/acme-tools"));
         assert_eq!(entry.egress, ["api.acme.dev"], "metadata hosts are never a grant");
         assert_eq!(entry.secrets, ["ACME_TOKEN"]);
-        assert_eq!(entry.ignored, ["agents/", "commands/", "hooks/", "tool server local (runs a local command)"]);
+        assert_eq!(entry.ignored, ["agents/ as subagents (its files ship for skills to read)", "commands/", "hooks/", "tool server local (runs a local command)"]);
         assert!(entry.approved.is_none() && entry.tool_servers.len() == 1);
 
         let card = review(&state, &pid, &id);
         let DecisionPayload::PackReview { from, to, changed, ignored, egress, secrets, .. } = &card.payload else { panic!("not a pack review") };
         assert!(card.owner_only && from.is_none() && *to == commit);
-        assert_eq!(changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(), [("skill", "review"), ("toolServer", "acme")]);
-        assert!(changed[0].after.as_deref().unwrap().contains("Review the diff.") && changed[1].after.as_deref().unwrap().contains("Search docs."), "full texts, never truncated");
+        assert_eq!(
+            changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
+            [("file", ".claude-plugin/plugin.json"), ("file", "agents/helper.md"), ("file", "skills/review/SKILL.md"), ("toolServer", "acme")],
+            "every file that ships, relative to the plugin; hooks and commands don't ship"
+        );
+        assert!(changed[2].after.as_deref().unwrap().contains("Review the diff.") && changed[3].after.as_deref().unwrap().contains("Search docs."), "full texts, never truncated");
         assert_eq!((ignored.len(), egress.len(), secrets.len()), (4, 1, 1));
 
         // Nothing reaches agents before approval.
@@ -937,7 +961,7 @@ mod tests {
         let (id, _) = read_and_stage(&state, &pid, &repo, "HEAD", "Search docs.");
         answer(&state, &review(&state, &pid, &id).id, DecisionStatus::Resolved);
         crate::team_edit::update_role(&state, &pid, &[json!(role(&state, &pid)), json!({ "skills": [format!("{id}@review")] })]).unwrap();
-        let old_hash = lock(&state, &pid).packs[&id].skills["review"].sha256.clone();
+        let old_hash = lock(&state, &pid).packs[&id].tree.clone();
 
         // A commit that changes nothing a reviewer sees moves the pin silently.
         let readme = write(&repo, &[("README.md", "hello")]);
@@ -955,7 +979,7 @@ mod tests {
         let card = review(&state, &pid, &id);
         let DecisionPayload::PackReview { from, changed, .. } = &card.payload else { panic!() };
         assert_eq!(from.as_deref(), Some(readme.as_str()));
-        assert_eq!(changed.len(), 1);
+        assert_eq!((changed.len(), changed[0].name.as_str()), (1, "skills/review/SKILL.md"));
         assert!(changed[0].before.as_deref().unwrap().contains("Review the diff.\n") && changed[0].after.as_deref().unwrap().contains("and the tests"));
 
         // Rejecting keeps the pin; a fresh check files a new card, and approving moves the pin.
@@ -1145,6 +1169,112 @@ mod tests {
         assert!(installed.approved.is_none() && installed.review.is_some(), "pending review in the new project");
         assert_eq!(installed.source.commit, pinned);
         assert_eq!(installed.skills, lock(&state, &pid).packs[&id].skills);
+    }
+
+    #[test]
+    fn a_plugin_ships_whole_and_its_skills_read_sibling_files_inside_it() {
+        let (tmp, state, pid, _, _) = setup();
+        // Shaped like a real multi-harness plugin: the repo is the plugin, and skills read shared files by relative path.
+        let repo = tmp.path().join("acme").join("egm");
+        std::fs::create_dir_all(repo.join(".claude-plugin")).unwrap();
+        sh(&repo, &["init", "-q"]);
+        std::fs::write(repo.join(".claude-plugin/icon.png"), b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").unwrap();
+        let refs = ["../../resources/execution_instructions.md", "../../agents/zoom_out.md", "../egm-review-loop/SKILL.md"];
+        let review_md = skill("egm-review", &format!("Read {}, then {}, then run {}. In Claude Code: ${{CLAUDE_PLUGIN_ROOT}}/resources/execution_instructions.md.", refs[0], refs[1], refs[2]));
+        let files = |rules: &'static str| -> Vec<(&'static str, String)> {
+            vec![
+                (".claude-plugin/marketplace.json", r#"{ "plugins": [ { "name": "egm", "source": "./" } ] }"#.into()),
+                (".claude-plugin/plugin.json", r#"{ "name": "egm", "version": "0.1.1", "agents": ["./agents/zoom_out.md"] }"#.into()),
+                ("skills/egm-review/SKILL.md", review_md.clone()),
+                ("skills/egm-review-loop/SKILL.md", skill("egm-review-loop", "Loop the review.")),
+                ("resources/execution_instructions.md", rules.into()),
+                ("agents/zoom_out.md", "---\nname: egm-zoom-out\n---\nA simplicity reviewer.\n".into()),
+                ("hooks/hooks.json", "{}".into()),
+            ]
+        };
+        let commit = |list: Vec<(&str, String)>| write(&repo, &list.iter().map(|(p, t)| (*p, t.as_str())).collect::<Vec<_>>());
+        commit(files("Shared rules."));
+
+        let (id, entry) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
+        assert_eq!(id, "acme/egm:egm");
+        assert_eq!(entry.skills.keys().collect::<Vec<_>>(), ["egm-review", "egm-review-loop"]);
+        assert!(entry.scan.blocked.is_empty(), "{:?}", entry.scan.blocked);
+        assert_eq!(
+            entry.ignored,
+            [".claude-plugin/icon.png (binary, 1 KB)", "agents/ as subagents (its files ship for skills to read)", "hooks/"],
+            "a binary is listed and left out; hooks never ship"
+        );
+        let tree = entry.tree.clone();
+        stage(&state, &pid, &id, entry, &[]).unwrap();
+        let card = review(&state, &pid, &id);
+        let DecisionPayload::PackReview { changed, .. } = &card.payload else { panic!() };
+        assert_eq!(
+            changed.iter().map(|c| (c.kind.as_str(), c.name.as_str())).collect::<Vec<_>>(),
+            [
+                ("file", ".claude-plugin/marketplace.json"),
+                ("file", ".claude-plugin/plugin.json"),
+                ("file", "agents/zoom_out.md"),
+                ("file", "resources/execution_instructions.md"),
+                ("file", "skills/egm-review-loop/SKILL.md"),
+                ("file", "skills/egm-review/SKILL.md"),
+            ],
+            "the review shows every text file that ships"
+        );
+        assert_eq!(changed[3].after.as_deref(), Some("Shared rules."));
+        assert!(card.details.contains(&tree[..12]), "the card names the files hash");
+        answer(&state, &card.id, DecisionStatus::Resolved);
+
+        let r = role(&state, &pid);
+        crate::team_edit::set_team_mode(&state, &pid, &[json!("container")]).unwrap();
+        crate::team_edit::update_role(&state, &pid, &[json!(r), json!({ "cli": "claude", "skills": [format!("{id}@egm-review"), format!("{id}@egm-review-loop")] })]).unwrap();
+        let agent = seat(&state, &pid)["id"].as_str().unwrap().to_owned();
+        let ws = tmp.path().join("ws");
+        let rt = crate::runtime::AgentRuntime::new(crate::runtime::RuntimeConfig {
+            enabled: true,
+            image: "img".into(),
+            network: "net".into(),
+            workspaces_root: ws.clone(),
+            workspaces_host_root: "/host/ws".into(),
+            hq_url: None,
+            egress_port: 8420,
+            hq_container: None,
+        });
+        let body = rt.plan(&state, &pid, &agent).unwrap().body;
+        let host = format!("/host/ws/.arima-skills/{tree}/plugin");
+        let root = "/workspace/.agent-home/.arima/plugins/acme/egm/egm";
+        assert_eq!(
+            body["HostConfig"]["Binds"].as_array().unwrap()[1..],
+            [
+                json!(format!("{host}:{root}:ro")),
+                json!(format!("{host}/skills/egm-review:/workspace/.agent-home/.claude/skills/egm-review:ro")),
+                json!(format!("{host}/skills/egm-review-loop:/workspace/.agent-home/.claude/skills/egm-review-loop:ro")),
+            ],
+            "the whole plugin read-only, and each skill from inside it"
+        );
+        let env: Vec<&str> = body["Env"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(env.contains(&format!("CLAUDE_PLUGIN_ROOT={root}").as_str()) && env.contains(&format!("PLUGIN_ROOT={root}").as_str()), "{env:?}");
+
+        // On the host copy, every relative path the skill names resolves inside the stored tree.
+        let stored = ws.join(".arima-skills").join(&tree).join("plugin").canonicalize().unwrap();
+        for rel in refs {
+            let target = stored.join("skills/egm-review").join(rel).canonicalize().unwrap_or_else(|e| panic!("{rel}: {e}"));
+            assert!(target.starts_with(&stored) && target.is_file(), "{rel}");
+        }
+        assert!(!stored.join(".claude-plugin/icon.png").exists() && !stored.join("hooks").exists());
+
+        // A change to a shared file outside every skill folder needs a new approval.
+        commit(files("Shared rules, changed."));
+        let (_, next) = prepare(&state, &url(&repo), None, "HEAD").unwrap();
+        assert!(stage(&state, &pid, &id, next, &[]).unwrap(), "a review is filed");
+        let card = review(&state, &pid, &id);
+        let DecisionPayload::PackReview { changed, .. } = &card.payload else { panic!() };
+        assert_eq!(
+            changed.iter().map(|c| (c.name.as_str(), c.before.as_deref(), c.after.as_deref())).collect::<Vec<_>>(),
+            [("resources/execution_instructions.md", Some("Shared rules."), Some("Shared rules, changed."))]
+        );
+        assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash == tree), "agents keep the approved tree");
+        answer(&state, &card.id, DecisionStatus::Resolved);
+        assert!(crate::skills::approved_skills(&state, &pid, &r).iter().all(|s| s.hash != tree && s.files.iter().any(|(p, c)| p == "resources/execution_instructions.md" && c == b"Shared rules, changed.")));
     }
 
     #[test]
