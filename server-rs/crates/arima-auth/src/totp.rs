@@ -3,12 +3,13 @@
 use arima_db::Db;
 use base32::Alphabet;
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use qrcode::render::svg;
 use qrcode::QrCode;
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::Rng;
 use rusqlite::OptionalExtension;
 use sha1::Sha1;
 use subtle::ConstantTimeEq;
@@ -24,7 +25,7 @@ pub const TOTP_DIGITS: u32 = 6;
 #[must_use]
 pub fn generate_secret_b32() -> String {
     let mut raw = [0u8; 20];
-    OsRng.fill_bytes(&mut raw);
+    UnwrapErr(SysRng).fill_bytes(&mut raw);
     base32::encode(Alphabet::Rfc4648 { padding: false }, &raw)
 }
 
@@ -55,7 +56,7 @@ pub fn totp_code_for_step(secret_b32: &str, step: i64) -> Result<String> {
     let counter = u64::try_from(step)
         .map_err(|_| AuthError::Crypto("negative TOTP step".into()))?
         .to_be_bytes();
-    let mut mac = <HmacSha1 as Mac>::new_from_slice(&key)
+    let mut mac = <HmacSha1 as KeyInit>::new_from_slice(&key)
         .map_err(|e| AuthError::Crypto(format!("hmac init failed: {e}")))?;
     mac.update(&counter);
     let hash = mac.finalize().into_bytes();

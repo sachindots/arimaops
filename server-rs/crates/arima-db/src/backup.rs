@@ -13,8 +13,9 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::{DateTime, Utc};
-use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::Rng;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -165,8 +166,8 @@ fn encrypt_bundle(bundle: &BackupBundle, key_material: &[u8]) -> Result<Vec<u8>>
 
     let mut salt = [0u8; 16];
     let mut nonce_bytes = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut salt);
-    OsRng.fill_bytes(&mut nonce_bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut salt);
+    UnwrapErr(SysRng).fill_bytes(&mut nonce_bytes);
 
     let key = derive_archive_key(key_material, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -180,7 +181,7 @@ fn encrypt_bundle(bundle: &BackupBundle, key_material: &[u8]) -> Result<Vec<u8>>
 
     let ciphertext = cipher
         .encrypt(
-            Nonce::from_slice(&nonce_bytes),
+            &Nonce::from(nonce_bytes),
             Payload {
                 msg: &plaintext,
                 aad: &header,
@@ -225,7 +226,8 @@ fn decrypt_bundle(archive_bytes: &[u8], key_material: &[u8]) -> Result<BackupBun
 
     let plaintext = cipher
         .decrypt(
-            Nonce::from_slice(nonce_bytes),
+            &Nonce::try_from(nonce_bytes)
+                .map_err(|_| DbError::InvalidInput("bad backup nonce length".into()))?,
             Payload {
                 msg: ciphertext,
                 aad,
@@ -768,4 +770,33 @@ pub fn prune_old_backups(backups_dir: &Path, keep_last: usize) -> Result<usize> 
         }
     }
     Ok(removed)
+}
+
+#[cfg(test)]
+mod crypto_golden {
+    //! Values captured from the pre-upgrade RustCrypto stack. Archives already on disk must keep
+    //! decrypting byte for byte, so these constants must never be regenerated.
+    use super::*;
+
+    const KEY_MATERIAL: &[u8] = b"golden-backup-key-material";
+    const ARCHIVE_HEX: &str = "4152494d41424b32020154b4ac501b8a82306186b4b2396bf613ed459662841392084ee263b3c433c7302d80e4b5b834b7658402d6084dd8ae505337c6b5e8486d87394ef59a42658c13a02bdd6f3f2bd10b969ca779bd8a0df44e13271fc4e2eeae5d4698f9e2048d3c57d3f59737b7abd91a06bcc7550538f2d86327eadaca11e2cddb7dd1f963085d44a865440129c79166530157ea0dbad8c2b2dd7850c89cd9a8ef1d5e7de3104bca742f95c931c1db27d0967c71b5b631f02195cbf5c75ea36ad8554fdcaca93dc5648a62adef7465031269cac22739c0469218c44d2962a6ed2f24bc6bdc46f29c3616e0e43009e28d14319c946f31cbd0cb97d9311c1c373126d7801a57899c4457bc59e84f41536305ee47377e695b806288380ac99e6fd33a51be68e3775e2a366df5728952f255450f9214aebb6c5310d6a6f1fa55fc0341d540";
+
+    #[test]
+    fn argon2_archive_kdf_is_stable() {
+        assert_eq!(
+            hex::encode(derive_archive_key(KEY_MATERIAL, &[7u8; 16]).unwrap()),
+            "29816cdd6e46e85be818973fca26b9a4bb0f601c14f21583a9e4034a207aa8df"
+        );
+    }
+
+    #[test]
+    fn archive_written_before_upgrade_still_decrypts() {
+        let archive = hex::decode(ARCHIVE_HEX).unwrap();
+        let bundle = decrypt_bundle(&archive, KEY_MATERIAL).unwrap();
+        assert_eq!(bundle.created_at, "2026-11-24T00:00:00+00:00");
+        assert_eq!(BASE64.decode(&bundle.db_b64).unwrap(), b"not-a-real-sqlite-file");
+        assert_eq!(bundle.db_sha256, sha256_hex(b"not-a-real-sqlite-file"));
+        assert_eq!(bundle.vault_metadata, json!({"secrets": 1}));
+        assert!(decrypt_bundle(&archive, b"wrong-key").is_err());
+    }
 }

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use arima_db::{Db, DbError};
 use chrono::Utc;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
