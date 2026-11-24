@@ -422,7 +422,7 @@ pub fn mcp_state(state: &AppState, project_id: &str, team: &[Value], checked_at:
             tool_servers(state, &id).into_iter().filter(|s| s.source == ToolServerSource::Manual).map(move |s| json!({ "projectId": id, "project": project, "name": s.name }))
         })
         .collect();
-    json!({ "servers": tool_servers(state, project_id), "attached": attached, "others": others, "error": null, "checkedAt": checked_at })
+    json!({ "servers": tool_servers(state, project_id), "attached": attached, "others": others, "toolsAsCode": crate::codemode::enabled(state, project_id), "error": null, "checkedAt": checked_at })
 }
 
 const MCP_CHECKS_PER_MINUTE: u32 = 10;

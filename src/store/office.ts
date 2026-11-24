@@ -450,6 +450,7 @@ export const officeActions = {
   removeMcp: (name: string) => source.removeMcp(name),
   setAgentMcp: (agentId: string, names: string[]) => source.setAgentMcp(agentId, names),
   setToolServerKey: (name: string, key: string) => source.setToolServerKey(name, key),
+  setToolsAsCode: (on: boolean) => source.setToolsAsCode(on),
   addPack: (url: string, plugin?: string) => source.addPack(url, plugin),
   checkPackUpdates: (id?: string) => source.checkPackUpdates(id),
   removePack: (id: string, deleteKeys?: boolean) => source.removePack(id, deleteKeys),

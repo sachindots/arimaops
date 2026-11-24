@@ -245,6 +245,7 @@ export interface OfficeDataSource {
   setAgentMcp(agentId: string, names: string[]): void;
   /** Stores (or, when empty, clears) a tool server's key. */
   setToolServerKey(name: string, key: string): void;
+  setToolsAsCode(on: boolean): void;
 
   // Packs: skills and tool servers from a git catalog, approved per project in the Inbox
   /** Reads the pack at the repo's newest commit and files its install review. `plugin` names one pack in a catalog. */

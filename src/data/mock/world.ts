@@ -342,6 +342,7 @@ export class World {
         ],
         attached: {},
         others: [{ projectId: "proj-site", project: "Marketing site", name: "posthog" }],
+        toolsAsCode: false,
         error: null,
         checkedAt: now(),
       },

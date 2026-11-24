@@ -185,8 +185,8 @@ fn hq_servers(state: &AppState, project_id: &str, agent: &Value, base: &str) -> 
         }
         true
     });
-    std::iter::once(McpServer { name: "arima".to_owned(), url: base.to_owned() })
-        .chain(selected.map(|name| McpServer { name: name.to_owned(), url: format!("{base}/{name}") }))
+    std::iter::once(McpServer::Http { name: "arima".to_owned(), url: base.to_owned() })
+        .chain(selected.map(|name| McpServer::Http { name: name.to_owned(), url: format!("{base}/{name}") }))
         .collect()
 }
 
@@ -446,8 +446,14 @@ impl AgentRuntime {
         // Without HQ's address the agent can reach neither HQ's server nor the ones HQ forwards to.
         let (servers, token) = match &self.config.hq_url {
             Some(url) => {
-                let base = format!("{}/api/projects/{project_id}/mcp", url.trim_end_matches('/'));
-                (hq_servers(state, project_id, agent, &base), Some(state.inner.mcp.issue_agent_token(project_id, agent_id)))
+                let project_url = format!("{}/api/projects/{project_id}", url.trim_end_matches('/'));
+                // Tools as code: one server, the codemode runner in the container, in place of every other.
+                let servers = if crate::codemode::enabled(state, project_id) {
+                    vec![McpServer::Codemode { project_url }]
+                } else {
+                    hq_servers(state, project_id, agent, &format!("{project_url}/mcp"))
+                };
+                (servers, Some(state.inner.mcp.issue_agent_token(project_id, agent_id)))
             }
             None => (Vec::new(), None),
         };
@@ -666,6 +672,19 @@ mod tests {
         rt.plan(&state, &pid, &id).unwrap();
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
         assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"]);
+
+        crate::codemode::set_switch(&state, &pid, &[json!(true)]).unwrap();
+        rt.plan(&state, &pid, &id).unwrap();
+        let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
+        assert_eq!(
+            cfg["mcpServers"],
+            json!({ "codemode": { "type": "stdio", "command": "node", "args": ["/opt/arima-codemode/server.mjs", format!("http://hq:7420/api/projects/{pid}")], "env": { "ARIMA_MCP_TOKEN": "${ARIMA_MCP_TOKEN}" } } }),
+            "with Tools as code on, the CLI lists only the codemode server"
+        );
+        crate::codemode::set_switch(&state, &pid, &[json!(false)]).unwrap();
+        rt.plan(&state, &pid, &id).unwrap();
+        let cfg: Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".mcp.json")).unwrap()).unwrap();
+        assert_eq!(cfg["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["arima", "open-web"], "off again, today's config");
     }
 
     /// A Docker stand-in that knows only the networks created through it, and logs each request as "METHOD path body".

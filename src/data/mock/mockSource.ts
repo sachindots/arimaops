@@ -656,6 +656,13 @@ export function createMockSource(): OfficeDataSource {
       world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
     },
 
+    setToolsAsCode(on) {
+      const m = world.snap.mcp;
+      if (!m || !("others" in m)) return;
+      m.toolsAsCode = on;
+      world.emit({ type: "mcp.updated", mcp: structuredClone(m) });
+    },
+
     // The demo has no git: packs can be removed but not read.
     addPack() {},
     checkPackUpdates() {},

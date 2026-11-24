@@ -2,9 +2,11 @@ import { useState } from "react";
 import type { ToolServer } from "../../data/generated";
 import { chosenTools, STACK_CATALOG } from "../../data/stack";
 import { getsToolServers } from "../../data/types";
+import { useAuth } from "../../store/auth";
 import { officeActions, useOffice } from "../../store/office";
 import { ago, Field, SectionTitle, useNow } from "../kit";
 import { Select } from "../primitives/Select";
+import { Toggle } from "./controls";
 
 const status = (s: ToolServer): [string, string] =>
   s.blocked ? ["Blocked", "var(--color-red)"] : !s.check ? ["Not checked", "var(--color-muted)"] : s.check.ok ? ["Ready", "var(--color-green)"] : ["Can't connect", "var(--color-red)"];
@@ -14,6 +16,7 @@ export function McpSettings() {
   const mcp = useOffice((s) => s.snap?.mcp);
   const team = useOffice((s) => s.snap?.config.team) ?? [];
   const stack = useOffice((s) => s.snap?.config.stack);
+  const owner = useAuth((s) => s.role === "owner" || s.status === "none");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", url: "", apiKey: "" });
   const now = useNow(30_000);
@@ -153,6 +156,22 @@ export function McpSettings() {
           )}
         </section>
       )}
+
+      <section className="panel p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionTitle>Tools as code</SectionTitle>
+          {owner ? (
+            <Toggle checked={mcp.toolsAsCode} label={mcp.toolsAsCode ? "On" : "Off"} onChange={(on) => officeActions.setToolsAsCode(on)} />
+          ) : (
+            <span className="text-[12px] text-muted">{mcp.toolsAsCode ? "On" : "Off"}. Only the owner changes this.</span>
+          )}
+        </div>
+        <p className="m-0 mt-1 text-[13px] text-muted">
+          Agents get one tool that runs short scripts calling HQ's tools and their tool servers, in place of every tool listed one by one. That keeps
+          their context smaller when they have many tools. Each script runs in a fresh, locked-down process in the agent's own container; keys stay
+          in HQ. Applies at each agent's next start; turning it off stops scripts at once.
+        </p>
+      </section>
 
       <section className="panel p-3">
         <SectionTitle>Add a server</SectionTitle>

@@ -648,6 +648,7 @@ async fn execute_ws_command(
         "resolveAccess" => crate::egress::resolve_access(state, project_id, args),
         "updateSandbox" => crate::integrations::update_sandbox(state, project_id, args),
         "setLabMode" => crate::integrations::set_lab_mode(state, project_id, args),
+        "setToolsAsCode" => crate::codemode::set_switch(state, project_id, args),
         "addMcp" => {
             crate::integrations::add_mcp(state, project_id, args)?;
             crate::integrations::refresh_mcp(state, project_id, &[args.first().map_or(Value::Null, |a| a["name"].clone())]).await

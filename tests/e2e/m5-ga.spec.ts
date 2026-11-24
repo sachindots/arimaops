@@ -80,6 +80,11 @@ test.describe("Milestone 5 (v2.0-GA): Factory & Benchmarks, Vaulted Connections 
       .getByRole("button", { name: "Tool servers and connections" })
       .click();
 
+    const toolsAsCode = page.locator("section", { hasText: "Tools as code" }).getByRole("switch");
+    await expect(toolsAsCode).toHaveAttribute("aria-checked", "false");
+    await toolsAsCode.click();
+    await expect(toolsAsCode).toHaveAttribute("aria-checked", "true");
+
     const connSection = page.getByRole("region", { name: "Tool connections through HQ" });
     await expect(connSection).toBeVisible();
     await assertZeroNativeSelects(page, "Settings/Connections");

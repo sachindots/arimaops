@@ -250,6 +250,8 @@ export interface ToolServerState {
   /** Per agent: the servers it gets at its next start. */
   attached: Record<string, string[]>;
   others: { projectId: string; project: string; name: string }[];
+  /** Tools as code: agents get one codemode tool that calls their tools from code. */
+  toolsAsCode: boolean;
   error: string | null;
   checkedAt: string;
 }
