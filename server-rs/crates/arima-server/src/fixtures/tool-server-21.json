@@ -1,0 +1,1050 @@
+[
+ {
+  "name": "create_issue",
+  "description": "Create a new issue in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "title": {
+     "type": "string",
+     "description": "Issue title."
+    },
+    "body": {
+     "type": "string",
+     "description": "Issue body content, Markdown."
+    },
+    "assignees": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Usernames to assign to this issue."
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Labels to apply to this issue."
+    },
+    "milestone": {
+     "type": "integer",
+     "description": "Milestone number."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "title"
+   ]
+  },
+  "annotations": {
+   "title": "Create issue",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "get_issue",
+  "description": "Get the details of a specific issue in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "issue_number": {
+     "type": "integer",
+     "description": "The number of the issue."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "issue_number"
+   ]
+  },
+  "annotations": {
+   "title": "Get issue",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "list_issues",
+  "description": "List issues in a repository, with filters for state, labels, sort order and date.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "state": {
+     "type": "string",
+     "description": "Filter by state.",
+     "enum": [
+      "open",
+      "closed",
+      "all"
+     ]
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "Filter by labels."
+    },
+    "sort": {
+     "type": "string",
+     "description": "Sort order.",
+     "enum": [
+      "created",
+      "updated",
+      "comments"
+     ]
+    },
+    "direction": {
+     "type": "string",
+     "description": "Sort direction.",
+     "enum": [
+      "asc",
+      "desc"
+     ]
+    },
+    "since": {
+     "type": "string",
+     "description": "Only issues updated after this ISO 8601 timestamp."
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "owner",
+    "repo"
+   ]
+  },
+  "annotations": {
+   "title": "List issues",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "update_issue",
+  "description": "Update an existing issue in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "issue_number": {
+     "type": "integer",
+     "description": "Issue number to update."
+    },
+    "title": {
+     "type": "string",
+     "description": "New title."
+    },
+    "body": {
+     "type": "string",
+     "description": "New description."
+    },
+    "state": {
+     "type": "string",
+     "description": "New state.",
+     "enum": [
+      "open",
+      "closed"
+     ]
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "New labels."
+    },
+    "assignees": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "New assignees."
+    },
+    "milestone": {
+     "type": "integer",
+     "description": "New milestone number."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "issue_number"
+   ]
+  },
+  "annotations": {
+   "title": "Update issue",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "add_issue_comment",
+  "description": "Add a comment to a specific issue in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "issue_number": {
+     "type": "integer",
+     "description": "Issue number to comment on."
+    },
+    "body": {
+     "type": "string",
+     "description": "Comment content."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "issue_number",
+    "body"
+   ]
+  },
+  "annotations": {
+   "title": "Add issue comment",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "search_issues",
+  "description": "Search for issues and pull requests across repositories using the search query syntax.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "Search query using the issue search syntax."
+    },
+    "sort": {
+     "type": "string",
+     "description": "Sort field by number of matches of categories, defaults to best match.",
+     "enum": [
+      "comments",
+      "reactions",
+      "created",
+      "updated"
+     ]
+    },
+    "order": {
+     "type": "string",
+     "description": "Sort order.",
+     "enum": [
+      "asc",
+      "desc"
+     ]
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "query"
+   ]
+  },
+  "annotations": {
+   "title": "Search issues",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "create_pull_request",
+  "description": "Create a new pull request in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "title": {
+     "type": "string",
+     "description": "PR title."
+    },
+    "body": {
+     "type": "string",
+     "description": "PR description."
+    },
+    "head": {
+     "type": "string",
+     "description": "Branch containing changes."
+    },
+    "base": {
+     "type": "string",
+     "description": "Branch to merge into."
+    },
+    "draft": {
+     "type": "boolean",
+     "description": "Create as a draft PR."
+    },
+    "maintainer_can_modify": {
+     "type": "boolean",
+     "description": "Allow maintainer edits."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "title",
+    "head",
+    "base"
+   ]
+  },
+  "annotations": {
+   "title": "Create pull request",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "get_pull_request",
+  "description": "Get details of a specific pull request.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "pullNumber": {
+     "type": "integer",
+     "description": "Pull request number."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "pullNumber"
+   ]
+  },
+  "annotations": {
+   "title": "Get pull request",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "list_pull_requests",
+  "description": "List and filter repository pull requests.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "state": {
+     "type": "string",
+     "description": "Filter by state.",
+     "enum": [
+      "open",
+      "closed",
+      "all"
+     ]
+    },
+    "head": {
+     "type": "string",
+     "description": "Filter by head user/org and branch."
+    },
+    "base": {
+     "type": "string",
+     "description": "Filter by base branch."
+    },
+    "sort": {
+     "type": "string",
+     "description": "Sort by.",
+     "enum": [
+      "created",
+      "updated",
+      "popularity",
+      "long-running"
+     ]
+    },
+    "direction": {
+     "type": "string",
+     "description": "Sort direction.",
+     "enum": [
+      "asc",
+      "desc"
+     ]
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "owner",
+    "repo"
+   ]
+  },
+  "annotations": {
+   "title": "List pull requests",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "merge_pull_request",
+  "description": "Merge a pull request.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "pullNumber": {
+     "type": "integer",
+     "description": "Pull request number."
+    },
+    "commit_title": {
+     "type": "string",
+     "description": "Title for the merge commit."
+    },
+    "commit_message": {
+     "type": "string",
+     "description": "Extra detail for the merge commit."
+    },
+    "merge_method": {
+     "type": "string",
+     "description": "Merge method.",
+     "enum": [
+      "merge",
+      "squash",
+      "rebase"
+     ]
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "pullNumber"
+   ]
+  },
+  "annotations": {
+   "title": "Merge pull request",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "get_pull_request_files",
+  "description": "Get the files changed in a specific pull request.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "pullNumber": {
+     "type": "integer",
+     "description": "Pull request number."
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "pullNumber"
+   ]
+  },
+  "annotations": {
+   "title": "Get pull request files",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "create_pull_request_review",
+  "description": "Create a review on a pull request.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "pullNumber": {
+     "type": "integer",
+     "description": "Pull request number."
+    },
+    "body": {
+     "type": "string",
+     "description": "Review comment text."
+    },
+    "event": {
+     "type": "string",
+     "description": "Review action to perform.",
+     "enum": [
+      "APPROVE",
+      "REQUEST_CHANGES",
+      "COMMENT"
+     ]
+    },
+    "commitId": {
+     "type": "string",
+     "description": "SHA of the commit to review."
+    },
+    "comments": {
+     "type": "array",
+     "description": "Line-specific comments. Each needs a path and either a position or a line.",
+     "items": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file."
+       },
+       "position": {
+        "type": "integer",
+        "description": "Position in the diff."
+       },
+       "line": {
+        "type": "integer",
+        "description": "Line number in the file."
+       },
+       "side": {
+        "type": "string",
+        "description": "Side of the diff.",
+        "enum": [
+         "LEFT",
+         "RIGHT"
+        ]
+       },
+       "body": {
+        "type": "string",
+        "description": "Comment text."
+       }
+      },
+      "required": [
+       "path",
+       "body"
+      ],
+      "additionalProperties": false
+     }
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "pullNumber",
+    "event"
+   ]
+  },
+  "annotations": {
+   "title": "Create pull request review",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "get_file_contents",
+  "description": "Get the contents of a file or directory from a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "path": {
+     "type": "string",
+     "description": "Path to the file or directory."
+    },
+    "ref": {
+     "type": "string",
+     "description": "Accepts optional git refs such as refs/tags/{tag}, refs/heads/{branch} or refs/pull/{n}/head."
+    },
+    "sha": {
+     "type": "string",
+     "description": "Accepts optional commit SHA. If specified, it will be used instead of ref."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "path"
+   ]
+  },
+  "annotations": {
+   "title": "Get file contents",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "create_or_update_file",
+  "description": "Create or update a single file in a repository. To update a file, give the SHA of the file being replaced.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "path": {
+     "type": "string",
+     "description": "Path where to create/update the file."
+    },
+    "content": {
+     "type": "string",
+     "description": "Content of the file."
+    },
+    "message": {
+     "type": "string",
+     "description": "Commit message."
+    },
+    "branch": {
+     "type": "string",
+     "description": "Branch to create/update the file in."
+    },
+    "sha": {
+     "type": "string",
+     "description": "Blob SHA of the file being replaced; required for updates."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "path",
+    "content",
+    "message",
+    "branch"
+   ]
+  },
+  "annotations": {
+   "title": "Create or update file",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "push_files",
+  "description": "Push multiple files to a repository in a single commit.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "branch": {
+     "type": "string",
+     "description": "Branch to push to."
+    },
+    "files": {
+     "type": "array",
+     "description": "Array of file objects to push, each with path and content.",
+     "items": {
+      "type": "object",
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file."
+       },
+       "content": {
+        "type": "string",
+        "description": "File content."
+       }
+      },
+      "required": [
+       "path",
+       "content"
+      ],
+      "additionalProperties": false
+     }
+    },
+    "message": {
+     "type": "string",
+     "description": "Commit message."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "branch",
+    "files",
+    "message"
+   ]
+  },
+  "annotations": {
+   "title": "Push files",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "create_branch",
+  "description": "Create a new branch in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "branch": {
+     "type": "string",
+     "description": "Name for the new branch."
+    },
+    "from_branch": {
+     "type": "string",
+     "description": "Source branch (defaults to the repository default)."
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "branch"
+   ]
+  },
+  "annotations": {
+   "title": "Create branch",
+   "readOnlyHint": false
+  }
+ },
+ {
+  "name": "list_commits",
+  "description": "Get the list of commits of a branch in a repository.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "sha": {
+     "type": "string",
+     "description": "Commit SHA, branch or tag name to list commits of."
+    },
+    "author": {
+     "type": "string",
+     "description": "Author username or email to filter commits by."
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "owner",
+    "repo"
+   ]
+  },
+  "annotations": {
+   "title": "List commits",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "search_code",
+  "description": "Fast and precise code search across all repositories using the code search syntax.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "Search query using the code search syntax, e.g. 'content:Skill language:Java org:example'."
+    },
+    "sort": {
+     "type": "string",
+     "description": "Sort field ('indexed' only)."
+    },
+    "order": {
+     "type": "string",
+     "description": "Sort order for results.",
+     "enum": [
+      "asc",
+      "desc"
+     ]
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "query"
+   ]
+  },
+  "annotations": {
+   "title": "Search code",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "search_repositories",
+  "description": "Find repositories by name, description, readme, topics or other metadata.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "query": {
+     "type": "string",
+     "description": "Repository search query."
+    },
+    "minimal_output": {
+     "type": "boolean",
+     "description": "Return minimal repository information (default true)."
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "query"
+   ]
+  },
+  "annotations": {
+   "title": "Search repositories",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "list_workflow_runs",
+  "description": "List the runs of a CI workflow, filtered by branch, actor, event or status.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "workflow_id": {
+     "type": "string",
+     "description": "The workflow ID or file name."
+    },
+    "branch": {
+     "type": "string",
+     "description": "Returns runs for this branch."
+    },
+    "actor": {
+     "type": "string",
+     "description": "Returns someone's workflow runs."
+    },
+    "event": {
+     "type": "string",
+     "description": "Returns runs triggered by this event.",
+     "enum": [
+      "push",
+      "pull_request",
+      "schedule",
+      "workflow_dispatch",
+      "release"
+     ]
+    },
+    "status": {
+     "type": "string",
+     "description": "Returns runs with this check run status.",
+     "enum": [
+      "queued",
+      "in_progress",
+      "completed",
+      "requested",
+      "waiting"
+     ]
+    },
+    "page": {
+     "type": "integer",
+     "description": "Page number for pagination (min 1).",
+     "minimum": 1
+    },
+    "perPage": {
+     "type": "integer",
+     "description": "Results per page for pagination (min 1, max 100).",
+     "minimum": 1,
+     "maximum": 100
+    }
+   },
+   "required": [
+    "owner",
+    "repo",
+    "workflow_id"
+   ]
+  },
+  "annotations": {
+   "title": "List workflow runs",
+   "readOnlyHint": true
+  }
+ },
+ {
+  "name": "get_job_logs",
+  "description": "Download logs for a CI job, or all failed jobs in a run, returning the tail of each log.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "owner": {
+     "type": "string",
+     "description": "Repository owner (user or organisation)."
+    },
+    "repo": {
+     "type": "string",
+     "description": "Repository name."
+    },
+    "job_id": {
+     "type": "integer",
+     "description": "The unique identifier of the job (needed for single-job logs)."
+    },
+    "run_id": {
+     "type": "integer",
+     "description": "Workflow run ID (needed when failed_only is true)."
+    },
+    "failed_only": {
+     "type": "boolean",
+     "description": "When true, gets logs for every failed job in run_id."
+    },
+    "return_content": {
+     "type": "boolean",
+     "description": "Returns the log content instead of URLs."
+    },
+    "tail_lines": {
+     "type": "integer",
+     "description": "Number of lines to return from the end of the log.",
+     "default": 500
+    }
+   },
+   "required": [
+    "owner",
+    "repo"
+   ]
+  },
+  "annotations": {
+   "title": "Get job logs",
+   "readOnlyHint": true
+  }
+ }
+]

@@ -4,6 +4,7 @@
 
 pub mod backups;
 pub mod cli;
+pub mod codemode;
 pub mod delivery;
 pub mod egress;
 pub mod factory;
