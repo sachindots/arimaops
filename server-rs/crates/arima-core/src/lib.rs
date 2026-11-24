@@ -6,6 +6,7 @@
 pub mod auth;
 pub mod decision;
 pub mod feedback;
+pub mod form;
 pub mod meeting;
 pub mod outbox;
 pub mod pack;
