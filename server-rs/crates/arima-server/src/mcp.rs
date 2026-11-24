@@ -1714,3 +1714,15 @@ fn tool_propose_send(
         "ownerOnly": saved.owner_only,
     }))
 }
+
+#[cfg(test)]
+mod crypto_golden {
+    /// Captured before the RustCrypto upgrade: `mcp_tokens` rows store this digest form.
+    #[test]
+    fn token_digest_is_lowercase_sha256_hex() {
+        assert_eq!(
+            super::token_digest("golden-mcp-token"),
+            "b35a9a22e57375e5dbed3669f8d6d27a332372f56ba677286effa1e64fe87f20"
+        );
+    }
+}
