@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
@@ -276,7 +277,21 @@ impl ProfileStore {
     }
 }
 
-/// Probes `<server_url>/api/health` with a 4-second timeout to report reachability and version.
+fn probe_client() -> std::result::Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<std::result::Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(8))
+                .timeout(Duration::from_secs(10))
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// Probes `<server_url>/api/health` with a 10-second timeout to report reachability and version.
 pub async fn probe_server_health(raw_url: &str) -> HealthProbeResult {
     let start = Instant::now();
     let base = match validate_server_url(raw_url) {
@@ -293,10 +308,7 @@ pub async fn probe_server_health(raw_url: &str) -> HealthProbeResult {
         }
     };
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(4))
-        .build()
-    {
+    let client = match probe_client() {
         Ok(c) => c,
         Err(err) => {
             return HealthProbeResult {
@@ -305,7 +317,7 @@ pub async fn probe_server_health(raw_url: &str) -> HealthProbeResult {
                 engine: None,
                 version: None,
                 latency_ms: 0,
-                error: Some(err.to_string()),
+                error: Some(err),
             };
         }
     };
