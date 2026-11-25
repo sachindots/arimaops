@@ -231,8 +231,6 @@ export function reduce(snap: OfficeSnapshot, e: OfficeEvent): OfficeSnapshot {
       return { ...snap, company: e.company };
     case "goals.updated":
       return { ...snap, goals: e.goals };
-    case "connections.updated":
-      return snap;
     case "spend.updated":
       return { ...snap, spend: e.spend };
     case "githubApp.updated":

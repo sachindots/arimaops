@@ -4,6 +4,7 @@
 //! and WebSocket envelopes shared between the Rust backend (`server-rs/`) and React UI (`src/`).
 
 pub mod auth;
+pub mod cli;
 pub mod decision;
 pub mod feedback;
 pub mod form;
@@ -14,6 +15,7 @@ pub mod protocol;
 pub mod tool_server;
 
 pub use auth::{AuthUser, AuditEntry, DeviceSession, PasskeyInfo, ProjectRole, ServerRole};
+pub use cli::AgentCli;
 pub use decision::{
     DecisionKind, DecisionPayload, DecisionStatus, OpinionSide, PermissionPayload, QuestionAnswer,
     QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload, VisualDecision,

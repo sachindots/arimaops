@@ -10,7 +10,6 @@ import { readPref, writePref } from "../../lib/prefs";
 import { ago, fmtTokens, fmtUsd, Portrait, Sparkline, StateChip, useCountUp, useNow } from "../kit";
 import { TerminalView } from "../drawers/TerminalView";
 import { FILTERS, matches, rowsOf, sortRows, tokensOf, type Filter, type Row } from "./rank";
-import { useScreens } from "./screens";
 import { RosterTable } from "../agents/RosterTable";
 import { FactoryCard } from "./Factory";
 import { agentMode } from "../hud/theme";
@@ -84,10 +83,6 @@ export function CommandView() {
     return list;
   }, [snap, others, current]);
   const all = useMemo(() => sortRows(projects.flatMap((p) => rowsOf(p.id, p.name, p.current, p.snap, now)), pinned), [projects, pinned, now]);
-  const screens = useScreens(
-    projects.map((p) => p.id),
-    live,
-  );
 
   const inScope = all.filter((r) => !projectsOff.has(r.project) && matches(r, query));
   const shown = inScope.filter((r) => FILTERS[filter](r.mode) && !hidden.has(r.key));
@@ -212,7 +207,6 @@ export function CommandView() {
           <Focus
             key={focus.key}
             row={focus}
-            screen={screens[focus.project]?.[focus.agent.id]}
             now={now}
             multi={multi}
             use={usageOf(focus)}
@@ -229,13 +223,8 @@ export function CommandView() {
 }
 
 /** The focused agent: who, what, its numbers, and its live screen (the real terminal for this project's running agents). */
-function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row: Row; screen: string | undefined; now: number; multi: boolean; use?: AgentUsage; pinned: boolean; onPin: () => void; onHide: () => void }) {
-  const pre = useRef<HTMLPreElement>(null);
+function Focus({ row: r, now, multi, use, pinned, onPin, onHide }: { row: Row; now: number; multi: boolean; use?: AgentUsage; pinned: boolean; onPin: () => void; onHide: () => void }) {
   const running = r.status?.session.state === "running";
-  const text = (screen ?? "").replace(/\s+$/, "");
-  useEffect(() => {
-    if (pre.current) pre.current.scrollTop = pre.current.scrollHeight;
-  }, [text]);
   const color = MODE_COLOR[r.mode];
   const urgent = r.mode === "needs-input" || r.mode === "alert";
   const tokens = use ? use.input + use.cached + use.output : tokensOf(r);
@@ -298,10 +287,6 @@ function Focus({ row: r, screen, now, multi, use, pinned, onPin, onHide }: { row
       <div className="relative min-h-0 flex-1 bg-cream-2/50">
         {running && r.current ? (
           <TerminalView key={r.agent.id} agentId={r.agent.id} autoFocus={false} />
-        ) : running && text ? (
-          <pre ref={pre} className="scroll-thin m-0 h-full overflow-auto whitespace-pre bg-[#0b1220] px-4 py-3 font-term text-[12px] leading-[1.45] text-[#f8fafc]" onDoubleClick={open} aria-label={`${r.agent.name}'s screen`}>
-            {text}
-          </pre>
         ) : (
           <div className="grid h-full place-items-center p-6 text-center">
             <div className="flex flex-col items-center gap-3">

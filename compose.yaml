@@ -1,36 +1,54 @@
-# ArimaOps HQ in Docker. On a fresh server:
-#   cp deploy/compose.env.example .env   # then edit it
-#   docker compose up -d
-# Update: docker compose pull && docker compose up -d   (or `build` instead of `pull` from a checkout)
+# ArimaOps HQ (v2 Rust runtime + Docker agent containers)
 #
-# Your home folder is mounted at the same path inside, so HQ's files (~/.arima), sign-ins,
-# repos, and the folders it hands to agent containers all keep their real paths.
-# Note: agents run in tmux inside this container, so restarting it restarts them.
+# Quick start (or run `curl -fsSL https://raw.githubusercontent.com/sachindots/arimaops/main/install.sh | sh`):
+#   cp deploy/compose.env.example .env   # fill in DOCKER_GID and ARIMA_MASTER_KEY
+#   docker compose up -d
+#
+# Note: HQ needs access to /var/run/docker.sock to launch agent containers. Run only on a trusted host.
 
 services:
-  hq:
-    image: ${ARIMA_IMAGE:-arimaops:latest}
+  arima-hq:
+    image: ${ARIMA_HQ_IMAGE:-ghcr.io/sachindots/arimaops-v2:latest}
     build:
       context: .
-      dockerfile: docker/hq.Dockerfile
-    init: true
+      dockerfile: docker/hq.v2.Dockerfile
+    container_name: arimaops-hq
     restart: unless-stopped
-    # Same as a native install: HQ listens on 127.0.0.1 (reach it with `tailscale serve 7420`),
-    # and the Container-mode egress proxy binds the Docker bridge.
-    network_mode: host
-    user: "${ARIMA_UID:?set ARIMA_UID}:${ARIMA_GID:?set ARIMA_GID}"
     group_add:
-      - "${DOCKER_GID:?set DOCKER_GID}"
+      - "${DOCKER_GID:?set DOCKER_GID to your docker group id}"
     environment:
-      HOME: ${ARIMA_HOME_DIR:?set ARIMA_HOME_DIR}
-      # Empty: HQ uses the 0600 key file in ~/.arima (same as a native install). Servers should set it.
-      ARIMA_MASTER_KEY: ${ARIMA_MASTER_KEY:-}
-      # gh inside the container can't reach the host's keyring: it keeps its own sign-in here
-      # (`docker compose exec -it hq gh auth login` once), so the host's gh setup is never touched.
-      GH_CONFIG_DIR: ${ARIMA_HOME_DIR}/.arima/docker-gh
+      ARIMA_HOME: /data
+      HQ_HOST: "0.0.0.0"
+      HQ_PORT: "7420"
+      HQ_PREVIEW_PORT: "7421"
+      HQ_TRUST_PROXY: "${HQ_TRUST_PROXY:-false}"
+      HQ_PUBLIC_ORIGIN: "${HQ_PUBLIC_ORIGIN:-}"
+      HQ_PREVIEW_DOMAIN: "${HQ_PREVIEW_DOMAIN:-}"
+      ARIMA_MASTER_KEY: "${ARIMA_MASTER_KEY:-}"
+      ARIMA_GITHUB_WEBHOOK_SECRET: "${ARIMA_GITHUB_WEBHOOK_SECRET:-}"
+      ARIMA_AGENT_IMAGE: "${ARIMA_AGENT_IMAGE:-ghcr.io/sachindots/arimaops-agent:latest}"
+      ARIMA_AGENT_NETWORK: "${ARIMA_AGENT_NETWORK:-}"
+      ARIMA_AGENT_HQ_URL: "${ARIMA_AGENT_HQ_URL:-http://arima-hq:7420}"
+      ARIMA_WORKSPACES_ROOT: /workspaces
+      ARIMA_WORKSPACES_HOST_ROOT: "${ARIMA_WORKSPACES_DIR:-./workspaces}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    ports:
+      - "127.0.0.1:${HQ_HOST_PORT:-7420}:7420"
+      - "127.0.0.1:${HQ_PREVIEW_HOST_PORT:-7421}:7421"
     volumes:
-      - ${ARIMA_HOME_DIR}:${ARIMA_HOME_DIR}
+      - arima_data:/data
+      - ${ARIMA_WORKSPACES_DIR:-./workspaces}:/workspaces
       - /var/run/docker.sock:/var/run/docker.sock
-    working_dir: ${ARIMA_HOME_DIR}
-    command: ["--repo", "${ARIMA_REPO:?set ARIMA_REPO}", "--port", "${ARIMA_PORT:-7420}", "--remote", "--no-open"]
+    cpus: ${HQ_CPUS:-4.0}
+    mem_limit: 4g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:7420/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
+volumes:
+  arima_data:

@@ -4,11 +4,8 @@ import { type ProjectOverview, type TaskStatus } from "../../data/types";
 import { isViewer, officeActions, openProject, useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Field, Portrait, SectionTitle } from "../kit";
-import { Select } from "../primitives/Select";
 import { DrawerHeader } from "./Drawer";
 import { presets } from "../../data/mock/presets";
-
-const TASK_STATUSES: TaskStatus[] = ["todo", "in-progress", "in-review", "done", "blocked"];
 
 const STATUS_BADGE: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: "TODO", color: "#8b9bb4" },
@@ -25,14 +22,9 @@ export function CtoDrawer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [registerPath, setRegisterPath] = useState("");
   const [newName, setNewName] = useState("");
-  const [archiving, setArchiving] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<{ id: string; typed: string } | null>(null);
-  /** The deletion record of the project just deleted, to hand to the client. */
-  const [record, setRecord] = useState<{ name: string; project: string } | null>(null);
-  const [newTaskTitle, setNewTaskTitle] = useState<Record<string, string>>({});
-  const [newTaskOwner, setNewTaskOwner] = useState<Record<string, string>>({});
   const [auditSent, setAuditSent] = useState(false);
 
   const fetchProjects = useCallback(async () => {
@@ -122,101 +114,48 @@ export function CtoDrawer() {
     window.setTimeout(() => setAuditSent(false), 4000);
   };
 
-  const handleRegisterProject = async (e: React.FormEvent) => {
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!registerPath.trim() || !live) return;
+    const trimmed = newName.trim();
+    if (!trimmed || !live) return;
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+    setCreating(true);
     setError(null);
     try {
-      const res = await fetch(`/api/projects/register`, {
+      const res = await fetch("/api/projects", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: registerPath.trim() }),
+        body: JSON.stringify({ name: trimmed, slug }),
       });
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
+      const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
-      setRegisterPath("");
+      setNewName("");
+      await fetchProjects();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
     }
   };
 
-  const handleCreateTask = async (projectId: string) => {
-    const title = (newTaskTitle[projectId] ?? "").trim();
-    if (!title || !live) return;
-    setError(null);
-    try {
-      const ownerId = newTaskOwner[projectId] || undefined;
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, ownerId }),
-      });
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
-      setNewTaskTitle((prev) => ({ ...prev, [projectId]: "" }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleUpdateTask = async (
-    projectId: string,
-    taskId: string,
-    patch: { status?: TaskStatus; ownerId?: string | null },
-  ) => {
+  const handleDeleteProject = async (projectId: string) => {
     if (!live) return;
     setError(null);
     try {
-      const res = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(patch),
-        },
-      );
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  /** POSTs to /api/projects/…; refreshes the list from the reply. */
-  const post = async (path: string, body?: object) => {
-    setError(null);
-    try {
-      const res = await fetch(`/api/projects/${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body ?? {}),
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+        method: "DELETE",
+        credentials: "same-origin",
       });
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string; record?: string };
+      const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
-      return data;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      return false;
-    }
-  };
-
-  const setPaused = async (projectId: string, pause: boolean) => {
-    setError(null);
-    try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/${pause ? "pause" : "resume"}`, { method: "POST" });
-      const data = (await res.json()) as { projects?: ProjectOverview[]; error?: string };
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      if (data.projects) setProjects(data.projects.map((p) => ({ ...p, isCurrent: p.id === snap?.config.project.id })));
+      setDeleting(null);
+      await fetchProjects();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
 
-  const archived = projects.filter((p) => p.archived);
   const active = projects.filter((p) => !p.archived);
   const totalTasksAll = projects.reduce((acc, p) => acc + p.counts.total, 0);
   const totalDoneAll = projects.reduce((acc, p) => acc + p.counts.done, 0);
@@ -288,20 +227,14 @@ export function CtoDrawer() {
         <section className="flex flex-col gap-3">
           <SectionTitle>Projects ({active.length})</SectionTitle>
           {live && !isViewer && (
-            <form
-              className="flex flex-wrap items-end gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newName.trim()) void post("create", { name: newName.trim() }).then((ok) => ok && setNewName(""));
-              }}
-            >
+            <form className="flex flex-wrap items-end gap-2" onSubmit={handleCreateProject}>
               <div className="min-w-[200px] flex-1">
-                <Field label="New project" hint="Makes ~/projects/<name>; you pick its team when you open it.">
+                <Field label="New project" hint="Creates a new project workspace in HQ; you pick its team when you open it.">
                   <input className="field" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="my-app" autoComplete="off" />
                 </Field>
               </div>
-              <button type="submit" className="btn btn-primary min-h-[36px] px-3" disabled={!newName.trim()}>
-                Create project
+              <button type="submit" className="btn btn-primary min-h-[36px] px-3" disabled={creating || !newName.trim()}>
+                {creating ? "Creating…" : "Create project"}
               </button>
             </form>
           )}
@@ -343,32 +276,16 @@ export function CtoDrawer() {
                           Open
                         </button>
                       )}
-                      {live && !isViewer && p.online && (
-                        <button
-                          type="button"
-                          className="btn px-2 py-0.5 text-[12px]"
-                          title={p.paused ? "Resume GitHub and sandbox polling" : "Pause GitHub and sandbox polling (agents still report)"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void setPaused(p.id, !p.paused);
-                          }}
-                        >
-                          {p.paused ? "Resume" : "Pause"}
-                        </button>
-                      )}
                       {live && !isViewer && p.online && active.length > 1 && (
                         <button
                           type="button"
-                          className={`btn px-2 py-0.5 text-[12px] ${archiving === p.id ? "border-red text-red" : ""}`}
-                          title="Stop its agents and move it to the archive. Nothing is deleted."
+                          className={`btn px-2 py-0.5 text-[12px] ${deleting?.id === p.id ? "border-red text-red" : ""}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (archiving !== p.id) return setArchiving(p.id);
-                            setArchiving(null);
-                            void post(`${encodeURIComponent(p.id)}/archive`);
+                            setDeleting(deleting?.id === p.id ? null : { id: p.id, typed: "" });
                           }}
                         >
-                          {archiving === p.id ? "Stop agents & archive" : "Archive"}
+                          Delete…
                         </button>
                       )}
                     </div>
@@ -376,6 +293,35 @@ export function CtoDrawer() {
                       {p.counts.done}/{p.counts.total} done ({pct}%) {isExpanded ? "▾" : "▸"}
                     </span>
                   </div>
+
+                  {deleting?.id === p.id && (
+                    <form
+                      className="flex flex-col gap-2 rounded-lg border border-red/50 p-2"
+                      onClick={(e) => e.stopPropagation()}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleDeleteProject(p.id);
+                      }}
+                    >
+                      <p className="m-0 text-[12px]">
+                        Deletes everything {BRAND.name} keeps for <b>{p.name}</b>: its tasks, agents, findings, logs, and memory. This can&apos;t be undone. Type{" "}
+                        <code>{p.id}</code> to confirm.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          className="field min-w-[160px] flex-1 font-term"
+                          value={deleting.typed}
+                          autoComplete="off"
+                          autoCapitalize="off"
+                          onChange={(e) => setDeleting({ id: p.id, typed: e.target.value })}
+                          placeholder={p.id}
+                        />
+                        <button type="submit" className="btn min-h-[40px] border-red px-3 text-red" disabled={deleting.typed.trim() !== p.id}>
+                          Delete for good
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   <div className="truncate font-term text-[12px] text-muted">{p.path}</div>
 
@@ -430,190 +376,38 @@ export function CtoDrawer() {
                     </div>
 
                     {p.tasks.length === 0 ? (
-                      <p className="mb-3 text-[12px] text-muted">No tasks on this project's board yet. Add one below.</p>
+                      <p className="mb-1 text-[12px] text-muted">No tasks on this project&apos;s board yet.</p>
                     ) : (
-                      <div className="mb-3 flex flex-col gap-1.5">
-                        {p.tasks.map((t) => (
+                      <div className="flex flex-col gap-1.5">
+                        {p.tasks.map((t) => {
+                          const ownerName = p.team.find((m) => m.id === t.ownerId)?.name ?? "Unassigned";
+                          return (
                             <div
                               key={t.id}
-                              className="grid grid-cols-2 items-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 py-1.5 text-[12px] sm:grid-cols-[72px_1fr_130px_125px]"
+                              className="grid grid-cols-[72px_1fr_auto_auto] items-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-card)] px-2 py-1.5 text-[12px]"
                             >
-                              <span className="col-span-2 font-term text-muted sm:col-span-1">{t.id}</span>
-                              <div className="col-span-2 min-w-0 sm:col-span-1">
+                              <span className="font-term text-muted">{t.id}</span>
+                              <div className="min-w-0">
                                 <div className="truncate font-semibold" title={t.title}>
                                   {t.title}
                                 </div>
                                 {t.note && <div className="truncate text-[12px] text-muted">{t.note}</div>}
                               </div>
-                              <Select
-                                size="sm"
-                                value={t.ownerId ?? ""}
-                                aria-label={`Owner for ${t.id}`}
-                                options={[
-                                  { value: "", label: "Unassigned" },
-                                  ...p.team.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` })),
-                                ]}
-                                onChange={(v) => void handleUpdateTask(p.id, t.id, { ownerId: v || null })}
-                              />
-                              <Select
-                                size="sm"
-                                value={t.status}
-                                aria-label={`Status for ${t.id}`}
-                                options={TASK_STATUSES.map((s) => ({ value: s, label: STATUS_BADGE[s].label }))}
-                                onChange={(v) => void handleUpdateTask(p.id, t.id, { status: v as TaskStatus })}
-                              />
+                              <span className="truncate text-muted">{ownerName}</span>
+                              <span className="chip text-[12px]" style={{ ["--c" as string]: STATUS_BADGE[t.status].color }}>
+                                {STATUS_BADGE[t.status].label}
+                              </span>
                             </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
-
-                    {/* Quick cross-project task creator */}
-                    <form
-                      className="grid grid-cols-[1fr_150px_auto] items-end gap-2 border-t border-[var(--border-hairline)] pt-3"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        void handleCreateTask(p.id);
-                      }}
-                    >
-                      <Field label={`Dispatch new task to ${p.name}`}>
-                        <input
-                          className="field text-[12px]"
-                          placeholder="Task title (e.g. Audit CSP headers, Build landing hero…)"
-                          value={newTaskTitle[p.id] ?? ""}
-                          onChange={(e) => setNewTaskTitle((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                        />
-                      </Field>
-                      <Field label="Assign to">
-                        <Select
-                          size="sm"
-                          value={newTaskOwner[p.id] ?? ""}
-                          aria-label={`Assign new task on ${p.name}`}
-                          options={[
-                            { value: "", label: "Unassigned" },
-                            ...p.team.map((m) => ({ value: m.id, label: `${m.name} (${m.role})` })),
-                          ]}
-                          onChange={(v) => setNewTaskOwner((prev) => ({ ...prev, [p.id]: v }))}
-                        />
-                      </Field>
-                      <button type="submit" className="btn px-3 py-1.5 text-[12px]">
-                        + Add Task
-                      </button>
-                    </form>
                   </div>
                 )}
               </div>
             );
           })}
         </section>
-
-        {record && (
-          <section className="flex flex-col gap-2 rounded-xl border border-green/40 p-3">
-            <b className="text-[15px]">{record.project} is deleted</b>
-            <p className="m-0 text-[13px] text-muted">
-              The deletion record lists what was removed and what stays. Open it and save it as PDF to send your client; it's also kept under{" "}
-              <code>~/{BRAND.homeDir}/deletion-records</code>.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.html`} target="_blank" rel="noreferrer">
-                Open deletion record ↗
-              </a>
-              <a className="btn min-h-[40px] px-3 text-[12px]" href={`/api/projects/deletion-records/${encodeURIComponent(record.name)}.json`} target="_blank" rel="noreferrer">
-                JSON
-              </a>
-              <button type="button" className="btn min-h-[40px] px-3 text-[12px]" onClick={() => setRecord(null)}>
-                Close
-              </button>
-            </div>
-          </section>
-        )}
-
-        {archived.length > 0 && (
-          <section className="flex flex-col gap-2">
-            <SectionTitle>Archive ({archived.length})</SectionTitle>
-            {archived.map((p) => (
-              <div key={p.id} className="flex flex-col gap-2 rounded-xl border border-white/[0.08] p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <b className="text-[15px]">{p.name}</b>
-                  <span className="text-[12px] text-muted">
-                    {p.team.length} agents · {p.counts.done}/{p.counts.total} tasks done
-                  </span>
-                  <span className="flex-1" />
-                  {live && !isViewer && (
-                    <>
-                      <button type="button" className="btn min-h-[40px] px-3 text-[12px]" onClick={() => void post(`${encodeURIComponent(p.id)}/restore`)}>
-                        Restore
-                      </button>
-                      <button
-                        type="button"
-                        className="btn min-h-[40px] border-red px-3 text-[12px] text-red"
-                        onClick={() => setDeleting(deleting?.id === p.id ? null : { id: p.id, typed: "" })}
-                      >
-                        Delete…
-                      </button>
-                    </>
-                  )}
-                </div>
-                <div className="truncate font-term text-[12px] text-muted">{p.path}</div>
-                {deleting?.id === p.id && (
-                  <form
-                    className="flex flex-col gap-2 rounded-lg border border-red/50 p-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void post(`${encodeURIComponent(p.id)}/delete`, { confirm: deleting.typed.trim() }).then((d) => {
-                        if (!d) return;
-                        setDeleting(null);
-                        if (d.record) setRecord({ name: d.record, project: p.name });
-                      });
-                    }}
-                  >
-                    <p className="m-0 text-[12px]">
-                      Deletes everything {BRAND.name} keeps for <b>{p.name}</b>: the agents' folders, chats, tasks, findings, logs, the team's memory and its
-                      backups. The code in {p.path} and its git history stay. You get a deletion record to send your client. This can't be undone. Type{" "}
-                      <code>{p.id}</code> to confirm.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        className="field min-w-[160px] flex-1 font-term"
-                        value={deleting.typed}
-                        autoComplete="off"
-                        autoCapitalize="off"
-                        onChange={(e) => setDeleting({ id: p.id, typed: e.target.value })}
-                        placeholder={p.id}
-                      />
-                      <button type="submit" className="btn min-h-[40px] border-red px-3 text-red" disabled={deleting.typed.trim() !== p.id}>
-                        Delete for good
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            ))}
-          </section>
-        )}
-
-        {live && !isViewer && (
-          <section className="rounded-xl border border-white/[0.08] p-3">
-            <SectionTitle>Add an existing folder</SectionTitle>
-            <form className="flex items-end gap-2" onSubmit={handleRegisterProject}>
-              <div className="flex-1">
-                <Field
-                  label="Repository / Project Path on Disk"
-                  hint="Adds the folder to ~/.arima/projects.json and loads it into this server (a new folder gets a fresh .arima/arima.db)."
-                >
-                  <input
-                    className="field font-term text-[13px]"
-                    value={registerPath}
-                    onChange={(e) => setRegisterPath(e.target.value)}
-                    placeholder="~/code/another-project"
-                  />
-                </Field>
-              </div>
-              <button type="submit" className="btn px-3 py-1.5 text-[12px]">
-                Register
-              </button>
-            </form>
-          </section>
-        )}
       </div>
     </>
   );

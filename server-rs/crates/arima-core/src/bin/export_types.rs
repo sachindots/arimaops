@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use arima_core::{
-    AgentInstruction, AuditEntry, AuthUser, BoundingBox, ConsoleErrorEntry, DecisionKind,
+    AgentCli, AgentInstruction, AuditEntry, AuthUser, BoundingBox, ConsoleErrorEntry, DecisionKind,
     DecisionPayload, DecisionStatus, DeviceSession, ElementSelection, FeedbackRoute, FormAnswer,
     FormPayload, FormSpec,
     MeetingAgendaItem, MeetingKind, MeetingMinutes, MeetingSession, MeetingStatus, MeetingTurn,
@@ -40,6 +40,9 @@ pub fn render_typescript() -> String {
     );
 
     // Auth & RBAC
+    push_decl::<AgentCli>(&mut out);
+    let cli_list: Vec<String> = AgentCli::ALL.iter().map(|c| format!("\"{}\"", c.id())).collect();
+    out.push_str(&format!("export const AGENT_CLIS = [{}] as const;\n\n", cli_list.join(", ")));
     push_decl::<ServerRole>(&mut out);
     push_decl::<ProjectRole>(&mut out);
     push_decl::<AuthUser>(&mut out);
@@ -151,6 +154,8 @@ mod tests {
         assert!(ts.starts_with("// SPDX-License-Identifier: AGPL-3.0-or-later"));
         assert!(!ts.contains("\nimport "));
         for expected in [
+            "export type AgentCli",
+            "export const AGENT_CLIS",
             "export type ServerRole",
             "export type MeetingKind",
             "export type MeetingSession",

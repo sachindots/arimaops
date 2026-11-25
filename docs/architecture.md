@@ -4,7 +4,7 @@ How the code is laid out, where the security boundaries are, and how it grows in
 
 ## 1. The shape today
 
-One Node process (the **HQ server**) runs every project on a machine. Each project has a team of AI agents. Every agent is a real CLI (Claude Code, Codex, Antigravity, Gemini CLI…) running in its own tmux session, folder and, optionally, container. Browsers, the tablet and the phone are views of that server.
+One Rust server (`server-rs/`, the **HQ server**) runs every project on a machine inside Docker. Each project has a team of AI agents. Every agent runs a real CLI (Claude Code, Codex, Antigravity, Gemini CLI…) inside an isolated container and workspace. Web browsers and the Tauri/Android clients are views of that server.
 
 ```
  browser / tablet / phone (React UI)

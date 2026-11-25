@@ -11,14 +11,13 @@ This guide takes you from a fresh machine to a team of AI agents working on your
 
 HQ checks everything below when it starts and shows a **setup checklist** with the exact command for anything missing, so you can also skip ahead to [step 6](#6-run-hq) and follow the checklist.
 
-## 1. Install Node.js, git and the GitHub CLI
+## 1. Install Docker, git and the GitHub CLI
 
 | | macOS | Linux (Ubuntu) | Windows 11 (PowerShell) |
 |---|---|---|---|
-| Node.js 22+ | `brew install node` | [nodesource](https://github.com/nodesource/distributions) or `nvm install 22` | `winget install OpenJS.NodeJS.LTS` |
+| Docker + Compose v2 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | `curl -fsSL https://get.docker.com \| sh` | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | git | `xcode-select --install` | `sudo apt install git` | `winget install Git.Git` |
 | GitHub CLI | `brew install gh` | `sudo apt install gh` | `winget install GitHub.cli` |
-| tmux | `brew install tmux` | `sudo apt install tmux` | not needed |
 
 No Homebrew on your Mac? Install it from [brew.sh](https://brew.sh) first.
 
@@ -107,10 +106,10 @@ Tip: add a short `plan.md` (stack, features, phases) and push it before starting
 From your project's folder:
 
 ```bash
-npx arimaops@latest
+curl -fsSL https://raw.githubusercontent.com/sachindots/arimaops/main/install.sh | sh
 ```
 
-`@latest` makes sure npx doesn't reuse an old version it cached. HQ opens your browser. If it doesn't, open the `http://127.0.0.1:7420/?token=…` link printed in the terminal.
+`install.sh` pulls the ArimaOps v2 Docker image, writes `compose.yaml`, and starts HQ via Docker Compose. Open the URL it prints in your browser.
 
 - **Welcome:** name the project, pick a lead and workers (Claude Code or Codex for each) and a review tool. Optionally pick your stack (frameworks, auth, payments, database, analytics, security): agents then get those tools' agent skills and know what the project uses. This is saved to `.arima/config.json` in your repo.
 - **Setup checklist:** anything still missing shows here with a **Copy** button and, for safe commands, **Run in terminal**. Press **Check again** after fixing something.
@@ -139,7 +138,7 @@ When an agent needs a website its sandbox blocks (a tool's docs, an API), it ask
 | Start fails with a Docker sign-in error | Your sign-in expired: `sbx login`, then **Check again**. |
 | Agents can't push or open PRs | Step 4 (`sbx secret set github …`), and check the repo has a GitHub `origin` (step 5). |
 | A Codex agent waits on "Do you trust this folder?" | Answer it once in the agent's terminal. HQ never answers trust prompts for you. |
-| "Port 7420 is in use" | Another HQ is running. Stop it or use `--port 7421`. |
-| Windows: `listen EACCES` | Windows reserved that port. Use `--port 8420`. |
+| "Port 7420 is in use" | Another HQ is running. Stop it or change `HQ_PORT` in `compose.yaml`. |
+| Windows: `listen EACCES` | Windows reserved that port. Change `HQ_PORT` (for example `8420`). |
 
 More in the [README](../README.md#troubleshooting). To learn what HQ does behind the scenes, read [How it works](how-it-works.md).

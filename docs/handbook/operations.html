@@ -82,8 +82,8 @@ docker logs -f arimaops-hq-1
 docker exec arimaops-hq-1 tmux ls
 docker exec arimaops-hq-1 tmux capture-pane -p -t hq-&lt;project&gt;-&lt;agent&gt; -S -40
 
-# Local bare-metal dev (stop Docker HQ first because both want port 7420)
-pnpm dev:hq
+# Local bare-metal Rust dev (use HQ_PORT=7430 if Docker HQ is already on 7420)
+HQ_PORT=7430 pnpm dev
 
 # Safe UI-only mock mode (runs alongside Docker HQ with zero interference)
 HQ_PORT=59999 pnpm exec vite --port 5178 --strictPort
@@ -91,14 +91,14 @@ HQ_PORT=59999 pnpm exec vite --port 5178 --strictPort
     </div>
 
     <h2 id="desktop-icon">2. Ubuntu Desktop Icon: Why Clicking It Breaks</h2>
-    <p>The desktop shortcuts <code>~/Desktop/arimaops.desktop</code> and <code>~/Desktop/arimaops-remote.desktop</code> (installed by <code>scripts/launcher/install-desktop.sh</code>) are valid and GNOME-trusted, and both call <code>~/.local/bin/arimaops-launch</code> (copied from <code>scripts/launcher/arimaops-launch.sh</code>). Clicking the icon behaves erratically for <strong>three concrete bugs inside <code>arimaops-launch.sh</code></strong> that predate Docker Compose and the SQLite migration:</p>
+    <p>Legacy v1 desktop launcher scripts (<code>scripts/launcher/</code>) were retired alongside the Node CLI in favor of the Tauri desktop app in <code>apps/client/</code>. The table below documents the historical race conditions that motivated moving desktop hosting and session tracking into the Rust runtime:</p>
 
     <div class="table-wrap">
       <table>
         <thead><tr><th>Bug in <code>arimaops-launch.sh</code></th><th>What the Script Does</th><th>What Actually Happens</th></tr></thead>
         <tbody>
           <tr><td><strong>1. Ignores Docker HQ</strong> (lines 49–60)</td><td>Only checks if a bare-metal PID file exists at <code>~/.arima/logs/server.pid</code>.</td><td>When <code>arimaops-hq-1</code> is running in Docker, there is no <code>server.pid</code> file. The launcher assumes HQ is off and tries to start a second bare-metal Node process.</td></tr>
-          <tr><td><strong>2. Port &amp; SQLite collision</strong> (lines 63–68)</td><td>Tries port <code>7420</code> (or bumps to <code>7421</code> if busy) and launches <code>node bin/arimaops.mjs</code>.</td><td>Docker HQ already owns <code>127.0.0.1:7420</code> and the egress proxy <code>172.30.0.1:8420</code>. The bare-metal spawn either crashes with <code>EADDRINUSE</code> (logged in <code>~/.arima/logs/server.log</code>) or spins up a conflicting second server sharing <code>~/.arima/arima.db</code>.</td></tr>
+          <tr><td><strong>2. Port &amp; SQLite collision</strong> (historical v1 launcher)</td><td>Tries port <code>7420</code> (or bumps to <code>7421</code> if busy) and launches a second bare-metal process.</td><td>Docker HQ already owns <code>127.0.0.1:7420</code> and the egress proxy <code>172.30.0.1:8420</code>. A second bare-metal server sharing state either fails to bind or collides on the SQLite database.</td></tr>
           <tr><td><strong>3. Reads deleted <code>projects.json</code></strong> (lines 18–24)</td><td>Parses <code>~/.arima/projects.json</code> to build the recent-projects Zenity picker.</td><td><code>docs.ts</code> migrated <code>projects.json</code> into <code>~/.arima/arima.db</code> and renamed the file to <code>projects.json.pre-sqlite.bak</code>. So the recent list is always empty and it drops straight to a raw folder browser.</td></tr>
         </tbody>
       </table>

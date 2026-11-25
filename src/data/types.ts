@@ -1,6 +1,7 @@
 import type { MessageTag } from "./messageTags";
 import type { FreeModelsState } from "./freeModels";
 import type { TaskScore } from "./scorers";
+import { AGENT_CLIS, type AgentCli } from "./generated";
 import type {
   AgentInstruction,
   BoundingBox,
@@ -37,6 +38,8 @@ import type {
   VoiceProvider,
 } from "./generated";
 
+export { AGENT_CLIS, type AgentCli };
+
 export type {
   AgentInstruction,
   BoundingBox,
@@ -71,7 +74,7 @@ export type {
   VoiceProvider,
 };
 
-export interface GateRecord {
+interface GateRecord {
   at: number;
   gateId: string;
   state: "passed" | "waived" | "failed";
@@ -111,7 +114,7 @@ export interface SubmitVisualFeedbackInput {
 }
 
 /** The verifier's evidence for a task's PR at one commit: what it did, and the screenshots or recording. */
-export interface TaskEvidence {
+interface TaskEvidence {
   sha: string;
   prNumber: number | null;
   by: string;
@@ -128,12 +131,10 @@ import type { StackConfig } from "./stack";
 
 // ---------------------------------------------------------------- Config
 
-/** sbx's machine-wide base network policy (`sbx policy init`). */
-export type BasePolicy = "allow-all" | "balanced" | "deny-all" | "unknown";
+type BasePolicy = "allow-all" | "balanced" | "deny-all" | "unknown";
 
 /** Services sbx can inject keys for through its host proxy (the value never enters the VM). */
 export const SERVICE_KEYS = ["anthropic", "openai", "github", "google", "groq", "mistral", "openrouter", "xai", "nebius", "copilot", "cursor", "devin", "droid"] as const;
-export type ServiceKey = (typeof SERVICE_KEYS)[number];
 
 /** VM size. null = HQ's default (SANDBOX_DEFAULT), not sbx's own (all host CPUs, half the RAM). Set at creation only. */
 export interface SandboxResources {
@@ -153,13 +154,8 @@ export interface SandboxSettings {
 
 /** sandbox = Docker Sandboxes (sbx microVM); container = plain Docker behind HQ's allowlist proxy (VMs); local = on the host. */
 export type AgentMode = "sandbox" | "container" | "local";
-export const isAgentMode = (v: unknown): v is AgentMode => v === "sandbox" || v === "container" || v === "local";
 /** HQ starts only container-mode agents, so only they can be given tool servers. */
 export const getsToolServers = (a: { mode: AgentMode }) => a.mode === "container";
-
-/** Which coding or autonomous agent CLI runs in the sandbox or locally. */
-export const AGENT_CLIS = ["claude", "codex", "agy", "opencode", "gemini", "copilot"] as const;
-export type AgentCli = (typeof AGENT_CLIS)[number];
 
 export const isAgentCli = (v: unknown): v is AgentCli => typeof v === "string" && (AGENT_CLIS as readonly string[]).includes(v);
 
@@ -173,7 +169,7 @@ export const CLI_LABEL: Record<AgentCli, string> = {
 };
 
 /** CLIs not yet run end to end with a real team; shown as experimental in pickers. */
-export const EXPERIMENTAL_CLIS: ReadonlySet<AgentCli> = new Set<AgentCli>(["opencode", "gemini", "copilot"]);
+const EXPERIMENTAL_CLIS: ReadonlySet<AgentCli> = new Set<AgentCli>(["opencode", "gemini", "copilot"]);
 export const cliPickerLabel = (c: AgentCli) => `${CLI_LABEL[c]}${EXPERIMENTAL_CLIS.has(c) ? " (experimental)" : ""}`;
 
 export const CLI_MODELS: Record<AgentCli, string[]> = {
@@ -230,8 +226,8 @@ export interface AgentConfig {
   engine?: AgentEngine;
 }
 
-/** Frozen v1 server only: a server in the sandbox runtime's registry. */
-export interface McpServer {
+/** Legacy server shape: a server in the sandbox runtime's registry. */
+interface McpServer {
   name: string;
   transport: string;
   status: string;
@@ -272,7 +268,7 @@ export type ReviewTool = "coderabbit" | "greptile" | "copilot" | "human" | "cust
 export type DeployTool = "instacloud" | "vercel" | "custom";
 export type WorkflowMode = "github-pr" | "deliverables";
 
-export interface WorkflowConfig {
+interface WorkflowConfig {
   /** "github-pr" = 1 task = 1 branch = 1 PR; "deliverables" = universal non-PR task & artifact workflow for any domain. */
   mode?: WorkflowMode;
   review: { enabled: boolean; tool: ReviewTool; command: string };
@@ -308,7 +304,7 @@ export interface ProjectConfig {
 }
 
 /** A lesson a project offered to its template: general, no project id. Approved ones go into the next projects' briefs. */
-export interface TemplateLesson {
+interface TemplateLesson {
   id: string;
   templateId: string;
   type: string;
@@ -513,22 +509,6 @@ export interface Goal {
   /** Estimated spend on its tasks (priced models only). */
   usd: number;
 }
-/** A remote MCP server HQ calls for the agents (server/connections.ts). Never carries the key. */
-export interface ToolConnection {
-  name: string;
-  url: string;
-  /** Roles whose agents may use it; none = nobody. */
-  roles: string[];
-  /** Tools the owner ticked as read-only: the only ones agents can call. */
-  read: string[];
-  /** The tool HQ calls when the owner clicks Send on a proposed send; agents never call it. */
-  send: string | null;
-  /** The server's tools at the last check. */
-  tools: { name: string; description: string }[];
-  probedAt: string | null;
-  hasKey: boolean;
-}
-
 export interface ConnectionInput {
   name: string;
   url?: string;
@@ -568,7 +548,7 @@ export interface PullRequest {
   ciGreen?: boolean;
 }
 
-export type EnvironmentStatus = "live" | "deploying" | "sleeping";
+type EnvironmentStatus = "live" | "deploying" | "sleeping";
 
 export interface Environment {
   name: string; // "main" | agent id
@@ -670,7 +650,7 @@ export type SetupCheckId =
   | `login-${AgentCli}@${string}`;
 export type SetupStatus = "ok" | "missing" | "unsupported" | "warning";
 
-export interface SetupFix {
+interface SetupFix {
   command: string; // shown with a Copy button
   runnable: boolean; // HQ may run it in a visible terminal ("Run in terminal")
   docs: string | null;
@@ -686,14 +666,14 @@ export interface SetupCheck {
 }
 
 /** A network rule in effect for a sandbox, as sbx reports it. */
-export interface SbxRule {
+interface SbxRule {
   id: string;
   decision: "allow" | "deny";
   resources: string[];
   source: "hq" | "kit" | "org" | "cli"; // cli = added with the sbx CLI, outside HQ
 }
 
-export interface SbxAgentState {
+interface SbxAgentState {
   rules: SbxRule[]; // empty until the sandbox exists
   keys: string[]; // service keys scoped to this sandbox
   envFile: { path: string; exists: boolean; keys?: string[] };
@@ -707,12 +687,12 @@ export interface SbxAgentState {
 /** Terminal id of the Terminal panel: your own shell on this machine, not in a sandbox. */
 export const HOST_TERMINAL = "shell:@host";
 
-export interface SbxPort {
+interface SbxPort {
   sandbox: number;
   host: number;
 }
 
-export interface SbxApproval {
+interface SbxApproval {
   id: string; // sbx's approval id
   host: string; // "mcp.notion.com:443"
   /** sbx's title as is, e.g. "GET api.example.com:443/v1/data" (shown, so different requests can be told apart). */
@@ -799,8 +779,6 @@ export interface OfficeSnapshot {
   /** What every agent on this machine knows about the company (Settings → Project). */
   company?: string;
   goals?: Goal[];
-  /** Owner and operators: the machine's tool connections (no keys). */
-  connections?: ToolConnection[];
   spend?: SpendState;
   githubApp?: GitHubAppState;
   skillPacks?: SkillPackView[];
@@ -823,7 +801,7 @@ export interface OfficeSnapshot {
 }
 
 /** A memory waiting for the user's check. `conflict`: a certified memory of the same type about the same thing. */
-export interface PendingMemory {
+interface PendingMemory {
   id: string;
   type: string;
   text: string;

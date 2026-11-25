@@ -1,12 +1,10 @@
+import { useState } from "react";
 import type { DeployTool, ReviewTool, WorkflowMode } from "../../data/types";
+import { securityReviewWorkflow, WEBHOOK_PATH } from "../../data/githubApp";
 import { deployToolLabel, officeActions, reviewToolLabel, useOffice } from "../../store/office";
 import { Field, SectionTitle } from "../kit";
 import { Select } from "../primitives/Select";
 import { CommitInput, Toggle } from "./controls";
-import { useState } from "react";
-import { appManifest, GITHUB_STATE_KEY, newAppUrl, securityReviewWorkflow, WEBHOOK_PATH } from "../../data/githubApp";
-import { BRAND } from "../../data/brand";
-import { useAuth } from "../../store/auth";
 
 
 /** Anthropic's security review on every PR (docs/templates.md section 3): a pinned workflow file the owner adds; HQ never commits it. */
@@ -38,42 +36,16 @@ function SecurityReviewSection() {
  */
 function GitHubAppSection() {
   const gh = useOffice((s) => s.snap?.githubApp);
-  const { role } = useAuth();
-  // The webhook gets its own Funnel port (deploy/github-webhook.sh): never the port HQ's pages are on.
-  const funnel = location.protocol === "https:" && location.hostname.endsWith(".ts.net") ? `https://${location.hostname}:8443` : "";
-  const [hookBase, setHookBase] = useState(funnel);
-  const [org, setOrg] = useState("");
-  const base = hookBase.trim().replace(/\/+$/, "");
-  const validBase = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(base);
-  const create = () => {
-    const state = crypto.randomUUID().replace(/-/g, "");
-    try {
-      sessionStorage.setItem(GITHUB_STATE_KEY, state);
-    } catch {
-      /* private window: the callback can't be matched, so the code is refused */
-    }
-    const form = document.createElement("form");
-    form.method = "post";
-    form.action = newAppUrl(state, org.trim());
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "manifest";
-    input.value = JSON.stringify(appManifest(`${BRAND.name} HQ`, `${base}${WEBHOOK_PATH}`, `${location.origin}/api/github/app/callback`));
-    form.appendChild(input);
-    document.body.appendChild(form);
-    form.submit();
-  };
-  const owner = !role || role === "owner";
   return (
     <section className="panel p-3">
-      <SectionTitle>GitHub App</SectionTitle>
+      <SectionTitle>GitHub webhooks</SectionTitle>
       {gh?.app ? (
         <>
           <p className="text-[13px]">
             <b>{gh.app.slug}</b>
-            {gh.app.owner ? ` (${gh.app.owner})` : ""}: webhooks bring PR news in seconds; HQ still polls every 5 minutes as a safety net, and at its normal pace when no webhook arrived for 10 minutes.
+            {gh.app.owner ? ` (${gh.app.owner})` : ""}: webhooks bring PR updates to HQ in seconds; HQ still polls every few minutes as a fallback.
           </p>
-          <p className="mt-1 text-[13px] text-muted">{gh.lastDeliveryAt ? `Last webhook: ${new Date(gh.lastDeliveryAt).toLocaleString()}` : "No webhook received yet. Install the App on the repo and turn on the Funnel (below)."}</p>
+          <p className="mt-1 text-[13px] text-muted">{gh.lastDeliveryAt ? `Last webhook: ${new Date(gh.lastDeliveryAt).toLocaleString()}` : "No webhook received yet."}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <a className="btn min-h-[44px] px-3 text-[13px]" href={gh.app.installUrl} target="_blank" rel="noreferrer">
               Install on a repo
@@ -84,21 +56,10 @@ function GitHubAppSection() {
           </div>
         </>
       ) : (
-        <>
-          <p className="mb-2 text-[13px] text-muted">
-            Without an App, HQ polls GitHub about once a minute. With one, GitHub tells HQ about PR changes in seconds. You create it on GitHub in one click; HQ keeps its key in the vault and reads only (pull requests, checks, contents).
-          </p>
-          <Field label="Webhook address" hint={`GitHub posts PR events to this address, at ${WEBHOOK_PATH}. It must be reachable from the internet; without it HQ polls about once a minute.`}>
-            <input className="field font-term text-[12px]" value={hookBase} placeholder="https://hq.your-tailnet.ts.net" onChange={(e) => setHookBase(e.target.value)} />
-          </Field>
-          <Field label="Organization (optional)" hint="Leave empty to create the App on your own account.">
-            <input className="field" value={org} placeholder="your-org" onChange={(e) => setOrg(e.target.value)} />
-          </Field>
-          <button className="btn mt-1 min-h-[44px]" disabled={!validBase || !owner} onClick={create}>
-            Create GitHub App
-          </button>
-          {!owner && <p className="mt-1 text-[12px]">Only the owner creates the App.</p>}
-        </>
+        <p className="m-0 text-[13px] text-muted">
+          HQ polls GitHub automatically. To get instant PR updates instead, configure a repository webhook pointing to{" "}
+          <span className="font-term">{WEBHOOK_PATH}</span> signed with <span className="font-term">ARIMA_GITHUB_WEBHOOK_SECRET</span>.
+        </p>
       )}
     </section>
   );

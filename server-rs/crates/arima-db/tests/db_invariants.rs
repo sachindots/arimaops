@@ -22,7 +22,7 @@ fn opens_with_wal_foreign_keys_and_0600_permissions() {
             })?;
         assert_eq!(fk, 1);
         assert_eq!(journal.to_lowercase(), "wal");
-        assert_eq!(schema_version, 15);
+        assert_eq!(schema_version, 16);
         Ok::<_, DbError>(())
     })
     .unwrap();

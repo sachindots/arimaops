@@ -2,25 +2,25 @@
 
 ## Run it from source
 
-Needs Node.js 22+ and pnpm 10 or 11 (`corepack enable` gets you pnpm).
+Needs Node.js 22+ and pnpm 10 or 11 (`corepack enable` gets you pnpm), plus Rust (stable) and Docker when running the HQ server locally.
 
 ```bash
 git clone https://github.com/sachindots/arimaops && cd arimaops
 pnpm install
-pnpm dev                                   # the UI with fake data, no agents
-HQ_REPO=~/developer/hq-test pnpm dev:hq    # the real HQ server + UI, with hot reload
+pnpm dev:ui                                # the UI with fake data, no agents
+HQ_PORT=7430 pnpm dev                      # the Rust HQ server (needs built dist/)
 ```
 
-`pnpm dev` is a demo with fake data: nothing runs and nothing leaves the browser. To test a change for real, use `pnpm dev:hq` or `pnpm hq` against a throwaway repo.
+`pnpm dev:ui` is a demo with fake data: nothing runs and nothing leaves the browser. To test a change end-to-end against the Rust HQ, build the UI (`pnpm build`) and run `pnpm dev`, or run the Docker / Playwright suite (`PLAYWRIGHT_PORT=47313 HQ_PORT=47399 pnpm test:e2e`).
 
 | Command | Does |
 | --- | --- |
-| `pnpm dev` | Demo UI with fake data at http://localhost:5173 |
-| `pnpm dev:hq` | Real HQ server + UI with hot reload (`HQ_REPO=<path>`) |
-| `pnpm hq` | Builds the UI, then runs HQ like a release (`--repo <path> --port 7420`) |
-| `pnpm build` | Type-checks, builds the UI to `dist/` and the server to `dist-server/` |
+| `pnpm dev:ui` | Demo UI with fake data at http://localhost:5173 |
+| `pnpm dev` | Runs `server-rs/` (`arima-server`) against built `dist/` |
+| `pnpm build` | Type-checks and builds the UI to `dist/` |
 | `pnpm typecheck` | Type-check only |
-| `npm pack` | Builds the npm tarball, to test it before publishing |
+| `pnpm test` | Runs every `scripts/*-test.ts` suite |
+| `cargo test --manifest-path server-rs/Cargo.toml` | Runs Rust HQ unit & integration tests |
 
 Start HQ with `HQ_DEBUG=1` to log why a queued message is waiting.
 
@@ -32,8 +32,9 @@ src/
   store/     Zustand stores; the only code that talks to the data source
   office/    The PixiJS pixel office: layout, sprites, agents, belt
   ui/        Top bar, team panel, activity, drawers, settings, setup checklist, welcome
-server/      Local HQ server: setup checks, workspaces, sessions (tmux, or HQ-run on Windows), sbx, hooks, Team MCP, GitHub
-bin/         The arimaops command
+server-rs/   Rust HQ workspace (`crates/arima-*`): SQLite store, container runtime, auth, MCP, GitHub webhooks
+apps/client/ Tauri desktop & Android client
+docker/      v2 HQ image (`hq.v2.Dockerfile`), sandbox & verifier images
 docs/        User guides and design docs
 context/     Implementation plans
 ```

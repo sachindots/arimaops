@@ -287,6 +287,9 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
     const errors = attachErrorCollector(page);
+    await page.addLocatorHandler(page.getByRole("dialog", { name: "Setup checklist" }), async (dialog) => {
+      await dialog.getByRole("button", { name: "Continue" }).click();
+    });
 
     // 1. Sign in via ?token= and verify token is stripped from the browser URL
     await page.goto(`http://localhost:${hqPort}/?token=${encodeURIComponent(bootstrapToken)}`, {

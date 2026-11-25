@@ -405,9 +405,7 @@ mod tests {
 
     #[test]
     fn every_agent_cli_the_ui_offers_has_one_adapter_with_skills_under_the_agent_home() {
-        let types = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../src/data/types.ts")).unwrap();
-        let list = types.split("export const AGENT_CLIS = [").nth(1).and_then(|r| r.split(']').next()).expect("AGENT_CLIS in src/data/types.ts");
-        let ui: Vec<&str> = list.split(',').map(|c| c.trim().trim_matches('"')).collect();
+        let ui: Vec<&str> = arima_core::AgentCli::ALL.iter().map(|c| c.id()).collect();
         for cli in &ui {
             assert_eq!(ADAPTERS.iter().filter(|a| a.id == *cli).count(), 1, "{cli}");
         }

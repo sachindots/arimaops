@@ -62,8 +62,8 @@
     <h1>Architecture &amp; Data Flow</h1>
     <p class="lead">From process startup in <code>server/main.ts</code> to real-time WebSocket frames in <code>src/store/office.ts</code>, here is how every module wires together without circular sprawl.</p>
 
-    <h2 id="boot-sequence">Server Boot Lifecycle (<code>bin/arimaops.mjs</code> → <code>server/main.ts</code>)</h2>
-    <p>When ArimaOps launches (via CLI, <code>pnpm dev:hq</code>, or <code>compose.yaml</code>), <code>bin/arimaops.mjs</code> verifies Node.js &ge; 22.13 (the minimum version where <code>node:sqlite</code> loads without a flag), validates <code>--repo</code> and <code>--port</code>, and imports <code>dist-server/main.mjs</code> (or <code>setup.mjs</code> for <code>arimaops setup</code>). Inside <code>server/main.ts</code>, startup follows a deliberate sequence:</p>
+    <h2 id="boot-sequence">Server Boot Lifecycle (<code>server-rs/crates/arima-server/src/main.rs</code>)</h2>
+    <p>When ArimaOps launches (via <code>compose.yaml</code> / <code>install.sh</code> or <code>pnpm dev</code> during development), the Rust <code>arima-server</code> binary runs SQLite migrations, initializes the Docker runtime &amp; egress proxy, restores active project hubs, and serves the built Vite UI from <code>dist/</code>:</p>
     <ol>
       <li><strong>Scrub parent agent variables first:</strong> Line 11 imports <code>./lib/scrubEnv</code> <em>before any other module</em>. If you accidentally start HQ inside an active AI coding CLI session, <code>scrubParentSession(process.env)</code> strips parent session variables before <code>sessions.ts</code> copies <code>process.env</code> into <code>TERM_ENV</code>.</li>
       <li><strong>Fix PTY permissions &amp; migrate home:</strong> <code>ensurePtyHelperExecutable()</code> repairs <code>node-pty</code> spawn-helper permissions; <code>migrateHome()</code> ensures <code>~/.arima</code> is ready.</li>
@@ -250,7 +250,7 @@
     <h2 id="open-core">Command Boundary &amp; Open-Core Seam (<code>ee/</code>)</h2>
     <ul>
       <li><strong>Command parity &amp; <code>ownerIf</code>:</strong> Every WebSocket command in <code>server/commandPolicy.ts</code> declares a minimum role (<code>viewer</code>, <code>operator</code>, <code>owner</code>), optional <code>stepUp: true</code>, Zod tuple schema, and an optional <code>ownerIf(args, ctx)</code> hook. Example: an <code>operator</code> may restart a sandboxed agent, but <code>sendTerminalInput</code> or <code>updateAgent</code> automatically escalates to <code>owner</code>-only if that agent runs in <code>local</code> mode (because a local terminal is a shell on the host machine!).</li>
-      <li><strong>Open-core boundary (<code>server/features.ts</code> &amp; <code>server/license.ts</code>):</strong> Core code never statically imports <code>ee/</code>. At startup, <code>loadEe()</code> checks if <code>dist-server/ee.mjs</code> (or <code>ee/index.ts</code>) exists, dynamically imports its exported <code>features</code> map, and starts only the features explicitly listed in an Ed25519-signed <code>~/.arima/license.json</code> verified offline against the embedded public key.</li>
+      <li><strong>Rust core workspace (<code>server-rs/crates/*</code>):</strong> The server is split into focused crates (<code>arima-core</code> for domain/protocol types, <code>arima-db</code> for SQLite migrations &amp; storage, <code>arima-runtime</code> for container &amp; CLI lifecycle, <code>arima-server</code> for Axum HTTP/WS/MCP routes). Shared UI contracts live in <code>src/data/generated.ts</code> via <code>ts-rs</code>.</li>
     </ul>
 
     <h2 id="frontend">Frontend Architecture (<code>src/</code>)</h2>
