@@ -5,6 +5,7 @@ import { ui } from "../../store/ui";
 import { readPref, writePref } from "../../lib/prefs";
 import { ago, Dot, Meter, Portrait, TokensChip, useNow } from "../kit";
 import { Icon } from "../deck/Icon";
+import { SafeMarkdown } from "../decisions/SafeMarkdown";
 import { Select } from "../primitives/Select";
 import { DrawerHeader, PageTitle } from "./Drawer";
 import { TaskSheet } from "./TaskSheet";
@@ -36,8 +37,10 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
   const [goalId, setGoalId] = useState<string | null>(null);
   const [openTask, setOpenTask] = useState<string | null>(initialTaskId ?? null);
   const [byAgent, setByAgent] = useState(() => readPref("board.lanes") === "agent");
+  const [showSpec, setShowSpec] = useState(false);
   if (!snap) return null;
   const board = boards.find((b) => b.id === boardId);
+  const hasSpec = Boolean(board?.specMarkdown?.trim());
   const stages = snap.config.template?.flow.stages ?? [];
   const goals = (snap.goals ?? []).filter((g) => g.status !== "dropped");
   const onBoard = snap.tasks.filter((t) => t.boardId === boardId);
@@ -87,6 +90,17 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
               options={(Object.keys(STATUS_LABEL) as BoardStatus[]).map((st) => ({ value: st, label: STATUS_LABEL[st] }))}
               onChange={(v) => officeActions.updateBoard(board.id, { status: v as BoardStatus })}
             />
+            {hasSpec && (
+              <button
+                type="button"
+                className="btn text-[13px]"
+                aria-pressed={showSpec}
+                onClick={() => setShowSpec((v) => !v)}
+                title="View this board's specification"
+              >
+                <Icon name="description" size={16} /> Spec{board.specVersion ? ` v${board.specVersion}` : ""}
+              </button>
+            )}
             <button className="btn text-[13px]" aria-pressed={byAgent} onClick={toggleLanes} title="One row per agent">
               <Icon name="view_agenda" size={16} /> Group by agent
             </button>
@@ -159,6 +173,23 @@ export function BoardsDrawer({ initialBoardId, initialStageId, initialTaskId }: 
         </span>
       </div>
 
+      {hasSpec && showSpec && board?.specMarkdown && (
+        <section
+          className="scroll-thin shrink-0 max-h-[40vh] overflow-y-auto border-b border-[var(--border-hairline)] bg-cream-2/40 px-4 py-3"
+          aria-label="Board specification"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[12px] font-semibold uppercase tracking-wider text-muted">
+              Board spec{board.specVersion ? ` · v${board.specVersion}` : ""}
+            </span>
+            <button type="button" className="text-[12px] text-muted hover:text-ink" onClick={() => setShowSpec(false)}>
+              Hide
+            </button>
+          </div>
+          <SafeMarkdown markdown={board.specMarkdown} />
+        </section>
+      )}
+
       <div className="scroll-thin flex min-h-0 flex-1 snap-x flex-col gap-3 overflow-auto p-4 max-[560px]:snap-mandatory">
         <div className="grid gap-3" style={{ gridTemplateColumns: template }}>
           {cols.map((c) => {
@@ -224,7 +255,7 @@ function TaskCard({ task, now, onOpen }: { task: Task; now: number; onOpen: () =
   const snap = useOffice((s) => s.snap);
   const owner = snap?.config.team.find((a) => a.id === task.ownerId);
   const goal = task.goalId ? snap?.goals?.find((g) => g.id === task.goalId) : undefined;
-  const blockedBy = task.needs.filter((n) => snap?.tasks.find((t) => t.id === n)?.status !== "done");
+  const blockedBy = (task.needs ?? []).filter((n) => snap?.tasks.find((t) => t.id === n)?.status !== "done");
   const failed = task.scores?.filter((x) => !x.pass).length ?? 0;
   const done = task.status === "done";
   return (

@@ -60,11 +60,11 @@ export function DeckHeader({
               title="Switch, create or manage projects"
               className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-lg px-1.5 py-1 font-semibold text-ink transition-colors hover:bg-cream-2 sm:gap-2 sm:px-2"
             >
-              <span className="max-w-[116px] truncate text-[13px] sm:max-w-[180px] lg:max-w-[200px]">
+              <span className="min-w-[56px] max-w-[140px] truncate text-[13px] sm:max-w-[180px] lg:max-w-[200px]">
                 {snap.config.project.name}
               </span>
               <span
-                className="hidden shrink-0 rounded-full px-2 py-px text-[12px] font-medium sm:inline-block"
+                className="hidden shrink-0 rounded-full px-2 py-px text-[12px] font-medium lg:inline-block"
                 style={{
                   color: "var(--accent)",
                   background: "color-mix(in srgb, var(--accent) 12%, transparent)",
@@ -106,7 +106,7 @@ export function DeckHeader({
       </div>
 
       {/* Center: Command Bar (desktop >= 1000px) */}
-      <div className="hidden w-[min(360px,30vw)] min-[1000px]:block">
+      <div className="hidden w-[min(280px,24vw)] min-[1000px]:block xl:w-[min(360px,30vw)]">
         <CommandBar snap={snap} />
       </div>
 

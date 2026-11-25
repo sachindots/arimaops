@@ -449,6 +449,8 @@ export interface Board {
   title: string; // "Phase 3 — Knowledge + chat"
   status: BoardStatus;
   order: number;
+  specVersion?: number;
+  specMarkdown?: string | null;
 }
 
 export type TaskStatus = "todo" | "in-progress" | "in-review" | "done" | "blocked";
