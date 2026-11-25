@@ -142,7 +142,7 @@ fn line_for(m: &OutboxMessage) -> Option<String> {
             text("decisionId"),
             text("status"),
             // A form's answer, not the form itself, which could fill the line on its own.
-            clean(&if p["payload"]["kind"] == "form" { &p["payload"]["answer"] } else { &p["payload"] }.to_string()),
+            clean(&if !p["answer"].is_null() { &p["answer"] } else if p["payload"]["kind"] == "form" { &p["payload"]["answer"] } else { &p["payload"] }.to_string()),
             clean(&text("note"))
         )),
         OutboxMessageKind::VisualFeedback => Some("The owner sent visual feedback on the preview. Check the feedback folder in your workspace.".to_owned()),

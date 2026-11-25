@@ -206,6 +206,8 @@ mod tests {
                 answers: vec![],
             }),
             note: None,
+            form: None,
+            answer: None,
             created_at: "2026-11-21T00:00:00Z".into(),
             closed_at: None,
         };
@@ -380,6 +382,8 @@ mod tests {
                 agenda_preview: vec!["Passkey vs TOTP default".into()],
             },
             note: None,
+            form: None,
+            answer: None,
             created_at: "2026-11-21T09:00:00Z".into(),
             closed_at: None,
         };

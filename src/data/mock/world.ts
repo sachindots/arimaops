@@ -1,7 +1,9 @@
 // In-memory state for the mock source. Every mutation goes through a helper
 // that emits the matching OfficeEvent, so the store stays in sync.
 
+import type { VisualDecision } from "../generated";
 import type { OfficeEvent, SimSpeed } from "../source";
+import { withMockForm } from "./mockDecisionForms";
 import type {
   ActionItem,
   ActivityType,
@@ -354,7 +356,7 @@ export class World {
         const t1 = tasks[0]?.id ?? "P3-T01";
         const t2 = tasks[1]?.id ?? "P3-T02";
         const pid = config.project.id;
-        return [
+        const list: VisualDecision[] = [
           {
             id: "vd-question-1",
             projectId: pid,
@@ -365,6 +367,8 @@ export class World {
             waiting: true,
             ownerOnly: false,
             status: "open" as const,
+            form: null,
+            answer: null,
             createdAt: now(),
             closedAt: null,
             note: null,
@@ -437,6 +441,8 @@ export class World {
             waiting: true,
             ownerOnly: true,
             status: "open" as const,
+            form: null,
+            answer: null,
             createdAt: now(),
             closedAt: null,
             note: null,
@@ -479,6 +485,8 @@ export class World {
             waiting: true,
             ownerOnly: false,
             status: "open" as const,
+            form: null,
+            answer: null,
             createdAt: now(),
             closedAt: null,
             note: null,
@@ -501,6 +509,8 @@ export class World {
             waiting: true,
             ownerOnly: false,
             status: "open" as const,
+            form: null,
+            answer: null,
             createdAt: now(),
             closedAt: null,
             note: null,
@@ -527,6 +537,8 @@ export class World {
             waiting: true,
             ownerOnly: false,
             status: "open" as const,
+            form: null,
+            answer: null,
             createdAt: now(),
             closedAt: null,
             note: null,
@@ -550,6 +562,7 @@ export class World {
             },
           },
         ];
+        return list.map((d) => withMockForm(d, config.team));
       })(),
       meetings: (() => {
         const lead = config.team.find((a) => a.isLead) ?? config.team[0];

@@ -150,7 +150,7 @@ findings: Array<string>,
  */
 roles: Array<string>, } | { "kind": "info", markdown: string, } | { "kind": "form" } & FormPayload;
 
-export type VisualDecision = { id: string, projectId: string, fromId: string, taskId: string | null, title: string, details: string, waiting: boolean, ownerOnly: boolean, status: DecisionStatus, payload: DecisionPayload, note: string | null, createdAt: string, closedAt: string | null, };
+export type VisualDecision = { id: string, projectId: string, fromId: string, taskId: string | null, title: string, details: string, waiting: boolean, ownerOnly: boolean, status: DecisionStatus, payload: DecisionPayload, form: FormSpec | null, answer: FormAnswer | null, note: string | null, createdAt: string, closedAt: string | null, };
 
 export type PreviewMode = "local" | "container" | "sandbox";
 

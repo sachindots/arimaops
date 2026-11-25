@@ -86,7 +86,17 @@ const MIGRATIONS: &[Migration] = &[
         name: "016_push_tokens",
         sql: PUSH_TOKENS_SCHEMA,
     },
+    Migration {
+        version: 17,
+        name: "017_decision_forms",
+        sql: DECISION_FORMS_SCHEMA,
+    },
 ];
+
+const DECISION_FORMS_SCHEMA: &str = r#"
+ALTER TABLE visual_decisions ADD COLUMN form_json TEXT;
+ALTER TABLE visual_decisions ADD COLUMN answer_json TEXT;
+"#;
 
 /// Stores per-device mobile push tokens registered via `/api/push/register`.
 const PUSH_TOKENS_SCHEMA: &str = r#"

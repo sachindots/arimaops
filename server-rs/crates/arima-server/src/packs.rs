@@ -480,6 +480,39 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
         details.push_str(&format!("\n\n{n}"));
     }
     let (changed, other_files) = changes(state, before, after);
+    let role_options: Vec<(String, String)> = crate::team::load(state, project_id)
+        .map(|m| {
+            m.template["roles"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|r| {
+                    let rid = r["id"].as_str()?;
+                    let title = r["title"].as_str().unwrap_or(rid);
+                    Some((rid.to_owned(), title.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let payload = DecisionPayload::PackReview {
+        pack: id.to_owned(),
+        from: before.map(|b| b.source.commit.clone()),
+        to: after.source.commit.clone(),
+        from_tree: before.map(|b| b.tree.clone()),
+        to_tree: after.tree.clone(),
+        changed,
+        other_files,
+        agents: after.agents.values().cloned().collect(),
+        egress: after.egress.clone(),
+        secrets: after.secrets.clone(),
+        ignored: after.ignored.clone(),
+        findings: after.scan.blocked.iter().map(|l| format!("block {l}")).chain(after.scan.warnings.iter().map(|l| format!("warn {l}"))).collect(),
+        roles: default_roles(state, project_id, id),
+    };
+    let form = Some(payload.build_form(&arima_core::DecisionFormContext {
+        role_options,
+        ..Default::default()
+    }));
     VisualDecision {
         id: card_id.to_owned(),
         project_id: project_id.to_owned(),
@@ -490,21 +523,9 @@ fn card(state: &AppState, project_id: &str, id: &str, before: Option<&PackEntry>
         waiting: false,
         owner_only: true,
         status: DecisionStatus::Open,
-        payload: DecisionPayload::PackReview {
-            pack: id.to_owned(),
-            from: before.map(|b| b.source.commit.clone()),
-            to: after.source.commit.clone(),
-            from_tree: before.map(|b| b.tree.clone()),
-            to_tree: after.tree.clone(),
-            changed,
-            other_files,
-            agents: after.agents.values().cloned().collect(),
-            egress: after.egress.clone(),
-            secrets: after.secrets.clone(),
-            ignored: after.ignored.clone(),
-            findings: after.scan.blocked.iter().map(|l| format!("block {l}")).chain(after.scan.warnings.iter().map(|l| format!("warn {l}"))).collect(),
-            roles: default_roles(state, project_id, id),
-        },
+        payload,
+        form,
+        answer: None,
         note: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
@@ -703,6 +724,8 @@ pub fn on_tools_listed(state: &AppState, project_id: &str, server: &mut ToolServ
                         markdown: format!("Its tool list differs from the last check. Agents that have it still get it. It now lists: {}.", names.join(", ")),
                     },
                     note: None,
+                    form: None,
+                    answer: None,
                     created_at: Utc::now().to_rfc3339(),
                     closed_at: None,
                 };
@@ -921,7 +944,7 @@ mod tests {
     use std::process::Command;
 
     use arima_auth::VaultKey;
-    use arima_core::{QuestionAnswer, ServerRole};
+    use arima_core::ServerRole;
     use arima_db::{Db, ResolveDecisionInput};
 
     use crate::ServerConfig;
@@ -1012,8 +1035,13 @@ mod tests {
     }
 
     fn approve_for(state: &AppState, id: &str, roles: &[&str]) {
-        let answers = vec![QuestionAnswer { question_id: "roles".into(), selected_option_ids: roles.iter().map(|r| (*r).to_owned()).collect(), other_text: None }];
-        let input = ResolveDecisionInput { status: Some(DecisionStatus::Resolved), answers: Some(answers), ..Default::default() };
+        let form_answer = arima_core::FormAnswer {
+            action: "approve".into(),
+            component_id: "actions_1".into(),
+            context: json!({}),
+            data: json!({ "roles": roles }),
+        };
+        let input = ResolveDecisionInput { status: Some(DecisionStatus::Resolved), form_answer: Some(form_answer), ..Default::default() };
         on_decision(state, &state.inner.decisions.resolve(id, input, ServerRole::Owner).unwrap());
     }
 

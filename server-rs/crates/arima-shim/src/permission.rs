@@ -133,6 +133,8 @@ impl PermissionInterceptor {
                 resolution: None,
             }),
             note: None,
+            form: None,
+            answer: None,
             created_at: Utc::now().to_rfc3339(),
             closed_at: None,
         }

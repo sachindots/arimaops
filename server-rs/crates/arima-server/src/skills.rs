@@ -608,6 +608,8 @@ fn card(project_id: &str, pin: &SkillPin, id: &str) -> VisualDecision {
         status: DecisionStatus::Open,
         payload: DecisionPayload::SkillScan { pack: pin.skill_ref.clone(), findings: lines },
         note: None,
+        form: None,
+        answer: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     }

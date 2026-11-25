@@ -160,6 +160,27 @@ pub fn start_or_request_meeting(
             });
         Ok((session, Some(turn), None))
     } else {
+        let participants_label = participants.join(", ");
+        let agenda_len = agenda_titles.len();
+        let payload = DecisionPayload::MeetingRequest {
+            meeting_id: session.id.clone(),
+            meeting_kind: session.kind,
+            urgency: session.urgency,
+            participant_ids: participants,
+            agenda_preview: agenda_titles,
+        };
+        let team_names = crate::team::load(state, &session.project_id)
+            .map(|m| {
+                m.team
+                    .iter()
+                    .filter_map(|a| Some((a["id"].as_str()?.to_owned(), a["name"].as_str()?.to_owned())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let form = Some(payload.build_form(&arima_core::DecisionFormContext {
+            team_names,
+            ..Default::default()
+        }));
         let decision = VisualDecision {
             id: format!("dec-mtg-{}", uuid::Uuid::new_v4().simple()),
             project_id: session.project_id.clone(),
@@ -169,19 +190,15 @@ pub fn start_or_request_meeting(
             details: format!(
                 "{} invited {} to discuss {} agenda items.",
                 session.moderator_id,
-                participants.join(", "),
-                agenda_titles.len()
+                participants_label,
+                agenda_len
             ),
             waiting: true,
             owner_only: false,
             status: DecisionStatus::Open,
-            payload: DecisionPayload::MeetingRequest {
-                meeting_id: session.id.clone(),
-                meeting_kind: session.kind,
-                urgency: session.urgency,
-                participant_ids: participants,
-                agenda_preview: agenda_titles,
-            },
+            payload,
+            form,
+            answer: None,
             note: None,
             created_at: now_iso,
             closed_at: None,

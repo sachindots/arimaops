@@ -71,7 +71,6 @@ const html = renderToStaticMarkup(
     decisionId: "dec-pack-1",
     projectId: "proj-1",
     payload,
-    roles: [],
   }),
 );
 

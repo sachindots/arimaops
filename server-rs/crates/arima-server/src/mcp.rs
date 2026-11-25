@@ -762,6 +762,8 @@ fn tool_ask_user(
             None => DecisionPayload::Question(QuestionPayload { questions, answers: Vec::new() }),
         },
         note: None,
+        form: None,
+        answer: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     };
@@ -914,6 +916,19 @@ fn tool_second_opinion(
         DecisionPayload::SecondOpinion(so_payload)
     };
 
+    let team_names = crate::team::load(state, &caller.project_id)
+        .map(|m| {
+            m.team
+                .iter()
+                .filter_map(|a| Some((a["id"].as_str()?.to_owned(), a["name"].as_str()?.to_owned())))
+                .collect()
+        })
+        .unwrap_or_default();
+    let form = Some(payload.build_form(&arima_core::DecisionFormContext {
+        team_names,
+        ..Default::default()
+    }));
+
     let decision = VisualDecision {
         id: format!("dec-so-{}", uuid::Uuid::new_v4().simple()),
         project_id: caller.project_id.clone(),
@@ -926,6 +941,8 @@ fn tool_second_opinion(
         status: DecisionStatus::Open,
         payload,
         note: None,
+        form,
+        answer: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     };
@@ -1154,6 +1171,8 @@ fn tool_request_access(
             resolution: None,
         }),
         note: None,
+        form: None,
+        answer: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     };

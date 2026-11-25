@@ -22,7 +22,7 @@ fn opens_with_wal_foreign_keys_and_0600_permissions() {
             })?;
         assert_eq!(fk, 1);
         assert_eq!(journal.to_lowercase(), "wal");
-        assert_eq!(schema_version, 16);
+        assert_eq!(schema_version, 17);
         Ok::<_, DbError>(())
     })
     .unwrap();
@@ -425,7 +425,7 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
         DecisionPayload, DecisionStatus, QuestionOption, QuestionPayload, QuestionPrompt,
         ServerRole, VisualDecision,
     };
-    use arima_db::{DecisionsRepo, ResolveDecisionInput};
+    use arima_db::ResolveDecisionInput;
 
     let db = Db::open_in_memory().unwrap();
     db.transaction(|conn| {
@@ -438,7 +438,7 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
     })
     .unwrap();
 
-    let repo = DecisionsRepo::new(db);
+    let repo = arima_db::DecisionsRepo::new(db);
 
     // 1. Standard question (owner_only = false).
     let q_dec = VisualDecision {
@@ -467,6 +467,8 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
             answers: vec![],
         }),
         note: None,
+        form: None,
+        answer: None,
         created_at: "2020-01-01T00:00:00Z".into(),
         closed_at: None,
     };
@@ -488,6 +490,8 @@ fn decisions_repo_enforces_owner_only_and_excludes_from_stall_escalation() {
             findings: vec!["suspicious".into()],
         },
         note: None,
+        form: None,
+        answer: None,
         created_at: "2020-01-01T00:00:00Z".into(),
         closed_at: None,
     };
@@ -770,4 +774,54 @@ fn migration_15_retires_dead_decision_kinds_and_tool_connections() {
             Ok::<_, DbError>(())
         })
         .unwrap();
+}
+
+#[test]
+fn decision_forms_synthesize_for_legacy_rows_and_resolve_via_form_answer() {
+    use arima_core::{DecisionPayload, DecisionStatus};
+    let dir = TempDir::new().unwrap();
+    let db_path = dir.path().join("legacy-forms.db");
+    let db = Db::open(&db_path).unwrap();
+    db.transaction(|c| {
+        c.execute(
+            "INSERT INTO projects (id, slug, name, root_path, created_at, updated_at) VALUES ('p1', 'p1', 'P1', '/tmp/p1', 1, 1)",
+            [],
+        )?;
+        c.execute(
+            "INSERT INTO visual_decisions (id, project_id, from_id, title, details, waiting, owner_only, status, payload_json, created_at)
+             VALUES ('dec-legacy-perm', 'p1', 'coder', 'Allow bash?', 'Run tests', 1, 0, 'open',
+                     '{\"kind\":\"permission\",\"toolName\":\"bash\",\"commandOrPath\":\"cargo test\",\"reason\":\"tests\",\"scopeHint\":null,\"resolution\":null}', 1)",
+            [],
+        )?;
+        Ok::<_, DbError>(())
+    })
+    .unwrap();
+
+    let repo = arima_db::DecisionsRepo::new(db);
+    let loaded = repo.get("dec-legacy-perm").unwrap().unwrap();
+    assert!(loaded.form.is_some(), "NULL form_json synthesizes a valid FormSpec");
+    assert!(loaded.answer.is_none());
+
+    let resolved = repo
+        .resolve(
+            "dec-legacy-perm",
+            arima_db::ResolveDecisionInput {
+                form_answer: Some(arima_core::FormAnswer {
+                    action: "allow-once".into(),
+                    component_id: "actions_1".into(),
+                    context: serde_json::json!({}),
+                    data: serde_json::json!({ "note": "ok once" }),
+                }),
+                ..Default::default()
+            },
+            arima_core::ServerRole::Operator,
+        )
+        .unwrap();
+    assert_eq!(resolved.status, DecisionStatus::Resolved);
+    assert_eq!(resolved.note.as_deref(), Some("ok once"));
+    assert_eq!(resolved.answer.as_ref().unwrap().action, "allow-once");
+    assert!(matches!(
+        resolved.payload,
+        DecisionPayload::Permission(ref p) if p.resolution.as_deref() == Some("allow-once")
+    ));
 }
