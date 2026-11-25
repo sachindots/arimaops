@@ -1,6 +1,7 @@
 {
   "name": "arimaops",
-  "version": "0.8.0",
+  "version": "2.0.0",
+  "private": true,
   "description": "Lead the pride: your AI company in one office. AI agents build your software and run your security work while you steer from desk, tablet or phone.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
@@ -12,70 +13,21 @@
   "bugs": {
     "url": "https://github.com/sachindots/arimaops/issues"
   },
-  "keywords": [
-    "ai",
-    "agents",
-    "ai-agents",
-    "multi-agent",
-    "agent-orchestration",
-    "coding-agents",
-    "antigravity",
-    "claude",
-    "claude-code",
-    "codex",
-    "opencode",
-    "docker-sandboxes",
-    "mcp",
-    "developer-tools",
-    "security-operations",
-    "red-team"
-  ],
-  "bin": {
-    "arimaops": "bin/arimaops.mjs"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "bin",
-    "dist",
-    "dist-server",
-    "scripts/fix-node-pty.mjs",
-    "LICENSE",
-    "LICENSES",
-    "TRADEMARKS.md",
-    "README.md",
-    "NOTICE",
-    "SECURITY.md"
-  ],
-  "engines": {
-    "node": ">=22.13"
-  },
   "scripts": {
-    "dev": "vite",
-    "dev:hq": "concurrently -k -n hq,ui -c magenta,cyan \"tsx watch server/main.ts --dev\" \"vite\"",
-    "hq": "vite build --logLevel warn && tsx server/main.ts",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p server",
-    "build": "tsc --noEmit -p . && tsc --noEmit -p server && vite build && node scripts/build-server.mjs",
+    "dev": "sh -c 'HQ_PORT=7430 cargo run --manifest-path server-rs/Cargo.toml --bin arima-server & P=$!; trap \"kill $P 2>/dev/null\" EXIT INT TERM; HQ_PORT=7430 vite'",
+    "dev:ui": "vite",
+    "typecheck": "tsc --noEmit -p .",
+    "build": "tsc --noEmit -p . && vite build",
     "gen:team": "tsx scripts/export-team-data.ts",
     "gen:types": "cargo run --quiet --manifest-path server-rs/Cargo.toml -p arima-core --bin export_types -- src/data/generated.ts",
     "test": "node scripts/run-tests.mjs",
     "test:e2e": "playwright test",
-    "bench": "node --import tsx scripts/bench/run.ts",
-    "preview": "vite preview",
-    "prepack": "npm run build",
-    "postinstall": "node scripts/fix-node-pty.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "1.12.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@lydell/node-pty": "1.2.0-beta.18",
     "@material-symbols/font-400": "^0.49.0",
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "@xterm/headless": "6.0.0",
-    "ae-cvss-calculator": "1.0.13",
-    "ws": "^8.23.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -86,14 +38,11 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
     "ajv": "^8.20.0",
-    "concurrently": "^10.0.7",
-    "esbuild": "^0.28.2",
     "framer-motion": "^14.14.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

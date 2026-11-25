@@ -6,17 +6,8 @@ on:
   pull_request:
 
 jobs:
-  # Build once per OS, then install the packed tarball like a new user and start HQ.
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [22]
-        include:
-          - os: ubuntu-latest
-            node: 24
-    runs-on: ${{ matrix.os }}
+  ui:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -24,54 +15,70 @@ jobs:
           version: 10
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Dependency audit (shipped packages, high and critical)
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         run: pnpm audit --prod --audit-level high
       - run: pnpm build
       - name: Tests (every scripts/*-test.ts)
         run: pnpm test
-      - name: Pack
-        shell: bash
-        run: mkdir -p pack && npm pack --ignore-scripts --pack-destination pack
-      - name: CLI smoke test
-        run: node bin/arimaops.mjs --version && node bin/arimaops.mjs --help
-      - name: Install and run like a new user
-        shell: bash
-        run: node scripts/smoke-test.mjs pack/*.tgz 7431
-      - if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        uses: actions/upload-artifact@v7
-        with:
-          name: package
-          path: pack/*.tgz
 
-  # A bare Linux with no compilers (no python, make or g++): proves nothing is
-  # built from source on install, like a fresh Ubuntu or WSL machine.
-  linux-bare:
-    needs: build
-    runs-on: ubuntu-latest
-    container: node:22-bookworm-slim
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: package
-          path: pack
-      - run: apt-get update -qq && apt-get install -y -qq git >/dev/null
-      - run: "! command -v make && ! command -v g++ && ! command -v python3"
-      - run: node scripts/smoke-test.mjs pack/*.tgz 7431
-
-  # The v2 backend (server-rs): every test, then clippy with warnings as errors. The agent-container
-  # codemode test is ignored here: it needs Docker and the agent image (run it with --ignored).
-  rust-test:
+  rust-server:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - run: rustup component add clippy
       - run: cargo test --manifest-path server-rs/Cargo.toml --no-fail-fast
       - run: cargo clippy --manifest-path server-rs/Cargo.toml --all-targets -- -D warnings
+
+  rust-tauri:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup component add clippy
+      - name: Install Linux WebKitGTK system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: cargo test --manifest-path apps/client/src-tauri/Cargo.toml
+      - run: cargo clippy --manifest-path apps/client/src-tauri/Cargo.toml --all-targets -- -D warnings
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm build
+      - run: PLAYWRIGHT_PORT=47313 HQ_PORT=47399 pnpm test:e2e
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build v2 HQ image
+        run: docker build -f docker/hq.v2.Dockerfile -t arimaops-ci:smoke .
+      - name: Install and verify /api/health
+        run: |
+          ARIMA_DIR=/tmp/arima-smoke \
+          ARIMA_COMPOSE_SRC="$PWD/compose.yaml" \
+          ARIMA_HQ_IMAGE=arimaops-ci:smoke \
+          ARIMA_SKIP_PULL=1 \
+          HQ_HOST_PORT=17420 \
+          HQ_PREVIEW_HOST_PORT=17421 \
+          sh ./install.sh
+          curl -fsS http://127.0.0.1:17420/api/health
+      - name: Clean up smoke stack
+        if: always()
+        run: docker compose -f /tmp/arima-smoke/compose.yaml down -v || true
 
   # Known-vulnerability scan of both Rust lockfiles. cargo audit fails on vulnerabilities
   # and only prints warnings for unmaintained or yanked crates.

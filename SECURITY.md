@@ -10,7 +10,7 @@ You'll get a reply within 7 days. Once a fix ships, the advisory credits you unl
 
 ## Supported versions
 
-Only the latest release gets security fixes. Update with `npx arimaops@latest`.
+Only the latest release gets security fixes. Update by pulling the latest v2 Docker image (`install.sh` or `docker compose pull && docker compose up -d`).
 
 ## In scope
 
@@ -26,7 +26,8 @@ Each GitHub release has a `SHA256SUMS` file and a build-provenance attestation:
 
 ```bash
 sha256sum -c SHA256SUMS
-gh attestation verify arimaops-<version>.tgz --repo sachindots/arimaops
+gh attestation verify install.sh --repo sachindots/arimaops
+gh attestation verify compose.yaml --repo sachindots/arimaops
 ```
 
 How the security boundaries work: [docs/architecture.md](docs/architecture.md#2-security-boundaries-today).

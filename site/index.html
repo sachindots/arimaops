@@ -42,7 +42,7 @@
     <div class="btns reveal">
       <a class="btn primary" href="#start">Get started</a>
       <a class="btn ghost" href="#tour">Watch the 90-second tour</a>
-      <div class="cmd"><code id="cmd-hero">npx arimaops@latest</code><button type="button" data-copy="cmd-hero">Copy</button></div>
+      <div class="cmd"><code id="cmd-hero">curl -fsSL https://raw.githubusercontent.com/sachindots/arimaops/main/install.sh | sh</code><button type="button" data-copy="cmd-hero">Copy</button></div>
     </div>
 
     <div class="stage reveal">
@@ -334,10 +334,10 @@
 
 <section class="band alt" id="start">
   <div class="wrap">
-    <div class="head"><span class="eyebrow">Get started</span><h2>Running in a few minutes</h2><p>You need Node.js 22, git and tmux, plus a Claude, ChatGPT or Gemini account or an API key. Docker and the GitHub CLI are optional. HQ checks your machine and shows the command for anything missing.</p></div>
+    <div class="head"><span class="eyebrow">Get started</span><h2>Running in a few minutes</h2><p>You need Docker with Compose v2, plus a Claude, ChatGPT or Gemini account or an API key. GitHub CLI and repo webhooks are optional. HQ checks your machine and shows the command for anything missing.</p></div>
     <div class="steps">
-      <div class="step"><h3>Start HQ in a repo</h3><p>From inside any git repo:</p><div class="cmd"><code id="cmd-start">npx arimaops@latest</code><button type="button" data-copy="cmd-start">Copy</button></div></div>
-      <div class="step"><h3>Pick a template</h3><p>Name the project and choose a team. Run <code>arimaops setup</code> first to have it pick models for your machine.</p></div>
+      <div class="step"><h3>Install and start HQ</h3><p>On any Docker host:</p><div class="cmd"><code id="cmd-start">curl -fsSL https://raw.githubusercontent.com/sachindots/arimaops/main/install.sh | sh</code><button type="button" data-copy="cmd-start">Copy</button></div></div>
+      <div class="step"><h3>Add a project</h3><p>Open the web UI, connect a git repo, and choose a team template or configure models per role in Settings → Team.</p></div>
       <div class="step"><h3>Brief the lead</h3><p>Press Start team and tell the lead what you want, for example "Plan two small tasks and assign the first one."</p></div>
     </div>
     <p class="note">Want a look first? Clone the repo and run <code>pnpm install &amp;&amp; pnpm dev</code>: the demo runs sample projects in your browser, and nothing runs on your machine.</p>

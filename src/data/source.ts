@@ -20,7 +20,6 @@ import type {
   RolePatch,
   Goal,
   GoalPatch,
-  ToolConnection,
   AgentStatus,
   Board,
   Environment,
@@ -81,7 +80,6 @@ export type OfficeEvent =
   | { type: "memory.updated"; memory: MemoryState }
   | { type: "company.updated"; company: string }
   | { type: "goals.updated"; goals: Goal[] }
-  | { type: "connections.updated"; connections: ToolConnection[] } // v1 server/commands.ts only; deleted when v1 retires
   | { type: "spend.updated"; spend: SpendState }
   | { type: "githubApp.updated"; githubApp: GitHubAppState }
   | { type: "skillPacks.updated"; skillPacks: SkillPackView[] }

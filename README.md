@@ -63,7 +63,7 @@ The [features page](https://arimaops.tech/features.html) shows each screen.
 From inside a git repo:
 
 ```bash
-npx arimaops@latest
+curl -fsSL https://raw.githubusercontent.com/sachindots/arimaops/main/install.sh | sh
 ```
 
 HQ opens in your browser:
@@ -87,36 +87,31 @@ Open the link Vite prints. The demo has sample projects (a product build and a s
 
 **First time?** The [getting-started guide](docs/getting-started.md) goes from a fresh machine to a working team.
 
-### Options
+### Configuration
 
-```
-arimaops --repo <path>   the repo to manage (default: current folder)
-         --port <n>      HQ port (default: 7420)
-         --remote        also serve your tablet or phone (sign-in required)
-         --no-open       don't open the browser
-         --version, --help
+Configure HQ via environment variables or `compose.yaml` (see `deploy/compose.env.example`).
+
+```bash
+docker compose up -d                    # start ArimaOps HQ
+docker compose logs -f hq               # follow HQ logs
+docker exec arimaops-hq-1 arima-server migrate-v1 --dry-run --json   # preview migrating ~/.arima
 ```
 
-Use it often? `npm install -g arimaops`, then run `arimaops` in any repo.
+Upgrade cleanly at any time by re-running `install.sh` or `docker compose pull && docker compose up -d`.
 
 ### Set up models in one step
 
-```bash
-arimaops setup           # check this machine and propose a model for every role
-arimaops setup --apply   # use that proposal for every new project (--off to undo)
-```
+Open **Settings → Team** (or **Detect CLI setup** in onboarding) to propose a model for every role from your connected CLIs and providers.
 
-Paid models go to the lead and the builders, free ones to review, QA and docs, and a free fallback takes over when a paid account hits its limit (it still asks first). The same wizard is in **Settings → Team**.
+Paid models go to the lead and the builders, free ones to review, QA and docs, and a free fallback takes over when a paid account hits its limit (it still asks first).
 
 ## Requirements
 
 | What | Why |
 | --- | --- |
-| Node.js 22.13+ | Runs HQ |
+| Docker + Compose v2 | Runs HQ and isolated agent containers |
 | git | Each agent works on its own copy of the repo |
-| tmux (macOS, Linux) | Agents keep running if you close HQ |
 | GitHub CLI (`gh`), optional | Pull requests and reviews |
-| Docker or Docker Sandboxes, optional | Container or sandbox mode for agents |
 | A Claude, ChatGPT or Gemini account, or an API key | For the agents themselves |
 
 HQ checks for each one and shows the exact command to install it.
@@ -141,19 +136,9 @@ Rotating the tablet keeps your open page and unsaved form in place. A landscape 
 
 Deploy the web UI from this checkout to enable the Back handler and **Switch server** on your HQ. Notification links use `arimaops://open?path=%2F%3Fopen%3Dboard`; paths stay on a saved server. The APK above is a debug build for local installation.
 
-### Enable Android alerts
+### Android device push tokens
 
-On the HQ host, run this as the same user that runs HQ:
-
-```bash
-npx tsx scripts/configure-push.ts /private/path/firebase-service-account.json
-```
-
-The command verifies Firebase authorization and stores the credential in the encrypted vault as `push:fcm`. Keep service-account files outside the repo. Sign in to HQ in the Android app and allow notifications. The app registers its current Firebase token with your signed-in device and refreshes it when you return to the app. Push uses FCM HTTP v1 and does not need an incoming public port on HQ.
-
-Alerts cover agents waiting for input, stalled agents, action and access requests, merged pull requests, high or critical findings, and deployment events. Viewers receive informational alerts. Revoked sessions and disabled users receive none. Notification taps open the corresponding project on the saved HQ that sent the alert.
-
-Run `npx tsx scripts/push-test.ts` to check delivery, token rotation, roles, revocation, deduplication, and registration authentication without contacting Firebase.
+Sign in to HQ in the Android app and allow notifications. The app registers its current Firebase token via `POST /api/push/register` and removes it on unregister via `DELETE /api/push/register`. Notification taps open the corresponding project on the saved HQ (`arimaops://open?...`).
 
 ### Change your password in the app
 

@@ -12,7 +12,10 @@ use arima_core::{MeetingKind, MeetingMinutes, MeetingUrgency, ServerRole, VoiceP
 use arima_db::{forget_project, is_owner_only_gate, DbError};
 use axum::body::{Bytes, Body};
 use axum::extract::{Path, Query, State};
-use axum::http::header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_COOKIE};
+use axum::http::header::{
+    AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_COOKIE,
+    X_CONTENT_TYPE_OPTIONS,
+};
 use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -116,6 +119,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/api/auth/login", post(password_login))
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/password", post(change_password))
+        .route("/api/push/register", post(register_push_token).delete(unregister_push_token))
         .route("/api/auth/totp/verify", post(verify_totp))
         .route("/api/auth/devices", get(list_devices))
         .route("/api/auth/devices/{id}", delete(revoke_device))
@@ -147,6 +151,10 @@ pub fn router_with_state(state: AppState) -> Router {
         .route(
             "/api/projects/{id}/tasks/{task_id}/history",
             get(task_history),
+        )
+        .route(
+            "/api/projects/{id}/evidence/{task_id}/{sha}/{file}",
+            get(get_task_evidence_file),
         )
         .route("/api/projects/{id}/decisions", get(list_project_decisions))
         .route(
@@ -2487,4 +2495,278 @@ async fn static_or_404(uri: axum::http::Uri) -> Response {
 
 pub fn audit_redacted_value(v: &Value) -> Value {
     redact_json_value(v)
+}
+
+#[derive(Debug, Deserialize)]
+struct PushRegisterBody {
+    token: String,
+}
+
+async fn register_push_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    PeerIp(peer_ip): PeerIp,
+    Json(body): Json<PushRegisterBody>,
+) -> Result<Json<Value>, ApiError> {
+    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::POST)?;
+    let session = require_session(&state, &ctx, true)?;
+    let Some(ref user) = session.user else {
+        return Err(ApiError::new(StatusCode::UNAUTHORIZED, "Sign in with your HQ account first."));
+    };
+    let token = body.token.trim();
+    if token.is_empty() || token.len() > 4096 || token.chars().any(char::is_control) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid push registration token."));
+    }
+    let origin = ctx.origin.as_deref().unwrap_or("");
+    let now_ms = Utc::now().timestamp_millis();
+    state.inner.db.transaction(|conn| {
+        conn.execute(
+            "INSERT INTO push_tokens (device_id, user_id, token, server_origin, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(device_id) DO UPDATE SET
+               user_id = excluded.user_id,
+               token = excluded.token,
+               server_origin = excluded.server_origin,
+               updated_at = excluded.updated_at",
+            rusqlite::params![session.device_id, user.id, token, origin, now_ms],
+        )?;
+        Ok::<_, DbError>(())
+    })?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn unregister_push_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    PeerIp(peer_ip): PeerIp,
+) -> Result<Json<Value>, ApiError> {
+    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::DELETE)?;
+    let session = require_session(&state, &ctx, true)?;
+    if session.user.is_none() {
+        return Err(ApiError::new(StatusCode::UNAUTHORIZED, "Sign in with your HQ account first."));
+    }
+    state.inner.db.transaction(|conn| {
+        conn.execute("DELETE FROM push_tokens WHERE device_id = ?1", [&session.device_id])?;
+        Ok::<_, DbError>(())
+    })?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+fn valid_single_segment(seg: &str) -> bool {
+    !seg.is_empty()
+        && seg != "."
+        && seg != ".."
+        && !seg.contains('/')
+        && !seg.contains('\\')
+        && !seg.contains('\0')
+}
+
+fn evidence_content_type(file_name: &str) -> &'static str {
+    let ext = file_name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("txt" | "log" | "md" | "json" | "csv") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+fn read_evidence_no_symlinks(
+    root: &std::path::Path,
+    base: &str,
+    task_id: &str,
+    sha: &str,
+    file: &str,
+) -> Result<Option<Vec<u8>>, ApiError> {
+    let mut cur = root.join("evidence");
+    if let Ok(md) = std::fs::symlink_metadata(&cur) {
+        if md.file_type().is_symlink() {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid evidence path."));
+        }
+    } else {
+        return Ok(None);
+    }
+    for seg in [base, task_id, sha, file] {
+        cur.push(seg);
+        match std::fs::symlink_metadata(&cur) {
+            Ok(md) if md.file_type().is_symlink() => {
+                return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid evidence path."));
+            }
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())),
+        }
+    }
+    if !cur.is_file() {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(&cur).map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Some(bytes))
+}
+
+async fn get_task_evidence_file(
+    State(state): State<AppState>,
+    Path((project_id, task_id, sha, file)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+    PeerIp(peer_ip): PeerIp,
+) -> Result<Response, ApiError> {
+    let ctx = extract_ctx(&state, &headers, peer_ip, &Method::GET)?;
+    let _session = require_session(&state, &ctx, false)?;
+    if !valid_single_segment(&project_id)
+        || !valid_single_segment(&task_id)
+        || !valid_single_segment(&sha)
+        || !valid_single_segment(&file)
+    {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Invalid evidence path."));
+    }
+    let slug: Option<String> = state.inner.db.read(|conn| {
+        use rusqlite::OptionalExtension;
+        conn.query_row("SELECT slug FROM projects WHERE id = ?1", [&project_id], |r| r.get(0))
+            .optional()
+            .map_err(DbError::from)
+    })?;
+    let Some(slug) = slug else {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Project not found."));
+    };
+    let Some(root) = state.inner.config.data_root.as_deref() else {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Evidence file not found."));
+    };
+    let mut bytes = read_evidence_no_symlinks(root, &project_id, &task_id, &sha, &file)?;
+    if bytes.is_none() && slug != project_id && valid_single_segment(&slug) {
+        bytes = read_evidence_no_symlinks(root, &slug, &task_id, &sha, &file)?;
+    }
+    let Some(bytes) = bytes else {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Evidence file not found."));
+    };
+    Ok((
+        [
+            (CONTENT_TYPE, evidence_content_type(&file).to_owned()),
+            (CACHE_CONTROL, "private, max-age=300".to_owned()),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arima_auth::VaultKey;
+    use arima_db::Db;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    async fn test_state(data_root: Option<std::path::PathBuf>) -> (AppState, String, String) {
+        let db = Db::open_in_memory().unwrap();
+        let cfg = crate::ServerConfig { data_root, ..crate::ServerConfig::default() };
+        let state = AppState::new(db, VaultKey::from_bytes([9u8; 32]), cfg);
+        state.ensure_default_project("Demo", "demo", "/w/demo").unwrap();
+        let pid = state.default_project().unwrap().0;
+        let created = state
+            .inner
+            .auth
+            .create_user("owner".into(), "strong-password-123".into(), ServerRole::Owner)
+            .await
+            .unwrap();
+        let login = state
+            .inner
+            .auth
+            .login_with_password(
+                created.user.name,
+                "strong-password-123".into(),
+                SessionMeta { client_ip: "127.0.0.1".into(), origin: Some("http://127.0.0.1:7420".into()), label: "test".into(), remote: false },
+            )
+            .await
+            .unwrap();
+        (state, pid, login.raw_token)
+    }
+
+    #[tokio::test]
+    async fn push_register_validates_auth_and_token_and_deletes() {
+        let (state, _, user_cookie) = test_state(None).await;
+        let app = router_with_state(state.clone());
+
+        let unauth = app
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/api/push/register").header("content-type", "application/json").body(Body::from(r#"{"token":"fcm-1"}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+        let (boot_cookie, _) = state.inner.auth.exchange_bootstrap_token(&state.inner.config.bootstrap_token, &state.inner.config.bootstrap_token, true, None, "boot".into()).unwrap();
+        let no_user = app
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/api/push/register").header("cookie", format!("hq_sid={boot_cookie}")).header("origin", "http://127.0.0.1:7420").header("content-type", "application/json").body(Body::from(r#"{"token":"fcm-1"}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(no_user.status(), StatusCode::UNAUTHORIZED);
+
+        let bad_token = app
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/api/push/register").header("cookie", format!("hq_sid={user_cookie}")).header("origin", "http://127.0.0.1:7420").header("content-type", "application/json").body(Body::from(r#"{"token":"  "}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(bad_token.status(), StatusCode::BAD_REQUEST);
+
+        let ok = app
+            .clone()
+            .oneshot(Request::builder().method("POST").uri("/api/push/register").header("cookie", format!("hq_sid={user_cookie}")).header("origin", "http://127.0.0.1:7420").header("content-type", "application/json").body(Body::from(r#"{"token":"fcm-token-abc"}"#)).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        let count: i64 = state.inner.db.read(|c| c.query_row("SELECT COUNT(*) FROM push_tokens WHERE token = 'fcm-token-abc'", [], |r| r.get(0)).map_err(DbError::from)).unwrap();
+        assert_eq!(count, 1);
+
+        let del = app
+            .oneshot(Request::builder().method("DELETE").uri("/api/push/register").header("cookie", format!("hq_sid={user_cookie}")).header("origin", "http://127.0.0.1:7420").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(del.status(), StatusCode::OK);
+        let remaining: i64 = state.inner.db.read(|c| c.query_row("SELECT COUNT(*) FROM push_tokens", [], |r| r.get(0)).map_err(DbError::from)).unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn evidence_route_serves_files_and_blocks_traversal_and_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (state, pid, cookie) = test_state(Some(tmp.path().to_path_buf())).await;
+        let dir = tmp.path().join("evidence").join("demo").join("T01").join("abc123");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("proof.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", dir.join("escape.png")).unwrap();
+
+        let app = router_with_state(state);
+        let ok = app
+            .clone()
+            .oneshot(Request::builder().uri(format!("/api/projects/{pid}/evidence/T01/abc123/proof.png")).header("cookie", format!("hq_sid={cookie}")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        assert_eq!(ok.headers().get(CONTENT_TYPE).unwrap(), "image/png");
+        assert_eq!(ok.headers().get(X_CONTENT_TYPE_OPTIONS).unwrap(), "nosniff");
+
+        let link = app
+            .clone()
+            .oneshot(Request::builder().uri(format!("/api/projects/{pid}/evidence/T01/abc123/escape.png")).header("cookie", format!("hq_sid={cookie}")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(link.status(), StatusCode::BAD_REQUEST);
+
+        let dotdot = app
+            .clone()
+            .oneshot(Request::builder().uri(format!("/api/projects/{pid}/evidence/T01/..%2F..%2Fetc/passwd")).header("cookie", format!("hq_sid={cookie}")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(dotdot.status(), StatusCode::BAD_REQUEST);
+
+        let missing = app
+            .oneshot(Request::builder().uri(format!("/api/projects/{pid}/evidence/T01/abc123/none.png")).header("cookie", format!("hq_sid={cookie}")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
 }

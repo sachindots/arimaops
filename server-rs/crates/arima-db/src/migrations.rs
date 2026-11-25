@@ -81,7 +81,23 @@ const MIGRATIONS: &[Migration] = &[
         name: "015_cleanup_retired_artifacts",
         sql: CLEANUP_RETIRED_ARTIFACTS_SCHEMA,
     },
+    Migration {
+        version: 16,
+        name: "016_push_tokens",
+        sql: PUSH_TOKENS_SCHEMA,
+    },
 ];
+
+/// Stores per-device mobile push tokens registered via `/api/push/register`.
+const PUSH_TOKENS_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS push_tokens (
+    device_id     TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL,
+    token         TEXT NOT NULL,
+    server_origin TEXT NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+"#;
 
 /// Adds an index on `mcp_tokens.token_hash` for direct lookup, retires the six dead visual decision
 /// kinds into plain `info` cards (dismissing open ones), and drops the retired tool connections registry.

@@ -3,6 +3,10 @@
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
+export type AgentCli = "claude" | "codex" | "agy" | "opencode" | "gemini" | "copilot";
+
+export const AGENT_CLIS = ["claude", "codex", "agy", "opencode", "gemini", "copilot"] as const;
+
 export type ServerRole = "owner" | "operator" | "viewer";
 
 export type ProjectRole = { userId: string, projectId: string, role: ServerRole, };
