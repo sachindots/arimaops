@@ -12,7 +12,7 @@ use arima_core::{
     DecisionPayload, DecisionStatus, DeviceSession, ElementSelection, FeedbackRoute, FormAnswer,
     FormPayload, FormSpec,
     MeetingAgendaItem, MeetingKind, MeetingMinutes, MeetingSession, MeetingStatus, MeetingTurn,
-    MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer, PasskeyInfo, PermissionPayload,
+    MeetingUrgency, OpinionSide, OutboxMessage, OutboxMessageKind, PackAgent, PackApproval, PackChange, PackEntry, PackFileSummary, PackLock, PackScan, PackSkill, PackSource, PackToolServer, PasskeyInfo, PermissionPayload,
     PreviewMode, PreviewTarget, PreviewTargetStatus, ProjectRole, ProposedDecision, ProposedTask,
     QuestionAnswer, QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload,
     ServerRole, ToolServer, ToolServerCheck, ToolServerSource, ToolServerTransport, VisualDecision, VisualFeedback, VoiceProvider, WsClientMessage, WsCommandAck,
@@ -73,6 +73,7 @@ pub fn render_typescript() -> String {
     push_decl::<OpinionSide>(&mut out);
     push_decl::<SecondOpinionPayload>(&mut out);
     push_decl::<PermissionPayload>(&mut out);
+    push_decl::<PackAgent>(&mut out);
     push_decl::<PackChange>(&mut out);
     push_decl::<PackFileSummary>(&mut out);
     push_decl::<FormSpec>(&mut out);
@@ -163,6 +164,8 @@ mod tests {
             "export type VoiceProvider",
             "export type VisualDecision",
             "export type DecisionPayload",
+            "export type PackAgent",
+            "export type PackEntry",
             "export type FormPayload",
             "export type VisualFeedback",
             "export type FeedbackRoute",

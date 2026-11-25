@@ -22,7 +22,7 @@ const SCROLLBACK_BYTES: usize = 256 * 1024;
 const DEFAULT_IMAGE: &str = "ghcr.io/sachindots/arimaops-agent:latest";
 const DEFAULT_NETWORK: &str = "arima-agents";
 /// Approved skills as agents get them, under the workspaces root but outside every agent's own folder.
-const SKILLS_FOLDER: &str = ".arima-skills";
+pub(crate) const SKILLS_FOLDER: &str = ".arima-skills";
 /// What the agent CLIs read as a plugin's root: the Claude Code name, and the name Codex documents for plugin hooks.
 const PLUGIN_ROOT_ENV: [&str; 2] = ["CLAUDE_PLUGIN_ROOT", "PLUGIN_ROOT"];
 
@@ -460,8 +460,11 @@ impl AgentRuntime {
         let dir = self.config.workspaces_root.join(&slug).join(agent_id);
         std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't create the agent's folder: {e}"))?;
         let name = agent["name"].as_str().unwrap_or(agent_id);
+        let role_id = agent["roleId"].as_str().unwrap_or_default();
+        let subagents = crate::subagents::approved_for_role(state, project_id, role_id);
         let role_path = dir.join(adapter.role_file);
-        let role = format!("# {name}, {}\n\n{}", agent["role"].as_str().unwrap_or("agent"), agent["roleMd"].as_str().unwrap_or(""));
+        let mut role = format!("# {name}, {}\n\n{}", agent["role"].as_str().unwrap_or("agent"), agent["roleMd"].as_str().unwrap_or(""));
+        role.push_str(&crate::subagents::role_note(adapter, &subagents));
         let body = refresh_role(std::fs::read_to_string(&role_path).ok().as_deref(), &role);
         std::fs::write(&role_path, body).map_err(|e| e.to_string())?;
 
@@ -560,6 +563,10 @@ impl AgentRuntime {
             if let [root] = Vec::from_iter(plugin_roots).as_slice() {
                 env.extend(PLUGIN_ROOT_ENV.map(|k| (k.to_owned(), root.clone())));
             }
+        }
+        if let Some(view) = crate::subagents::mount(&self.config, adapter, &subagents)? {
+            ensure_mountpoint(&dir, view.target)?;
+            binds.push(view.bind);
         }
         let mut env_list: Vec<String> = env.into_iter().map(|(k, v)| format!("{k}={v}")).collect();
         env_list.sort();

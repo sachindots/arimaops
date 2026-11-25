@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 use crate::form::FormPayload;
 use crate::meeting::{MeetingKind, MeetingUrgency};
-use crate::pack::{PackChange, PackFileSummary};
+use crate::pack::{PackAgent, PackChange, PackFileSummary};
 
 /// Lifecycle state of a visual decision shown in Inbox and inline Chat.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -156,6 +156,9 @@ pub enum DecisionPayload {
         /// Changed shipped files other than SKILL.md and agents/*.md, shown collapsed.
         #[serde(default, rename = "otherFiles")]
         other_files: Vec<PackFileSummary>,
+        /// Sub-agents discovered under `agents/*.md` and registered with a whitelisted set of fields.
+        #[serde(default)]
+        agents: Vec<PackAgent>,
         egress: Vec<String>,
         secrets: Vec<String>,
         ignored: Vec<String>,
