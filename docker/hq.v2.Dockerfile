@@ -5,7 +5,7 @@
 FROM node:24-trixie-slim AS ui-builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@12.23.0 --activate
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY index.html tsconfig.json vite.config.ts ./
 COPY public ./public

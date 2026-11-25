@@ -28,6 +28,15 @@
         },
         {
           "$ref": "#/components/Chart"
+        },
+        {
+          "$ref": "#/components/Markdown"
+        },
+        {
+          "$ref": "#/components/KeyValue"
+        },
+        {
+          "$ref": "#/components/Code"
         }
       ]
     },
@@ -201,6 +210,44 @@
       ],
       "type": "object"
     },
+    "Code": {
+      "description": "Monospace code or command block, never executed.",
+      "properties": {
+        "code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Monospace text."
+        },
+        "component": {
+          "const": "Code"
+        },
+        "label": {
+          "description": "Optional heading above the block.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "code"
+      ],
+      "type": "object"
+    },
     "Column": {
       "description": "Stacks its children top to bottom.",
       "properties": {
@@ -218,6 +265,91 @@
       "required": [
         "component",
         "children"
+      ],
+      "type": "object"
+    },
+    "KeyValue": {
+      "description": "Read-only label and value rows.",
+      "properties": {
+        "component": {
+          "const": "KeyValue"
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "label",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "maxItems": 30,
+              "type": "array"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Label and value pairs."
+        }
+      },
+      "required": [
+        "component",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "Markdown": {
+      "description": "Markdown rendered safely without raw HTML.",
+      "properties": {
+        "component": {
+          "const": "Markdown"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "@path": {
+                  "description": "JSON pointer into data, e.g. /name.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Markdown text."
+        }
+      },
+      "required": [
+        "component",
+        "text"
       ],
       "type": "object"
     },

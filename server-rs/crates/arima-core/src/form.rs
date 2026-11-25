@@ -14,9 +14,11 @@ pub const MAX_BYTES: usize = 32 * 1024;
 const MAX_COMPONENTS: usize = 60;
 const MAX_DEPTH: usize = 6;
 const MAX_STRING: usize = 2_000;
+const MAX_RICH_STRING: usize = 8_000;
 const MAX_OPTIONS: usize = 50;
 const MAX_COLUMNS: usize = 8;
 const MAX_ROWS: usize = 50;
+const MAX_KEY_VALUES: usize = 30;
 const MAX_POINTS: usize = 200;
 const MAX_BUTTONS: usize = 6;
 const MAX_CONTEXT: usize = 20;
@@ -52,6 +54,7 @@ pub struct FormPayload {
 pub enum Prop {
     Text,
     DynText,
+    DynRichText,
     DynNumber,
     BindText,
     BindList,
@@ -60,6 +63,7 @@ pub enum Prop {
     Options,
     Columns,
     Rows,
+    KeyValues,
     Points,
     Buttons,
     Enum(&'static [&'static str]),
@@ -127,6 +131,13 @@ pub const CATALOG: &[ComponentDef] = &[
         props: &[p("label", Prop::Text, true, "Visible label."), p("value", Prop::DynNumber, true, "Current value."), p("max", Prop::DynNumber, true, "Full scale.")],
     },
     ComponentDef { name: "Chart", doc: "A small line chart.", props: &[p("label", Prop::Text, true, "Visible label."), p("points", Prop::Points, true, "Values, oldest first.")] },
+    ComponentDef { name: "Markdown", doc: "Markdown rendered safely without raw HTML.", props: &[p("text", Prop::DynRichText, true, "Markdown text.")] },
+    ComponentDef { name: "KeyValue", doc: "Read-only label and value rows.", props: &[p("rows", Prop::KeyValues, true, "Label and value pairs.")] },
+    ComponentDef {
+        name: "Code",
+        doc: "Monospace code or command block, never executed.",
+        props: &[p("code", Prop::DynRichText, true, "Monospace text."), p("label", Prop::Text, false, "Optional heading above the block.")],
+    },
 ];
 
 #[must_use]
@@ -159,7 +170,7 @@ fn prop_schema(kind: Prop) -> Value {
     let text = json!({ "type": "string" });
     match kind {
         Prop::Text => text,
-        Prop::DynText => json!({ "anyOf": [text, binding_schema()] }),
+        Prop::DynText | Prop::DynRichText => json!({ "anyOf": [text, binding_schema()] }),
         Prop::DynNumber => json!({ "anyOf": [{ "type": "number" }, binding_schema()] }),
         Prop::BindText | Prop::BindList => binding_schema(),
         Prop::Bool => json!({ "type": "boolean" }),
@@ -167,6 +178,21 @@ fn prop_schema(kind: Prop) -> Value {
         Prop::Options => option_schema(),
         Prop::Columns => json!({ "type": "array", "maxItems": MAX_COLUMNS, "items": text }),
         Prop::Rows => json!({ "anyOf": [{ "type": "array", "maxItems": MAX_ROWS, "items": { "type": "array", "items": { "type": ["string", "number"] } } }, binding_schema()] }),
+        Prop::KeyValues => json!({
+            "anyOf": [
+                {
+                    "type": "array",
+                    "maxItems": MAX_KEY_VALUES,
+                    "items": {
+                        "type": "object",
+                        "properties": { "label": { "type": "string" }, "value": { "type": "string" } },
+                        "required": ["label", "value"],
+                        "additionalProperties": false
+                    }
+                },
+                binding_schema()
+            ]
+        }),
         Prop::Points => json!({ "anyOf": [{ "type": "array", "maxItems": MAX_POINTS, "items": { "type": "number" } }, binding_schema()] }),
         Prop::Buttons => json!({
             "type": "array",
@@ -254,8 +280,16 @@ impl<'a> Check<'a> {
     }
 
     fn text(&mut self, path: &str, v: &Value) -> bool {
+        self.text_with_limit(path, v, MAX_STRING)
+    }
+
+    fn rich_text(&mut self, path: &str, v: &Value) -> bool {
+        self.text_with_limit(path, v, MAX_RICH_STRING)
+    }
+
+    fn text_with_limit(&mut self, path: &str, v: &Value, max_chars: usize) -> bool {
         match v.as_str() {
-            Some(s) if s.chars().count() > MAX_STRING => self.err(path, format!("text longer than {MAX_STRING} characters")),
+            Some(s) if s.chars().count() > max_chars => self.err(path, format!("text longer than {max_chars} characters")),
             Some(_) => return true,
             None => self.err(path, "expected text"),
         }
@@ -338,6 +372,27 @@ impl<'a> Check<'a> {
             for (j, cell) in self.list(&at, row, MAX_COLUMNS, "cells").into_iter().flatten().enumerate() {
                 if !cell.is_number() {
                     self.text(&format!("{at}/{j}"), cell);
+                }
+            }
+        }
+        self.errors.len() == before
+    }
+
+    fn key_values(&mut self, path: &str, v: &Value) -> bool {
+        let before = self.errors.len();
+        let Some(items) = self.list(path, v, MAX_KEY_VALUES, "rows") else { return false };
+        for (i, item) in items.iter().enumerate() {
+            let at = format!("{path}/{i}");
+            let Some(obj) = item.as_object().filter(|o| o.get("label").is_some_and(Value::is_string) && o.get("value").is_some_and(Value::is_string)) else {
+                self.err(&at, "expected {label, value}");
+                continue;
+            };
+            for (key, field) in obj {
+                match key.as_str() {
+                    "label" | "value" => {
+                        self.text(&format!("{at}/{key}"), field);
+                    }
+                    _ => self.err(&format!("{at}/{key}"), "unknown row field"),
                 }
             }
         }
@@ -474,6 +529,7 @@ impl<'a> Check<'a> {
                 self.text(path, v);
             }
             Prop::DynText => self.shown(path, v, Self::shown_text, "text"),
+            Prop::DynRichText => self.shown(path, v, Self::rich_text, "text"),
             Prop::DynNumber => self.shown(path, v, Self::number, "a number"),
             Prop::BindText => self.input(path, v, false),
             Prop::BindList => self.input(path, v, true),
@@ -495,6 +551,7 @@ impl<'a> Check<'a> {
                 }
             }
             Prop::Rows => self.shown(path, v, Self::rows, "a list of rows"),
+            Prop::KeyValues => self.shown(path, v, Self::key_values, "a list of key-value rows"),
             Prop::Points => self.shown(path, v, Self::points, "a list of numbers"),
             Prop::Buttons => self.buttons(path, v),
             Prop::Enum(values) if v.as_str().is_some_and(|s| values.contains(&s)) => {}
@@ -609,6 +666,200 @@ pub fn validate(ui: &Value) -> Result<FormSpec, Vec<FormError>> {
     Err(errors)
 }
 
+/// Ergonomic HQ-side builder for [`FormSpec`]; validates the constructed tree in debug and test builds.
+#[derive(Debug, Clone, Default)]
+pub struct Form {
+    children: Vec<String>,
+    components: Vec<Value>,
+    data: Map<String, Value>,
+    next_id: usize,
+}
+
+impl Form {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn next_id(&mut self, prefix: &str) -> String {
+        let id = format!("{prefix}_{}", self.next_id);
+        self.next_id += 1;
+        id
+    }
+
+    fn map_options(options: &[(&str, &str, Option<&str>)]) -> Vec<Value> {
+        options
+            .iter()
+            .map(|(value, label, description)| {
+                let mut o = Map::new();
+                o.insert("value".into(), json!(value));
+                o.insert("label".into(), json!(label));
+                if let Some(d) = description.filter(|s| !s.is_empty()) {
+                    o.insert("description".into(), json!(d));
+                }
+                Value::Object(o)
+            })
+            .collect()
+    }
+
+    #[must_use]
+    pub fn data(mut self, key: &str, value: impl Into<Value>) -> Self {
+        self.data.insert(key.to_owned(), value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn text(mut self, text: &str, variant: Option<&str>) -> Self {
+        let id = self.next_id("text");
+        let mut obj = serde_json::Map::new();
+        obj.insert("id".into(), json!(id));
+        obj.insert("component".into(), json!("Text"));
+        obj.insert("text".into(), json!(text));
+        if let Some(v) = variant {
+            obj.insert("variant".into(), json!(v));
+        }
+        self.children.push(id);
+        self.components.push(Value::Object(obj));
+        self
+    }
+
+    #[must_use]
+    pub fn markdown(mut self, md: &str) -> Self {
+        let id = self.next_id("md");
+        self.children.push(id.clone());
+        self.components.push(json!({ "id": id, "component": "Markdown", "text": md }));
+        self
+    }
+
+    #[must_use]
+    pub fn key_values(mut self, rows: &[(&str, &str)]) -> Self {
+        let id = self.next_id("kv");
+        let list: Vec<Value> = rows.iter().map(|(l, v)| json!({ "label": l, "value": v })).collect();
+        self.children.push(id.clone());
+        self.components.push(json!({ "id": id, "component": "KeyValue", "rows": list }));
+        self
+    }
+
+    #[must_use]
+    pub fn code(mut self, label: Option<&str>, code: &str) -> Self {
+        let id = self.next_id("code");
+        let mut obj = Map::new();
+        obj.insert("id".into(), json!(id));
+        obj.insert("component".into(), json!("Code"));
+        obj.insert("code".into(), json!(code));
+        if let Some(l) = label.filter(|s| !s.is_empty()) {
+            obj.insert("label".into(), json!(l));
+        }
+        self.children.push(id);
+        self.components.push(Value::Object(obj));
+        self
+    }
+
+    #[must_use]
+    pub fn text_field(
+        mut self,
+        label: &str,
+        bind_key: &str,
+        placeholder: Option<&str>,
+        multiline: bool,
+        initial: &str,
+    ) -> Self {
+        let id = self.next_id("field");
+        self.data.insert(bind_key.to_owned(), json!(initial));
+        let mut obj = Map::new();
+        obj.insert("id".into(), json!(id));
+        obj.insert("component".into(), json!("TextField"));
+        obj.insert("label".into(), json!(label));
+        obj.insert("value".into(), json!({ "@path": format!("/{bind_key}") }));
+        if let Some(ph) = placeholder {
+            obj.insert("placeholder".into(), json!(ph));
+        }
+        if multiline {
+            obj.insert("multiline".into(), json!(true));
+        }
+        self.children.push(id);
+        self.components.push(Value::Object(obj));
+        self
+    }
+
+    #[must_use]
+    pub fn select(
+        mut self,
+        label: &str,
+        bind_key: &str,
+        options: &[(&str, &str, Option<&str>)],
+        initial: &str,
+    ) -> Self {
+        let id = self.next_id("select");
+        self.data.insert(bind_key.to_owned(), json!(initial));
+        self.children.push(id.clone());
+        self.components.push(json!({
+            "id": id,
+            "component": "Select",
+            "label": label,
+            "options": Self::map_options(options),
+            "value": { "@path": format!("/{bind_key}") },
+        }));
+        self
+    }
+
+    #[must_use]
+    pub fn check_list(
+        mut self,
+        label: &str,
+        bind_key: &str,
+        options: &[(&str, &str, Option<&str>)],
+        multi: bool,
+        picked: &[&str],
+    ) -> Self {
+        let id = self.next_id("list");
+        self.data.insert(bind_key.to_owned(), json!(picked));
+        let mut obj = Map::new();
+        obj.insert("id".into(), json!(id));
+        obj.insert("component".into(), json!("CheckList"));
+        obj.insert("label".into(), json!(label));
+        obj.insert("options".into(), Value::Array(Self::map_options(options)));
+        obj.insert("values".into(), json!({ "@path": format!("/{bind_key}") }));
+        if multi {
+            obj.insert("multi".into(), json!(true));
+        }
+        self.children.push(id);
+        self.components.push(Value::Object(obj));
+        self
+    }
+
+    #[must_use]
+    pub fn buttons(mut self, buttons: &[(&str, &str, bool)]) -> Self {
+        let id = self.next_id("actions");
+        let list: Vec<Value> = buttons
+            .iter()
+            .map(|(action, label, primary)| {
+                let mut b = Map::new();
+                b.insert("label".into(), json!(label));
+                b.insert("variant".into(), json!(if *primary { "primary" } else { "default" }));
+                b.insert("action".into(), json!({ "event": { "name": action } }));
+                Value::Object(b)
+            })
+            .collect();
+        self.children.push(id.clone());
+        self.components.push(json!({ "id": id, "component": "ButtonRow", "buttons": list }));
+        self
+    }
+
+    #[must_use]
+    pub fn build(self) -> FormSpec {
+        let mut components = Vec::with_capacity(self.components.len() + 1);
+        components.push(json!({ "id": "root", "component": "Column", "children": self.children }));
+        components.extend(self.components);
+        let spec = FormSpec { components, data: self.data };
+        debug_assert!(
+            validate(&json!({ "components": &spec.components, "data": &spec.data })).is_ok(),
+            "Form::build produced invalid spec"
+        );
+        spec
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -617,7 +868,7 @@ mod tests {
     fn golden() -> Value {
         json!({
             "components": [
-                { "id": "root", "component": "Column", "children": ["intro", "name", "region", "features", "plans", "usage", "trend", "go"] },
+                { "id": "root", "component": "Column", "children": ["intro", "name", "region", "features", "plans", "usage", "trend", "details", "meta", "snippet", "go"] },
                 { "id": "intro", "component": "Text", "text": { "@path": "/intro" }, "variant": "heading" },
                 { "id": "name", "component": "TextField", "label": "Project name", "value": { "@path": "/name" }, "placeholder": "acme" },
                 { "id": "region", "component": "Select", "label": "Region", "options": [{ "value": "eu", "label": "Europe" }, { "value": "us", "label": "US" }], "value": { "@path": "/region" } },
@@ -628,9 +879,12 @@ mod tests {
                 { "id": "go", "component": "ButtonRow", "buttons": [
                     { "label": "Approve", "variant": "primary", "action": { "event": { "name": "approve", "context": { "who": { "@path": "/name" }, "n": 1 } } } },
                     { "label": "Not now", "action": { "event": { "name": "later" } } }
-                ] }
+                ] },
+                { "id": "details", "component": "Markdown", "text": { "@path": "/details" } },
+                { "id": "meta", "component": "KeyValue", "rows": [{ "label": "Tool", "value": "bash" }] },
+                { "id": "snippet", "component": "Code", "label": "Command", "code": "ls -la" }
             ],
-            "data": { "intro": "Set up uploads", "region": "eu", "features": [], "used": 40 }
+            "data": { "intro": "Set up uploads", "details": "### Notes\n- Check **ACL**.", "region": "eu", "features": [], "used": 40 }
         })
     }
 
@@ -652,7 +906,7 @@ mod tests {
             ("data not an object", |ui| ui["data"] = json!([]), "/ui/data", "expected an object"),
             ("no components", |ui| ui["components"] = json!([]), "/ui/components", "expected 1 to 60 components"),
             ("too many components", |ui| ui["components"] = json!(vec![json!({}); 61]), "/ui/components", "expected 1 to 60 components"),
-            ("unknown component", |ui| ui["components"][1]["component"] = json!("Image"), "/ui/components/1/component", "unknown component; expected one of Column, Text, TextField, Select, CheckList, Table, ButtonRow, Meter, Chart"),
+            ("unknown component", |ui| ui["components"][1]["component"] = json!("Image"), "/ui/components/1/component", "unknown component; expected one of Column, Text, TextField, Select, CheckList, Table, ButtonRow, Meter, Chart, Markdown, KeyValue, Code"),
             ("unknown property", |ui| ui["components"][2]["onChange"] = json!("x"), "/ui/components/2/onChange", "unknown property for TextField"),
             ("catalog override", |ui| ui["components"][2]["@catalogId"] = json!("other"), "/ui/components/2/@catalogId", "unknown property for TextField"),
             ("missing required prop", |ui| { ui["components"][2].as_object_mut().unwrap().remove("label"); }, "/ui/components/2", "TextField needs `label`"),
@@ -663,7 +917,7 @@ mod tests {
             ("unknown child", |ui| ui["components"][0]["children"][0] = json!("ghost"), "/ui/components/0/children/0", "no component has id `ghost`"),
             ("shared child", |ui| ui["components"][0]["children"][1] = json!("intro"), "/ui/components/0/children/1", "`intro` already has a parent"),
             ("root as child", |ui| ui["components"][0]["children"][0] = json!("root"), "/ui/components/0/children/0", "root can't be a child"),
-            ("orphan", |ui| ui["components"][0]["children"] = json!(["name", "region", "features", "plans", "usage", "trend", "go"]), "/ui/components/1", "not reachable from root"),
+            ("orphan", |ui| ui["components"][0]["children"] = json!(["name", "region", "features", "plans", "usage", "trend", "details", "meta", "snippet", "go"]), "/ui/components/1", "not reachable from root"),
             ("template children", |ui| ui["components"][0]["children"] = json!({ "componentId": "intro", "path": "/items" }), "/ui/components/0/children", "expected a list of component ids"),
             ("text too long", |ui| ui["components"][2]["label"] = json!("x".repeat(MAX_STRING + 1)), "/ui/components/2/label", "text longer than 2000 characters"),
             ("text not text", |ui| ui["components"][2]["label"] = json!(3), "/ui/components/2/label", "expected text"),
@@ -693,15 +947,19 @@ mod tests {
             ("object in context", |ui| ui["components"][8]["buttons"][0]["action"]["event"]["context"]["who"] = json!({ "a": 1 }), "/ui/components/8/buttons/0/action/event/context/who", "expected text, a number, true/false or {\"@path\": ...}"),
             ("bad variant", |ui| ui["components"][8]["buttons"][0]["variant"] = json!("danger"), "/ui/components/8/buttons/0/variant", "expected one of primary, default"),
             ("too many buttons", |ui| ui["components"][8]["buttons"] = json!(vec![json!({ "label": "x", "action": { "event": { "name": "x" } } }); 7]), "/ui/components/8/buttons", "more than 6 buttons"),
-            ("no button", |ui| { ui["components"][0]["children"].as_array_mut().unwrap().pop(); ui["components"].as_array_mut().unwrap().pop(); }, "/ui/components", "needs a ButtonRow with at least one button"),
+            ("no button", |ui| { ui["components"][0]["children"].as_array_mut().unwrap().pop(); ui["components"].as_array_mut().unwrap().remove(8); }, "/ui/components", "needs a ButtonRow with at least one button"),
             ("bad accessibility", |ui| ui["components"][6]["@accessibility"]["hidden"] = json!(true), "/ui/components/6/@accessibility/hidden", "allowed: label, description, live"),
+            ("kv row shape", |ui| ui["components"][10]["rows"][0] = json!("tool=bash"), "/ui/components/10/rows/0", "expected {label, value}"),
+            ("kv extra field", |ui| ui["components"][10]["rows"][0]["extra"] = json!("x"), "/ui/components/10/rows/0/extra", "unknown row field"),
+            ("too many kv rows", |ui| ui["components"][10]["rows"] = json!(vec![json!({ "label": "k", "value": "v" }); 31]), "/ui/components/10/rows", "more than 30 rows"),
+            ("rich text too long", |ui| ui["components"][11]["code"] = json!("x".repeat(MAX_RICH_STRING + 1)), "/ui/components/11/code", "text longer than 8000 characters"),
             ("too deep", |ui| {
                 let list = ui["components"].as_array_mut().unwrap();
                 for d in 0..6 {
                     list.push(json!({ "id": format!("d{d}"), "component": "Column", "children": if d < 5 { json!([format!("d{}", d + 1)]) } else { json!([]) } }));
                 }
                 ui["components"][0]["children"].as_array_mut().unwrap().push(json!("d0"));
-            }, "/ui/components/14", "nested deeper than 6 levels"),
+            }, "/ui/components/17", "nested deeper than 6 levels"),
         ];
         for (rule, edit, path, message) in rows {
             let mut ui = golden();
@@ -722,8 +980,46 @@ mod tests {
         list.push(json!({ "id": "a", "component": "Column", "children": ["b"] }));
         list.push(json!({ "id": "b", "component": "Column", "children": ["a"] }));
         let errors = validate(&ui).unwrap_err();
-        assert!(errors.iter().any(|e| e.path == "/ui/components/9" && e.message == "not reachable from root"), "{errors:?}");
-        assert!(errors.iter().any(|e| e.path == "/ui/components/10" && e.message == "not reachable from root"), "{errors:?}");
+        assert!(errors.iter().any(|e| e.path == "/ui/components/12" && e.message == "not reachable from root"), "{errors:?}");
+        assert!(errors.iter().any(|e| e.path == "/ui/components/13" && e.message == "not reachable from root"), "{errors:?}");
+    }
+
+    #[test]
+    fn form_builder_builds_valid_v1_spec() {
+        let spec = Form::new()
+            .text("Inspect command", Some("heading"))
+            .markdown("**Careful**: deletes temp files.")
+            .key_values(&[("Tool", "bash"), ("Scope", "workspace")])
+            .code(Some("Command"), "rm -rf ./tmp")
+            .text_field("Note", "note", Some("Optional rationale"), false, "")
+            .select("Action", "mode", &[("once", "Allow once", None), ("deny", "Deny", Some("Reject call"))], "once")
+            .check_list("Flags", "flags", &[("dry", "Dry run", None)], true, &["dry"])
+            .buttons(&[("allow-once", "Allow once", true), ("deny", "Deny", false)])
+            .build();
+        let envelope = json!({
+            "version": "1.0",
+            "createSurface": {
+                "surfaceId": "dec-builder",
+                "catalogId": CATALOG_ID,
+                "components": spec.components,
+                "dataModel": spec.data
+            }
+        });
+        let s = |src: &str| serde_json::from_str::<Value>(src).unwrap();
+        let base = "https://a2ui.org/specification/v1_0";
+        let registry = jsonschema::Registry::new()
+            .add(format!("{base}/common_types.json"), s(include_str!("../testdata/forms-v1/common_types.json")))
+            .unwrap()
+            .add(format!("{base}/catalog.json"), catalog_json())
+            .unwrap()
+            .prepare()
+            .unwrap();
+        let validator = jsonschema::options()
+            .with_registry(&registry)
+            .build(&s(include_str!("../testdata/forms-v1/agent_to_renderer.json")))
+            .unwrap();
+        let errors: Vec<String> = validator.iter_errors(&envelope).map(|e| format!("{e}")).collect();
+        assert!(errors.is_empty(), "{errors:#?}");
     }
 
     /// The golden form, as the Inbox sends it to the renderer, against the protocol's own v1.0 schemas.

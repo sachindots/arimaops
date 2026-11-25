@@ -20,7 +20,7 @@ pub use decision::{
     DecisionKind, DecisionPayload, DecisionStatus, OpinionSide, PermissionPayload, QuestionAnswer,
     QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload, VisualDecision,
 };
-pub use form::{FormAnswer, FormPayload, FormSpec};
+pub use form::{Form, FormAnswer, FormPayload, FormSpec};
 pub use feedback::{
     BoundingBox, ConsoleErrorEntry, ElementSelection, FeedbackRoute, PreviewMode, PreviewTarget,
     PreviewTargetStatus, VisualFeedback,
