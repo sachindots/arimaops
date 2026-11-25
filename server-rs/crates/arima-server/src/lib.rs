@@ -29,6 +29,7 @@ pub mod security;
 pub mod skill_scan;
 pub mod skills;
 pub mod state;
+pub mod subagents;
 pub mod usage_watch;
 pub mod team;
 pub mod team_edit;

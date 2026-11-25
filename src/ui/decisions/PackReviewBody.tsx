@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DecisionPayload, PackFileSummary } from "../../data/generated";
+import type { DecisionPayload, PackAgent, PackFileSummary } from "../../data/generated";
 import { useOffice } from "../../store/office";
 import { Icon } from "../deck/Icon";
 
@@ -186,8 +186,32 @@ function OtherFilesList({
   );
 }
 
+function SubAgentsList({ agents }: { agents: PackAgent[] }) {
+  if (agents.length === 0) return null;
+  return (
+    <section className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/30" aria-label="Sub-agents">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hairline)] px-3 py-2">
+        <div className="text-[13px] font-semibold text-ink">Sub-agents ({agents.length})</div>
+        <span className="text-[12px] text-muted">registered: name, description, instructions</span>
+      </div>
+      <ul className="m-0 list-none divide-y divide-[var(--border-hairline)] p-0">
+        {agents.map((agent) => (
+          <li key={agent.name} className="flex flex-col gap-0.5 px-3 py-2 text-[12px]">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-term font-medium text-ink">{agent.name}</span>
+              <span className="font-term text-muted">{agent.path}</span>
+            </div>
+            <div className="text-[13px] text-muted">{agent.description}</div>
+            {agent.droppedFields.length > 0 && <div className="font-term text-muted">dropped: {agent.droppedFields.join(", ")}</div>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Pack review: full inline diffs for SKILL.md, agents/*.md and tool servers;
- *  all other shipped files as a collapsed list expandable per file; plus egress, secrets, findings and roles. */
+ *  all other shipped files as a collapsed list expandable per file; plus sub-agents, egress, secrets, findings and roles. */
 export function PackReviewBody({
   decisionId,
   projectId,
@@ -204,6 +228,7 @@ export function PackReviewBody({
   loadFile?: (path: string) => Promise<LoadedPackDiff>;
 }) {
   const otherFiles = payload.otherFiles ?? [];
+  const agents = payload.agents ?? [];
   const fetcher = loadFile ?? ((p: string) => fetchPackFile(projectId, decisionId, p));
 
   return (
@@ -222,6 +247,7 @@ export function PackReviewBody({
         </div>
       ))}
       <OtherFilesList files={otherFiles} loadFile={fetcher} />
+      <SubAgentsList agents={agents} />
       <List label="Hosts it says it reaches" items={payload.egress} />
       <List label="Secrets it asks for" items={payload.secrets} />
       <List label="Not installed" items={payload.ignored} />

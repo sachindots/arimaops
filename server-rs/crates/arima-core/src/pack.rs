@@ -33,6 +33,9 @@ pub struct PackEntry {
     #[ts(type = "{ [key in string]?: PackSkill }")]
     pub skills: BTreeMap<String, PackSkill>,
     #[serde(default)]
+    #[ts(type = "{ [key in string]?: PackAgent }")]
+    pub agents: BTreeMap<String, PackAgent>,
+    #[serde(default)]
     #[ts(type = "{ [key in string]?: PackToolServer }")]
     pub tool_servers: BTreeMap<String, PackToolServer>,
     /// Hosts the pack says it reaches (its manifest's `network.hosts`).
@@ -41,8 +44,8 @@ pub struct PackEntry {
     /// Secrets the pack asks for (its `userConfig` entries marked sensitive).
     #[serde(default)]
     pub secrets: Vec<String>,
-    /// Parts HQ doesn't install: hooks, commands, subagents, command (stdio) tool servers, and files left out of the
-    /// tree (binary, too large, links).
+    /// Parts HQ doesn't install: hooks, commands, command (stdio) tool servers, excess/unreadable agent files, and
+    /// files left out of the tree (binary, too large, links).
     #[serde(default)]
     pub ignored: Vec<String>,
     #[serde(default)]
@@ -76,6 +79,24 @@ pub struct PackSkill {
     /// The skill folder, relative to the repo root.
     pub path: String,
     /// The hash of the folder's files.
+    pub sha256: String,
+}
+
+/// One sub-agent shipped by a pack under `agents/*.md`. Only `name`, `description`, and instructions are
+/// registered natively; any other frontmatter keys are stripped at render time and listed in `dropped_fields`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PackAgent {
+    /// Relative path inside the plugin tree, e.g. `agents/zoom_out.md`.
+    pub path: String,
+    /// Sanitised sub-agent identifier (1-64 of `a-z0-9-_`).
+    pub name: String,
+    /// Short description passed to the CLI for sub-agent selection.
+    pub description: String,
+    /// Frontmatter keys present in the source file that HQ drops when rendering native agent files.
+    #[serde(default)]
+    pub dropped_fields: Vec<String>,
+    /// SHA-256 hex digest of the source file's bytes in the approved plugin tree.
     pub sha256: String,
 }
 
