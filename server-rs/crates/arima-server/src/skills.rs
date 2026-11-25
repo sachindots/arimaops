@@ -13,9 +13,10 @@
 //! HQ fetches only from https hosts that pass the same private-address guard as tool servers, pinned to the checked
 //! addresses and without following redirects.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
 use arima_core::{DecisionPayload, DecisionStatus, VisualDecision, WsServerEvent};
 use arima_db::DbError;
@@ -437,11 +438,35 @@ fn read_stored_links(dir: &Path) -> Option<BTreeMap<String, String>> {
     Some(out)
 }
 
+pub(crate) fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Content hash for a link view directory mapping `<skill name> -> <container target path>`.
+#[must_use]
+pub(crate) fn links_hash(links: &BTreeMap<String, String>) -> String {
+    let joined: String = links.iter().map(|(name, target)| format!("{name}\0{target}\n")).collect();
+    sha_hex(joined.as_bytes())
+}
+
+/// Container symlink map for one role's approved skills (`<skill name> -> <target under agent_home>`).
+#[must_use]
+pub(crate) fn role_skill_links(skills: &[ApprovedSkill], agent_home: &str) -> BTreeMap<String, String> {
+    let mut links = BTreeMap::new();
+    for skill in skills {
+        let target = match &skill.plugin {
+            None => format!("{agent_home}/.arima/skills/{}", skill.name),
+            Some(plugin) => format!("{agent_home}/{}/{}", plugin.dir, plugin.skill),
+        };
+        links.entry(skill.name.clone()).or_insert(target);
+    }
+    links
+}
+
 /// Writes a content-addressed read-only view directory under `<root>/views/<hash>/` holding symlinks from each
 /// skill name to its container target path. Rewrites atomically if missing or altered on disk.
 pub(crate) fn store_links(root: &Path, links: &BTreeMap<String, String>) -> Result<String, String> {
-    let joined: String = links.iter().map(|(name, target)| format!("{name}\0{target}\n")).collect();
-    let hash = sha_hex(joined.as_bytes());
+    let hash = links_hash(links);
     let views = root.join("views");
     let final_dir = views.join(&hash);
     if read_stored_links(&final_dir).is_some_and(|existing| existing == *links) {
@@ -873,6 +898,10 @@ pub struct PluginMount {
 /// files no longer match the approved hash is left out with a warning.
 #[must_use]
 pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec<ApprovedSkill> {
+    approved_skills_inner(state, project_id, role_id, true)
+}
+
+fn approved_skills_inner(state: &AppState, project_id: &str, role_id: &str, ask_if_missing: bool) -> Vec<ApprovedSkill> {
     let Ok(root) = data_root(state) else { return vec![] };
     let packs = crate::packs::lock(state, project_id);
     let mut out = Vec::new();
@@ -883,9 +912,11 @@ pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec
         } else if parse_ref(&r).is_ok() {
             let pin = get_pin(state, project_id, &r);
             // A ref another project pinned is asked about here the first time this project's agents need it.
-            if let Some(stored) = pin.as_ref().filter(|p| p.decision_id.is_none()).and_then(|_| stored_pin(state, &r)) {
-                if let Err(e) = ask_project(state, project_id, &stored) {
-                    tracing::warn!(project_id, skill = r, "couldn't ask about the skill: {e}");
+            if ask_if_missing {
+                if let Some(stored) = pin.as_ref().filter(|p| p.decision_id.is_none()).and_then(|_| stored_pin(state, &r)) {
+                    if let Err(e) = ask_project(state, project_id, &stored) {
+                        tracing::warn!(project_id, skill = r, "couldn't ask about the skill: {e}");
+                    }
                 }
             }
             pin.filter(|p| p.status == SkillStatus::Approved).map(|p| (p.name, p.hash, None))
@@ -893,7 +924,9 @@ pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec
             continue; // a built-in skill
         };
         let Some((name, hash, plugin)) = approved else {
-            tracing::warn!(project_id, role_id, skill = r, "skill not mounted: it isn't approved");
+            if ask_if_missing {
+                tracing::warn!(project_id, role_id, skill = r, "skill not mounted: it isn't approved");
+            }
             continue;
         };
         let dir = root.join(&hash).join(if plugin.is_some() { crate::packs::STORED_PLUGIN } else { &name });
@@ -904,6 +937,202 @@ pub fn approved_skills(state: &AppState, project_id: &str, role_id: &str) -> Vec
         }
     }
     out
+}
+
+/// Counts of stale content-addressed directories removed by [`gc_storage`].
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct GcReport {
+    pub trees_removed: usize,
+    pub workspace_trees_removed: usize,
+    pub link_views_removed: usize,
+    pub agent_views_removed: usize,
+    pub tmp_removed: usize,
+}
+
+impl GcReport {
+    #[must_use]
+    pub fn total_removed(&self) -> usize {
+        self.trees_removed + self.workspace_trees_removed + self.link_views_removed + self.agent_views_removed + self.tmp_removed
+    }
+}
+
+fn collect_pack_entry_trees(entry: &arima_core::PackEntry, out: &mut HashSet<String>) {
+    if is_hex64(&entry.tree) {
+        out.insert(entry.tree.clone());
+    }
+    for s in entry.skills.values() {
+        if is_hex64(&s.sha256) {
+            out.insert(s.sha256.clone());
+        }
+    }
+    if let Some(update) = &entry.update {
+        collect_pack_entry_trees(update, out);
+    }
+}
+
+fn collect_live_refs(state: &AppState) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
+    let (mut live_trees, mut live_views, mut live_agent_views) = state.inner.runtime.active_skill_refs();
+    let mut project_ids = Vec::new();
+    let _ = state.inner.db.read(|c| {
+        if let Ok(mut stmt) = c.prepare("SELECT content_hash FROM skill_pins") {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for h in rows.flatten() {
+                    if is_hex64(&h) {
+                        live_trees.insert(h);
+                    }
+                }
+            }
+        }
+        if let Ok(mut stmt) = c.prepare("SELECT content_hash FROM skill_approvals") {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for h in rows.flatten() {
+                    if is_hex64(&h) {
+                        live_trees.insert(h);
+                    }
+                }
+            }
+        }
+        if let Ok(mut stmt) = c.prepare("SELECT value FROM settings WHERE key LIKE 'packs:%'") {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for raw in rows.flatten() {
+                    if let Ok(lock) = serde_json::from_str::<arima_core::PackLock>(&raw) {
+                        for entry in lock.packs.values() {
+                            collect_pack_entry_trees(entry, &mut live_trees);
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(mut stmt) = c.prepare("SELECT payload_json FROM visual_decisions WHERE status = 'open'") {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                for raw in rows.flatten() {
+                    if let Ok(DecisionPayload::PackReview { from_tree, to_tree, .. }) = serde_json::from_str(&raw) {
+                        if let Some(t) = from_tree.filter(|h| is_hex64(h)) {
+                            live_trees.insert(t);
+                        }
+                        if is_hex64(&to_tree) {
+                            live_trees.insert(to_tree);
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(mut stmt) = c.prepare("SELECT id FROM projects") {
+            if let Ok(rows) = stmt.query_map([], |r| r.get::<_, String>(0)) {
+                project_ids.extend(rows.flatten());
+            }
+        }
+        Ok::<_, DbError>(())
+    });
+
+    for pid in project_ids {
+        let Some(model) = crate::team::load(state, &pid) else { continue };
+        for agent in &model.team {
+            let role_id = agent["roleId"].as_str().unwrap_or_default();
+            let cli = agent["cli"].as_str().unwrap_or("");
+            let Some(adapter) = crate::cli::adapter(cli) else { continue };
+            if adapter.skills_dir.is_some() {
+                let approved = approved_skills_inner(state, &pid, role_id, false);
+                for s in &approved {
+                    if is_hex64(&s.hash) {
+                        live_trees.insert(s.hash.clone());
+                    }
+                }
+                let links = role_skill_links(&approved, crate::cli::AGENT_HOME);
+                if !links.is_empty() {
+                    live_views.insert(links_hash(&links));
+                }
+            }
+            if adapter.agents_dir.is_some() {
+                let subs = crate::subagents::approved_for_role(state, &pid, role_id);
+                for d in &subs {
+                    if is_hex64(&d.tree) {
+                        live_trees.insert(d.tree.clone());
+                    }
+                }
+                if let Some(h) = crate::subagents::view_hash(adapter, &subs) {
+                    live_agent_views.insert(h);
+                }
+            }
+        }
+    }
+
+    (live_trees, live_views, live_agent_views)
+}
+
+fn prune_dir(dir: &Path, keep: &HashSet<String>, min_age: Duration) -> (usize, usize) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return (0, 0);
+    };
+    let (mut hashes_removed, mut tmp_removed) = (0, 0);
+    for entry in entries.flatten() {
+        let fname = entry.file_name();
+        let Some(name) = fname.to_str() else { continue };
+        let is_tmp = name.starts_with(".tmp-");
+        let is_hash = is_hex64(name);
+        if !is_tmp && !is_hash {
+            continue;
+        }
+        if is_hash && keep.contains(name) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(md) = std::fs::symlink_metadata(&path) else { continue };
+        if !min_age.is_zero() {
+            let old_enough = md.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age >= min_age);
+            if !old_enough {
+                continue;
+            }
+        }
+        let removed = if md.file_type().is_dir() {
+            std::fs::remove_dir_all(&path).is_ok()
+        } else {
+            std::fs::remove_file(&path).is_ok()
+        };
+        if removed {
+            if is_tmp {
+                tmp_removed += 1;
+            } else {
+                hashes_removed += 1;
+            }
+        }
+    }
+    (hashes_removed, tmp_removed)
+}
+
+/// Garbage-collects unreferenced content-addressed skill trees (`<data_root>/skills/<hash>`, `<workspaces_root>/.arima-skills/<hash>`),
+/// symlink views (`views/<hash>`), and rendered sub-agent views (`agent-views/<hash>`) plus stale `.tmp-*` staging directories
+/// older than `min_age`.
+#[must_use]
+pub fn gc_storage(state: &AppState, min_age: Duration) -> GcReport {
+    gc_storage_with_workspaces(state, &state.inner.runtime.config.workspaces_root, min_age)
+}
+
+#[must_use]
+pub(crate) fn gc_storage_with_workspaces(state: &AppState, workspaces_root: &Path, min_age: Duration) -> GcReport {
+    let (live_trees, live_views, live_agent_views) = collect_live_refs(state);
+    let mut report = GcReport::default();
+
+    if let Ok(root) = data_root(state) {
+        let (h, t) = prune_dir(&root, &live_trees, min_age);
+        report.trees_removed += h;
+        report.tmp_removed += t;
+    }
+
+    let ws_skills = workspaces_root.join(crate::runtime::SKILLS_FOLDER);
+    let (h, t) = prune_dir(&ws_skills, &live_trees, min_age);
+    report.workspace_trees_removed += h;
+    report.tmp_removed += t;
+
+    let (h, t) = prune_dir(&ws_skills.join("views"), &live_views, min_age);
+    report.link_views_removed += h;
+    report.tmp_removed += t;
+
+    let (h, t) = prune_dir(&ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER), &live_agent_views, min_age);
+    report.agent_views_removed += h;
+    report.tmp_removed += t;
+
+    report
 }
 
 #[cfg(test)]
@@ -1185,5 +1414,210 @@ mod tests {
         let err = check_operator_refs(&state, &pid, &json!(["evil/repo@exfil"])).unwrap_err();
         assert!(err.contains("Only the owner"), "{err}");
         assert!(check_operator_refs(&state, &pid, &json!(["https://10.0.0.5/x.git#skills/a"])).is_err());
+    }
+
+    #[test]
+    fn gc_prunes_only_unreferenced_trees_views_and_stale_tmp_dirs() {
+        let (tmp, state, pid, repo, src) = setup("acme/skills@diff-review");
+        crate::team_edit::set_team_mode(&state, &pid, &[json!("container")]).unwrap();
+        let role = role_id(&state, &pid);
+        crate::team_edit::update_role(&state, &pid, &[json!(role), json!({ "cli": "claude" })]).unwrap();
+        let agent = crate::team::load(&state, &pid).unwrap().team[0]["id"].as_str().unwrap().to_owned();
+        let ws = tmp.path().join("ws");
+        let rt = crate::runtime::AgentRuntime::new(crate::runtime::RuntimeConfig {
+            enabled: true,
+            image: "img".into(),
+            network: "net".into(),
+            workspaces_root: ws.clone(),
+            workspaces_host_root: "/host/ws".into(),
+            hq_url: None,
+            egress_port: 8420,
+            hq_container: None,
+        });
+
+        // Pin + approve v1 and mount via runtime.plan so workspace copy and link view exist.
+        let pin1 = pin_source(&state, &pid, "acme/skills@diff-review", &src).unwrap();
+        answer(&state, pin1.decision_id.as_deref().unwrap(), DecisionStatus::Resolved);
+        let plan1 = rt.plan(&state, &pid, &agent).unwrap();
+        let view1_bind = plan1.body["HostConfig"]["Binds"].as_array().unwrap()[2].as_str().unwrap().to_owned();
+        let view1 = view1_bind.strip_prefix("/host/ws/.arima-skills/views/").unwrap().split(':').next().unwrap().to_owned();
+
+        // Populate a pack lock entry with approved tree + pending update tree + open PackReview from_tree, plus an active sub-agent view.
+        let data_skills = data_root(&state).unwrap();
+        let ws_skills = ws.join(crate::runtime::SKILLS_FOLDER);
+        let kept_approved_tree = "1".repeat(64);
+        let kept_pending_tree = "2".repeat(64);
+        let kept_review_from_tree = "3".repeat(64);
+        let orphan_tree = "4".repeat(64);
+        let orphan_view = "5".repeat(64);
+        let active_agent_view = "6".repeat(64);
+        let orphan_agent_view = "7".repeat(64);
+
+        for dir in [
+            data_skills.join(&kept_approved_tree),
+            data_skills.join(&kept_pending_tree),
+            data_skills.join(&kept_review_from_tree),
+            data_skills.join(&orphan_tree),
+            data_skills.join(".tmp-stale"),
+            data_skills.join("keep-non-hash-folder"),
+            ws_skills.join(&orphan_tree),
+            ws_skills.join("views").join(&orphan_view),
+            ws_skills.join("views").join(".tmp-view"),
+            ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER).join(&orphan_agent_view),
+            ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER).join(".tmp-agent"),
+        ] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+
+        // Write a pack lock (with pending update) + an open PackReview referencing `kept_review_from_tree`.
+        let lock = arima_core::PackLock {
+            v: 1,
+            packs: [(
+                "acme/pack".to_owned(),
+                arima_core::PackEntry {
+                    source: arima_core::PackSource { repo: "https://github.com/acme/pack.git".into(), commit: "a".repeat(40), path: None },
+                    version: None,
+                    tree: kept_approved_tree.clone(),
+                    skills: BTreeMap::new(),
+                    agents: BTreeMap::new(),
+                    tool_servers: BTreeMap::new(),
+                    egress: vec![],
+                    secrets: vec![],
+                    ignored: vec![],
+                    scan: Default::default(),
+                    approved: None,
+                    review: Some("rev-1".into()),
+                    update: Some(Box::new(arima_core::PackEntry {
+                        source: arima_core::PackSource { repo: "https://github.com/acme/pack.git".into(), commit: "b".repeat(40), path: None },
+                        version: None,
+                        tree: kept_pending_tree.clone(),
+                        skills: BTreeMap::new(),
+                        agents: BTreeMap::new(),
+                        tool_servers: BTreeMap::new(),
+                        egress: vec![],
+                        secrets: vec![],
+                        ignored: vec![],
+                        scan: Default::default(),
+                        approved: None,
+                        review: None,
+                        update: None,
+                    })),
+                },
+            )]
+            .into(),
+        };
+        crate::integrations::save_setting(&state, &format!("packs:{pid}"), &json!(lock)).unwrap();
+
+        state
+            .inner
+            .decisions
+            .upsert(&VisualDecision {
+                id: "rev-1".into(),
+                project_id: pid.clone(),
+                from_id: "hq".into(),
+                task_id: None,
+                title: "Review".into(),
+                details: "".into(),
+                waiting: false,
+                owner_only: true,
+                status: DecisionStatus::Open,
+                payload: DecisionPayload::PackReview {
+                    pack: "acme/pack".into(),
+                    from: Some("a".repeat(40)),
+                    to: "b".repeat(40),
+                    from_tree: Some(kept_review_from_tree.clone()),
+                    to_tree: kept_pending_tree.clone(),
+                    changed: vec![],
+                    other_files: vec![],
+                    agents: vec![],
+                    egress: vec![],
+                    secrets: vec![],
+                    ignored: vec![],
+                    findings: vec![],
+                    roles: vec![],
+                },
+                note: None,
+                created_at: Utc::now().to_rfc3339(),
+                closed_at: None,
+                form: None,
+                answer: None,
+            })
+            .unwrap();
+
+        // Write a real pack sub-agent in `kept_approved_tree` and link one skill so `subagents::view_hash` keeps its rendered view.
+        let skill_tree_dir = data_skills.join(&kept_approved_tree).join(crate::packs::STORED_PLUGIN);
+        std::fs::create_dir_all(skill_tree_dir.join("skills/helper")).unwrap();
+        std::fs::create_dir_all(skill_tree_dir.join("agents")).unwrap();
+        std::fs::write(skill_tree_dir.join("skills/helper/SKILL.md"), GOOD).unwrap();
+        let agent_bytes = b"---\nname: helper-bot\ndescription: Helps out\n---\n\nAlways help.\n";
+        std::fs::write(skill_tree_dir.join("agents/helper-bot.md"), agent_bytes).unwrap();
+        let stored_files = read_stored(&skill_tree_dir).unwrap();
+        let real_pack_tree_hash = skill_hash(&stored_files);
+        std::fs::rename(data_skills.join(&kept_approved_tree), data_skills.join(&real_pack_tree_hash)).unwrap();
+        let mut lock2 = crate::packs::lock(&state, &pid);
+        let entry = lock2.packs.get_mut("acme/pack").unwrap();
+        entry.tree = real_pack_tree_hash.clone();
+        entry.approved = Some(arima_core::PackApproval { by: "owner".into(), at: Utc::now().to_rfc3339() });
+        entry.skills.insert(
+            "helper".into(),
+            arima_core::PackSkill { path: "skills/helper".into(), sha256: real_pack_tree_hash.clone() },
+        );
+        entry.agents.insert(
+            "helper-bot".into(),
+            arima_core::PackAgent {
+                path: "agents/helper-bot.md".into(),
+                name: "helper-bot".into(),
+                description: "Helps out".into(),
+                dropped_fields: vec![],
+                sha256: sha_hex(agent_bytes),
+            },
+        );
+        crate::integrations::save_setting(&state, &format!("packs:{pid}"), &json!(lock2)).unwrap();
+        crate::team_edit::update_role(&state, &pid, &[json!(role), json!({ "skills": ["acme/skills@diff-review", "acme/pack@helper"] })]).unwrap();
+
+        let adapter = crate::cli::adapter("claude").unwrap();
+        let subs = crate::subagents::approved_for_role(&state, &pid, &role);
+        assert_eq!(subs.len(), 1);
+        let expected_agent_view = crate::subagents::view_hash(adapter, &subs).unwrap();
+        let mounted_agent_view = crate::subagents::mount(&rt.config, adapter, &subs).unwrap().unwrap();
+        assert_eq!(mounted_agent_view.hash, expected_agent_view);
+
+        // Refresh standalone skill to v2 -> `pin1.hash` and `view1` become unreferenced!
+        write(&repo, "skills/diff-review/notes.md", "v2\n");
+        let pin2 = refresh_source(&state, &pid, "acme/skills@diff-review", &src).unwrap();
+        assert_ne!(pin2.hash, pin1.hash);
+        // Re-plan to generate new link view for remaining approved pack skill.
+        let plan_after = rt.plan(&state, &pid, &agent).unwrap();
+        let active_view_bind = plan_after.body["HostConfig"]["Binds"].as_array().unwrap().iter().find_map(|b| b.as_str().filter(|s| s.contains("/.arima-skills/views/"))).unwrap().to_owned();
+        let active_view = active_view_bind.strip_prefix("/host/ws/.arima-skills/views/").unwrap().split(':').next().unwrap().to_owned();
+        assert_ne!(active_view, view1);
+
+        // Fresh unreferenced orphan agent view directory + verify min_age=1h protects everything.
+        std::fs::create_dir_all(ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER).join(&active_agent_view)).unwrap();
+        let skipped = gc_storage_with_workspaces(&state, &ws, Duration::from_secs(3600));
+        assert_eq!(skipped.total_removed(), 0, "min_age protects recently created directories");
+
+        // Now run GC with min_age=ZERO and verify exact deletions + exact preservations.
+        let report = gc_storage_with_workspaces(&state, &ws, Duration::ZERO);
+        assert_eq!(report.trees_removed, 2, "pin1 + orphan tree removed from data_root/skills: {report:?}");
+        assert_eq!(report.workspace_trees_removed, 2, "pin1 + orphan tree removed from workspace skills: {report:?}");
+        assert_eq!(report.link_views_removed, 2, "view1 + orphan_view removed: {report:?}");
+        assert_eq!(report.agent_views_removed, 2, "orphan_agent_view + unused active_agent_view placeholder removed: {report:?}");
+        assert_eq!(report.tmp_removed, 3, "all three .tmp-* staging dirs removed: {report:?}");
+
+        assert!(!data_skills.join(&pin1.hash).exists());
+        assert!(!data_skills.join(&orphan_tree).exists());
+        assert!(data_skills.join(&pin2.hash).exists(), "current pin preserved");
+        assert!(data_skills.join(&real_pack_tree_hash).exists(), "approved pack tree preserved");
+        assert!(data_skills.join(&kept_pending_tree).exists(), "pending update tree preserved");
+        assert!(data_skills.join(&kept_review_from_tree).exists(), "open review from_tree preserved");
+        assert!(data_skills.join("keep-non-hash-folder").exists(), "non-hash folder untouched");
+
+        assert!(ws_skills.join(&real_pack_tree_hash).exists(), "active pack workspace tree preserved");
+        assert!(!ws_skills.join(&view1).is_file());
+        assert!(ws_skills.join("views").join(&active_view).exists(), "active link view preserved");
+        assert!(!ws_skills.join("views").join(&view1).exists(), "superseded link view removed");
+        assert!(ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER).join(&expected_agent_view).exists(), "active sub-agent view preserved");
+        assert!(!ws_skills.join(crate::subagents::AGENT_VIEWS_FOLDER).join(&orphan_agent_view).exists(), "orphan sub-agent view removed");
     }
 }

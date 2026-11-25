@@ -126,8 +126,23 @@ impl McpJsonRpcResponse {
     }
 }
 
-/// The only MCP revision this server implements: Streamable HTTP with JSON responses, no batching, no sessions.
+/// Default MCP revision (Streamable HTTP with JSON responses, no batching, no sessions).
 pub const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
+
+/// MCP Streamable HTTP protocol revisions this server accepts and negotiates.
+pub const SUPPORTED_MCP_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26"];
+
+#[must_use]
+pub fn is_supported_protocol_version(version: &str) -> bool {
+    SUPPORTED_MCP_PROTOCOL_VERSIONS.contains(&version)
+}
+
+#[must_use]
+pub fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
+    requested
+        .and_then(|req| SUPPORTED_MCP_PROTOCOL_VERSIONS.iter().copied().find(|v| *v == req))
+        .unwrap_or(MCP_PROTOCOL_VERSION)
+}
 
 /// Caller identity executing an MCP request: always an agent authenticated by its bearer token.
 #[derive(Debug, Clone)]
@@ -533,14 +548,17 @@ pub fn handle_mcp_rpc(state: &AppState, caller: &McpCaller, req: McpJsonRpcReque
     let rpc_id = req.id?;
 
     Some(match req.method.as_str() {
-        "initialize" => McpJsonRpcResponse::ok(
-            rpc_id,
-            json!({
-                "protocolVersion": MCP_PROTOCOL_VERSION,
-                "serverInfo": { "name": "arimaops-mcp", "version": env!("CARGO_PKG_VERSION") },
-                "capabilities": { "tools": {} }
-            }),
-        ),
+        "initialize" => {
+            let negotiated = negotiate_protocol_version(req.params.get("protocolVersion").and_then(Value::as_str));
+            McpJsonRpcResponse::ok(
+                rpc_id,
+                json!({
+                    "protocolVersion": negotiated,
+                    "serverInfo": { "name": "arimaops-mcp", "version": env!("CARGO_PKG_VERSION") },
+                    "capabilities": { "tools": {} }
+                }),
+            )
+        }
         "ping" => McpJsonRpcResponse::ok(rpc_id, json!({})),
         "tools/list" => McpJsonRpcResponse::ok(
             rpc_id,

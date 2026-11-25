@@ -259,12 +259,12 @@ fn mcp_opencode(servers: &[McpServer], _: &str) -> McpLaunch {
     const PATH: &str = ".agent-home/.arima/opencode.json";
     let map = server_map(
         servers,
-        |url, h| json!({ "type": "remote", "url": url, "headers": h }),
+        |url, h| json!({ "type": "remote", "url": url, "headers": h, "oauth": false }),
         |args, env| json!({ "type": "local", "command": std::iter::once(NODE.to_owned()).chain(args).collect::<Vec<_>>(), "environment": env }),
         &format!("{{env:{TOKEN_ENV}}}"),
     );
     McpLaunch {
-        file: Some((PATH, json!({ "mcp": { "servers": map } }))),
+        file: Some((PATH, json!({ "mcp": map }))),
         env: vec![("OPENCODE_CONFIG".to_owned(), in_home(PATH))],
         ..McpLaunch::default()
     }
@@ -353,7 +353,8 @@ mod tests {
         let opencode = mcp("opencode", &s);
         let (path, cfg) = opencode.file.unwrap();
         assert_eq!(opencode.env, [("OPENCODE_CONFIG".to_owned(), format!("/workspace/{path}"))]);
-        assert_eq!(cfg["mcp"]["servers"]["docs"], json!({ "type": "remote", "url": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer {env:ARIMA_MCP_TOKEN}" } }));
+        assert!(cfg["mcp"].get("servers").is_none());
+        assert_eq!(cfg["mcp"]["docs"], json!({ "type": "remote", "url": "http://hq/api/projects/p/mcp/docs", "headers": { "Authorization": "Bearer {env:ARIMA_MCP_TOKEN}" }, "oauth": false }));
 
         let (path, cfg) = mcp("agy", &s).file.unwrap();
         assert_eq!(path, ".agent-home/.gemini/config/mcp_config.json");
@@ -388,7 +389,7 @@ mod tests {
         let (_, cfg) = mcp("copilot", &s).file.unwrap();
         assert_eq!(cfg["mcpServers"], json!({ "codemode": { "type": "local", "command": "node", "args": args, "env": { "ARIMA_MCP_TOKEN": "tok-1" }, "tools": ["*"] } }));
         let (_, cfg) = mcp("opencode", &s).file.unwrap();
-        assert_eq!(cfg["mcp"]["servers"], json!({ "codemode": { "type": "local", "command": ["node", "/opt/arima-codemode/server.mjs", "http://hq/api/projects/p"], "environment": { "ARIMA_MCP_TOKEN": "{env:ARIMA_MCP_TOKEN}" } } }));
+        assert_eq!(cfg["mcp"], json!({ "codemode": { "type": "local", "command": ["node", "/opt/arima-codemode/server.mjs", "http://hq/api/projects/p"], "environment": { "ARIMA_MCP_TOKEN": "{env:ARIMA_MCP_TOKEN}" } } }));
         let (_, cfg) = mcp("agy", &s).file.unwrap();
         assert_eq!(cfg["mcpServers"], json!({ "codemode": { "command": "node", "args": args, "env": { "ARIMA_MCP_TOKEN": "tok-1" } } }));
     }

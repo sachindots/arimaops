@@ -47,8 +47,14 @@ async fn protocol_shape_and_bearer_only_auth() {
 
     let (st, init) = post(&app, &path, &h, rpc("initialize", json!({ "protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": { "name": "t", "version": "1" } }))).await;
     assert_eq!(st, StatusCode::OK);
-    assert_eq!(init["result"]["protocolVersion"], MCP_PROTOCOL_VERSION);
+    assert_eq!(init["result"]["protocolVersion"], "2025-11-25");
     assert!(init["result"]["capabilities"]["tools"].is_object());
+
+    for (req_ver, expected) in [("2025-06-18", "2025-06-18"), ("2025-03-26", "2025-03-26"), ("2099-01-01", MCP_PROTOCOL_VERSION)] {
+        let (st, body) = post(&app, &path, &h, rpc("initialize", json!({ "protocolVersion": req_ver, "capabilities": {}, "clientInfo": { "name": "t", "version": "1" } }))).await;
+        assert_eq!(st, StatusCode::OK);
+        assert_eq!(body["result"]["protocolVersion"], expected, "requested {req_ver}");
+    }
 
     let (st, body) = post(&app, &path, &h, json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
     assert_eq!((st, body), (StatusCode::ACCEPTED, Value::Null), "a notification gets 202 and no body");
@@ -77,6 +83,10 @@ async fn protocol_shape_and_bearer_only_auth() {
     let (_, bad_method) = post(&app, &path, &h, rpc("ask_user", json!({}))).await;
     assert_eq!(bad_method["error"]["code"], -32601, "tool names are not JSON-RPC methods");
 
+    for ver in ["2025-11-25", "2025-06-18", "2025-03-26"] {
+        let (st, _) = post(&app, &path, &[h[0], ("mcp-protocol-version", ver)], rpc("ping", json!({}))).await;
+        assert_eq!(st, StatusCode::OK, "header mcp-protocol-version={ver}");
+    }
     let (st, _) = post(&app, &path, &[h[0], ("mcp-protocol-version", "1999-01-01")], rpc("ping", json!({}))).await;
     assert_eq!(st, StatusCode::BAD_REQUEST);
     let (st, _) = post(&app, &path, &[h[0], (ORIGIN.as_str(), "https://evil.example")], rpc("ping", json!({}))).await;
