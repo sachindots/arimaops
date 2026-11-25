@@ -14,7 +14,7 @@ use crate::{packs, skills, AppState};
 /// Maximum number of sub-agents registered from a single pack (caps parent context cost).
 pub const MAX_PACK_AGENTS: usize = 20;
 
-const AGENT_VIEWS_FOLDER: &str = "agent-views";
+pub(crate) const AGENT_VIEWS_FOLDER: &str = "agent-views";
 const MAX_NAME_LEN: usize = 64;
 const MAX_DESC_LEN: usize = 1024;
 
@@ -42,6 +42,7 @@ pub struct SubagentDef {
 /// Read-only Docker bind mount for rendered native sub-agent files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentView {
+    pub hash: String,
     pub bind: String,
     pub target: &'static str,
 }
@@ -398,22 +399,36 @@ fn write_rendered_view(views_dir: &Path, hash: &str, rendered: &[(String, Vec<u8
     res
 }
 
+fn render_sorted(adapter: &CliAdapter, agents: &[SubagentDef]) -> Option<(String, skills::Files)> {
+    adapter.agents_dir?;
+    if agents.is_empty() {
+        return None;
+    }
+    let mut rendered: skills::Files = agents.iter().map(|def| render(def, adapter.agent_format)).collect();
+    rendered.sort_by(|a, b| a.0.cmp(&b.0));
+    let hash = skills::skill_hash(&rendered);
+    Some((hash, rendered))
+}
+
+/// Content hash of the rendered native sub-agent view for `(adapter, agents)`, if any view is mounted.
+#[must_use]
+pub(crate) fn view_hash(adapter: &CliAdapter, agents: &[SubagentDef]) -> Option<String> {
+    render_sorted(adapter, agents).map(|(hash, _)| hash)
+}
+
 /// Renders each sub-agent into `<workspaces_root>/.arima-skills/agent-views/<hash>/` (reused when identical) and
 /// returns the read-only bind mount targeting `adapter.agents_dir`, or `None` when the agent list or target is empty.
 pub fn mount(cfg: &RuntimeConfig, adapter: &CliAdapter, agents: &[SubagentDef]) -> Result<Option<AgentView>, String> {
     let Some(target) = adapter.agents_dir else {
         return Ok(None);
     };
-    if agents.is_empty() {
+    let Some((hash, rendered)) = render_sorted(adapter, agents) else {
         return Ok(None);
-    }
-    let mut rendered: Vec<(String, Vec<u8>)> = agents.iter().map(|def| render(def, adapter.agent_format)).collect();
-    rendered.sort_by(|a, b| a.0.cmp(&b.0));
-    let hash = skills::skill_hash(&rendered);
+    };
     let views_dir = cfg.workspaces_root.join(SKILLS_FOLDER).join(AGENT_VIEWS_FOLDER);
     write_rendered_view(&views_dir, &hash, &rendered)?;
     let view_host = cfg.workspaces_host_root.join(SKILLS_FOLDER).join(AGENT_VIEWS_FOLDER).join(&hash);
-    Ok(Some(AgentView { bind: format!("{}:{target}:ro", view_host.display()), target }))
+    Ok(Some(AgentView { hash, bind: format!("{}:{target}:ro", view_host.display()), target }))
 }
 
 /// Role-file instructions for sub-agents: lists read-only source files when `agents_dir` is `None`, or adds a short

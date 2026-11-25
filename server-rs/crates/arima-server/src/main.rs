@@ -254,6 +254,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
     state.ensure_default_project(&project_name, slug.trim_matches('-'), &cwd.display().to_string())?;
     arima_server::team::refresh_builtin_role_prompts(&state);
+    let gc = arima_server::skills::gc_storage(&state, std::time::Duration::from_secs(10 * 60));
+    if gc.total_removed() > 0 {
+        info!(
+            trees = gc.trees_removed,
+            workspace_trees = gc.workspace_trees_removed,
+            link_views = gc.link_views_removed,
+            agent_views = gc.agent_views_removed,
+            tmp = gc.tmp_removed,
+            "boot skill/view GC pruned stale directories"
+        );
+    }
 
     let preview_addr: SocketAddr = format!("{host}:{preview_port}").parse()?;
     let default_hq_origin = public_origin

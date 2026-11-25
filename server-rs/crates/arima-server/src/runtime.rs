@@ -6,7 +6,7 @@
 //! Container mode only. HQ reaches Docker through its Unix socket (see `arima_agents::DockerEngine`), so mounting
 //! that socket into HQ is what turns the runtime on. Without it every start answers with a plain error.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -51,6 +51,64 @@ pub fn egress_port() -> u16 {
     env_port("HQ_EGRESS_PORT").unwrap_or_else(|| env_port("HQ_PORT").unwrap_or(7420).saturating_add(1000))
 }
 
+fn container_id_from_mountinfo(mountinfo: &str) -> Option<String> {
+    for field in mountinfo.split_whitespace() {
+        for needle in ["/containers/", "/docker/overlay2/", "/sandboxes/"] {
+            if let Some(idx) = field.find(needle) {
+                let after = &field[idx + needle.len()..];
+                let seg = after.split('/').next().unwrap_or("");
+                if crate::skills::is_hex64(seg) {
+                    return Some(seg.to_owned());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn container_id_from_cgroup(cgroup: &str) -> Option<String> {
+    for line in cgroup.lines() {
+        for part in line.split('/') {
+            if crate::skills::is_hex64(part) {
+                return Some(part.to_owned());
+            }
+            if let Some(stem) = part.strip_suffix(".scope") {
+                if let Some((_, id)) = stem.rsplit_once('-') {
+                    if crate::skills::is_hex64(id) {
+                        return Some(id.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Resolves HQ's own container identifier: explicit `ARIMA_HQ_CONTAINER` wins, then 64-hex container ID from
+/// `/proc/self/mountinfo` or `/proc/self/cgroup` (so custom hostnames like `arima-hq` still resolve the container),
+/// and finally `/etc/hostname` when running inside a container.
+fn resolve_hq_container(env_override: Option<&str>, mountinfo: Option<&str>, cgroup: Option<&str>, hostname: Option<&str>) -> Option<String> {
+    if let Some(v) = env_override.map(str::trim).filter(|s| !s.is_empty()) {
+        return Some(v.to_owned());
+    }
+    if let Some(id) = mountinfo.and_then(container_id_from_mountinfo) {
+        return Some(id);
+    }
+    if let Some(id) = cgroup.and_then(container_id_from_cgroup) {
+        return Some(id);
+    }
+    hostname.map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
+}
+
+fn detect_hq_container() -> Option<String> {
+    let env_override = std::env::var("ARIMA_HQ_CONTAINER").ok();
+    let in_container = std::path::Path::new("/.dockerenv").exists() || std::path::Path::new("/run/.containerenv").exists();
+    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok();
+    let cgroup = std::fs::read_to_string("/proc/self/cgroup").ok();
+    let hostname = in_container.then(|| std::fs::read_to_string("/etc/hostname").ok()).flatten();
+    resolve_hq_container(env_override.as_deref(), mountinfo.as_deref(), cgroup.as_deref(), hostname.as_deref())
+}
+
 impl RuntimeConfig {
     #[must_use]
     pub fn from_env(data_root: Option<&std::path::Path>) -> Self {
@@ -68,7 +126,7 @@ impl RuntimeConfig {
             workspaces_root: root,
             hq_url: nonempty("ARIMA_AGENT_HQ_URL"),
             egress_port: egress_port(),
-            hq_container: std::path::Path::new("/.dockerenv").exists().then(|| std::fs::read_to_string("/etc/hostname").ok()).flatten().map(|h| h.trim().to_owned()).filter(|h| !h.is_empty()),
+            hq_container: detect_hq_container(),
         }
     }
 
@@ -104,6 +162,9 @@ struct Session {
     writer: tokio::sync::Mutex<OwnedWriteHalf>,
     scrollback: Mutex<Vec<u8>>,
     workspace: String,
+    mounted_trees: Vec<String>,
+    link_view: Option<String>,
+    agent_view: Option<String>,
 }
 
 /// What the last Docker check found; the setup checklist reads this instead of probing on every snapshot.
@@ -395,7 +456,15 @@ impl AgentRuntime {
         };
         let _ = self.engine.resize(&id, 120, 32).await;
         let (mut reader, writer) = stream.into_split();
-        let session = Arc::new(Session { container: id.clone(), writer: tokio::sync::Mutex::new(writer), scrollback: Mutex::new(Vec::new()), workspace: plan.workspace_host });
+        let session = Arc::new(Session {
+            container: id.clone(),
+            writer: tokio::sync::Mutex::new(writer),
+            scrollback: Mutex::new(Vec::new()),
+            workspace: plan.workspace_host,
+            mounted_trees: plan.mounted_trees,
+            link_view: plan.link_view,
+            agent_view: plan.agent_view,
+        });
         if let Ok(mut map) = self.sessions.lock() {
             map.insert(Self::key(project_id, agent_id), session.clone());
         }
@@ -521,6 +590,9 @@ impl AgentRuntime {
         let memory_mb = res["memoryGb"].as_f64().filter(|m| *m >= 0.5).map_or(u64::from(DEFAULT_CONTAINER_MEMORY_MB), |g| (g * 1024.0).round() as u64);
         let workspace_host = self.config.workspaces_host_root.join(&slug).join(agent_id).display().to_string();
         let mut binds = vec![format!("{workspace_host}:/workspace:rw")];
+        let mut mounted_trees = BTreeSet::new();
+        let mut link_view = None;
+        let mut agent_view = None;
         // Copied outside every agent's /workspace and mounted read-only, so an agent can't edit a skill it was given.
         // Each skill in the CLI's skills_dir is a symlink inside a read-only view directory pointing into the
         // read-only mounted plugin tree (or standalone skill mount), so relative paths like `../../resources/...`
@@ -529,18 +601,17 @@ impl AgentRuntime {
             let role_id = agent["roleId"].as_str().unwrap_or_default();
             let mut plugin_roots = BTreeSet::new();
             let mut standalone_mounted = BTreeSet::new();
-            let mut links = BTreeMap::new();
-            for skill in crate::skills::approved_skills(state, project_id, role_id) {
+            let approved = crate::skills::approved_skills(state, project_id, role_id);
+            let links = crate::skills::role_skill_links(&approved, crate::cli::AGENT_HOME);
+            for skill in &approved {
+                mounted_trees.insert(skill.hash.clone());
                 let Some(plugin) = &skill.plugin else {
-                    if let std::collections::btree_map::Entry::Vacant(e) = links.entry(skill.name.clone()) {
-                        crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
-                        let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
-                        let target = format!("{}/.arima/skills/{}", crate::cli::AGENT_HOME, skill.name);
-                        if standalone_mounted.insert(skill.name) {
-                            ensure_mountpoint(&dir, &target)?;
-                            binds.push(format!("{}:{target}:ro", host.display()));
-                        }
-                        e.insert(target);
+                    crate::skills::store(&self.config.workspaces_root.join(SKILLS_FOLDER), &skill.hash, &skill.name, &skill.files)?;
+                    let host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join(&skill.hash).join(&skill.name);
+                    let target = format!("{}/.arima/skills/{}", crate::cli::AGENT_HOME, skill.name);
+                    if standalone_mounted.insert(skill.name.clone()) {
+                        ensure_mountpoint(&dir, &target)?;
+                        binds.push(format!("{}:{target}:ro", host.display()));
                     }
                     continue;
                 };
@@ -551,13 +622,13 @@ impl AgentRuntime {
                     ensure_mountpoint(&dir, &root)?;
                     binds.push(format!("{}:{root}:ro", tree.display()));
                 }
-                links.entry(skill.name).or_insert_with(|| format!("{root}/{}", plugin.skill));
             }
             if !links.is_empty() {
                 let view_hash = crate::skills::store_links(&self.config.workspaces_root.join(SKILLS_FOLDER), &links)?;
                 let view_host = self.config.workspaces_host_root.join(SKILLS_FOLDER).join("views").join(&view_hash);
                 ensure_mountpoint(&dir, skills_dir)?;
                 binds.push(format!("{}:{skills_dir}:ro", view_host.display()));
+                link_view = Some(view_hash);
             }
             // One variable can name one plugin: with several, each skill's plugin is still at its own path.
             if let [root] = Vec::from_iter(plugin_roots).as_slice() {
@@ -565,8 +636,12 @@ impl AgentRuntime {
             }
         }
         if let Some(view) = crate::subagents::mount(&self.config, adapter, &subagents)? {
+            for s in &subagents {
+                mounted_trees.insert(s.tree.clone());
+            }
             ensure_mountpoint(&dir, view.target)?;
             binds.push(view.bind);
+            agent_view = Some(view.hash);
         }
         let mut env_list: Vec<String> = env.into_iter().map(|(k, v)| format!("{k}={v}")).collect();
         env_list.sort();
@@ -592,7 +667,37 @@ impl AgentRuntime {
                 "RestartPolicy": { "Name": "no" }
             }
         });
-        Ok(Plan { container, body, workspace_host, enforce })
+        Ok(Plan {
+            container,
+            body,
+            workspace_host,
+            enforce,
+            mounted_trees: mounted_trees.into_iter().collect(),
+            link_view,
+            agent_view,
+        })
+    }
+
+    /// Content hashes currently bind-mounted into live running agent containers: `(trees, link_views, agent_views)`.
+    #[must_use]
+    pub(crate) fn active_skill_refs(&self) -> (std::collections::HashSet<String>, std::collections::HashSet<String>, std::collections::HashSet<String>) {
+        let mut trees = std::collections::HashSet::new();
+        let mut link_views = std::collections::HashSet::new();
+        let mut agent_views = std::collections::HashSet::new();
+        if let Ok(sessions) = self.sessions.lock() {
+            for s in sessions.values() {
+                for t in &s.mounted_trees {
+                    trees.insert(t.clone());
+                }
+                if let Some(v) = &s.link_view {
+                    link_views.insert(v.clone());
+                }
+                if let Some(v) = &s.agent_view {
+                    agent_views.insert(v.clone());
+                }
+            }
+        }
+        (trees, link_views, agent_views)
     }
 }
 
@@ -602,6 +707,9 @@ pub(crate) struct Plan {
     enforce: Option<(String, String)>,
     pub(crate) body: Value,
     workspace_host: String,
+    mounted_trees: Vec<String>,
+    link_view: Option<String>,
+    agent_view: Option<String>,
 }
 
 #[cfg(test)]
@@ -875,4 +983,28 @@ mod tests {
         assert_eq!(cfg.internal_network("my proj!"), "arima-agents-internal-my-proj-", "only Docker's name characters");
     }
 
+    #[test]
+    fn hq_container_detection_prefers_override_then_proc_ids_then_hostname() {
+        let id_mount = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let id_cgroup = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+        let mountinfo = format!("42 29 8:1 /var/lib/docker/containers/{id_mount}/hosts /etc/hosts rw,relatime - ext4 /dev/sda1 rw\n");
+        let cgroup_docker = format!("11:memory:/docker/{id_cgroup}\n");
+        let cgroup_systemd = format!("0::/system.slice/docker-{id_cgroup}.scope\n");
+        let cgroup_libpod = format!("0::/machine.slice/libpod-{id_cgroup}.scope/container\n");
+
+        assert_eq!(
+            resolve_hq_container(Some(" custom-hq-name "), Some(&mountinfo), Some(&cgroup_docker), Some("arima-hq")),
+            Some("custom-hq-name".into())
+        );
+        assert_eq!(
+            resolve_hq_container(Some("   "), Some(&mountinfo), Some(&cgroup_docker), Some("arima-hq")),
+            Some(id_mount.into()),
+            "mountinfo resolves container ID even with custom hostname"
+        );
+        assert_eq!(resolve_hq_container(None, Some("0::/ / rw"), Some(&cgroup_docker), Some("arima-hq")), Some(id_cgroup.into()));
+        assert_eq!(resolve_hq_container(None, None, Some(&cgroup_systemd), Some("arima-hq")), Some(id_cgroup.into()));
+        assert_eq!(resolve_hq_container(None, None, Some(&cgroup_libpod), Some("arima-hq")), Some(id_cgroup.into()));
+        assert_eq!(resolve_hq_container(None, Some("0::/"), Some("0::/"), Some("0123abcd")), Some("0123abcd".into()));
+        assert_eq!(resolve_hq_container(None, None, None, None), None);
+    }
 }

@@ -137,6 +137,17 @@ pub fn spawn_nightly_backup_scheduler(state: AppState) -> tokio::task::JoinHandl
                         warn!("scheduled nightly encrypted backup failed: {err}");
                     }
                 }
+                let gc = crate::skills::gc_storage(&state, Duration::from_secs(3600));
+                if gc.total_removed() > 0 {
+                    info!(
+                        trees = gc.trees_removed,
+                        workspace_trees = gc.workspace_trees_removed,
+                        link_views = gc.link_views_removed,
+                        agent_views = gc.agent_views_removed,
+                        tmp = gc.tmp_removed,
+                        "nightly skill/view GC pruned stale directories"
+                    );
+                }
             }
         }
     })

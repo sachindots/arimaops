@@ -27,7 +27,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::github::verify_github_signature;
-use crate::mcp::{handle_mcp_rpc, McpCaller, McpJsonRpcRequest, MCP_PROTOCOL_VERSION};
+use crate::mcp::{handle_mcp_rpc, is_supported_protocol_version, McpCaller, McpJsonRpcRequest, SUPPORTED_MCP_PROTOCOL_VERSIONS};
 use crate::meetings::{
     add_turn_and_refresh_minutes, commit_minutes_and_broadcast, handle_meeting_action,
     start_or_request_meeting, StartMeetingInput,
@@ -2056,8 +2056,11 @@ fn resolve_mcp_caller(
     path_project_id: Option<&str>,
 ) -> Result<McpCaller, ApiError> {
     if let Some(version) = headers.get("mcp-protocol-version") {
-        if version.as_bytes() != MCP_PROTOCOL_VERSION.as_bytes() {
-            return Err(ApiError::new(StatusCode::BAD_REQUEST, format!("Unsupported MCP protocol version; this server speaks {MCP_PROTOCOL_VERSION}.")));
+        if !version.to_str().ok().is_some_and(is_supported_protocol_version) {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                format!("Unsupported MCP protocol version; this server speaks {}.", SUPPORTED_MCP_PROTOCOL_VERSIONS.join(", ")),
+            ));
         }
     }
     agent_caller(state, headers, peer_ip, path_project_id)
