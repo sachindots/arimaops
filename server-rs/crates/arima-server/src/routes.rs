@@ -310,6 +310,7 @@ pub fn router_with_state(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         .fallback(get(static_or_404))
         .with_state(state)
+        .layer(tower_http::compression::CompressionLayer::new())
         .layer(middleware::from_fn(move |req: Request<Body>, next: Next| {
             let csp = csp.clone();
             async move {
@@ -2771,5 +2772,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn static_responses_compress_when_client_accepts_gzip_or_brotli() {
+        let (state, _, _) = test_state(None).await;
+        let app = router_with_state(state);
+
+        let plain = app
+            .clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(plain.status(), StatusCode::OK);
+        assert!(plain.headers().get("content-encoding").is_none());
+
+        for (accept, expected) in [("gzip", "gzip"), ("br", "br")] {
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/")
+                        .header("accept-encoding", accept)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(
+                resp.headers().get("content-encoding").and_then(|v| v.to_str().ok()),
+                Some(expected),
+                "accept-encoding={accept}"
+            );
+        }
     }
 }

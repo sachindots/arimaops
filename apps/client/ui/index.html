@@ -291,6 +291,25 @@
     .error-banner.visible {
       display: block;
     }
+
+    .status-banner {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--ink);
+      font-size: 13px;
+      display: none;
+    }
+
+    .status-banner.visible {
+      display: block;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -307,6 +326,7 @@
     </header>
 
     <div id="error-banner" class="error-banner" role="alert"></div>
+    <div id="status-banner" class="status-banner" role="status" aria-live="polite"></div>
 
     <section class="card" aria-label="Saved HQ servers">
       <div class="section-head">
@@ -348,12 +368,14 @@
         profiles: [],
         lastActiveId: null,
         editingId: null,
+        connectingId: null,
         healthById: {},
       };
 
       const listEl = document.getElementById("server-list");
       const countEl = document.getElementById("server-count");
       const errEl = document.getElementById("error-banner");
+      const statusEl = document.getElementById("status-banner");
       const formEl = document.getElementById("server-form");
       const headingEl = document.getElementById("form-heading");
       const nameInput = document.getElementById("input-name");
@@ -369,6 +391,16 @@
         }
         errEl.textContent = String(msg);
         errEl.classList.add("visible");
+      }
+
+      function showStatus(msg) {
+        if (!msg) {
+          statusEl.textContent = "";
+          statusEl.classList.remove("visible");
+          return;
+        }
+        statusEl.textContent = String(msg);
+        statusEl.classList.add("visible");
       }
 
       function render() {
@@ -435,12 +467,20 @@
           const connectBtn = document.createElement("button");
           connectBtn.type = "button";
           connectBtn.className = "primary";
-          connectBtn.textContent = "Connect";
+          const isConnecting = state.connectingId === p.id;
+          connectBtn.textContent = isConnecting ? "Connecting..." : "Connect";
+          connectBtn.disabled = state.connectingId !== null;
           connectBtn.addEventListener("click", async () => {
             showError("");
+            state.connectingId = p.id;
+            showStatus(`Connecting to ${p.name} (${p.url}) — waiting for HQ...`);
+            render();
             try {
               await invoke("connect_server", { id: p.id });
             } catch (e) {
+              state.connectingId = null;
+              showStatus("");
+              render();
               showError(e && e.message ? e.message : String(e));
             }
           });
