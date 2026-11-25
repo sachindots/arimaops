@@ -78,7 +78,7 @@ export function Select({
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const minW = Math.max(rect.width, 180);
+    const minW = Math.max(rect.width, 220);
     const maxW = Math.min(360, window.innerWidth - 16);
     const width = Math.min(maxW, minW);
     const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));

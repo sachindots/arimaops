@@ -885,6 +885,67 @@ test.describe("Live Isolated Rust HQ + Preview Proxy E2E", () => {
     await expect(chatCard.getByLabel("Tag prefix")).toBeDisabled();
     await expect(chatCard.getByRole("status")).toContainText("Answered: Confirm release");
 
+    // 10. MCP board + specMarkdown + update_task("doing") -> Board Doing column + Spec panel + TaskSheet without crash
+    const callMcp = async (name: string, argumentsObj: Record<string, unknown>) => {
+      const res = await fetch(`${hqOrigin}/api/projects/${encodeURIComponent(projectId)}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: hqOrigin,
+          Authorization: `Bearer ${mcpToken}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name, arguments: argumentsObj },
+        }),
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as {
+        result?: { structuredContent?: Record<string, unknown> };
+        error?: { message: string };
+      };
+    };
+
+    const mcpBoardResp = await callMcp("create_board", { title: "MCP Revamp" });
+    expect(mcpBoardResp.error, `create_board failed: ${JSON.stringify(mcpBoardResp.error)}`).toBeUndefined();
+    const mcpBoardId = String(mcpBoardResp.result?.structuredContent?.boardId ?? "");
+    expect(mcpBoardId).toBeTruthy();
+
+    const mcpSpecResp = await callMcp("write_spec", {
+      boardId: mcpBoardId,
+      specMarkdown: "S1. Passive recon only\nS2. Findings report",
+    });
+    expect(mcpSpecResp.error, `write_spec failed: ${JSON.stringify(mcpSpecResp.error)}`).toBeUndefined();
+
+    const mcpTaskResp = await callMcp("update_task", {
+      id: "T-MCP1",
+      title: "Run passive recon",
+      boardId: mcpBoardId,
+      status: "doing",
+    });
+    expect(mcpTaskResp.error, `update_task failed: ${JSON.stringify(mcpTaskResp.error)}`).toBeUndefined();
+
+    await gotoWorkspace(page, "Work");
+    await page.getByRole("navigation", { name: "Work sections" }).getByRole("button", { name: /^Board/i }).click();
+    await page.getByRole("navigation", { name: "Boards" }).getByRole("button", { name: /MCP Revamp/i }).click();
+    await expect(page.getByText(/MCP Revamp · 0\/1 done/i)).toBeVisible({ timeout: 10_000 });
+    const mcpTaskCard = page.getByRole("button", { name: /T-MCP1 Run passive recon: open/i });
+    await expect(mcpTaskCard).toBeVisible();
+
+    await page.getByRole("button", { name: /^Spec v1$/i }).click();
+    const specRegion = page.getByRole("region", { name: "Board specification" });
+    await expect(specRegion).toBeVisible();
+    await expect(specRegion).toContainText("S1. Passive recon only");
+
+    await mcpTaskCard.click();
+    const taskDialog = page.getByRole("dialog", { name: "T-MCP1 Run passive recon" });
+    await expect(taskDialog).toBeVisible();
+    await expect(taskDialog).toContainText("Doing");
+    await taskDialog.getByRole("button", { name: "Close the task" }).click();
+    await expect(taskDialog).toBeHidden();
+
     errors.assertClean("live-rust-hq-e2e");
     await context.close();
   });

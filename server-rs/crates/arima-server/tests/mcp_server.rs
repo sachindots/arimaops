@@ -254,3 +254,52 @@ async fn ask_user_with_a_form_files_it_and_delivers_the_answer() {
     let err = arima_server::ws::exec_answer_decision(&state, &pid, &[json!(id), json!({ "formAnswer": big })], ServerRole::Owner).unwrap_err();
     assert_eq!(err, "form answer is larger than 32 KiB");
 }
+
+#[tokio::test]
+async fn update_task_normalizes_status_and_populates_needs_and_spec() {
+    let (state, pid) = state_with(Db::open_in_memory().unwrap());
+    let app = router_with_state(state.clone());
+    let path = format!("/api/projects/{pid}/mcp");
+    let auth = format!("Bearer {}", state.inner.mcp.issue_agent_token(&pid, "lead"));
+    let h = [(AUTHORIZATION.as_str(), auth.as_str())];
+    let call = |name: &str, args: Value| rpc("tools/call", json!({ "name": name, "arguments": args }));
+
+    let (_, created) = post(&app, &path, &h, call("create_board", json!({ "title": "Revamp" }))).await;
+    let board_id = created["result"]["structuredContent"]["boardId"].as_str().unwrap().to_owned();
+    let (_, spec) = post(&app, &path, &h, call("write_spec", json!({ "boardId": board_id, "specMarkdown": "S1. Passive recon\nS2. Reporting" }))).await;
+    assert_eq!(spec["result"]["structuredContent"]["specVersion"], 1);
+
+    let cases = [
+        ("T-1", Some("doing"), "in-progress"),
+        ("T-2", None, "in-progress"),
+        ("T-3", Some("review"), "in-review"),
+        ("T-4", Some("done"), "done"),
+    ];
+    for (id, raw_status, expected) in cases {
+        let mut args = json!({ "id": id, "title": format!("Task {id}"), "boardId": board_id });
+        if let Some(st) = raw_status {
+            args["status"] = json!(st);
+        }
+        let (http_status, resp) = post(&app, &path, &h, call("update_task", args)).await;
+        assert_eq!(http_status, StatusCode::OK);
+        assert_eq!(resp["result"]["structuredContent"]["task"]["status"], expected, "task {id}");
+    }
+
+    let tasks = arima_server::team::tasks_for(&state, &pid);
+    assert_eq!(tasks.len(), 4);
+    for (t, (id, _, expected)) in tasks.iter().zip(cases.iter()) {
+        assert_eq!(t["id"], *id);
+        assert_eq!(t["status"], *expected);
+        assert_eq!(t["needs"], json!([]));
+    }
+    let counts = arima_server::team::task_counts(&tasks);
+    assert_eq!(counts["inProgress"], 2);
+    assert_eq!(counts["inReview"], 1);
+    assert_eq!(counts["done"], 1);
+    assert_eq!(counts["total"], 4);
+
+    let boards = arima_server::team::boards_for(&state, &pid);
+    let board = boards.iter().find(|b| b["id"] == board_id).expect("created board");
+    assert_eq!(board["specVersion"], 1);
+    assert_eq!(board["specMarkdown"], "S1. Passive recon\nS2. Reporting");
+}

@@ -349,7 +349,7 @@ pub const TOOLS: &[ToolDef] = &[
                     "title": str_prop("Task title, with its done-when."),
                     "boardId": str_prop("Board id. Defaults to B1."),
                     "stageId": str_prop("Stage, e.g. build, review, verify, or recon, threat, vuln, exploit, post, report. Defaults to build."),
-                    "status": str_prop("e.g. todo, doing, done. Defaults to doing."),
+                    "status": str_prop("One of: todo, in-progress, in-review, done, blocked (aliases like doing/review are normalized). Defaults to in-progress."),
                     "ownerId": str_prop("Owning agent id. Defaults to you.")
                 }),
                 &["id", "title"],
@@ -1131,6 +1131,8 @@ fn tool_record_gate(
         )
         .map_err(|e| (-32000, e.to_string()))?;
 
+    crate::ws::refresh(state, &caller.project_id);
+
     Ok(json!({
         "ok": true,
         "gateEvent": record
@@ -1251,7 +1253,7 @@ fn tool_attach_evidence(
             let data_json = json!({ "evidence": evidence }).to_string();
             conn.execute(
                 "INSERT INTO tasks (id, project_id, board_id, stage_id, status, title, data_json, created_at, updated_at)
-                 VALUES (?1, ?2, 'B1', 'verify', 'doing', ?1, ?3, ?4, ?4)
+                 VALUES (?1, ?2, 'B1', 'verify', 'in-progress', ?1, ?3, ?4, ?4)
                  ON CONFLICT(project_id, id) DO UPDATE SET
                     data_json = excluded.data_json,
                     updated_at = excluded.updated_at",
@@ -1260,6 +1262,8 @@ fn tool_attach_evidence(
             Ok::<_, DbError>(())
         })
         .map_err(|e| (-32000, e.to_string()))?;
+
+    crate::ws::refresh(state, &caller.project_id);
 
     Ok(json!({
         "ok": true,
@@ -1360,10 +1364,11 @@ fn tool_update_task(
         .get("stageId")
         .and_then(Value::as_str)
         .unwrap_or("build");
-    let status = args
+    let raw_status = args
         .get("status")
         .and_then(Value::as_str)
-        .unwrap_or("doing");
+        .unwrap_or("in-progress");
+    let status = crate::team::normalize_task_status(raw_status);
     let owner_id = args
         .get("ownerId")
         .and_then(Value::as_str)
@@ -1414,6 +1419,8 @@ fn tool_update_task(
             Ok::<_, DbError>(())
         })
         .map_err(|e| (-32000, e.to_string()))?;
+
+    crate::ws::refresh(state, &caller.project_id);
 
     Ok(json!({
         "ok": true,
@@ -1515,6 +1522,8 @@ fn tool_report_finding(
         .findings
         .create_finding(&caller.project_id, input)
         .map_err(|e| (-32602, e.to_string()))?;
+
+    crate::ws::refresh(state, &caller.project_id);
 
     Ok(json!({
         "ok": true,

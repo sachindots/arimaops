@@ -144,7 +144,7 @@ function RoleRow({ role, seats, expanded, onToggle }: { role: Role; seats: numbe
 
   return (
     <div className="panel">
-      <div className="grid grid-cols-[minmax(120px,1fr)_160px_170px_auto] items-end gap-2 p-2.5">
+      <div className="grid grid-cols-1 items-end gap-2 p-2.5 sm:grid-cols-[minmax(120px,1fr)_minmax(190px,215px)_minmax(150px,180px)_auto]">
         <Field label={`Role · ${seats} ${seats === 1 ? "agent" : "agents"}${role.isLead ? " · lead" : ""}`}>
           <CommitInput className="field" value={role.title} onCommit={(v) => v.trim() && set({ title: v.trim() })} />
         </Field>

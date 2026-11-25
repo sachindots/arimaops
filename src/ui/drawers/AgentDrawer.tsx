@@ -452,9 +452,9 @@ function TaskTab({ snap, agent, taskId }: { snap: OfficeSnapshot; agent: AgentCo
               <b>Deliverable:</b> <code className="bg-cream-2 px-1 font-term text-[12px] text-green">{task.deliverablePath}</code>
             </div>
           )}
-          {task.needs.length > 0 && (
+          {(task.needs ?? []).length > 0 && (
             <div className="text-[13px]">
-              Needs: {task.needs.map((n) => `${n} (${snap.tasks.find((t) => t.id === n)?.status ?? "?"})`).join(", ")}
+              Needs: {(task.needs ?? []).map((n) => `${n} (${snap.tasks.find((t) => t.id === n)?.status ?? "?"})`).join(", ")}
             </div>
           )}
           {pr && (

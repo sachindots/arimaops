@@ -261,6 +261,17 @@ pub fn boards_for(state: &AppState, project_id: &str) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// Normalizes any task status alias (including `"doing"` / `"in_progress"` / `"review"`) to a canonical UI `TaskStatus`.
+pub(crate) fn normalize_task_status(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "in-progress" | "in_progress" | "in progress" | "doing" | "active" | "working" => "in-progress",
+        "in-review" | "in_review" | "in review" | "review" | "reviewing" => "in-review",
+        "done" | "complete" | "completed" | "closed" | "merged" => "done",
+        "blocked" | "stuck" | "waiting" => "blocked",
+        _ => "todo",
+    }
+}
+
 /// Tasks of a project in creation order, shaped as the UI's `Task`.
 pub fn tasks_for(state: &AppState, project_id: &str) -> Vec<Value> {
     state
@@ -269,9 +280,10 @@ pub fn tasks_for(state: &AppState, project_id: &str) -> Vec<Value> {
         .read(|conn| {
             let mut stmt = conn.prepare("SELECT id, board_id, goal_id, stage_id, status, title, owner_id, pr_number, data_json FROM tasks WHERE project_id = ?1 ORDER BY created_at ASC, id ASC")?;
             let rows = stmt.query_map([project_id], |r| {
+                let raw_status = r.get::<_, String>(4)?;
                 let mut task = json!({
                     "id": r.get::<_, String>(0)?, "boardId": r.get::<_, String>(1)?, "goalId": r.get::<_, Option<String>>(2)?,
-                    "stageId": r.get::<_, String>(3)?, "status": r.get::<_, String>(4)?, "title": r.get::<_, String>(5)?,
+                    "stageId": r.get::<_, String>(3)?, "status": normalize_task_status(&raw_status), "title": r.get::<_, String>(5)?,
                     "ownerId": r.get::<_, Option<String>>(6)?, "prNumber": r.get::<_, Option<i64>>(7)?
                 });
                 // data_json holds the rest of a task (needs, files, cli, model...); the columns above win.
@@ -281,6 +293,9 @@ pub fn tasks_for(state: &AppState, project_id: &str) -> Vec<Value> {
                             task[k] = v;
                         }
                     }
+                }
+                if !task.get("needs").is_some_and(Value::is_array) {
+                    task["needs"] = json!([]);
                 }
                 Ok(task)
             })?;

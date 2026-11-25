@@ -399,8 +399,9 @@ export function TaskSheet({ taskId, onClose }: { taskId: string; onClose: () => 
   }, [onClose]);
   if (!snap || !task) return null;
   const name = (id: string | null) => (id === "you" ? "you" : (snap.config.team.find((a) => a.id === id)?.name ?? id ?? "HQ"));
-  const st = STATUS[task.status];
-  const blockedBy = task.needs.filter((n) => snap.tasks.find((t) => t.id === n)?.status !== "done");
+  const st = STATUS[task.status] ?? STATUS.todo;
+  const needs = task.needs ?? [];
+  const blockedBy = needs.filter((n) => snap.tasks.find((t) => t.id === n)?.status !== "done");
   const pr = snap.pullRequests.find((p) => p.number === task.prNumber);
   const failed = task.scores?.filter((s) => !s.pass).length ?? 0;
   const template = snap.config.template;
