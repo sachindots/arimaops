@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use arima_core::{
-    DecisionPayload, DecisionStatus, FormAnswer, QuestionAnswer, ServerRole, VisualDecision,
+    DecisionFormContext, DecisionPayload, DecisionStatus, FormAnswer, FormSpec, QuestionAnswer,
+    ServerRole, VisualDecision,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::OptionalExtension;
@@ -102,16 +103,31 @@ impl DecisionsRepo {
     pub fn upsert(&self, decision: &VisualDecision) -> Result<VisualDecision> {
         let mut normalized = decision.clone();
         normalized.owner_only = classify_owner_only(&normalized.payload, normalized.owner_only);
+        if normalized.form.is_none() {
+            normalized.form = Some(normalized.payload.build_form(&DecisionFormContext::default()));
+        }
         let payload_json = serde_json::to_string(&normalized.payload)
             .map_err(|e| DbError::InvalidInput(format!("invalid decision payload: {e}")))?;
+        let form_json = normalized
+            .form
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| DbError::InvalidInput(format!("invalid decision form: {e}")))?;
+        let answer_json = normalized
+            .answer
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|e| DbError::InvalidInput(format!("invalid decision answer: {e}")))?;
         let created_ms = parse_ts_ms(&normalized.created_at);
         let closed_ms = normalized.closed_at.as_deref().map(parse_ts_ms);
 
         self.db.transaction(|conn| {
             conn.execute(
                 "INSERT INTO visual_decisions
-                    (id, project_id, from_id, task_id, title, details, waiting, owner_only, status, payload_json, note, created_at, closed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                    (id, project_id, from_id, task_id, title, details, waiting, owner_only, status, payload_json, note, created_at, closed_at, form_json, answer_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
                     details = excluded.details,
@@ -120,7 +136,9 @@ impl DecisionsRepo {
                     status = excluded.status,
                     payload_json = excluded.payload_json,
                     note = excluded.note,
-                    closed_at = excluded.closed_at",
+                    closed_at = excluded.closed_at,
+                    form_json = excluded.form_json,
+                    answer_json = excluded.answer_json",
                 rusqlite::params![
                     normalized.id,
                     normalized.project_id,
@@ -135,6 +153,8 @@ impl DecisionsRepo {
                     normalized.note,
                     created_ms,
                     closed_ms,
+                    form_json,
+                    answer_json,
                 ],
             )?;
             Ok::<_, DbError>(())
@@ -157,7 +177,7 @@ impl DecisionsRepo {
         self.db.read(|conn| {
             let mut sql = String::from(
                 "SELECT id, project_id, from_id, task_id, title, details, waiting, owner_only,
-                        status, payload_json, note, created_at, closed_at
+                        status, payload_json, note, created_at, closed_at, form_json, answer_json
                  FROM visual_decisions
                  WHERE project_id = ?1",
             );
@@ -195,7 +215,7 @@ impl DecisionsRepo {
         self.db.read(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, project_id, from_id, task_id, title, details, waiting, owner_only,
-                        status, payload_json, note, created_at, closed_at
+                        status, payload_json, note, created_at, closed_at, form_json, answer_json
                  FROM visual_decisions
                  WHERE project_id = ?1
                    AND status = 'open'
@@ -240,53 +260,127 @@ impl DecisionsRepo {
                 ));
             }
 
-            match &mut dec.payload {
-                DecisionPayload::Question(q) => {
-                    if let Some(ans) = input.answers {
-                        q.answers = ans;
-                    }
+            let mut derived_note = input.note.clone();
+            let mut derived_status = input.status;
+
+            if let Some(ref ans) = input.form_answer {
+                dec.answer = Some(ans.clone());
+                if derived_note.is_none() {
+                    derived_note = ans
+                        .data
+                        .get("note")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned);
                 }
-                DecisionPayload::Form(f) => {
-                    if let Some(ans) = input.form_answer {
-                        f.answer = Some(ans);
-                    }
+                let action = ans.action.as_str();
+                if derived_status.is_none()
+                    && matches!(action, "deny" | "decline" | "revise" | "reject")
+                {
+                    derived_status = Some(DecisionStatus::Dismissed);
                 }
-                DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {
-                    if let Some(ref side) = input.chosen_side {
-                        let is_waive = side.eq_ignore_ascii_case("waive-gate")
-                            || side.eq_ignore_ascii_case("waivegate")
-                            || side.eq_ignore_ascii_case("waive");
+                match &mut dec.payload {
+                    DecisionPayload::Form(f) => {
+                        f.answer = Some(ans.clone());
+                    }
+                    DecisionPayload::Permission(perm) => {
+                        perm.resolution = Some(action.to_owned());
+                    }
+                    DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {
+                        let is_waive = action.eq_ignore_ascii_case("waive-gate")
+                            || action.eq_ignore_ascii_case("waivegate")
+                            || action.eq_ignore_ascii_case("waive");
                         if is_waive && !matches!(actor_role, ServerRole::Owner) {
                             return Err(DbError::InvalidInput(
                                 "waiving a gate requires the owner role".into(),
                             ));
                         }
-                        so.chosen_side = Some(side.clone());
+                        so.chosen_side = Some(action.to_owned());
                     }
-                }
-                DecisionPayload::PackReview { roles, .. } => {
-                    if let Some(a) = input.answers.and_then(|a| a.into_iter().find(|a| a.question_id == "roles")) {
-                        *roles = a.selected_option_ids;
+                    DecisionPayload::PackReview { roles, .. } => {
+                        if let Some(arr) = ans.data.get("roles").and_then(serde_json::Value::as_array) {
+                            *roles = arr
+                                .iter()
+                                .filter_map(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                                .collect();
+                        }
                     }
-                }
-                DecisionPayload::Permission(perm) => {
-                    if let Some(res) = input.permission_resolution {
-                        perm.resolution = Some(res);
+                    DecisionPayload::Question(q) => {
+                        q.answers = q
+                            .questions
+                            .iter()
+                            .map(|prompt| QuestionAnswer {
+                                question_id: prompt.id.clone(),
+                                selected_option_ids: ans
+                                    .data
+                                    .get(format!("q_{}", prompt.id))
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|a| {
+                                        a.iter()
+                                            .filter_map(serde_json::Value::as_str)
+                                            .map(str::to_owned)
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                                other_text: ans
+                                    .data
+                                    .get(format!("other_{}", prompt.id))
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::trim)
+                                    .filter(|s| !s.is_empty())
+                                    .map(str::to_owned),
+                            })
+                            .collect();
                     }
+                    _ => {}
                 }
-                _ => {}
+            } else {
+                match &mut dec.payload {
+                    DecisionPayload::Question(q) => {
+                        if let Some(ans) = input.answers {
+                            q.answers = ans;
+                        }
+                    }
+                    DecisionPayload::SecondOpinion(so) | DecisionPayload::Disagreement(so) => {
+                        if let Some(ref side) = input.chosen_side {
+                            let is_waive = side.eq_ignore_ascii_case("waive-gate")
+                                || side.eq_ignore_ascii_case("waivegate")
+                                || side.eq_ignore_ascii_case("waive");
+                            if is_waive && !matches!(actor_role, ServerRole::Owner) {
+                                return Err(DbError::InvalidInput(
+                                    "waiving a gate requires the owner role".into(),
+                                ));
+                            }
+                            so.chosen_side = Some(side.clone());
+                        }
+                    }
+                    DecisionPayload::Permission(perm) => {
+                        if let Some(res) = input.permission_resolution {
+                            perm.resolution = Some(res);
+                        }
+                    }
+                    _ => {}
+                }
             }
 
-            let new_status = input.status.unwrap_or(DecisionStatus::Resolved);
+            let new_status = derived_status.unwrap_or(DecisionStatus::Resolved);
             dec.status = new_status;
             dec.waiting = false;
-            if input.note.is_some() {
-                dec.note = input.note;
+            if derived_note.is_some() {
+                dec.note = derived_note;
             }
             dec.closed_at = Some(now_iso);
 
             let payload_json = serde_json::to_string(&dec.payload)
                 .map_err(|e| DbError::InvalidInput(format!("serialize payload: {e}")))?;
+            let answer_json = dec
+                .answer
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(|e| DbError::InvalidInput(format!("serialize answer: {e}")))?;
 
             conn.execute(
                 "UPDATE visual_decisions
@@ -294,13 +388,15 @@ impl DecisionsRepo {
                      waiting = 0,
                      payload_json = ?2,
                      note = ?3,
-                     closed_at = ?4
-                 WHERE id = ?5",
+                     closed_at = ?4,
+                     answer_json = ?5
+                 WHERE id = ?6",
                 rusqlite::params![
                     status_as_str(dec.status),
                     payload_json,
                     dec.note,
                     now_ms,
+                    answer_json,
                     dec.id,
                 ],
             )?;
@@ -327,7 +423,7 @@ impl DecisionsRepo {
     fn query_one(conn: &rusqlite::Connection, id: &str) -> Result<Option<VisualDecision>> {
         conn.query_row(
             "SELECT id, project_id, from_id, task_id, title, details, waiting, owner_only,
-                    status, payload_json, note, created_at, closed_at
+                    status, payload_json, note, created_at, closed_at, form_json, answer_json
              FROM visual_decisions
              WHERE id = ?1",
             [id],
@@ -342,12 +438,21 @@ impl DecisionsRepo {
         let payload_raw: String = r.get(9)?;
         let created_ms: i64 = r.get(11)?;
         let closed_ms: Option<i64> = r.get(12)?;
+        let form_raw: Option<String> = r.get(13)?;
+        let answer_raw: Option<String> = r.get(14)?;
 
         let payload: DecisionPayload = serde_json::from_str(&payload_raw).unwrap_or(
             DecisionPayload::Info {
                 markdown: payload_raw,
             },
         );
+        let form = form_raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<FormSpec>(s).ok())
+            .or_else(|| Some(payload.build_form(&DecisionFormContext::default())));
+        let answer = answer_raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<FormAnswer>(s).ok());
         let explicit_owner = r.get::<_, i64>(7)? != 0;
         let owner_only = classify_owner_only(&payload, explicit_owner);
 
@@ -362,6 +467,8 @@ impl DecisionsRepo {
             owner_only,
             status: parse_status(&status_raw),
             payload,
+            form,
+            answer,
             note: r.get(10)?,
             created_at: format_ts_ms(created_ms),
             closed_at: closed_ms.map(format_ts_ms),

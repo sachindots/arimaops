@@ -780,15 +780,49 @@ export function createMockSource(): OfficeDataSource {
       const dec = list.find((d) => d.id === id);
       if (!dec) return;
       const nowIso = new Date().toISOString();
-      dec.status = input.status ?? "resolved";
-      dec.waiting = false;
-      dec.note = input.note?.trim() || dec.note || null;
-      dec.closedAt = nowIso;
+      const fa = input.formAnswer;
+      const faNote =
+        fa && typeof fa.data === "object" && fa.data !== null && !Array.isArray(fa.data) && typeof (fa.data as Record<string, unknown>).note === "string"
+          ? ((fa.data as Record<string, unknown>).note as string).trim()
+          : "";
+      const negative = fa && (fa.action === "deny" || fa.action === "decline" || fa.action === "revise" || fa.action === "reject");
 
-      if (dec.payload.kind === "question" && input.answers) {
+      dec.status = input.status ?? (negative ? "dismissed" : "resolved");
+      dec.waiting = false;
+      dec.note = input.note?.trim() || faNote || dec.note || null;
+      dec.closedAt = nowIso;
+      if (fa) dec.answer = fa;
+
+      if (fa) {
+        const dObj = typeof fa.data === "object" && fa.data !== null && !Array.isArray(fa.data) ? (fa.data as Record<string, unknown>) : {};
+        if (dec.payload.kind === "form") {
+          dec.payload = { ...dec.payload, answer: fa };
+        } else if (dec.payload.kind === "permission") {
+          dec.payload = { ...dec.payload, resolution: fa.action };
+        } else if (dec.payload.kind === "second-opinion" || dec.payload.kind === "disagreement") {
+          dec.payload = { ...dec.payload, chosenSide: fa.action };
+          if (fa.action === "waive" && dec.payload.taskId && dec.payload.gateId) {
+            source.recordGate(dec.payload.taskId, dec.payload.gateId, "waived", dec.note ?? "Waived from Second Opinion card");
+          }
+        } else if (dec.payload.kind === "meeting-request") {
+          const mtgId = dec.payload.meetingId;
+          if (fa.action === "decline" || fa.action === "join") {
+            source.joinMeeting(mtgId, fa.action);
+          }
+        } else if (dec.payload.kind === "pack-review" && Array.isArray(dObj.roles)) {
+          dec.payload = { ...dec.payload, roles: dObj.roles.map(String) };
+        } else if (dec.payload.kind === "question") {
+          dec.payload = {
+            ...dec.payload,
+            answers: dec.payload.questions.map((q) => ({
+              questionId: q.id,
+              selectedOptionIds: Array.isArray(dObj[`q_${q.id}`]) ? (dObj[`q_${q.id}`] as unknown[]).map(String) : [],
+              otherText: typeof dObj[`other_${q.id}`] === "string" ? (dObj[`other_${q.id}`] as string).trim() || null : null,
+            })),
+          };
+        }
+      } else if (dec.payload.kind === "question" && input.answers) {
         dec.payload = { ...dec.payload, answers: input.answers };
-      } else if (dec.payload.kind === "form" && input.formAnswer) {
-        dec.payload = { ...dec.payload, answer: input.formAnswer };
       } else if ((dec.payload.kind === "second-opinion" || dec.payload.kind === "disagreement") && input.chosenSide) {
         dec.payload = { ...dec.payload, chosenSide: input.chosenSide };
         if (input.chosenSide === "waive" && dec.payload.taskId && dec.payload.gateId) {
@@ -809,10 +843,11 @@ export function createMockSource(): OfficeDataSource {
       world.activity("agent.answered", dec.fromId === "hq" ? null : dec.fromId, `You answered "${dec.title}"`);
       if (dec.fromId && dec.fromId !== "hq" && world.cfg(dec.fromId)) {
         const summary =
-          input.chosenSide ? `Chosen: ${input.chosenSide}`
+          dec.payload.kind === "form" && fa ? `Form: ${fa.action} ${JSON.stringify(fa.data)}`
+          : fa ? `Answered: ${fa.action}`
+          : input.chosenSide ? `Chosen: ${input.chosenSide}`
           : input.resolution ? `Permission: ${input.resolution}`
           : input.answers?.length ? `Answered ${input.answers.length} question(s)`
-          : input.formAnswer ? `Form: ${input.formAnswer.action} ${JSON.stringify(input.formAnswer.data)}`
           : dec.status;
         world.message("you", dec.fromId, `${dec.title} — ${summary}${dec.note ? ` (${dec.note})` : ""}`);
       }

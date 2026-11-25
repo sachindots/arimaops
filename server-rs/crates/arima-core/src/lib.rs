@@ -17,8 +17,9 @@ pub mod tool_server;
 pub use auth::{AuthUser, AuditEntry, DeviceSession, PasskeyInfo, ProjectRole, ServerRole};
 pub use cli::AgentCli;
 pub use decision::{
-    DecisionKind, DecisionPayload, DecisionStatus, OpinionSide, PermissionPayload, QuestionAnswer,
-    QuestionOption, QuestionPayload, QuestionPrompt, SecondOpinionPayload, VisualDecision,
+    DecisionFormContext, DecisionKind, DecisionPayload, DecisionStatus, OpinionSide,
+    PermissionPayload, QuestionAnswer, QuestionOption, QuestionPayload, QuestionPrompt,
+    SecondOpinionPayload, VisualDecision,
 };
 pub use form::{Form, FormAnswer, FormPayload, FormSpec};
 pub use feedback::{

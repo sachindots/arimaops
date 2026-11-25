@@ -29,6 +29,7 @@ pub struct WsCommandAck {
 /// Real-time server events pushed over `/ws`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(tag = "type", rename_all = "kebab-case")]
+#[allow(clippy::large_enum_variant)]
 pub enum WsServerEvent {
     CommandAck(WsCommandAck),
     DecisionUpdated {

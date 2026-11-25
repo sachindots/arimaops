@@ -1,24 +1,38 @@
 import { useRef, useState } from "react";
-import type { FormPayload, JsonValue, VisualDecision } from "../../data/generated";
+import type { FormAnswer, FormSpec, JsonValue, VisualDecision } from "../../data/generated";
+import { useAuth } from "../../store/auth";
 import { isViewer, officeActions } from "../../store/office";
 import { Icon } from "../deck/Icon";
 import { FORM_CATALOG_ID, FormLocked, FormSurfaceView } from "./formCatalog";
 import { extractCreateSurface, isPlainObject, resolveActionContext, setPointer } from "./formPointers";
 
 /** The label of the button the owner pressed, read back from the form itself. */
-function pressedLabel(payload: FormPayload): string | null {
-  const a = payload.answer;
-  if (!a) return null;
-  const row = payload.form.components.find((c) => (c as { id?: unknown })?.id === a.componentId) as
+function pressedLabel(form: FormSpec, answer: FormAnswer | null): string | null {
+  if (!answer) return null;
+  const row = form.components.find((c) => (c as { id?: unknown })?.id === answer.componentId) as
     | { buttons?: { label?: string; action?: { event?: { name?: string } } }[] }
     | undefined;
-  return row?.buttons?.find((b) => b.action?.event?.name === a.action)?.label ?? a.action;
+  return row?.buttons?.find((b) => b.action?.event?.name === answer.action)?.label ?? answer.action;
 }
 
-/** An agent form: rendered with our own A2UI v1.0 surface renderer and command-deck catalog. */
-export default function FormCard({ decision, payload }: { decision: VisualDecision; payload: FormPayload }) {
+const DISMISS_ACTIONS = new Set(["deny", "decline", "revise", "reject"]);
+
+/** Unified card body: renders every Inbox and inline Chat decision with our A2UI v1.0 surface renderer. */
+export default function FormCard({
+  decision,
+  form,
+  answer = null,
+  onAfterAction,
+}: {
+  decision: VisualDecision;
+  form: FormSpec;
+  answer?: FormAnswer | null;
+  compact?: boolean;
+  onAfterAction?: (action: string) => void;
+}) {
+  const isOwner = useAuth((s) => s.role === "owner" || s.status === "none");
   const resolved = decision.status !== "open";
-  const locked = resolved || isViewer;
+  const locked = resolved || isViewer || (decision.ownerOnly && !isOwner);
   const sent = useRef(false);
 
   const initialEnvelope = {
@@ -26,8 +40,8 @@ export default function FormCard({ decision, payload }: { decision: VisualDecisi
     createSurface: {
       surfaceId: decision.id,
       catalogId: FORM_CATALOG_ID,
-      components: payload.form.components,
-      dataModel: (payload.answer?.data ?? payload.form.data) as Record<string, unknown>,
+      components: form.components,
+      dataModel: (answer?.data ?? form.data) as Record<string, unknown>,
     },
   };
   const surface = extractCreateSurface(initialEnvelope, decision.id);
@@ -50,7 +64,7 @@ export default function FormCard({ decision, payload }: { decision: VisualDecisi
     const current = dataRef.current;
     const context = resolveActionContext(event.context, current);
     officeActions.answerDecision(decision.id, {
-      status: "resolved",
+      status: DISMISS_ACTIONS.has(event.name) ? "dismissed" : "resolved",
       formAnswer: {
         action: event.name,
         componentId,
@@ -58,12 +72,16 @@ export default function FormCard({ decision, payload }: { decision: VisualDecisi
         data: current as JsonValue,
       },
     });
+    onAfterAction?.(event.name);
   };
 
   const dismiss = () => {
-    if (locked) return;
+    if (locked || sent.current) return;
+    sent.current = true;
     officeActions.answerDecision(decision.id, { status: "dismissed" });
   };
+
+  const showDismiss = !locked && (decision.payload.kind === "form" || decision.payload.kind === "question");
 
   return (
     <div className="flex flex-col gap-3">
@@ -82,19 +100,28 @@ export default function FormCard({ decision, payload }: { decision: VisualDecisi
           <p className="m-0 text-[13px] text-muted">This form can&apos;t be shown.</p>
         )}
       </div>
-      {!locked ? (
+      {showDismiss && (
         <div className="flex">
           <button type="button" className="btn text-[13px]" onClick={dismiss}>
             Dismiss
           </button>
         </div>
-      ) : (
-        resolved && (
-          <div className="flex items-center gap-2 text-[12px] text-muted" role="status">
-            <Icon name="check_circle" size={16} className="text-green" />
-            <span>{decision.status === "resolved" ? `Answered${payload.answer ? `: ${pressedLabel(payload)}` : ""}` : "Dismissed"}</span>
-          </div>
-        )
+      )}
+      {locked && decision.payload.kind === "meeting-request" && (
+        <div className="flex">
+          <button type="button" className="btn btn-primary flex items-center gap-1.5 text-[13px]" onClick={() => onAfterAction?.("join")}>
+            <Icon name="forum" size={16} /> Join now
+          </button>
+        </div>
+      )}
+      {resolved && (
+        <div className="flex items-center gap-2 text-[12px] text-muted" role="status">
+          <Icon name="check_circle" size={16} className="text-green" />
+          <span>
+            {decision.status === "resolved" ? `Answered${answer ? `: ${pressedLabel(form, answer)}` : ""}` : "Dismissed"}
+            {decision.note ? ` · “${decision.note}”` : ""}
+          </span>
+        </div>
       )}
     </div>
   );

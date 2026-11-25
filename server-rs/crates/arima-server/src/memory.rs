@@ -133,6 +133,8 @@ pub async fn extract_and_queue_memories(
             memories: serde_json::to_value(&created).unwrap_or_else(|_| json!([])),
         },
         note: None,
+        form: None,
+        answer: None,
         created_at: Utc::now().to_rfc3339(),
         closed_at: None,
     };

@@ -865,7 +865,21 @@ pub fn exec_answer_decision(
             if fa.to_string().len() > arima_core::form::MAX_BYTES {
                 return Err("form answer is larger than 32 KiB".into());
             }
-            form_answer = Some(serde_json::from_value(fa.clone()).map_err(|e| format!("invalid formAnswer: {e}"))?);
+            let parsed: FormAnswer = serde_json::from_value(fa.clone()).map_err(|e| format!("invalid formAnswer: {e}"))?;
+            let action = parsed.action.as_str();
+            if input_val.get("status").is_none() && matches!(action, "deny" | "decline" | "revise" | "reject") {
+                status = Some(DecisionStatus::Dismissed);
+            }
+            if chosen_side.is_none() && matches!(action, "optionA" | "optionB" | "revise" | "waive" | "waive-gate") {
+                chosen_side = Some(action.to_owned());
+            }
+            if meeting_action.is_none() && matches!(action, "join" | "snooze" | "decline") {
+                meeting_action = Some(action.to_owned());
+            }
+            if permission_resolution.is_none() && matches!(action, "allow-once" | "allow-task" | "allow-for-task" | "deny") {
+                permission_resolution = Some(action.to_owned());
+            }
+            form_answer = Some(parsed);
         }
         if let Some(cs) = input_val
             .get("chosenSide")
@@ -955,6 +969,7 @@ pub fn exec_answer_decision(
         "decisionId": resolved.id,
         "status": resolved.status,
         "payload": resolved.payload,
+        "answer": resolved.answer,
         "note": resolved.note,
     })
     .to_string();
@@ -1613,6 +1628,8 @@ mod project_scope_tests {
             owner_only: false,
             status: DecisionStatus::Open,
             payload: DecisionPayload::Info { markdown: "x".into() },
+            form: None,
+            answer: None,
             note: None,
             created_at: Utc::now().to_rfc3339(),
             closed_at: None,

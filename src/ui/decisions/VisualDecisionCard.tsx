@@ -1,17 +1,12 @@
-import { useState } from "react";
 import type { VisualDecision } from "../../data/generated";
 import { BRAND } from "../../data/brand";
-import { isViewer, officeActions, useOffice } from "../../store/office";
+import { useOffice } from "../../store/office";
 import { ui } from "../../store/ui";
 import { Icon } from "../deck/Icon";
 import { ago, Dot, useNow } from "../kit";
 import FormCard from "./FormCard";
-import { MeetingRequestCard } from "./MeetingRequestCard";
 import { PackReviewBody } from "./PackReviewBody";
-import { PermissionCard } from "./PermissionCard";
-import { QuestionCard } from "./QuestionCard";
 import { SafeMarkdown } from "./SafeMarkdown";
-import { SecondOpinionCard } from "./SecondOpinionCard";
 
 export { SafeMarkdown } from "./SafeMarkdown";
 
@@ -37,21 +32,11 @@ export function VisualDecisionCard({
 }) {
   const snap = useOffice((s) => s.snap);
   const now = useNow(15_000);
-  const [note, setNote] = useState(decision.note ?? "");
-  const [packRoles, setPackRoles] = useState(decision.payload.kind === "pack-review" ? decision.payload.roles : []);
   const from = snap?.config.team.find((a) => a.id === decision.fromId);
   const fromName = from?.name ?? (decision.fromId === "hq" ? BRAND.name : decision.fromId);
   const meta = KIND_META[decision.payload.kind] ?? KIND_META.info;
-  const resolved = decision.status !== "open";
-
-  const genericResolve = (status: "resolved" | "dismissed") => {
-    if (resolved || isViewer) return;
-    officeActions.answerDecision(decision.id, {
-      status,
-      note: note.trim() || null,
-      ...(decision.payload.kind === "pack-review" && { answers: [{ questionId: "roles", selectedOptionIds: packRoles, otherText: null }] }),
-    });
-  };
+  const form = decision.form ?? (decision.payload.kind === "form" ? decision.payload.form : null);
+  const answer = decision.answer ?? (decision.payload.kind === "form" ? decision.payload.answer : null);
 
   return (
     <article
@@ -108,63 +93,23 @@ export function VisualDecisionCard({
         </div>
       )}
 
-      {decision.payload.kind === "question" ? (
-        <QuestionCard decision={decision} payload={decision.payload} compact={compact} />
-      ) : decision.payload.kind === "second-opinion" || decision.payload.kind === "disagreement" ? (
-        <SecondOpinionCard
+      {decision.payload.kind === "pack-review" && (
+        <PackReviewBody decisionId={decision.id} projectId={decision.projectId} payload={decision.payload} />
+      )}
+
+      {form && (
+        <FormCard
+          key={`${decision.id}:${decision.status}:${decision.closedAt ?? ""}`}
           decision={decision}
-          payload={decision.payload}
-          kind={decision.payload.kind}
+          form={form}
+          answer={answer}
           compact={compact}
+          onAfterAction={(action) => {
+            if (action === "join" && decision.payload.kind === "meeting-request") {
+              ui.openMeetings(decision.payload.meetingId);
+            }
+          }}
         />
-      ) : decision.payload.kind === "permission" ? (
-        <PermissionCard decision={decision} payload={decision.payload} compact={compact} />
-      ) : decision.payload.kind === "meeting-request" ? (
-        <MeetingRequestCard decision={decision} payload={decision.payload} compact={compact} />
-      ) : decision.payload.kind === "form" ? (
-        <FormCard key={`${decision.id}:${decision.status}:${decision.closedAt ?? ""}`} decision={decision} payload={decision.payload} />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {"markdown" in decision.payload && decision.payload.markdown && (
-            <div className="rounded-lg border border-[var(--border-hairline)] bg-cream-2/50 p-3">
-              <SafeMarkdown markdown={decision.payload.markdown} />
-            </div>
-          )}
-          {decision.payload.kind === "pack-review" && (
-            <PackReviewBody
-              decisionId={decision.id}
-              projectId={decision.projectId}
-              payload={decision.payload}
-              roles={resolved ? decision.payload.roles : packRoles}
-              onRoles={resolved || isViewer ? undefined : setPackRoles}
-            />
-          )}
-          {!resolved && !isViewer && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                className="field min-w-[180px] flex-1 text-[13px]"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Note for the agent (optional)…"
-                aria-label={`Note for ${decision.title}`}
-              />
-              <button
-                type="button"
-                className="btn btn-primary text-[13px]"
-                onClick={() => genericResolve("resolved")}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                className="btn text-[13px]"
-                onClick={() => genericResolve("dismissed")}
-              >
-                Send back
-              </button>
-            </div>
-          )}
-        </div>
       )}
     </article>
   );

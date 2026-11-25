@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { DecisionPayload, PackAgent, PackFileSummary } from "../../data/generated";
-import { useOffice } from "../../store/office";
 import { Icon } from "../deck/Icon";
 
 type PackReview = Extract<DecisionPayload, { kind: "pack-review" }>;
@@ -54,30 +53,6 @@ function List({ label, items }: { label: string; items: string[] }) {
       <span className="font-semibold text-ink">{label}: </span>
       <span className="font-term text-[12px]">{items.join(", ")}</span>
     </div>
-  );
-}
-
-/** The roles an approval gives the pack's skills to. Read-only once the card is answered. */
-function RolePicker({ roles, onRoles }: { roles: string[]; onRoles?: (ids: string[]) => void }) {
-  const all = useOffice((s) => s.snap?.config.template?.roles) ?? [];
-  if (all.length === 0) return null;
-  return (
-    <fieldset className="m-0 border-0 p-0 text-[13px]">
-      <legend className="mb-1 p-0 font-semibold text-ink">Roles that get its skills</legend>
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        {all.map((r) => (
-          <label key={r.id} className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={roles.includes(r.id)}
-              disabled={!onRoles}
-              onChange={(e) => onRoles?.(e.target.checked ? [...roles, r.id] : roles.filter((id) => id !== r.id))}
-            />
-            {r.title}
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }
 
@@ -211,20 +186,16 @@ function SubAgentsList({ agents }: { agents: PackAgent[] }) {
 }
 
 /** Pack review: full inline diffs for SKILL.md, agents/*.md and tool servers;
- *  all other shipped files as a collapsed list expandable per file; plus sub-agents, egress, secrets, findings and roles. */
+ *  all other shipped files as a collapsed list expandable per file; plus sub-agents, egress, secrets and findings. */
 export function PackReviewBody({
   decisionId,
   projectId,
   payload,
-  roles,
-  onRoles,
   loadFile,
 }: {
   decisionId: string;
   projectId: string;
   payload: PackReview;
-  roles: string[];
-  onRoles?: (ids: string[]) => void;
   loadFile?: (path: string) => Promise<LoadedPackDiff>;
 }) {
   const otherFiles = payload.otherFiles ?? [];
@@ -263,7 +234,6 @@ export function PackReviewBody({
           </ul>
         </div>
       )}
-      <RolePicker roles={roles} onRoles={onRoles} />
     </div>
   );
 }
